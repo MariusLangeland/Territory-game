@@ -63,7 +63,7 @@ All authoritative quantities are integers:
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
-In this experiment there are no troop or production-cap values. Gold, card draws, attack orders, and attack-order caps are integer authoritative state; attacks spend 30 integer points per tick.
+In this experiment there are no troop or production-cap values. Gold, fixed card ids, attack orders, and attack-order caps are integer authoritative state; attacks spend 30 integer points per tick.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -118,7 +118,7 @@ Bots are processed in ascending player id order, every 10 ticks. The random draw
 - `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
 - `step()` increments the tick, grants +1 order to each living player on 100-tick boundaries, applies Command Post pulses on 600-tick boundaries, pays income, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
-- Applying an attack command spends one order. Build/refresh commands are then applied before bot decisions and attack processing.
+- Applying an attack command spends one order. Build commands are then applied before bot decisions and attack processing.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
 
 ### 5.2 Online requirement
@@ -174,7 +174,7 @@ Districts are derived deterministically by a bounded Voronoi pass over each owne
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
-Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the five buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, land, district placement, and stack eligibility at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
+Human card economy has no RNG: the hand always contains all five buildable types with fixed ids. Build commands share the command sequence order with attacks. A build revalidates card membership, gold, ownership, emptiness, land, district placement, and stack eligibility at execution. The card is never removed, so repeat purchases require no new draw. Income is paid at tick boundaries from live Mine count.
 
 Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts add their grant on every 600-tick boundary, also clamped. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays and both timer values are checksummed.
 
@@ -214,7 +214,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
-9. human gold, income tick, card RNG state, hand card ids/types, every player's attack orders, and order grant/bonus timers;
+9. human gold, income tick, every player's attack orders, and order grant/bonus timers;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -304,7 +304,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
 21. A live State structure adds 20 defense within 16 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
-22. Starting hand and every refresh are deterministic from a dedicated card RNG and use independent pool draws with replacement.
+22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever gold and placement rules allow.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
 24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 grant and Command Post pulses are fixed tick-boundary events clamped to cap.
 25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and Command Post grants apply in registry order on the 60-second boundary.

@@ -17,9 +17,7 @@ import {
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
-	REFRESH_COST,
 	STARTING_GOLD,
-	STARTING_HAND_SIZE,
 	START_RADIUS,
 	STRUCTURE_MIN_SPACING
 } from './constants';
@@ -147,13 +145,7 @@ export interface BuildCommand {
 	sequence: number;
 }
 
-export interface RefreshCommand {
-	type: 'refresh';
-	playerId: number;
-	sequence: number;
-}
-
-export type GameCommand = AttackCommand | BuildCommand | RefreshCommand;
+export type GameCommand = AttackCommand | BuildCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -232,8 +224,6 @@ export class TerritorySimulation {
 	private nextAttackOrderGrantTick = ATTACK_ORDER_GAIN_TICKS;
 	private nextOrderBonusTick = COMMAND_POST_ORDER_TICKS;
 	private attackOrders: number[] = [];
-	private nextCardId = 1;
-	private readonly cardRng: DeterministicRng;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -295,7 +285,6 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
-		this.cardRng = new DeterministicRng((this.seed ^ 0x9e3779b9) >>> 0);
 
 		this.placeStartingTerritories(this.map.starts);
 		this.ensureEveryStateHasLand();
@@ -308,7 +297,7 @@ export class TerritorySimulation {
 		}
 		this.rebuildDistricts();
 		this.rebuildAuraDefense();
-		this.hand = this.drawHand();
+		this.hand = BUILDABLE_STRUCTURE_TYPES.map((type, index) => ({ id: index + 1, type }));
 		this.attackOrders = this.players.map((player) => this.attackOrderCap(player.id));
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
@@ -520,31 +509,6 @@ export class TerritorySimulation {
 		return validation;
 	}
 
-	/** Queue a refresh. Applied at the next tick; replaces the hand with three cards. */
-	refreshCards(playerId: number): BuildOrderResult {
-		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
-		const player = this.players[playerId - 1];
-		if (!player?.alive) {
-			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
-		}
-		if (playerId !== HUMAN_PLAYER_ID) {
-			return { ok: false, reason: 'invalid', message: 'Only the human commander draws cards.' };
-		}
-		if (this.gold < REFRESH_COST) {
-			return {
-				ok: false,
-				reason: 'no-gold',
-				message: `Refresh costs ${REFRESH_COST} gold.`
-			};
-		}
-		this.pendingCommands.push({
-			type: 'refresh',
-			playerId,
-			sequence: this.nextCommandSequence++
-		});
-		return { ok: true, message: `Refresh ordered for ${REFRESH_COST} gold.` };
-	}
-
 	step(): StepResult {
 		this.changeCount = 0;
 		this.changesOverflow = false;
@@ -696,12 +660,6 @@ export class TerritorySimulation {
 		mix(this.nextAttackOrderGrantTick);
 		mix(this.nextOrderBonusTick);
 		for (const orders of this.attackOrders) mix(orders);
-		mix(this.nextCardId);
-		mix(this.cardRng.getState());
-		for (const card of this.hand) {
-			mix(card.id);
-			mix(STRUCTURE_TYPE_CODES[card.type]);
-		}
 
 		for (let i = 0; i < this.owners.length; i++) {
 			mix(this.owners[i]);
@@ -753,14 +711,6 @@ export class TerritorySimulation {
 			const player = this.players[command.playerId - 1];
 			if (!player?.alive) continue;
 
-			if (command.type === 'refresh') {
-				if (command.playerId !== HUMAN_PLAYER_ID || this.gold < REFRESH_COST) continue;
-				this.gold -= REFRESH_COST;
-				this.hand = this.drawHand();
-				this.pushEvent('build', 'Hand refreshed with three cards.', command.playerId);
-				continue;
-			}
-
 			if (command.type === 'build') {
 				const validation = this.validateBuild(
 					command.playerId,
@@ -773,7 +723,6 @@ export class TerritorySimulation {
 				if (!card) continue;
 				const cost = STRUCTURE_DEFINITIONS[card.type].cost;
 				this.gold -= cost;
-				this.hand = this.hand.filter((entry) => entry.id !== command.cardId);
 				const targetIndex = command.y * this.width + command.x;
 				const districtId = this.districtStructureIds[targetIndex];
 				const districtStructure = districtId ? this.structures.byId(districtId) : undefined;
@@ -812,15 +761,6 @@ export class TerritorySimulation {
 			if (!this.createAttack(command.playerId, index, seeds)) continue;
 			this.attackOrders[command.playerId - 1]--;
 		}
-	}
-
-	private drawCard(): Card {
-		const type = BUILDABLE_STRUCTURE_TYPES[this.cardRng.nextInt(BUILDABLE_STRUCTURE_TYPES.length)];
-		return { id: this.nextCardId++, type };
-	}
-
-	private drawHand(): Card[] {
-		return Array.from({ length: STARTING_HAND_SIZE }, () => this.drawCard());
 	}
 
 	private findAttackSeeds(attackerId: number, targetIndex: number): number[] {

@@ -12,7 +12,6 @@
 		MAP_HEIGHT,
 		MAP_WIDTH,
 		PLAYER_COUNT,
-		REFRESH_COST,
 		STRUCTURE_MIN_SPACING,
 		TICK_RATE,
 		colorForPlayer
@@ -77,6 +76,8 @@
 	let rankScrollEl = $state<HTMLDivElement | null>(null);
 	let rankScrollTop = $state(0);
 	let rankViewportHeight = $state(360);
+	let handRaised = $state(true);
+	let handShellEl = $state<HTMLDivElement | null>(null);
 	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
 	let draggingCardId = $state<number | null>(null);
 	let dragOrigin = $state<{ x: number; y: number } | null>(null);
@@ -239,6 +240,7 @@
 		hover = null;
 		cameraView = null;
 		rankScrollTop = 0;
+		handRaised = true;
 		growthMode = DEFAULT_GROWTH_MODE;
 		clearDragState();
 		eventFeed = [];
@@ -498,14 +500,23 @@
 		showToast(result.message, result.ok ? 'success' : 'error');
 	}
 
-	function refreshHand(): void {
-		if (!sim) return;
-		if (paused || defeatOpen || snapshot?.ended) {
-			showToast('Resume the simulation before refreshing.', 'warn');
+	function handleWindowPointerMove(event: PointerEvent): void {
+		if (!gameStarted || showIntro) return;
+		if (draggingCardId !== null) {
+			handRaised = true;
 			return;
 		}
-		const result = sim.refreshCards(HUMAN_PLAYER_ID);
-		showToast(result.message, result.ok ? 'success' : 'error');
+		const shell = handShellEl;
+		if (!shell) return;
+		const rect = shell.getBoundingClientRect();
+		// When collapsed, only the peeking strip should reopen the hand; the
+		// invisible layout box above it must not become a map dead zone.
+		const hitTop = handRaised ? rect.top : rect.bottom - 38;
+		handRaised =
+			event.clientX >= rect.left &&
+			event.clientX <= rect.right &&
+			event.clientY >= hitTop &&
+			event.clientY <= rect.bottom;
 	}
 
 	$effect(() => {
@@ -579,10 +590,12 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
+		window.addEventListener('pointermove', handleWindowPointerMove);
 		createWorld(readSeedFromLocation());
 
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('pointermove', handleWindowPointerMove);
 			clearTimeout(worldTimer);
 			clearTimeout(toastTimer);
 			cameraBridge.onView = undefined;
@@ -844,74 +857,70 @@
 				<small>+{snapshot.income}G / 10s · +1 ORDER / 10s</small>
 			</div>
 
-			<div class="hand-row">
-				{#each snapshot.hand as card, index (card.id)}
-					{@const definition = cardDefinition(card)}
-					{@const accent = STRUCTURE_ACCENTS[card.type]}
-					<article
-						class="build-card"
-						class:unaffordable={snapshot.gold < definition.cost}
-						class:dragging={draggingCardId === card.id}
-						style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
-						draggable={snapshot.gold >= definition.cost}
-						in:fly={{ y: 42, duration: 360, delay: Math.min(index, 2) * 55 }}
-						out:fly={{ y: 28, duration: 240 }}
-						animate:flip={{ duration: 260 }}
-						ondragstart={(event) => startCardDrag(event, card)}
-						ondrag={updateDragHover}
-						ondragend={endCardDrag}
-						title={`Drag ${definition.label} into your territory`}
-					>
-						<div class="card-face">
-							<div class="card-banner">
-								<span>BUILD CARD</span>
-								<div class="card-cost"><b>{definition.cost}</b><small>G</small></div>
-							</div>
-							<h3 class="card-title">{definition.label}</h3>
-							<div class="card-art" aria-hidden="true">
-								<span class="card-art-icon">
-									{#if card.type === 'mine'}
-										<svg viewBox="0 0 24 24">
-											<path d="M4 20 16 8M12 4c3 0 6 1 8 4M8 8c2-2 6-3 9-2" />
-										</svg>
-									{:else if card.type === 'barracks'}
-										<svg viewBox="0 0 24 24">
-											<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
-										</svg>
-									{:else if card.type === 'defense-post'}
-										<svg viewBox="0 0 24 24">
-											<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
-										</svg>
-									{:else if card.type === 'command-post'}
-										<svg viewBox="0 0 24 24">
-											<path d="M12 21V9M8 9a6 6 0 0 1 8 0M5 6a10 10 0 0 1 14 0M9 21h6" />
-										</svg>
-									{:else}
-										<svg viewBox="0 0 24 24">
-											<path d="M12 4 20 8l-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
-										</svg>
-									{/if}
-								</span>
-							</div>
-							<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
-							<p class="card-rules">{definition.description}</p>
-							<div class="card-footer"><span>DRAG TO DEPLOY</span><span>◆</span></div>
-						</div>
-					</article>
-				{/each}
-			</div>
-
-			<button
-				type="button"
-				class="refresh-button"
-				onclick={refreshHand}
-				disabled={snapshot.gold < REFRESH_COST}
-				title="Replace your hand with three new cards"
+			<div
+				class="hand-shell"
+				class:collapsed={!handRaised}
+				bind:this={handShellEl}
+				aria-label="Card hand"
 			>
-				<span class="refresh-glyph" aria-hidden="true">↻</span>
-				<span>REFRESH</span>
-				<small>{REFRESH_COST}g</small>
-			</button>
+				<div class="hand-row">
+					{#each snapshot.hand as card, index (card.id)}
+						{@const definition = cardDefinition(card)}
+						{@const accent = STRUCTURE_ACCENTS[card.type]}
+						<article
+							class="build-card"
+							class:unaffordable={snapshot.gold < definition.cost}
+							class:dragging={draggingCardId === card.id}
+							style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
+							draggable={snapshot.gold >= definition.cost}
+							in:fly={{ y: 42, duration: 360, delay: Math.min(index, 2) * 55 }}
+							out:fly={{ y: 28, duration: 240 }}
+							animate:flip={{ duration: 260 }}
+							ondragstart={(event) => startCardDrag(event, card)}
+							ondrag={updateDragHover}
+							ondragend={endCardDrag}
+							onpointerdown={() => (handRaised = true)}
+							title={`Drag ${definition.label} into your territory`}
+						>
+							<div class="card-face">
+								<div class="card-banner">
+									<span>BUILD CARD</span>
+									<div class="card-cost"><b>{definition.cost}</b><small>G</small></div>
+								</div>
+								<h3 class="card-title">{definition.label}</h3>
+								<div class="card-art" aria-hidden="true">
+									<span class="card-art-icon">
+										{#if card.type === 'mine'}
+											<svg viewBox="0 0 24 24">
+												<path d="M4 20 16 8M12 4c3 0 6 1 8 4M8 8c2-2 6-3 9-2" />
+											</svg>
+										{:else if card.type === 'barracks'}
+											<svg viewBox="0 0 24 24">
+												<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
+											</svg>
+										{:else if card.type === 'defense-post'}
+											<svg viewBox="0 0 24 24">
+												<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+											</svg>
+										{:else if card.type === 'command-post'}
+											<svg viewBox="0 0 24 24">
+												<path d="M12 21V9M8 9a6 6 0 0 1 8 0M5 6a10 10 0 0 1 14 0M9 21h6" />
+											</svg>
+										{:else}
+											<svg viewBox="0 0 24 24">
+												<path d="M12 4 20 8l-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
+											</svg>
+										{/if}
+									</span>
+								</div>
+								<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
+								<p class="card-rules">{definition.description}</p>
+								<div class="card-footer"><span>DRAG TO DEPLOY</span><span>◆</span></div>
+							</div>
+						</article>
+					{/each}
+				</div>
+			</div>
 		</div>
 
 		{#if draggingCardId !== null && dragOrigin && dragPointer && dragArrow}
@@ -1051,7 +1060,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.12.0 / PROTOCOL 19</span>
+				<span>BUILD 0.13.0 / PROTOCOL 20</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1207,13 +1216,13 @@
 						<h3>Cards, gold, and fronts.</h3>
 						<p>
 							Troops and production caps are removed. The human commander earns 1 gold every 10
-							seconds and draws three build cards; drag a card into controlled territory to build a
-							Mine, Barracks, Defense Post, Command Post, or War Academy. Attack orders refresh
-							every 10 seconds. Terrain matters: base defense is 1 plus the elevation tier, occupied
-							pixels add 1 more, and each front spends 30 attack points per tick. State auras add
-							another 20 defense. Each front samples nearby frontier cells and presses the cheapest
-							defense, so it bends around strongpoints when a weaker lane exists. This is still not
-							the final combat design.
+							seconds and always has all five build cards; buy any of them whenever you can afford
+							it by dragging it into controlled territory. The hand sinks out of the way and rises
+							when you hover it. Attack orders recover every 10 seconds. Terrain matters: base
+							defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
+							spends 30 attack points per tick. State auras add another 20 defense. Each front
+							samples nearby frontier cells and presses the cheapest defense, so it bends around
+							strongpoints when a weaker lane exists. This is still not the final combat design.
 						</p>
 					</section>
 					<section>
@@ -1954,8 +1963,7 @@
 		gap: 6px;
 	}
 
-	.economy-readout span,
-	.refresh-button span {
+	.economy-readout span {
 		font-family: var(--font-mono);
 		font-size: 6.5px;
 		letter-spacing: 0.12em;
@@ -1995,12 +2003,28 @@
 		color: var(--ink-dim);
 	}
 
+	.hand-shell {
+		display: flex;
+		align-items: flex-end;
+		pointer-events: none;
+	}
+
 	.hand-row {
 		display: flex;
 		align-items: flex-end;
 		gap: 10px;
 		padding: 0 4px 10px;
 		pointer-events: none;
+		transform: translateY(0);
+		transition:
+			transform 360ms cubic-bezier(0.2, 0.72, 0.2, 1),
+			opacity 260ms ease;
+		will-change: transform;
+	}
+
+	.hand-shell.collapsed .hand-row {
+		transform: translateY(calc(100% - 30px));
+		opacity: 0.92;
 	}
 
 	.build-card {
@@ -2254,59 +2278,6 @@
 
 	.card-footer span:last-child {
 		color: var(--card-accent);
-	}
-
-	.refresh-button {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2px;
-		width: 66px;
-		min-height: 84px;
-		margin-bottom: 24px;
-		padding: 9px 6px;
-		border: 1px solid rgba(183, 224, 198, 0.26);
-		background:
-			linear-gradient(155deg, rgba(183, 224, 198, 0.08), transparent 55%), rgba(7, 16, 21, 0.86);
-		box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
-		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-		cursor: pointer;
-		pointer-events: auto;
-		transition:
-			transform 180ms ease,
-			border-color 180ms ease,
-			background 180ms ease;
-	}
-
-	.refresh-glyph {
-		font-family: var(--font-display);
-		font-size: 24px;
-		line-height: 0.9;
-		color: var(--signal);
-		transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
-	}
-
-	.refresh-button small {
-		font-family: var(--font-mono);
-		font-size: 8px;
-		color: #ffd690;
-	}
-
-	.refresh-button:hover:not(:disabled) {
-		border-color: var(--signal);
-		background:
-			linear-gradient(155deg, rgba(183, 224, 198, 0.14), transparent 55%), rgba(10, 22, 28, 0.92);
-		transform: translateY(-5px);
-	}
-
-	.refresh-button:hover:not(:disabled) .refresh-glyph {
-		transform: rotate(-190deg);
-	}
-
-	.refresh-button:disabled {
-		opacity: 0.32;
-		cursor: not-allowed;
 	}
 
 	.drag-overlay {
@@ -3349,10 +3320,6 @@
 		.economy-readout {
 			width: 104px;
 		}
-
-		.refresh-button {
-			width: 60px;
-		}
 	}
 
 	@media (max-width: 900px) {
@@ -3505,12 +3472,6 @@
 			padding: 8px 7px;
 		}
 
-		.refresh-button {
-			width: 56px;
-			min-height: 76px;
-			margin-bottom: 18px;
-		}
-
 		.paused-flag {
 			top: 72px;
 			font-size: 7px;
@@ -3621,17 +3582,6 @@
 
 		.economy-row strong {
 			font-size: 21px;
-		}
-
-		.refresh-button {
-			width: 48px;
-			min-height: 64px;
-			margin-bottom: 14px;
-			padding: 6px 4px;
-		}
-
-		.refresh-glyph {
-			font-size: 19px;
 		}
 
 		.toast {
@@ -3765,24 +3715,6 @@
 
 		.economy-readout small {
 			font-size: 5px;
-		}
-
-		.refresh-button {
-			width: 42px;
-		}
-
-		.refresh-button {
-			min-height: 58px;
-			padding: 5px 3px;
-			margin-bottom: 12px;
-		}
-
-		.refresh-glyph {
-			font-size: 16px;
-		}
-
-		.refresh-button span {
-			font-size: 5.5px;
 		}
 	}
 

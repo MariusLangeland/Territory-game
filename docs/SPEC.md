@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.12.0 (attack stress experiment)  
+**Version:** 0.13.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.12.0, map version 3, protocol draft 19
+**Last synchronized with:** application 0.13.0, map version 3, protocol draft 20
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 19`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 20`.
 
 ### 4.2 Starting positions
 
@@ -204,7 +204,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 3. Grant each living player +1 attack order, clamped to cap, on a 10-second boundary.
 4. Apply Command Post order pulses if this is a 60-second boundary.
 5. Pay human income if this is an income boundary.
-6. Apply queued attack/build/refresh commands sorted by `(sequence, playerId)`.
+6. Apply queued attack/build commands sorted by `(sequence, playerId)`.
 7. Run bot decisions (only on every 10th tick).
 8. Process active attacks in creation-id order.
 9. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
@@ -307,15 +307,14 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 
 The human commander has a small card economy; bots do not build cards yet.
 
-- Start with **3 gold** and **3 random cards**, drawn independently from the buildable pool with replacement.
+- Start with **3 gold** and **all five buildable cards** always available in the hand.
 - Earn **1 gold every 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine**.
 - Income is paid at the start of the tick. A Mine built before the payment adds to that payment.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
-- If the same structure type already exists for that owner, the card must be dropped inside that type's district and it **stacks** onto the existing structure instead of creating another one.
-- The build command is queued, applied at the next tick, deducts its cost, removes the card, and either creates the first structure of that type or adds a stack to the existing one.
-- **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
+- Dropping inside a same-type district **stacks** onto that district's structure; dropping the same type outside all districts creates another structure/district.
+- The build command is queued, applied at the next tick, deducts its cost, keeps the card, and either creates a new structure or adds a stack to the matching district.
+- Cards are permanent actions, not a consumable hand: any affordable card can be bought again immediately. There is no draw, deck, or reroll.
 - Costs: Mine **3**, Barracks **2**, Defense Post **2**, Command Post **4**, War Academy **6**.
-- Cards are not a deck: every draw is an independent uniform choice among the five printed card types, so duplicates are possible.
 - Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is clamped to the cap.
 - War Academies add **+1 to the attack-order cap** while alive; additional War Academy cards stack this cap bonus.
 - Captured buildable structures are razed and their effects disappear.
@@ -386,7 +385,8 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center; gold and Refresh float at its sides with no enclosing tray and no empty-card placeholders.
-- Cards have frame/art/rules layouts, animate in from below, animate out when played or refreshed, flip-animate on hand changes, lift on hover, and tilt/scale while dragged.
+- Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
+- The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.
 - The bottom center is reserved for the hand; the growth selector lives in the left rail above the minimap.
 - The top-center status console was removed. Gold, attack orders/cap, and the hovered defense value now share a compact readout beside the hand. Grid reference and target-description text are gone.
 - While dragging, a curved accent arrow connects the raised card to the cursor, with no browser ghost card. The landing cell shows the 8 px exclusion radius: green when the build is legal, red when blocked.
@@ -570,7 +570,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
 - [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
-- [x] The human starts with three cards and 3 gold, earns income, can drag cards onto owned land, and can refresh the hand.
+- [x] The human starts with all five cards and 3 gold, earns income, can drag any affordable card onto owned land repeatedly, and never loses a card from the hand.
 - [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
 - [x] Attack orders start full, are spent per launch, and grant +1 every 10 seconds up to the cap; bot orders use the same rules.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.

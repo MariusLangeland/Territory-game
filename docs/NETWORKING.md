@@ -189,14 +189,14 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Client → server
 
-| Message       | Purpose                                                       |
-| ------------- | ------------------------------------------------------------- |
-| `hello`       | Protocol version, display name                                |
-| `join`        | Enter a room/match                                            |
-| `intent`      | One attack/build/refresh intent with target tick and sequence |
-| `growth-mode` | Select the growth layer for new orders (host/test policy)     |
-| `ping`        | RTT probe                                                     |
-| `leave`       | Voluntary departure                                           |
+| Message       | Purpose                                                   |
+| ------------- | --------------------------------------------------------- |
+| `hello`       | Protocol version, display name                            |
+| `join`        | Enter a room/match                                        |
+| `intent`      | One attack/build intent with target tick and sequence     |
+| `growth-mode` | Select the growth layer for new orders (host/test policy) |
+| `ping`        | RTT probe                                                 |
+| `leave`       | Voluntary departure                                       |
 
 ### Server → client
 
@@ -249,8 +249,8 @@ Structures:
 Player economy and cards:
 
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
-- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility;
-- card draws use the seeded authoritative card RNG; clients never choose the drawn type;
+- builds are tick-stamped commands, validated server-side against permanent-hand membership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility;
+- the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - attack-order grants, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;
 - bots do not participate in the card economy in this build, so their snapshot economy is omitted.

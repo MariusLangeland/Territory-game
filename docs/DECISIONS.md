@@ -449,7 +449,7 @@ Structures were static anchors with no gameplay effect. The next step is effects
 
 ## ADR-015 — Human gold economy and drag-and-drop build cards
 
-**Status:** accepted for EXP-001  
+**Status:** superseded by ADR-020 (card hand/reroll)  
 **Date:** 2026-11-19
 
 ### Context
@@ -596,3 +596,39 @@ Attack movement is chosen by geometry-only growth layers. A high-defense cell ca
 - **Defense in the growth-layer priority key:** couples rendering-style layers to combat and can overwhelm distance with aura values.
 - **Only fallback when the top candidate is unaffordable:** misses proactive flow around expensive but affordable strongpoints.
 - **Randomized cost sampling:** harms determinism and replay clarity.
+
+---
+
+## ADR-020 — Permanent card catalog and auto-hiding hand
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+The random three-card hand and paid reroll created unnecessary downtime and card-economy RNG. The player asked to see every available card at once, buy any of them whenever affordable, and reclaim bottom-screen space when the hand is not in use.
+
+### Decision
+
+- Remove card draws, hand size, and Refresh entirely.
+- The hand is a fixed catalog of all five buildable types with stable ids `1..5`.
+- Purchases deduct gold and build/stack, but never remove the card. The same card is immediately buyable again if gold and placement rules allow.
+- Hand membership remains a command validation guard, but there is no card RNG or consumption.
+- Hand gold/income/order economy is otherwise unchanged.
+- UI: the hand starts raised. A window pointer tracker raises it when the pointer is within the hand bounds and sinks it otherwise; during card drag it stays raised. The collapsed state translates the cards down to a ~30 px peeking strip.
+- Drag gestures and placement validation are unchanged.
+
+### Consequences
+
+- Every build option is always visible; gold becomes the only availability gate.
+- No reroll button, refresh command, card RNG, hand checksum, or dead-hand downtime.
+- Repeat purchases are the normal way to stack or create another same-type district.
+- The collapsed hand preserves map space while keeping a discoverable peeking strip.
+- Touch users raise the hand by pressing a visible card; there is no hover on touch devices.
+
+### Alternatives considered
+
+- **Keep a reroll but make it free:** still adds a redundant action and UI.
+- **Consume cards but draw replacements:** retains hand RNG and downtime.
+- **Five cards with cooldown per card:** adds hidden state without user request.
+- **Fully hide the hand:** would make card access undiscoverable; the peeking strip keeps affordance.

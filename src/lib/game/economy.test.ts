@@ -3,7 +3,6 @@ import {
 	BASE_GOLD_INCOME,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
-	REFRESH_COST,
 	STARTING_GOLD,
 	STRUCTURE_MIN_SPACING
 } from './constants';
@@ -54,16 +53,13 @@ function buildCard(
 }
 
 describe('player economy and cards', () => {
-	it('starts with three buildable cards and starting gold', () => {
+	it('starts with every buildable card and starting gold', () => {
 		const sim = new TerritorySimulation({ seed: 246810 });
 		expect(sim.gold).toBe(STARTING_GOLD);
-		expect(sim.hand).toHaveLength(3);
+		expect(sim.hand).toHaveLength(BUILDABLE_STRUCTURE_TYPES.length);
 		expect(sim.getSnapshot().gold).toBe(STARTING_GOLD);
 		expect(sim.getSnapshot().income).toBe(BASE_GOLD_INCOME);
-		expect(sim.getSnapshot().hand).toHaveLength(3);
-		for (const card of sim.hand) {
-			expect(BUILDABLE_STRUCTURE_TYPES).toContain(card.type);
-		}
+		expect(sim.getSnapshot().hand.map((card) => card.type)).toEqual(BUILDABLE_STRUCTURE_TYPES);
 	});
 
 	it('pays base income every 10 seconds', () => {
@@ -73,13 +69,13 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBe(startGold + BASE_GOLD_INCOME);
 	});
 
-	it('builds a mine, spends gold, removes the card, and raises income', () => {
+	it('builds a mine, spends gold, keeps the card, and raises income', () => {
 		const sim = new TerritorySimulation({ seed: 975310 });
 		const { index } = buildCard(sim, 'mine');
 		const structure = sim.structures.at(index);
 		expect(structure?.type).toBe('mine');
 		expect(sim.gold).toBe(7);
-		expect(sim.hand).toHaveLength(0);
+		expect(sim.hand).toHaveLength(1);
 		expect(sim.income).toBe(BASE_GOLD_INCOME + 1);
 	});
 
@@ -139,15 +135,24 @@ describe('player economy and cards', () => {
 		expect(blocked.reason).toBe('inside-district');
 	});
 
-	it('refreshes the whole hand for one gold', () => {
+	it('keeps cards available for repeat purchases', () => {
 		const sim = new TerritorySimulation({ seed: 864209 });
-		const previousIds = sim.hand.map((card) => card.id);
-		sim.gold = 2;
-		expect(sim.refreshCards(HUMAN_PLAYER_ID).ok).toBe(true);
+		const mine = sim.hand.find((card) => card.type === 'mine');
+		expect(mine).toBeDefined();
+		if (!mine) return;
+		const cell = findBuildCell(sim);
+		const x = cell % sim.width;
+		const y = (cell - x) / sim.width;
+		sim.gold = 10;
+		expect(sim.playCard(HUMAN_PLAYER_ID, mine.id, x, y).ok).toBe(true);
 		sim.step();
-		expect(sim.gold).toBe(2 - REFRESH_COST);
-		expect(sim.hand).toHaveLength(3);
-		for (const card of sim.hand) expect(previousIds).not.toContain(card.id);
+		expect(sim.hand.map((card) => card.id)).toContain(mine.id);
+		expect(sim.gold).toBe(7);
+		sim.gold = 10;
+		expect(sim.playCard(HUMAN_PLAYER_ID, mine.id, x, y).ok).toBe(true);
+		sim.step();
+		expect(sim.structures.at(cell)?.stacks).toBe(2);
+		expect(sim.hand).toHaveLength(BUILDABLE_STRUCTURE_TYPES.length);
 	});
 
 	it('builds a defense post and adds its aura defense', () => {

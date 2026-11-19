@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.12.x`  
+**Status:** active in application `0.13.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -24,30 +24,30 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 
 ### Temporary rules
 
-| Rule                     | Value                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| States                   | 108 (1 human + 107 AI)                                                             |
-| Troops / production caps | removed                                                                            |
-| Gold / cards             | light human economy; 3 starting gold, +1/10s                                       |
-| Attack launch cost       | 1 attack order                                                                     |
-| Capture cost             | target pixel defense                                                               |
-| Attack budget            | 30 points per attack per tick                                                      |
-| Least resistance         | Sample top 10 frontier candidates; take the cheapest defense                       |
-| Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)            |
-| Elevation                | six tiers, lowland through peaks                                                   |
-| Attack lifetime          | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)                                     |
-| Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                                  |
-| Extra order gain         | Command Post: +1 every 60 seconds                                                  |
-| Order cap growth         | War Academy: +1 cap                                                                |
-| Bot decisions            | once per second                                                                    |
-| Starting territory       | radius ~16, ragged, spaced across the map                                          |
-| Structures               | one capturable State structure per state at its capital                            |
-| Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                              |
-| Districts                | bounded Voronoi claim per buildable; min 32 px; no overlap; friendly auras only    |
-| Structure stacking       | multiple same-type districts allowed; drops inside a district add stacks           |
-| State aura               | +20 friendly defense within 16 px; overlaps do not stack                           |
-| Human economy            | 3 starting gold; 1 gold / 10s; 3-card hand                                         |
-| Build cards              | Mine 3g, Barracks 2g, Defense Post 2g, Command Post 4g, War Academy 6g; Refresh 1g |
+| Rule                     | Value                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| States                   | 108 (1 human + 107 AI)                                                          |
+| Troops / production caps | removed                                                                         |
+| Gold / cards             | light human economy; 3 starting gold, +1/10s                                    |
+| Attack launch cost       | 1 attack order                                                                  |
+| Capture cost             | target pixel defense                                                            |
+| Attack budget            | 30 points per attack per tick                                                   |
+| Least resistance         | Sample top 10 frontier candidates; take the cheapest defense                    |
+| Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)         |
+| Elevation                | six tiers, lowland through peaks                                                |
+| Attack lifetime          | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)                                  |
+| Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                               |
+| Extra order gain         | Command Post: +1 every 60 seconds                                               |
+| Order cap growth         | War Academy: +1 cap                                                             |
+| Bot decisions            | once per second                                                                 |
+| Starting territory       | radius ~16, ragged, spaced across the map                                       |
+| Structures               | one capturable State structure per state at its capital                         |
+| Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                           |
+| Districts                | bounded Voronoi claim per buildable; min 32 px; no overlap; friendly auras only |
+| Structure stacking       | multiple same-type districts allowed; drops inside a district add stacks        |
+| State aura               | +20 friendly defense within 16 px; overlaps do not stack                        |
+| Human economy            | 3 starting gold; 1 gold / 10s; permanent five-card hand                         |
+| Build cards              | Mine 3g, Barracks 2g, Defense Post 2g, Command Post 4g, War Academy 6g          |
 
 Each launch consumes one attack order. Players gain +1 order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. Each capture samples the 10 highest-priority frontier cells and takes the cheapest defense, so the front diverts around a costly strongpoint when a cheaper local lane exists. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
@@ -68,7 +68,7 @@ Two cleanup rules plus the first structure are always active:
 - **Mutual front cancellation:** if two states are attacking each other and a front touches land claimed by the opposing attack, every order between the pair ends and the contact line becomes the border.
 - **State structure anchoring:** each state starts with one State structure at its capital. Every territory component connected to a live State structure is protected from annexation. Capturing the structure destroys it and removes protection.
 - **State aura:** a live State projects +20 defense over a 16 px radius on land it owns; overlapping friendly auras take the maximum. Capturing the structure removes the aura immediately. Aura circles are no longer drawn.
-- **Human card economy:** start with 3 gold and 3 random cards from the five-type buildable pool. Income is 1 gold/10s plus 1 per Mine. Drag a card onto controlled, structure-free land to build it. Refresh costs 1 gold and replaces the hand with three fresh independent pool draws. Bots do not build yet.
+- **Human card economy:** start with 3 gold and all five cards; cards are never consumed, so any affordable card can be bought repeatedly. Income is 1 gold/10s plus 1 per Mine. Drag a card onto controlled, structure-free land to build it. There is no deck, draw, or reroll. Bots do not build yet.
 - **Districts and stacking:** every buildable structure seeds a district of at least 32 px, bounded by owner territory and its range; districts split by nearest structure. Different types cannot enter an occupied district. The same type stacks inside a district and can create another district outside all districts. State capitals are aura anchors without districts. Auras apply only within their district.
 - **Attack orders:** start at 3 for the human and 2 for bots. Gain +1 every 10 seconds, clamped to the cap. Command Posts add +1 on each 60-second pulse; War Academies add +1 live cap. Caps are hard limits.
 - **Detached-land annexation:** once per second, and immediately after a cancellation, components without a live State structure are transferred to the owner of the adjacent protected mainland with the largest shared border.
@@ -105,7 +105,7 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] Elevation tiers drive visible terrain color and base defense.
 - [x] Occupied territory adds one defense, and high-defense fronts capture fewer pixels per tick.
 - [x] State auras add +20 to friendly land within 16 px and disappear with their structure; defensive auras never buff enemy or neutral land.
-- [x] Human economy pays income, draws three cards, consumes cards on drag-build, and supports paid refresh.
+- [x] Human economy pays income, exposes all five cards permanently, and allows repeat drag-build purchases.
 - [x] Mine income, Barracks attack strength, and Defense Post auras affect the simulation.
 - [x] Attack orders are spent per launch, grant +1 every 10 seconds up to cap, and can be raised by War Academies or granted by Command Posts.
 - [x] The card pool now contains five types, including the 4-cost Command Post and 6-cost War Academy.

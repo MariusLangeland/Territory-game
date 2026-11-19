@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.12.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.13.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.12.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.13.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -82,9 +82,9 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
-- Human economy: `gold`, `hand`, dedicated `cardRng`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
+- Human economy: `gold`, a permanent five-card `hand`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
 - Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap; Command Posts grant extra orders on their pulse. `nextAttackOrderGrantTick` and `nextOrderBonusTick` schedule the timers.
-- Start hand: three independent draws from the five-type buildable pool (with replacement). Bots do not build cards yet.
+- Permanent hand: all five buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll. Bots do not build cards yet.
 - Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies income, aura defense, attack strength, order gain, and order cap. Stacking does not change its district.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
@@ -147,7 +147,7 @@ step()
  ├─ apply Command Post order pulses every 600 ticks
  ├─ pay human income every 100 ticks
  ├─ applyPendingCommands()
- │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds/refreshes
+ │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds
  ├─ runBotDecisions() every 10 ticks (requires an attack order)
  ├─ processAttacks()
  │    ├─ drop fronts older than ATTACK_LIFETIME_TICKS (50 ticks / 5 s)
@@ -233,11 +233,10 @@ Command union:
 ```ts
 type GameCommand =
 	| { type: 'attack'; playerId; x; y; sequence }
-	| { type: 'build'; playerId; cardId; x; y; sequence }
-	| { type: 'refresh'; playerId; sequence };
+	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold, cards, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
+`enqueueAttack` and `playCard` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. Cards are not removed. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
 
 ### 3.7 Snapshots
 
@@ -258,7 +257,7 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
 - each player's alive flag and territory;
-- current/pending growth mode, annex scheduling, gold, next income tick, card RNG, and hand;
+- current/pending growth mode, annex scheduling, gold, next income tick, attack orders and their timers, districts, and structures;
 - every player's attack orders, order grant/bonus timers, and live order-cap effects;
 - live structures and per-cell claim provenance;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;

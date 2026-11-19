@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.12.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.13.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -27,7 +27,7 @@
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail               |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                                  |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                       |
-| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), five card types, drag/drop build, paid hand refresh, order cards                                              |
+| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), all five cards always available, repeatable drag/drop builds                                                  |
 | Districts       | Bounded owner-local Voronoi districts, type tint/boundaries, aura clipping, same-type stacking                                                           |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                       |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                 |
@@ -135,7 +135,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **3 gold** and three random cards. Income is **1 gold per 10 seconds**, plus 1 per live Mine. Drag a card into your territory to buy and build it:
+The human commander starts with **3 gold** and **all five build cards** permanently available. Income is **1 gold per 10 seconds**, plus 1 per live Mine. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it:
 
 | Card         | Cost | Effect                                                   |
 | ------------ | ---- | -------------------------------------------------------- |
@@ -145,7 +145,7 @@ The human commander starts with **3 gold** and three random cards. Income is **1
 | Command Post | 4    | +1 attack order every 60 seconds                         |
 | War Academy  | 6    | +1 attack-order cap                                      |
 
-The hand is filled by independent random draws from the five-card pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+There is no deck, draw, or reroll. Built structures are razed when captured.
 
 Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks.
 
@@ -174,7 +174,7 @@ District pixels receive a subtle structure-type tint, a per-district brightness 
 
 Structures must be at least **8 px apart** (centre to centre); dropping a new type too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 
-The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, leave when played or refreshed, flip into new positions, lift on hover, and tilt while dragged. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
+The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 
 The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts add +1 on their 60-second pulse, clamped to the cap; War Academies permanently raise the cap while alive.
 
