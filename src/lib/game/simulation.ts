@@ -488,6 +488,21 @@ export class TerritorySimulation {
 		}
 		if (unique.length === 0) return false;
 
+		// The click selects the target and the region to look for a contact, but
+		// it is not the growth origin. Anchoring distance-based layers at a click
+		// deep inside hostile territory made a thin corridor race toward the
+		// cursor before the front bloomed. The initial contact line on the
+		// attacker's border is the stable geometric origin.
+		let seedSumX = 0;
+		let seedSumY = 0;
+		for (const seed of unique) {
+			const seedX = seed % this.width;
+			seedSumX += seedX;
+			seedSumY += (seed - seedX) / this.width;
+		}
+		const anchorX = Math.round(seedSumX / unique.length);
+		const anchorY = Math.round(seedSumY / unique.length);
+
 		const id = this.nextAttackId++;
 		const mode = this.growthMode;
 		const frontier = createGrowthLayer(mode, {
@@ -495,8 +510,8 @@ export class TerritorySimulation {
 			height: this.height,
 			owners: this.owners,
 			attackerId,
-			anchorX: targetX,
-			anchorY: targetY,
+			anchorX,
+			anchorY,
 			rngSeed:
 				(this.seed ^
 					Math.imul(id, 0x9e3779b1) ^
@@ -512,8 +527,8 @@ export class TerritorySimulation {
 			defenderId,
 			targetX,
 			targetY,
-			anchorX: targetX,
-			anchorY: targetY,
+			anchorX,
+			anchorY,
 			growthMode: mode,
 			frontier,
 			createdAtTick: this.tick,

@@ -9,7 +9,7 @@
 import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 
-export const NET_PROTOCOL_VERSION = 5;
+export const NET_PROTOCOL_VERSION = 7;
 
 export type MatchId = string;
 export type PlayerId = number;

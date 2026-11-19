@@ -20,7 +20,7 @@ export const GROWTH_LABELS: Record<GrowthMode, string> = {
 
 export const GROWTH_DESCRIPTIONS: Record<GrowthMode, string> = {
 	circular: 'Euclidean-priority frontier; grows as a digital disc.',
-	smooth: 'Direction-balanced frontier that fills concavities and suppresses spikes.',
+	smooth: 'Radial-band frontier that fills concavities and suppresses spikes.',
 	organic: 'Deterministic random frontier selection; irregular, organic lobes.'
 };
 

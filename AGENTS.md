@@ -45,8 +45,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 8. **Do not claim online support.** It is a documented target, not current behavior.
 9. **Do not treat EXP-001 as final design.** Free attacks, 108 states, and active-front caps are stress-test choices; read [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) before building on them.
 10. **Growth layers only select frontier candidates.** Ownership, edge connectivity, capture budget, order lifetime, and checksums stay in `simulation.ts`. Never let a layer bypass those checks.
-11. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
-12. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, sector arrays, or an array + RNG.
+11. **Distance-based growth starts at the border.** The attack anchor is the rounded centroid of the initial seed contact; the clicked cell is only a target/search selector. Do not anchor growth on a deep click.
+12. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
+13. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
 
 ## Where things live
 
@@ -54,7 +55,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/GameCanvas.svelte` — canvas/fixed loop/pointer; do not add simulation logic here.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
-- `src/lib/game/growth/` — growth-layer interface, factory, and circular/smooth/organic implementations. Keep simulation invariants out of these modules.
+- `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
 - `src/lib/game/render/territory-renderer.ts` — GPU resource lifecycle and uploads.
 - `src/lib/game/render/territory.wgsl.ts` — shader source as a TypeScript string.

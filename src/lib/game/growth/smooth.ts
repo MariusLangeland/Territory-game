@@ -1,21 +1,28 @@
 import type { GrowthContext, GrowthLayer, GrowthMode, MixFn } from './types';
 
-const DIRECTION_BUCKETS = 8;
-const SMOOTH_SCAN_LIMIT = 12;
+/** Squared-distance resolution: 16 px² is about 4 px of radius at r = 20. */
+const BAND_SHIFT = 4;
+const SMOOTH_SCAN_LIMIT = 16;
 
 /**
- * Direction-fair growth with concavity filling.
+ * Radial smoothing.
  *
- * Candidates are bucketed into eight angular sectors around the attack anchor.
- * Sectors are visited round-robin. Within a sector, the layer prefers frontier
- * cells with more attacker-owned neighbours, which suppresses one-pixel spikes
- * and fills shallow pockets.
+ * Candidates are grouped into thin squared-distance bands around the attack
+ * anchor. The nearest non-empty band is always served first, so a horizontal
+ * frontier cannot send a wing far along the tangent while the main radial front
+ * is closer. Within a band, the layer prefers cells with more attacker-owned
+ * neighbours, which fills concavities and suppresses one-pixel spikes.
+ *
+ * The previous implementation rotated through eight angular sectors. On a long
+ * straight border all initial seeds fell into two opposite sectors, and the
+ * round-robin could grow those tangent sectors far ahead of the radial front,
+ * producing long axis-aligned bars/wings. Bands bound that drift by radius.
  */
 export class SmoothGrowthLayer implements GrowthLayer {
 	readonly mode: GrowthMode = 'smooth';
 
-	private readonly buckets: number[][] = Array.from({ length: DIRECTION_BUCKETS }, () => []);
-	private cursor = 0;
+	private readonly bands = new Map<number, number[]>();
+	private minBand = Number.POSITIVE_INFINITY;
 	private count = 0;
 	private readonly width: number;
 	private readonly height: number;
@@ -38,18 +45,26 @@ export class SmoothGrowthLayer implements GrowthLayer {
 	}
 
 	push(index: number): void {
-		const x = index % this.width;
-		const y = (index - x) / this.width;
-		const direction = this.sectorOf(x - this.anchorX, y - this.anchorY);
-		this.buckets[direction].push(index);
+		const band = this.bandOf(index);
+		let bucket = this.bands.get(band);
+		if (!bucket) {
+			bucket = [];
+			this.bands.set(band, bucket);
+		}
+		bucket.push(index);
+		if (band < this.minBand) this.minBand = band;
 		this.count++;
 	}
 
 	pop(): number | undefined {
-		for (let attempt = 0; attempt < DIRECTION_BUCKETS; attempt++) {
-			const bucket = this.buckets[this.cursor];
-			this.cursor = (this.cursor + 1) % DIRECTION_BUCKETS;
-			if (bucket.length === 0) continue;
+		while (this.count > 0) {
+			while (!this.bands.has(this.minBand)) {
+				if (this.bands.size === 0) return undefined;
+				this.minBand++;
+			}
+
+			const bucket = this.bands.get(this.minBand);
+			if (!bucket) return undefined;
 
 			const scan = Math.min(bucket.length, SMOOTH_SCAN_LIMIT);
 			let bestPosition = 0;
@@ -60,11 +75,7 @@ export class SmoothGrowthLayer implements GrowthLayer {
 			for (let i = 0; i < scan; i++) {
 				const index = bucket[i];
 				const neighbours = this.attackerNeighbourCount(index);
-				const x = index % this.width;
-				const y = (index - x) / this.width;
-				const dx = x - this.anchorX;
-				const dy = y - this.anchorY;
-				const distance = dx * dx + dy * dy;
+				const distance = this.distanceSq(index);
 
 				if (
 					neighbours > bestNeighbours ||
@@ -84,6 +95,7 @@ export class SmoothGrowthLayer implements GrowthLayer {
 				bucket[bestPosition] = last;
 			}
 			this.count--;
+			if (bucket.length === 0) this.bands.delete(this.minBand);
 			return chosen;
 		}
 		return undefined;
@@ -91,11 +103,26 @@ export class SmoothGrowthLayer implements GrowthLayer {
 
 	mixState(mix: MixFn): void {
 		mix(this.count);
-		mix(this.cursor);
-		for (const bucket of this.buckets) {
+		mix(this.minBand === Number.POSITIVE_INFINITY ? -1 : this.minBand);
+		const bands = Array.from(this.bands.keys()).sort((a, b) => a - b);
+		for (const band of bands) {
+			mix(band);
+			const bucket = this.bands.get(band) ?? [];
 			mix(bucket.length);
 			for (const index of bucket) mix(index);
 		}
+	}
+
+	private distanceSq(index: number): number {
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		const dx = x - this.anchorX;
+		const dy = y - this.anchorY;
+		return dx * dx + dy * dy;
+	}
+
+	private bandOf(index: number): number {
+		return this.distanceSq(index) >> BAND_SHIFT;
 	}
 
 	private attackerNeighbourCount(index: number): number {
@@ -110,21 +137,5 @@ export class SmoothGrowthLayer implements GrowthLayer {
 		if (y > 0 && this.owners[index - width] === this.attackerId) count++;
 		if (y + 1 < height && this.owners[index + width] === this.attackerId) count++;
 		return count;
-	}
-
-	/**
-	 * Eight deterministic sectors using integer thresholds for the 22.5° and
-	 * 67.5° boundaries. Screen coordinates are used; the names of the sectors do
-	 * not matter, only their even distribution.
-	 */
-	private sectorOf(dx: number, dy: number): number {
-		const ax = Math.abs(dx);
-		const ay = Math.abs(dy);
-		if (ax === 0 && ay === 0) return 0;
-
-		if (ay * 1000 < ax * 414) return dx >= 0 ? 0 : 4;
-		if (ax * 1000 < ay * 414) return dy >= 0 ? 2 : 6;
-		if (dx >= 0) return dy >= 0 ? 1 : 7;
-		return dy >= 0 ? 3 : 5;
 	}
 }

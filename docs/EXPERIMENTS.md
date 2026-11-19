@@ -43,13 +43,13 @@ The attack still requires a shared land border with the clicked target's owner. 
 
 Three modular frontier selectors are implemented and switchable from the HUD for **new orders**:
 
-| Mode     | Expansion shape | Selection                                                |
-| -------- | --------------- | -------------------------------------------------------- |
-| Circular | digital disc    | Euclidean-distance priority heap                         |
-| Smooth   | balanced lobes  | eight-direction round-robin + attacker-neighbour scoring |
-| Organic  | irregular lobes | deterministic random frontier pick                       |
+| Mode     | Expansion shape | Selection                                        |
+| -------- | --------------- | ------------------------------------------------ |
+| Circular | digital disc    | Euclidean-distance priority heap                 |
+| Smooth   | rounded front   | nearest radial band + attacker-neighbour scoring |
+| Organic  | irregular lobes | deterministic random frontier pick               |
 
-Existing orders retain their original layer; bots and the human pick up the currently selected mode for newly created attacks on the next tick. Growth mode and per-frontier state are included in checksums.
+Existing orders retain their original layer; bots and the human pick up the currently selected mode for newly created attacks on the next tick. Growth mode and per-frontier state are included in checksums. Distance-based layers grow from the centroid of the initial border contact; the click is only a target/search selector, so growth always emanates from the border.
 
 This is the current attack-shape test surface, not a final gameplay choice.
 
@@ -76,6 +76,7 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] Every attack order expires after 50 ticks / 5 seconds.
 - [x] Circular, smooth, and organic layers can be switched live and are deterministic.
 - [x] Each layer has focused tests and a benchmark comparison.
+- [x] Distance-based layers anchor at the border contact; a deep click cannot pull a tendril inland.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -85,8 +86,8 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
-- Full-state checksum remains ~8.7 ms and is not run per tick.
-- Growth-layer tick cost at 108 states: circular ~1.7 ms, smooth ~2.6 ms, organic ~1.7 ms (Node benchmark; directional scoring is the extra smooth-layer cost).
+- Full-state checksum remains ~9 ms and is not run per tick.
+- Growth-layer tick cost at 108 states: circular ~1.8–2.0 ms, smooth ~3.0–3.3 ms, organic ~1.8 ms (Node benchmark; radial-band scanning and neighbour scoring are the extra smooth-layer cost).
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 
 ### Exit plan

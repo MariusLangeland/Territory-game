@@ -32,6 +32,29 @@ function findAttackablePixel(
 	return null;
 }
 
+function findDeepAttackablePixel(
+	sim: TerritorySimulation,
+	playerId: number
+): { x: number; y: number } | null {
+	const start = sim.map.starts[playerId - 1];
+	let best: { x: number; y: number } | null = null;
+	let bestDistance = 0;
+	for (let dy = -55; dy <= 55; dy++) {
+		for (let dx = -55; dx <= 55; dx++) {
+			const x = start.x + dx;
+			const y = start.y + dy;
+			if (!sim.isLand(x, y)) continue;
+			if (sim.getOwner(x, y) === playerId) continue;
+			const distance = dx * dx + dy * dy;
+			if (distance <= bestDistance) continue;
+			if (!sim.validateAttack(playerId, x, y).ok) continue;
+			best = { x, y };
+			bestDistance = distance;
+		}
+	}
+	return best;
+}
+
 function bruteForceBorders(sim: TerritorySimulation): Map<number, Set<number>> {
 	const expected = new Map<number, Set<number>>();
 	for (const player of sim.players) expected.set(player.id, new Set<number>());
@@ -310,6 +333,32 @@ describe('attack stress mode', () => {
 		attack.createdAtTick = sim.tick - ATTACK_LIFETIME_TICKS;
 		const result = sim.step();
 		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
+	});
+
+	it('anchors distance-based growth at the border contact, not the click', () => {
+		const sim = new TerritorySimulation({ seed: 998877 });
+		const click = findDeepAttackablePixel(sim, 1);
+		expect(click).not.toBeNull();
+		if (!click) return;
+
+		expect(sim.enqueueAttack(1, click.x, click.y).ok).toBe(true);
+		sim.step();
+		const internals = sim as unknown as { attacks: AttackState[] };
+		const attack = internals.attacks.find((entry) => entry.attackerId === 1);
+		expect(attack).toBeDefined();
+		if (!attack) return;
+
+		const dx = attack.anchorX - click.x;
+		const dy = attack.anchorY - click.y;
+		expect(dx * dx + dy * dy).toBeGreaterThan(25);
+
+		let nearBorder = false;
+		for (let y = attack.anchorY - 2; y <= attack.anchorY + 2; y++) {
+			for (let x = attack.anchorX - 2; x <= attack.anchorX + 2; x++) {
+				if (sim.getOwner(x, y) === 1) nearBorder = true;
+			}
+		}
+		expect(nearBorder).toBe(true);
 	});
 
 	it('discards a queued attack cell that is cut off from the attacker border', () => {

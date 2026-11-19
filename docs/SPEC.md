@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.3.0 (attack stress experiment)  
+**Version:** 0.3.2 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.3.0, map version 2, protocol draft 5
+**Last synchronized with:** application 0.3.2, map version 2, protocol draft 7
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -133,14 +133,15 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 3. The clicked cell's current owner becomes the **target owner** (neutral or rival).
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
-6. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
-7. Each tick, the front's selected **growth layer** chooses candidate frontier cells until the front has captured **30** valid target-owned cells or no candidates remain. Invalid/stale cells are skipped without consuming the capture budget. See section 4.12.
-8. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
-9. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
-10. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
-11. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
-12. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
-13. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
+6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
+7. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
+8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until the front has captured **30** valid target-owned cells or no candidates remain. Invalid/stale cells are skipped without consuming the capture budget. See section 4.12.
+9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
+10. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
+11. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
+12. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
+13. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
+14. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
 
 ### 4.4 Valid attack clicks
 
@@ -168,7 +169,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 - Each attack owns a growth layer with its own candidate structure (heap, direction buckets, or random pool).
 - There is no per-attack visited set. Once a cell is captured, its owner changes, so duplicate candidates fail the ownership check.
-- Candidate storage is per-mode; circular uses a priority heap, smooth uses eight direction buckets, organic uses a random-access array.
+- Candidate storage is per-mode; circular uses a priority heap, smooth uses squared-distance bands, organic uses a random-access array.
 - A front's candidate set can become large while consuming a large connected region. The 5-second lifetime and per-tick capture cap bound retained work.
 - If a candidate no longer touches the attacker's territory, it is skipped. If a whole tick captures nothing, the front is removed. This prevents fronts from phasing through opposing attacks and leaving enclaves.
 
@@ -207,7 +208,7 @@ No economy phase exists in this experiment.
 This attack model is intentionally provisional:
 
 - It has no resource cost, cooldown, supply, or strategy limit beyond a technical active-front cap.
-- It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, sector-balanced, or organic.
+- It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, radially smoothed, or organic.
 - It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
 - Bots do not coordinate or defend strategically.
 - The 108-state match may become a near-even patchwork.
@@ -223,19 +224,22 @@ Combat has no combat-roll randomness, crits, spread, or morale. The organic grow
 
 Every attack captures a `growthMode` at creation time and keeps it for its lifetime. The selected mode applies to all **new** attack orders (human and bots); existing orders are unchanged.
 
-| Mode       | Frontier selection                                                                                                              | Result                                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `circular` | Min-heap keyed by squared Euclidean distance from the attack anchor; ties by pixel index                                        | Approximates a digital disc instead of a Manhattan diamond    |
-| `smooth`   | Eight angular sectors visited round-robin; within a sector prefer more attacker-owned neighbours, then nearer/lower-index cells | Direction-balanced, fills concavities, suppresses thin spikes |
-| `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                                 | Irregular organic lobes, fully replayable                     |
+| Mode       | Frontier selection                                                                                              | Result                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `circular` | Min-heap keyed by squared Euclidean distance from the attack anchor; ties by pixel index                        | Approximates a digital disc instead of a Manhattan diamond       |
+| `smooth`   | Nearest radial band first; within the band prefer more attacker-owned neighbours, then nearer/lower-index cells | Fills concavities, suppresses thin spikes and long tangent wings |
+| `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                 | Irregular organic lobes, fully replayable                        |
 
-- The **circular** anchor is the clicked target cell. The shape is still clipped by coastlines, other states, and the attacker's own border.
-- The **smooth** layer uses integer sector boundaries and deterministic tie-breaks.
+- The growth anchor is the rounded centroid of the initial border-contact seeds. The click is not the origin. This prevents a distance-based layer from sending a narrow tendril toward a click deep inside hostile territory before blooming.
+- The shape is still clipped by coastlines, other states, and the attacker's own border.
+- The **smooth** layer groups candidates into integer squared-distance bands around the anchor. It always serves the nearest non-empty band before farther bands, then uses attacker-neighbour count and distance/index tie-breaks inside the band. This radial bound is what prevents tangent wings along the initial border.
 - The **organic** layer seeds its PRNG from the world seed, attack id, attacker id, and defender id.
 - A growth-mode switch is applied at the next tick, before commands and bot decisions. It is currently a local test control; an online server must make it authoritative match configuration or a tick-stamped command.
 - Candidate queues and per-attack PRNG state are part of checksums.
 
 The HUD growth switcher selects the layer for new orders. It has no effect on orders already in flight.
+
+Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
 ---
 
@@ -400,7 +404,7 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 | Area                                          | Target                                               |
 | --------------------------------------------- | ---------------------------------------------------- |
 | Simulation tick, circular/organic, 108 states | < 2 ms p95 (10 Hz budget = 100 ms)                   |
-| Simulation tick, smooth, 108 states           | < 3 ms p95                                           |
+| Simulation tick, smooth, 108 states           | < 4 ms p95                                           |
 | Render loop                                   | 60 fps at 1600 × 1000 under stress                   |
 | Input smoothness under full attack load       | no recurring 10 Hz hitch; 0 frames >10 ms at 144 fps |
 | Tick-boundary upload work                     | < 2 ms; full resync must be chunked                  |
@@ -438,6 +442,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Clicking a valid frontier creates a free attack with no economy check.
 - [x] Circular, smooth, and organic growth layers are selectable and deterministic.
 - [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
+- [x] Distance-based growth is anchored at the border contact, never at a deep click.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (0 frames >10 ms in the verification run).
 - [x] 108-state browser run stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.

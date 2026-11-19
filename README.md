@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.3).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.3.2).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -89,11 +89,15 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 
 The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing orders keep the layer they started with, so you can compare layers in the same match.
 
+Every attack grows outward from its **border-contact centroid**, not from the clicked cell. The click selects the target owner and the border region to search; it cannot pull a narrow corridor inland.
+
 | Layer        | Behavior                                                                              |
 | ------------ | ------------------------------------------------------------------------------------- |
 | **Circular** | Euclidean-priority frontier; expands as a digital disc instead of a Manhattan diamond |
-| **Smooth**   | Eight-direction round-robin with concavity filling; suppresses thin spikes            |
+| **Smooth**   | Radial bands with concavity filling; suppresses tangent wings and thin spikes         |
 | **Organic**  | Deterministic random frontier selection; irregular, organic lobes                     |
+
+Circular and smooth both grow radially from the border and can look similar by design; smooth trades exact circularity for banded concavity filling. Organic is the visually distinct mode.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -121,16 +125,16 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Measurement                                   | Result                                               |
 | --------------------------------------------- | ---------------------------------------------------- |
 | Map generation + 108 starts                   | ~225 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick        | ~1.7 ms                                              |
-| Smooth-layer all-bot attack tick              | ~2.6 ms                                              |
-| Organic-layer all-bot attack tick             | ~1.7 ms                                              |
-| Full-state checksum                           | ~8.7 ms (on-demand only)                             |
+| Default (circular) all-bot attack tick        | ~1.8–2.0 ms                                          |
+| Smooth-layer all-bot attack tick              | ~3.0–3.3 ms                                          |
+| Organic-layer all-bot attack tick             | ~1.7–1.8 ms                                          |
+| Full-state checksum                           | ~9 ms (on-demand only)                               |
 | Browser render loop while panning, 209 fronts | 144 fps; p99 frame 7.1 ms; zero frames >10 ms        |
 | Upload strategy under stress                  | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                          | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds)     | ~312 MiB                                             |
+| Node benchmark RSS (all benchmark worlds)     | ~230–340 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.7–2.6% of a 100 ms tick budget depending on growth layer. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.8–3.3% of a 100 ms tick budget depending on growth layer. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

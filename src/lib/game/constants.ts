@@ -48,7 +48,7 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 7;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

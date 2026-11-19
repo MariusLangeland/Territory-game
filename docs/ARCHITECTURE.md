@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.3. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.3.2. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.3. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.3.2. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -39,23 +39,23 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 
 ## 2. Module map
 
-| Module                                      | Layer     | Responsibility                                                                   | Key exports                  |
-| ------------------------------------------- | --------- | -------------------------------------------------------------------------------- | ---------------------------- |
-| `src/routes/+page.svelte`                   | UI        | Layout, HUD, intro/result/help/error overlays, input commands, seed flow         | Svelte component             |
-| `src/routes/+page.ts`                       | UI        | Disables SSR; the game is browser-only                                           | `ssr = false`                |
-| `src/lib/components/GameCanvas.svelte`      | Driver    | Canvas lifecycle, fixed timestep, pointer handling, camera bridge                | Svelte component             |
-| `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                           | Svelte component             |
-| `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                                      | constants, helpers           |
-| `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                                    | `DeterministicRng`           |
-| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                                     | `generateMap`, `hash32`      |
-| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                            | `TerritorySimulation`, types |
-| `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth sectors, organic random pool | `GrowthLayer`, factory       |
-| `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                       | message types, guard         |
-| `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                           | `MapCamera`                  |
-| `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                              | `GameCameraBridge`           |
-| `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                                | `TERRITORY_SHADER`           |
-| `src/lib/game/render/territory-renderer.ts` | Render    | WebGPU device, textures, pipeline, adaptive chunked uploads, frame submission    | `TerritoryRenderer`          |
-| `scripts/benchmark.ts`                      | Tooling   | Map/tick/checksum benchmark                                                      | CLI                          |
+| Module                                      | Layer     | Responsibility                                                                        | Key exports                  |
+| ------------------------------------------- | --------- | ------------------------------------------------------------------------------------- | ---------------------------- |
+| `src/routes/+page.svelte`                   | UI        | Layout, HUD, intro/result/help/error overlays, input commands, seed flow              | Svelte component             |
+| `src/routes/+page.ts`                       | UI        | Disables SSR; the game is browser-only                                                | `ssr = false`                |
+| `src/lib/components/GameCanvas.svelte`      | Driver    | Canvas lifecycle, fixed timestep, pointer handling, camera bridge                     | Svelte component             |
+| `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                                | Svelte component             |
+| `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                                           | constants, helpers           |
+| `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                                         | `DeterministicRng`           |
+| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                                          | `generateMap`, `hash32`      |
+| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
+| `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
+| `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
+| `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
+| `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
+| `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                                     | `TERRITORY_SHADER`           |
+| `src/lib/game/render/territory-renderer.ts` | Render    | WebGPU device, textures, pipeline, adaptive chunked uploads, frame submission         | `TerritoryRenderer`          |
+| `scripts/benchmark.ts`                      | Tooling   | Map/tick/checksum benchmark                                                           | CLI                          |
 
 ---
 
@@ -151,11 +151,13 @@ Attack frontier processing also enforces border connectivity at capture time: th
 
 Each `AttackState` owns a `GrowthLayer` selected from `growthMode` at creation:
 
-- **Circular** — integer min-heap keyed by squared distance from the target anchor; approximates a disc.
-- **Smooth** — eight angular sector queues, round-robin, preferring candidates with more attacker-owned neighbours.
+- **Circular** — integer min-heap keyed by squared distance from the border-contact anchor; approximates a disc.
+- **Smooth** — squared-distance bands served nearest-first, preferring candidates with more attacker-owned neighbours inside the active band. This prevents a straight frontier's tangent direction from growing far ahead of the radial front.
 - **Organic** — uniformly random candidate selection via a per-attack deterministic PRNG.
 
 The simulation validates every candidate identically. The layer never claims ownership or bypasses connectivity. See [SPEC.md](SPEC.md) section 4.12 for selection semantics.
+
+`createAttack` computes the growth anchor as the rounded centroid of the seed cells on the attacker's border. The clicked target is retained only for public state. This keeps all distance-based growth emanating from the border instead of growing a tendril toward a deep click.
 
 `TerritorySimulation.setGrowthMode(mode)` sets a pending mode applied at the next tick, before commands and bots create attacks. Existing attacks retain their original layer. Growth mode, per-attack layer, and frontier state are included in checksums.
 
@@ -220,12 +222,12 @@ Map generation with 108 starts is the slowest CPU operation (~220–230 ms) and 
 Frontier storage is layer-specific:
 
 - circular: a JavaScript number array treated as an integer min-heap; packed key = `distanceSq * pixelCount + index`;
-- smooth: eight arrays of candidate indices plus a round-robin cursor;
+- smooth: a map of squared-distance bands to candidate lists, with a minimum active band;
 - organic: an array of candidate indices plus a per-attack `DeterministicRng`.
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~312 MiB; this is not the browser working set.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~230–340 MiB; this is not the browser working set.
 
 ---
 
@@ -354,7 +356,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~312 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~230–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

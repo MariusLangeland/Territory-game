@@ -44,30 +44,57 @@ describe('circular growth layer', () => {
 });
 
 describe('smooth growth layer', () => {
-	it('visits all eight direction buckets before repeating one', () => {
+	it('prefers the nearest radial band over a far tangent candidate', () => {
 		const context = makeContext({ width: 32, height: 32, anchorX: 16, anchorY: 16 });
 		const layer = new SmoothGrowthLayer(context);
-		const directions = [
-			[28, 16],
-			[26, 24],
-			[16, 28],
-			[6, 24],
-			[4, 16],
-			[6, 8],
-			[16, 4],
-			[26, 8]
-		] as const;
+		const nearNorth = 10 * context.width + 16;
+		const farEast = 16 * context.width + 30;
 
-		for (const [x, y] of directions) layer.push(y * context.width + x);
-		const popped: number[] = [];
-		for (let i = 0; i < directions.length; i++) {
-			const index = layer.pop();
-			expect(index).toBeDefined();
-			if (index !== undefined) popped.push(index);
-		}
+		// This is the shape that produced axis-aligned wings: a horizontal
+		// frontier with a far tangent candidate. It must not outrun the nearer
+		// radial candidate.
+		layer.push(farEast);
+		layer.push(nearNorth);
 
-		expect(new Set(popped).size).toBe(8);
+		expect(layer.pop()).toBe(nearNorth);
+		expect(layer.pop()).toBe(farEast);
 		expect(layer.size).toBe(0);
+	});
+
+	it('does not let a vertical tangent outrun the radial front', () => {
+		const context = makeContext({ width: 32, height: 32, anchorX: 16, anchorY: 16 });
+		const layer = new SmoothGrowthLayer(context);
+		const nearEast = 16 * context.width + 22;
+		const farSouth = 30 * context.width + 16;
+
+		layer.push(farSouth);
+		layer.push(nearEast);
+
+		expect(layer.pop()).toBe(nearEast);
+		expect(layer.pop()).toBe(farSouth);
+	});
+
+	it('fills a concavity within the nearest band', () => {
+		const width = 32;
+		const height = 32;
+		const owners = new Uint16Array(width * height);
+		const connected = 16 * width + 20;
+		const bare = 20 * width + 16;
+		owners[connected - 1] = 1;
+		owners[connected + 1] = 1;
+		const context = makeContext({
+			width,
+			height,
+			owners,
+			anchorX: 16,
+			anchorY: 16
+		});
+		const layer = new SmoothGrowthLayer(context);
+		layer.push(bare);
+		layer.push(connected);
+
+		expect(layer.pop()).toBe(connected);
+		expect(layer.pop()).toBe(bare);
 	});
 });
 

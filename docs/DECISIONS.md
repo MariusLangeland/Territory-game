@@ -282,7 +282,7 @@ The FIFO 4-neighbour frontier produced very uniform Manhattan-diamond shapes. We
 Introduce a `GrowthLayer` interface that only selects the next candidate from a frontier. Each attack captures its layer at creation. Implement three modules:
 
 - circular: Euclidean-distance priority heap;
-- smooth: eight sector buckets with round-robin and attacker-neighbour scoring;
+- smooth: squared-distance radial bands, nearest-first, with attacker-neighbour scoring inside the active band;
 - organic: deterministic random candidate selection with a per-attack seeded PRNG.
 
 The simulation remains responsible for ownership, edge connectivity, capture limits, lifetime, and checksums. A HUD switch changes the mode used for new attacks; existing attacks keep their original mode. The mode is applied at the next tick.
@@ -292,8 +292,10 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 - Attack shapes can be compared live under the same 108-state load.
 - Validation, connectivity, and order termination are shared and cannot silently diverge by mode.
 - Per-attack growth state and RNG are included in checksums.
-- Smooth costs more CPU (~2.6 ms/tick vs ~1.7 ms for circular/organic).
+- Smooth costs more CPU (~2.8 ms/tick vs ~1.6–1.8 ms for circular/organic).
 - Growth mode is currently a local test control; online play must make it server-authoritative.
+- An earlier eight-sector round-robin smooth implementation produced long axis-aligned wings because initial seeds on a straight border all fell into two opposite sectors. Radial bands replaced it so tangent candidates cannot outrun the nearest radial band.
+- Distance-based layers originally used the clicked cell as their anchor. Clicking deep inside a target produced a narrow tendril racing inland before the front bloomed. The anchor is now the rounded centroid of the border-contact seeds, so growth always starts at the border; the click only selects the target and search region.
 - A final growth design still must be chosen before economy/balance work.
 
 ### Alternatives considered

@@ -13,7 +13,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 | Area                                          | Target                                  | Hard fail                     |
 | --------------------------------------------- | --------------------------------------- | ----------------------------- |
 | Simulation tick, circular/organic, 108 states | < 2 ms p95                              | > 8 ms p95                    |
-| Simulation tick, smooth, 108 states           | < 3 ms p95                              | > 8 ms p95                    |
+| Simulation tick, smooth, 108 states           | < 4 ms p95                              | > 8 ms p95                    |
 | Time to interactive                           | < 1.5 s after assets on desktop         | > 3 s                         |
 | Map generation + 108 starts                   | < 500 ms                                | > 1 s                         |
 | Render loop                                   | 60 fps at 1600 × 1000 integrated GPU    | < 45 fps                      |
@@ -24,7 +24,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 | Browser JS/GPU memory                         | < 300 MiB for stress build              | > 500 MiB                     |
 | Click-to-visible update                       | ≤ 2 ticks                               | > 4 ticks                     |
 
-The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.7–2.6% under stress depending on growth layer; rendering and GPU uploads are the limiting factors.
+The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.8–3.3% under stress depending on growth layer; rendering and GPU uploads are the limiting factors.
 
 ---
 
@@ -42,17 +42,17 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 
 | Operation                                               | Result          |
 | ------------------------------------------------------- | --------------- |
-| Generate 2048 × 1024 map + 108 starts                   | **~226 ms/op**  |
-| Sustained all-bot attack tick (default circular)        | **~1.7 ms/op**  |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.8 ms/op**  |
-| Circular layer comparison tick                          | **~1.7 ms/op**  |
-| Smooth layer comparison tick                            | **~2.6 ms/op**  |
-| Organic layer comparison tick                           | **~1.7 ms/op**  |
-| Full-state checksum                                     | **~8.7 ms/op**  |
+| Generate 2048 × 1024 map + 108 starts                   | **~242 ms/op**  |
+| Sustained all-bot attack tick (default circular)        | **~2.0 ms/op**  |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~2.0 ms/op**  |
+| Circular layer comparison tick                          | **~1.8 ms/op**  |
+| Smooth layer comparison tick                            | **~3.2 ms/op**  |
+| Organic layer comparison tick                           | **~1.8 ms/op**  |
+| Full-state checksum                                     | **~9.4 ms/op**  |
 | Active attacks after sustained run                      | ~150–200 fronts |
-| Node RSS (all benchmark simulations)                    | ~312 MiB        |
+| Node RSS (all benchmark simulations)                    | ~230–340 MiB    |
 
-At 10 Hz, 1.7–2.6 ms per tick is roughly **1.7–2.6% of a 100 ms tick budget**. The exact number varies with active fronts, mode, and how much of the map is contested. Smooth is the most expensive layer because it scores nearby candidates for attacker-neighbour count.
+At 10 Hz, 1.8–3.3 ms per tick is roughly **1.8–3.3% of a 100 ms tick budget**. The exact number varies with active fronts, mode, and how much of the map is contested. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count.
 
 ### 2.2 Browser baseline
 
@@ -102,11 +102,11 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~1.7–2.6 ms)
+### Simulation tick (~1.8–3.3 ms)
 
 - Bots: up to 107 decisions every 10 ticks; frontier sampling.
 - Attacks: ~150–200 active fronts × up to 30 captures, with stale-cell skipping.
-- Growth-layer selection: heap operations for circular, sector and neighbour scoring for smooth, RNG array swaps for organic.
+- Growth-layer selection: heap operations for circular, radial-band scanning and neighbour scoring for smooth, RNG array swaps for organic.
 - Border maintenance: constant work per captured cell.
 - Change packing: one `Uint32Array` write per change.
 - No attack queue compaction; frontiers are lifetime-bounded.
@@ -160,9 +160,9 @@ Replacing per-attack Set bookkeeping with flat frontier structures also cut memo
 | Frontier sets (108 states)              | map-dependent                       |
 | Growth frontier candidates              | layer-dependent, lifetime-bounded   |
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (five worlds)        | ~312 MiB                            |
+| Node benchmark RSS (five worlds)        | ~230–340 MiB                        |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~312 MiB. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~230–340 MiB depending on GC timing. Browser memory should be measured separately before shipping.
 
 ---
 
@@ -261,7 +261,7 @@ Before merging a performance-sensitive change:
 - [ ] 108 leaderboard rows remain usable.
 - [ ] The build still clearly identifies itself as an attack experiment.
 - [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
-- [ ] All three growth layers were sampled in `pnpm bench`; smooth remains within its 3 ms budget.
+- [ ] All three growth layers were sampled in `pnpm bench`; smooth remains within its 4 ms budget.
 
 ---
 

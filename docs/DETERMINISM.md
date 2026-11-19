@@ -151,12 +151,13 @@ Attack seeds are derived deterministically:
 - search the 34-cell square around the click, filtered to land, same owner as clicked target, and adjacent to attacker;
 - compute squared integer distance;
 - sort by `(distance, index)`;
-- cap at 96.
+- cap at 96;
+- set the growth anchor to the rounded centroid of the surviving seed cells. The click is not used as the growth origin.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
 - **Circular:** a binary min-heap of packed `(distanceSq, index)` keys. The heap order is deterministic; no randomness.
-- **Smooth:** eight fixed angular buckets with a deterministic cursor; within a bucket selection uses integer neighbour counts, squared distance, and index as tie-breakers.
+- **Smooth:** integer squared-distance bands. The nearest non-empty band is served first; within it, selection uses integer neighbour counts, squared distance, and index as tie-breakers. Bands are enumerated in ascending numeric order for checksums.
 - **Organic:** uniform random removal from an array using the attack's own seeded `DeterministicRng`. Its state and remaining entries are part of the checksum.
 
 ### Caution
@@ -267,7 +268,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 10. An attack whose creation tick is at or beyond its 50-tick lifetime is removed before it can capture.
 11. Circular, smooth, and organic simulations are each deterministic across two identical runs.
 12. A growth-mode switch applies at the next tick and is reflected in snapshots.
-13. Growth-layer tests verify circular priority ordering, smooth eight-sector coverage, and organic seed reproducibility.
+13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
+14. A deep click produces an attack anchor at the border contact, not at the click.
 
 Commands to run:
 
@@ -307,6 +309,7 @@ For a new determinism-sensitive feature, add at minimum:
 - Change PRNG draw order as a "refactor".
 - Run a checksum every tick without a performance update.
 - Change a growth layer's ordering rules without a protocol bump and mode-specific replay tests.
+- Let directional fairness pick a far tangent frontier cell while a nearer radial candidate exists.
 - Add randomness to growth without a per-attack deterministic seed.
 
 ---
