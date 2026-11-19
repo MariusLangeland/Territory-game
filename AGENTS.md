@@ -14,7 +14,7 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free resource-free attacks, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. This is not the final combat model.
+- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free resource-free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. This is not the final combat model.
 - Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
 - Not implemented: final attack design, economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.

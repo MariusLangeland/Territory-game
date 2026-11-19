@@ -42,13 +42,13 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 | Operation                                               | Result             |
 | ------------------------------------------------------- | ------------------ |
 | Generate 2048 × 1024 map + 108 starts                   | **~225–230 ms/op** |
-| Sustained all-bot attack tick                           | **~1.4 ms/op**     |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.4 ms/op**     |
-| Full-state checksum                                     | **~8.2 ms/op**     |
-| Active attacks after 1,000 / 600 ticks                  | ~200+ fronts       |
-| Node RSS (benchmark process, two stress worlds)         | ~198–228 MiB       |
+| Sustained all-bot attack tick                           | **~1.0 ms/op**     |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.0 ms/op**     |
+| Full-state checksum                                     | **~7.9 ms/op**     |
+| Active attacks after 1,000 / 600 ticks                  | ~165–200 fronts    |
+| Node RSS (benchmark process, two stress worlds)         | ~189 MiB           |
 
-At 10 Hz, 1.3–1.4 ms per tick is roughly **1.3–1.4% of a 100 ms tick budget**. The exact number varies with active fronts and how much of the map is contested.
+At 10 Hz, ~1.0 ms per tick is roughly **1% of a 100 ms tick budget**. The exact number varies with active fronts and how much of the map is contested.
 
 ### 2.2 Browser baseline
 
@@ -98,7 +98,7 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~1.3–1.4 ms)
+### Simulation tick (~1.0 ms)
 
 - Bots: up to 107 decisions every 10 ticks; frontier sampling.
 - Attacks: ~200 active fronts × up to 30 captures, with stale-cell skipping.
@@ -154,9 +154,9 @@ Replacing per-attack Set bookkeeping with packed queues also cut memory drastica
 | Frontier sets (108 states)              | map-dependent                       |
 | Attack queues                           | ~4 bytes per live queue entry       |
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (two worlds)         | ~198–228 MiB                        |
+| Node benchmark RSS (two worlds)         | ~189 MiB                            |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed queues and ownership-based dedup brought that down to ~198–228 MiB depending on the run. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed queues and ownership-based dedup brought that down substantially; the connectivity- and lifetime-checked build measures ~189 MiB with two worlds. Browser memory should be measured separately before shipping.
 
 ---
 

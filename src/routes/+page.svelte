@@ -4,6 +4,7 @@
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
+		ATTACK_LIFETIME_TICKS,
 		HUMAN_PLAYER_ID,
 		MAX_ATTACKS_PER_PLAYER,
 		MAP_HEIGHT,
@@ -731,7 +732,7 @@
 						</li>
 						<li>
 							<span>02</span>
-							<p>The front consumes up to 30 connected pixels per tick.</p>
+							<p>Each front lasts at most {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds.</p>
 						</li>
 						<li>
 							<span>03</span>
@@ -746,7 +747,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.2.0 / PROTOCOL 2</span>
+				<span>BUILD 0.2.2 / PROTOCOL 4</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -912,7 +913,8 @@
 						<p>
 							Click neutral ground or a rival's border near your territory. A free front opens there
 							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
-							once; each continues until its frontier is exhausted.
+							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
+							front peters out immediately.
 						</p>
 					</section>
 					<section>

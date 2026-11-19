@@ -129,16 +129,20 @@ step()
  │    └─ sort by (sequence, playerId), validate, create attacks
  ├─ runBotDecisions() every 10 ticks
  ├─ processAttacks()
+ │    ├─ drop fronts older than ATTACK_LIFETIME_TICKS (50 ticks / 5 s)
  │    ├─ for each attack id: pop BFS cells, claim up to 30, enqueue valid neighbours
- │    ├─ skip stale cells without spending the capture budget
+ │    ├─ skip stale/disconnected cells without spending the capture budget
+ │    ├─ drop a front if it had zero legal captures this tick
  │    ├─ compact processed queue entries after 4,096
- │    └─ drop completed attacks
+ │    └─ drop completed/expired attacks
  ├─ updateEliminations()
  ├─ checkVictory()
  └─ buildSnapshot()
 ```
 
 No rendering, DOM, timers, or promises are present in this path.
+
+Attack queue processing also enforces border connectivity at capture time: the candidate cell must share a land edge with the attacker. If opposing fronts sever that path, the queued cell is skipped; a front with zero legal captures in a tick is removed rather than continuing into disconnected territory. All fronts also expire after 50 ticks (5 seconds), so no order can continue indefinitely even while connected. This is what prevents enclaves, phase-through attacks, and unbounded orders.
 
 ### 3.6 Commands
 
@@ -196,7 +200,7 @@ Map generation with 108 starts is the slowest CPU operation (~220–230 ms) and 
 
 ### Attack queue representation
 
-Each active attack owns a growable `Uint32Array` plus `head`/`queueLength` counters. Captured cells change ownership, so a separate visited `Set` is unnecessary: duplicate queue entries fail the owner check. Queues compact after 4,096 processed cells and shrink their capacity when possible. This replaced per-attack number arrays plus Sets, reducing benchmark RSS from ~529 MiB to ~198–228 MiB with two worlds.
+Each active attack owns a growable `Uint32Array` plus `head`/`queueLength` counters. Captured cells change ownership, so a separate visited `Set` is unnecessary: duplicate queue entries fail the owner check. Queues compact after 4,096 processed cells and shrink their capacity when possible. This replaced per-attack number arrays plus Sets, reducing benchmark RSS from ~529 MiB to ~189 MiB with two worlds (connectivity- and lifetime-checked build).
 
 ---
 
@@ -324,7 +328,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Attack queues (packed `Uint32Array`)     | ~4 bytes per live queue entry        |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for two stress simulations plus benchmark tooling is ~198–228 MiB. That includes the Node runtime and two worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for the same benchmark; packed queues and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for two stress simulations plus benchmark tooling is ~189 MiB. That includes the Node runtime and two worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for the same benchmark; packed queues and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

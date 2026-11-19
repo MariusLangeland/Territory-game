@@ -14,7 +14,7 @@ For a local match, this is validated in unit tests. For online play, the server 
 
 > Given the same simulation source, protocol version, map version, seed, and the same commands applied at the same ticks in the same order, `TerritorySimulation` produces the same owner map, players, attacks, winner, and `checksum()` result.
 
-The current tests create two simulations from the same seed, enqueue the same attack, advance 120 ticks, and compare full player snapshots and checksums.
+The current tests create two simulations from the same seed, enqueue the same attack, advance 120 ticks, and compare full player snapshots and checksums. They also verify that a queued cell disconnected from the attacker's border is never captured and its front is removed.
 
 This guarantee does **not** cover:
 
@@ -138,9 +138,12 @@ For each attack:
 
 - pop cells from the head of its queue,
 - skip cells that are no longer owned by the expected target owner (without spending the capture budget),
+- skip cells that no longer share a land edge with the attacker's territory,
 - claim valid cells with a deterministic `claim()` operation,
 - enqueue still-target-owned neighbours in the fixed order west, east, north, south,
+- expire the front when `tick - createdAtTick >= ATTACK_LIFETIME_TICKS` (50 ticks / 5 seconds),
 - stop after 30 captures or when the queue is exhausted,
+- drop the front if a tick captures zero cells,
 - compact processed queue entries after 4,096 to bound retained memory.
 
 Attack seeds are derived deterministically:
@@ -255,6 +258,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 6. No ocean cell receives an owner after combat; ownership counts remain valid.
 7. Frontier sets match a brute-force scan after combat under 108-bot load.
 8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
+9. A fabricated attack queue cell that is not edge-connected to the attacker is neither captured nor kept as an active front.
+10. An attack whose creation tick is at or beyond its 50-tick lifetime is removed before it can capture.
 
 Commands to run:
 

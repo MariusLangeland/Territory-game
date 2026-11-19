@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateMap } from './map';
-import { TerritorySimulation } from './simulation';
+import { TerritorySimulation, type AttackState } from './simulation';
 import {
+	ATTACK_LIFETIME_TICKS,
 	LAND_FRACTION,
 	MAP_HEIGHT,
 	MAP_WIDTH,
@@ -212,5 +213,94 @@ describe('attack stress mode', () => {
 		}
 		expect(claimed).toBe(sim.getSnapshot().claimedLand);
 		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
+	});
+
+	it('never claims a pixel that is disconnected from the attacker at capture time', () => {
+		const sim = new TerritorySimulation({ seed: 2026 });
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number): void;
+			hasNeighbourOwner(index: number, ownerId: number): boolean;
+		};
+		const originalClaim = internals.claim.bind(sim);
+		let captures = 0;
+		let disconnectedCaptures = 0;
+
+		internals.claim = (index: number, newOwner: number) => {
+			if (!internals.hasNeighbourOwner(index, newOwner)) disconnectedCaptures++;
+			captures++;
+			originalClaim(index, newOwner);
+		};
+
+		for (let tick = 0; tick < 40; tick++) sim.step();
+
+		expect(captures).toBeGreaterThan(100);
+		expect(disconnectedCaptures).toBe(0);
+	});
+
+	it('expires attack orders after their maximum lifetime', () => {
+		const sim = new TerritorySimulation({ seed: 24680 });
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+
+		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		sim.step();
+		const internals = sim as unknown as { attacks: AttackState[] };
+		const attack = internals.attacks.find((entry) => entry.attackerId === 1);
+		expect(attack).toBeDefined();
+		if (!attack) return;
+
+		attack.createdAtTick = sim.tick - ATTACK_LIFETIME_TICKS;
+		const result = sim.step();
+		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
+	});
+
+	it('discards a queued attack cell that is cut off from the attacker border', () => {
+		const sim = new TerritorySimulation({ seed: 424242 });
+
+		let isolatedIndex = -1;
+		let isolatedOwner = 0;
+		for (let i = 0; i < sim.owners.length && isolatedIndex < 0; i++) {
+			const owner = sim.owners[i];
+			if (owner <= 1 || !sim.terrain[i]) continue;
+
+			const x = i % sim.width;
+			const y = (i - x) / sim.width;
+			const touchesAttacker =
+				sim.getOwner(x - 1, y) === 1 ||
+				sim.getOwner(x + 1, y) === 1 ||
+				sim.getOwner(x, y - 1) === 1 ||
+				sim.getOwner(x, y + 1) === 1;
+			if (touchesAttacker) continue;
+
+			isolatedIndex = i;
+			isolatedOwner = owner;
+		}
+		expect(isolatedIndex).toBeGreaterThan(-1);
+
+		const targetX = isolatedIndex % sim.width;
+		const targetY = (isolatedIndex - targetX) / sim.width;
+		const attack: AttackState = {
+			id: 999_999,
+			attackerId: 1,
+			defenderId: isolatedOwner,
+			targetX,
+			targetY,
+			queue: new Uint32Array([isolatedIndex]),
+			queueLength: 1,
+			head: 0,
+			createdAtTick: sim.tick,
+			captures: 0,
+			done: false
+		};
+
+		const internals = sim as unknown as { attacks: AttackState[] };
+		internals.attacks.push(attack);
+		const territoryBefore = sim.players[0].territory;
+		const result = sim.step();
+
+		expect(sim.owners[isolatedIndex]).toBe(isolatedOwner);
+		expect(sim.players[0].territory).toBe(territoryBefore);
+		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
 	});
 });

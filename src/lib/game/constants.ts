@@ -28,10 +28,16 @@ export const LAND_FRACTION = 0.38;
 /** Radius, in map pixels, of every player's initial territory. */
 export const START_RADIUS = 16;
 
-/** Pixels captured by one attack in a single tick. Free and unlimited by design in this experiment. */
+/** Pixels captured by one attack in a single tick. */
 export const CAPTURE_PER_TICK = 30;
 
-/** Technical guardrail only: prevents unbounded attack fan-out while stress testing. */
+/**
+ * Orders are finite. An attack front expires after this many simulation ticks
+ * (5 seconds at 10 Hz), even if its frontier still has reachable cells.
+ */
+export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
+
+/** Technical guardrail only: prevents unbounded simultaneous orders while stress testing. */
 export const MAX_ATTACKS_PER_PLAYER = 3;
 
 /** How far from a click the simulation looks for a shared border. */
@@ -42,7 +48,7 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 4;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

@@ -23,7 +23,7 @@
 
 | Area            | Implementation                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, up to 3 active fronts per player, 30 captured pixels per front per tick, ownership-checked flood fill                           |
+| Attack stress   | 108 states, 3 active fronts (human) / 2 (bots), 30 pixels per front per tick, ownership and border-connectivity checked flood fill          |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
@@ -80,7 +80,9 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
 3. A free attack front opens, with a technical cap of 3 active fronts (2 for bots).
 4. Each tick, a front captures up to 30 connected target-owned pixels, traversing through the target's territory.
-5. It ends when its frontier is exhausted or the target ownership changes underneath it.
+5. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
+6. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
+7. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -107,15 +109,15 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Measurement                                   | Result                                               |
 | --------------------------------------------- | ---------------------------------------------------- |
 | Map generation + 108 starts                   | ~225–230 ms, one-time on world creation              |
-| Sustained all-bot attack tick                 | ~1.4 ms                                              |
-| All-bot attack tick (collision-heavy)         | ~1.4 ms                                              |
-| Full-state checksum                           | ~8.2 ms (on-demand only)                             |
+| Sustained all-bot attack tick                 | ~1.0 ms                                              |
+| All-bot attack tick (collision-heavy)         | ~1.0 ms                                              |
+| Full-state checksum                           | ~7.9 ms (on-demand only)                             |
 | Browser render loop while panning, 209 fronts | 144 fps; p99 frame 7.1 ms; zero frames >10 ms        |
 | Upload strategy under stress                  | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                          | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (two worlds)               | ~198–228 MiB                                         |
+| Node benchmark RSS (two worlds)               | ~189 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses about 1.4% of a 100 ms tick budget. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses about 1% of a 100 ms tick budget. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

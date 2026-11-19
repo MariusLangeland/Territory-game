@@ -1,4 +1,5 @@
 import {
+	ATTACK_LIFETIME_TICKS,
 	ATTACK_SEARCH_RADIUS,
 	BOT_ATTACK_LIMIT,
 	BOT_DECISION_INTERVAL,
@@ -439,6 +440,10 @@ export class TerritorySimulation {
 		for (const seed of seeds) {
 			if (initialSeen.has(seed)) continue;
 			if (this.owners[seed] !== defenderId) continue;
+			// State can change between click validation and the command tick.
+			// Never open a front from a seed that has lost its land connection
+			// to the attacker.
+			if (!this.hasNeighbourOwner(seed, attackerId)) continue;
 			initialSeen.add(seed);
 			unique.push(seed);
 		}
@@ -471,11 +476,21 @@ export class TerritorySimulation {
 				attack.done = true;
 				continue;
 			}
+			if (this.tick - attack.createdAtTick >= ATTACK_LIFETIME_TICKS) {
+				attack.done = true;
+				continue;
+			}
 
 			let capturedThisTick = 0;
 			while (capturedThisTick < CAPTURE_PER_TICK && attack.head < attack.queueLength) {
 				const index = attack.queue[attack.head++];
 				if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
+
+				// Connectivity is re-checked at the moment of capture, not just
+				// when the cell was enqueued. If another front cuts the path back
+				// to the attacker, the queued cell is discarded instead of becoming
+				// an enclave.
+				if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
 
 				this.claim(index, attack.attackerId);
 				attack.captures++;
@@ -489,7 +504,9 @@ export class TerritorySimulation {
 				if (y + 1 < this.height) this.enqueueAttackCell(attack, index + this.width);
 			}
 
-			if (attack.head >= attack.queueLength) {
+			// No legal captures means the front has been severed (or exhausted).
+			// Let it peter out rather than idling until territory reconnects.
+			if (attack.head >= attack.queueLength || capturedThisTick === 0) {
 				attack.done = true;
 			} else if (attack.head > 4_096) {
 				this.compactAttackQueue(attack);

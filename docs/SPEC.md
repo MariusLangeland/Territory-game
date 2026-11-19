@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.2 (attack stress experiment)  
+**Version:** 0.2.2 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.2.0, map version 2, protocol draft 2
+**Last synchronized with:** application 0.2.2, map version 2, protocol draft 4
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -134,10 +134,12 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
 7. Each tick, each front processes its FIFO queue until it has captured **30** valid target-owned cells or the queue is exhausted. Stale cells (no longer target-owned) are skipped without consuming the capture budget.
-8. Capturing a cell claims it for the attacker and enqueues its four neighbours if they are still owned by the target and are land. Duplicates are tolerated; ownership is the visited check.
-9. The front ends when its queue is exhausted. It has no resource duration.
-10. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
-11. A front continues until the connected target region accessible from its seeds is consumed or no valid cells remain in its queue.
+8. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
+9. Capturing a cell claims it for the attacker and enqueues its four neighbours if they are still owned by the target and are land. Duplicates are tolerated; ownership is the visited check.
+10. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
+11. The front also ends early when its queue is exhausted or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
+12. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
+13. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
 
 ### 4.4 Valid attack clicks
 
@@ -149,6 +151,7 @@ An attack is valid only if:
 - the clicked cell is not owned by the attacker,
 - the attacker has fewer than the technical active-front cap,
 - at least one target-owned cell within 34 cells touches the attacker's territory.
+- adjacency is checked again when the command executes and on every captured cell.
 
 There is no troop/resource check. Failure reasons: ocean, own territory, no shared border, too many active attacks, eliminated, match over, invalid coordinates.
 
@@ -158,7 +161,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - Each state's frontier is stored as a `Set<number>` derived cache.
 - It is maintained incrementally on claim and rebuilt at spawn.
 - Coastal-only owned pixels with no land neighbours are not frontier cells.
-- The attack queue does not use this set to expand; it uses ownership checks on neighbours.
+- The attack queue does not use this set to expand; it uses ownership plus attacker-adjacency checks on neighbours. Border connectivity is revalidated at capture time, not just at enqueue time.
 
 ### 4.6 Attack queues
 
@@ -167,6 +170,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - There is no per-attack visited set. Once a cell is captured, its owner changes, so re-enqueued copies fail the ownership check.
 - Queues compact processed entries after 4,096 cells to limit retained memory.
 - A front's queue can become large while consuming a large connected region. This is a known stress characteristic and part of the reason the attack model is experimental.
+- If a queued cell no longer touches the attacker's territory, it is skipped. If a whole tick captures nothing, the front is removed. This prevents fronts from phasing through opposing attacks and leaving enclaves.
 
 ### 4.7 Eliminations and victory
 
@@ -203,7 +207,7 @@ This attack model is intentionally provisional:
 
 - It has no resource cost, cooldown, supply, or strategy limit beyond a technical active-front cap.
 - It flood-fills through an arbitrarily large connected region, producing geometric (often diamond-like) territory growth.
-- It never times out; a front only ends when its frontier is exhausted.
+- It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
 - Bots do not coordinate or defend strategically.
 - The 108-state match may become a near-even patchwork.
 - Attack limits exist to keep the stress test bounded and are **not** a game-design decision.

@@ -31,12 +31,13 @@ The normal economy (troops, income, caps, attack costs) limits how many attacks 
 | Attack launch cost     | removed                                                  |
 | Capture cost           | removed                                                  |
 | Capture rate           | 30 pixels per attack per tick                            |
+| Attack lifetime        | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)           |
 | Active attack limit    | 3 per player (technical safety valve, not a design rule) |
 | Bot attack limit       | 2 (technical safety valve)                               |
 | Bot decisions          | once per second                                          |
 | Starting territory     | radius ~16, ragged, spaced across the map                |
 
-The attack still requires a shared land border with the clicked target's owner. It still flood-fills through connected target-owned pixels, costs nothing, and continues until its frontier is exhausted. Attacks process in creation-id order.
+The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, costs nothing, and continues only while every captured pixel remains edge-connected to the attacker's territory. If opposing fronts sever that connection, queued pixels are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
 ### Intentional deviations
 
@@ -56,7 +57,9 @@ The attack still requires a shared land border with the clicked target's owner. 
 - [x] Change buffer does not overflow during normal stress runs.
 - [x] Browser stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
 - [x] No console/page errors during sustained run.
-- [x] Tests and production build pass.
+- [x] Tests and production build pass, including a live-run assertion that every captured pixel is edge-connected to its attacker.
+- [x] A front with no legal captures in a tick is dropped and cannot leave an enclave.
+- [x] Every attack order expires after 50 ticks / 5 seconds.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -65,7 +68,7 @@ The attack still requires a shared land border with the clicked target's owner. 
 - Bot fronts saturate the map in roughly 10 seconds when unthrottled; the resulting leaderboard is nearly tied and visually becomes a patchwork.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
-- Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~198–228 MiB for two simulated worlds.
+- Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
 - Full-state checksum remains ~8.2 ms and is not run per tick.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 

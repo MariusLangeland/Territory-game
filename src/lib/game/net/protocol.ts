@@ -8,7 +8,7 @@
 
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 
-export const NET_PROTOCOL_VERSION = 2;
+export const NET_PROTOCOL_VERSION = 4;
 
 export type MatchId = string;
 export type PlayerId = number;
