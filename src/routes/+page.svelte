@@ -1071,7 +1071,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.17.0 / PROTOCOL 24</span>
+				<span>BUILD 0.18.0 / PROTOCOL 25</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1229,13 +1229,13 @@
 							Troops and production caps are removed. The human commander earns 1 gold every 10
 							seconds and always has all five build cards; buy any of them whenever you can afford
 							it by dragging it into controlled territory. Click a district to upgrade its
-							structure. Mine gold and Command Post orders are paid continuously over their
-							intervals. The hand sinks out of the way and rises when you hover it. Terrain matters:
-							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
-							spends points scaled by its embedded orders. State auras add another 20 defense. Each
-							front samples nearby frontier cells and presses the cheapest defense, so it bends
-							around strongpoints when a weaker lane exists. This is still not the final combat
-							design.
+							structure; each upgrade costs the card price plus its current level. Mine gold and
+							Command Post orders are paid continuously over their intervals. The hand sinks out of
+							the way and rises when you hover it. Terrain matters: base defense is 1 plus the
+							elevation tier, occupied pixels add 1 more, and each front spends points scaled by its
+							embedded orders. State auras add another 20 defense. Each front samples nearby
+							frontier cells and presses the cheapest defense, so it bends around strongpoints when
+							a weaker lane exists. This is still not the final combat design.
 						</p>
 					</section>
 					<section>

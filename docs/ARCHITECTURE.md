@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.17.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.18.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.17.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.18.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -236,7 +236,7 @@ type GameCommand =
 	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. Upgrades resolve the district's structure, spend its card cost, and increment stacks without consuming a card; pending upgrade costs are reserved during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
+`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. Upgrades resolve the district's structure, spend `base card cost + projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
 
 ### 3.7 Snapshots
 

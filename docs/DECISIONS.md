@@ -739,6 +739,37 @@ Barracks previously granted a local defense-piercing aura. The requested model m
 
 ---
 
+## ADR-025 — District upgrades cost base card cost plus current level
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+Click-to-upgrade was priced at the structure's flat card cost, so every level cost the same. The requested economy adds a level-dependent surcharge.
+
+### Decision
+
+- Upgrade cost is `structure card cost + current structure level`.
+- The level is projected through already-queued upgrades for the same district, so rapid clicks quote and reserve increasing costs.
+- The quoted cost is stored in the queued `UpgradeCommand`; execution spends that quote and does not consume a card.
+- Card-based stacking (dropping a matching card inside a district) keeps its card cost; only click-to-upgrade uses the level surcharge.
+
+### Consequences
+
+- High-level districts become progressively expensive to upgrade.
+- The upgrade toast shows the exact level and cost.
+- Pending upgrades reserve their quoted costs and cannot overspend.
+- Flat-cost repeat builds via cards remain available, preserving that purchase path.
+
+### Alternatives considered
+
+- **Apply the surcharge to card stacking too:** would make the card cost label misleading and was not requested.
+- **Compute cost only at execution:** would allow rapid clicks to overspend or fail late.
+- **Exponential cost:** steeper than requested; the rule explicitly says additional gold equal to current level.
+
+---
+
 ## ADR-022 — Click-to-upgrade districts and continuous resource accrual
 
 **Status:** accepted for EXP-001  
@@ -751,7 +782,7 @@ Players could upgrade a district only by dragging another matching card onto it.
 ### Decision
 
 - Clicking any owned buildable district queues an `upgrade` command for that district's structure.
-- Upgrades cost the structure's card cost, add one `stacks` level, rebuild auras, and do not consume a hand card. Multiple pending upgrade costs are reserved so rapid clicks cannot overspend.
+- Upgrades cost the structure's card cost, add one `stacks` level, rebuild auras, and do not consume a hand card. Multiple pending upgrade costs are reserved so rapid clicks cannot overspend. **Cost superseded by ADR-025:** add the projected current level.
 - Mine income is accrued every tick: `goldAccrual += income`; whole 100-point chunks become gold. A level-30 Mine therefore contributes 30 gold across 100 ticks.
 - Command Post orders use the same model: `commandPostAccrual += orderRate`; whole 600-point chunks become orders, clamped to the cap.
 - Base +1 order per 100 ticks remains a boundary grant.
@@ -769,5 +800,5 @@ Players could upgrade a district only by dragging another matching card onto it.
 
 - **Keep lump payments but pay at construction time:** front-loads resources and complicates build/destroy timing.
 - **Store fractional gold as floats:** harms deterministic exactness.
-- **Charge an escalating upgrade cost:** not requested and needs UI communication.
+- **Charge an escalating upgrade cost:** adopted by ADR-025 as `base card cost + current level`.
 - **Upgrade only by clicking the structure icon:** the request explicitly targets districts, and the whole colored area is larger and easier to hit.

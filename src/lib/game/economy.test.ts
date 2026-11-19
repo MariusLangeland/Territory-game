@@ -133,7 +133,31 @@ describe('player economy and cards', () => {
 		expect(result.ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(7);
+		expect(sim.gold).toBe(6);
+
+		sim.gold = 20;
+		expect(
+			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width)).ok
+		).toBe(true);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(3);
+		expect(sim.gold).toBe(15);
+	});
+
+	it('reserves the projected cost of multiple queued upgrades', () => {
+		const sim = new TerritorySimulation({ seed: 246814 });
+		const { index } = buildCard(sim, 'mine');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.mine);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		const x = target % sim.width;
+		const y = Math.floor(target / sim.width);
+		sim.gold = 8;
+		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(true);
+		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(false);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(2);
+		expect(sim.gold).toBe(4);
 	});
 
 	it('builds a mine, spends gold, keeps the card, and raises income', () => {

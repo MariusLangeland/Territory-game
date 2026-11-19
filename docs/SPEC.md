@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.17.0 (attack stress experiment)  
+**Version:** 0.18.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.17.0, map version 3, protocol draft 24
+**Last synchronized with:** application 0.18.0, map version 3, protocol draft 25
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 24`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 25`.
 
 ### 4.2 Starting positions
 
@@ -313,7 +313,7 @@ The human commander has a small card economy; bots do not build cards yet.
 - Start with **3 gold** and **all five buildable cards** always available in the hand.
 - Earn **1 gold per 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine stack**.
 - Gold is accrued **continuously every tick**, not as a lump sum. A level-30 Mine contributes 30 gold over the next 100 ticks. An integer remainder accumulator keeps the total exact and deterministic.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade for that district's structure at the same cost as its card. No card is consumed.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base card cost + current level` (projected through any already-queued upgrades). No card is consumed.
 - Build and upgrade commands reserve gold against other queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district **stacks** onto that district's structure; dropping the same type outside all districts creates another structure/district.

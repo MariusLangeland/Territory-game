@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.17.x`  
+**Status:** active in application `0.18.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -39,7 +39,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Embedded orders          | 1 + live Barracks stacks per attack; repeated clicks never stack                |
 | Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                               |
 | Extra order gain         | Command Post: +1 per 60 seconds, accrued continuously                           |
-| District upgrades        | Click an owned district to add one level for its card cost                      |
+| District upgrades        | Click an owned district to add one level for base card cost + current level     |
 | Order cap growth         | War Academy: +1 cap                                                             |
 | Bot decisions            | once per second                                                                 |
 | Starting territory       | radius ~16, ragged, spaced across the map                                       |

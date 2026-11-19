@@ -160,6 +160,8 @@ export interface UpgradeCommand {
 	playerId: number;
 	x: number;
 	y: number;
+	/** Quoted base card cost plus the projected current level. */
+	cost: number;
 	sequence: number;
 }
 
@@ -470,15 +472,7 @@ export class TerritorySimulation {
 		}
 		const card = this.hand.find((entry) => entry.id === cardId);
 		if (!card) return { ok: false, reason: 'no-card', message: 'That card is no longer in hand.' };
-		const cost = STRUCTURE_DEFINITIONS[card.type].cost;
-		if (this.gold < cost) {
-			return {
-				ok: false,
-				reason: 'no-gold',
-				message: `Need ${cost} gold to build ${STRUCTURE_DEFINITIONS[card.type].label}.`
-			};
-		}
-
+		const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
 		const roundedX = Math.floor(x);
 		const roundedY = Math.floor(y);
 		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
@@ -499,11 +493,21 @@ export class TerritorySimulation {
 		if (districtId !== 0) {
 			const districtStructure = this.structures.byId(districtId);
 			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
+				const cost = baseCost + districtStructure.stacks;
+				if (this.gold < cost) {
+					return {
+						ok: false,
+						reason: 'no-gold',
+						message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[card.type].label} to Lv.${
+							districtStructure.stacks + 1
+						}.`
+					};
+				}
 				return {
 					ok: true,
-					message: `Reinforce ${STRUCTURE_DEFINITIONS[card.type].label} to x${
+					message: `Upgrade ${STRUCTURE_DEFINITIONS[card.type].label} to Lv.${
 						districtStructure.stacks + 1
-					}.`
+					} for ${cost} gold.`
 				};
 			}
 			const districtType = structureTypeFromCode(this.districtTypes[index]);
@@ -527,9 +531,17 @@ export class TerritorySimulation {
 			};
 		}
 
+		if (this.gold < baseCost) {
+			return {
+				ok: false,
+				reason: 'no-gold',
+				message: `Need ${baseCost} gold to build ${STRUCTURE_DEFINITIONS[card.type].label}.`
+			};
+		}
+
 		return {
 			ok: true,
-			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${cost} gold.`
+			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${baseCost} gold.`
 		};
 	}
 
@@ -573,12 +585,13 @@ export class TerritorySimulation {
 				message: 'Click one of your structure districts to upgrade it.'
 			};
 		}
-		const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		const projectedLevel = target.structure.stacks + this.pendingUpgradesFor(target.structure.id);
+		const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost + projectedLevel;
 		if (this.gold - this.pendingUpgradeCost(playerId) < cost) {
 			return {
 				ok: false,
 				reason: 'no-gold',
-				message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label}.`
+				message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${projectedLevel + 1}.`
 			};
 		}
 		this.pendingCommands.push({
@@ -586,12 +599,13 @@ export class TerritorySimulation {
 			playerId,
 			x: Math.floor(x),
 			y: Math.floor(y),
+			cost,
 			sequence: this.nextCommandSequence++
 		});
 		return {
 			ok: true,
 			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${
-				target.structure.stacks + 1
+				projectedLevel + 1
 			} for ${cost} gold.`
 		};
 	}
@@ -615,12 +629,21 @@ export class TerritorySimulation {
 		return { index, structure };
 	}
 
+	private pendingUpgradesFor(structureId: number): number {
+		let count = 0;
+		for (const command of this.pendingCommands) {
+			if (command.type !== 'upgrade') continue;
+			const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
+			if (target?.structure.id === structureId) count++;
+		}
+		return count;
+	}
+
 	private pendingUpgradeCost(playerId: number): number {
 		let cost = 0;
 		for (const command of this.pendingCommands) {
 			if (command.type !== 'upgrade' || command.playerId !== playerId) continue;
-			const target = this.resolveUpgradeTarget(playerId, command.x, command.y);
-			if (target) cost += STRUCTURE_DEFINITIONS[target.structure.type].cost;
+			cost += command.cost;
 		}
 		return cost;
 	}
@@ -837,21 +860,25 @@ export class TerritorySimulation {
 				if (!validation.ok) continue;
 				const card = this.hand.find((entry) => entry.id === command.cardId);
 				if (!card) continue;
-				const cost = STRUCTURE_DEFINITIONS[card.type].cost;
-				this.gold -= cost;
 				const targetIndex = command.y * this.width + command.x;
 				const districtId = this.districtStructureIds[targetIndex];
 				const districtStructure = districtId ? this.structures.byId(districtId) : undefined;
+				const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
 				if (districtStructure && districtStructure.type === card.type) {
+					const cost = baseCost + districtStructure.stacks;
+					if (this.gold < cost) continue;
+					this.gold -= cost;
 					const stacks = this.structures.reinforce(districtStructure);
 					this.rebuildAuraDefense();
 					this.pushEvent(
 						'build',
-						`${STRUCTURE_DEFINITIONS[card.type].label} reinforced to x${stacks} for ${cost} gold.`,
+						`${STRUCTURE_DEFINITIONS[card.type].label} upgraded to Lv.${stacks} for ${cost} gold.`,
 						command.playerId
 					);
 					continue;
 				}
+				if (this.gold < baseCost) continue;
+				this.gold -= baseCost;
 				const structure = this.structures.create(
 					card.type,
 					command.playerId,
@@ -863,7 +890,7 @@ export class TerritorySimulation {
 				this.rebuildAuraDefense();
 				this.pushEvent(
 					'build',
-					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${cost} gold.`,
+					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${baseCost} gold.`,
 					command.playerId
 				);
 				continue;
@@ -872,7 +899,7 @@ export class TerritorySimulation {
 			if (command.type === 'upgrade') {
 				const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
 				if (!target) continue;
-				const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+				const cost = command.cost;
 				if (this.gold < cost) continue;
 				this.gold -= cost;
 				const stacks = this.structures.reinforce(target.structure);
