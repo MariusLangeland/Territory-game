@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.8.0 (attack stress experiment)  
+**Version:** 0.9.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.8.0, map version 3, protocol draft 12
+**Last synchronized with:** application 0.9.0, map version 3, protocol draft 13
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -62,7 +62,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | 108 states (1 human + 107 AI)                             | ✅                       |
 | Pixel ownership and incremental frontier tracking         | ✅                       |
 | Resource-free local-front attacks (BFS)                   | ✅                       |
-| 3 active fronts per human / 2 per bot (technical guard)   | ✅                       |
+| Attack orders: 3 human / 2 bots, refreshed every 10 s     | ✅                       |
 | Bot expansion/attacks                                     | ✅                       |
 | Elimination and last-state-standing victory               | ✅                       |
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
@@ -83,7 +83,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
 | Bot card economy/build AI                               | Human-only card loop for now                   |
-| Structure construction beyond cards, ownership transfer | State + three buildables; design pending       |
+| Structure construction beyond cards, ownership transfer | State + five buildables; design pending        |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
 | Accounts, progression, persistence                      | [ROADMAP.md](ROADMAP.md)                       |
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 12`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 13`.
 
 ### 4.2 Starting positions
 
@@ -140,7 +140,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
-7. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
+7. Launching consumes **1 attack order**. The human has 3 orders and bots have 2. Orders refresh to their cap every **10 seconds**; attacks no longer refund an order when they end. Multiple active fronts are allowed as long as orders remain.
 8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until **30 attack points** are spent or no candidates remain. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
 9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
 10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
@@ -158,11 +158,11 @@ An attack is valid only if:
 - the attacker is alive,
 - the clicked coordinate is on land,
 - the clicked cell is not owned by the attacker,
-- the attacker has fewer than the technical active-front cap,
+- the attacker has at least one available attack order,
 - at least one target-owned cell within 34 cells touches the attacker's territory.
 - adjacency is checked again when the command executes and on every captured cell.
 
-There is no troop/resource check. Failure reasons: ocean, own territory, no shared border, too many active attacks, eliminated, match over, invalid coordinates.
+There is no troop/resource check. Failure reasons: ocean, own territory, no shared border, no attack orders, eliminated, match over, invalid coordinates.
 
 ### 4.5 Borders
 
@@ -191,9 +191,9 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 - 107 AI states.
 - Bots act once per second (`BOT_DECISION_INTERVAL = 10`).
-- A bot with fewer than 2 active attacks samples its frontier deterministically up to 8 times and launches one attack when it finds a valid adjacent target.
+- A bot with at least one available attack order samples its frontier deterministically up to 8 times and launches one attack when it finds a valid adjacent target. Applying it spends one order.
 - It attacks neutral neighbours whenever its sampled frontier has one, and only attacks a rival when no neutral option exists. This is a provisional stress-build policy, not final AI.
-- Bots use the same attack API and limits as the human.
+- Bots use the same attack-order rules, with a base cap of 2 and no cards.
 - Bots share one seeded PRNG, processed in ascending player-id order, so behavior is replayable.
 - With no troop economy, bots attack from the first decision tick; terrain defense, capital auras, and human build cards slow, but do not stop, expansion.
 
@@ -201,25 +201,28 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
-3. Pay human income if the tick is an income boundary.
-4. Apply queued attack/build/refresh commands sorted by `(sequence, playerId)`.
-5. Run bot decisions (only on every 10th tick).
-6. Process active attacks in creation-id order.
-7. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
-8. Eliminate states with no territory and remove their attacks.
-9. Check victory.
-10. Build the public snapshot.
+3. Refresh attack orders to their cap if this is a 10-second boundary.
+4. Apply Command Post order pulses if this is a 60-second boundary.
+5. Pay human income if this is an income boundary.
+6. Apply queued attack/build/refresh commands sorted by `(sequence, playerId)`.
+7. Run bot decisions (only on every 10th tick).
+8. Process active attacks in creation-id order.
+9. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
+10. Eliminate states with no territory and remove their attacks.
+11. Check victory.
+12. Build the public snapshot.
 
 ### 4.10 Experimental attack caveats
 
 This attack model is intentionally provisional:
 
-- It has no resource cost, cooldown, supply, or strategy limit beyond a technical active-front cap.
+- Each launch consumes one attack order; orders refresh every 10 seconds rather than refunding when a front ends.
+- Attack orders can exceed the refresh cap through Command Posts; the cap is the 10-second refill level.
 - It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, radially smoothed, or organic.
 - It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
 - Bots do not coordinate or defend strategically.
 - The 108-state match may become a near-even patchwork.
-- Attack limits exist to keep the stress test bounded and are **not** a game-design decision.
+- Attack-order limits are now part of the experimental economy, not only a stress guardrail.
 
 The final design may introduce costs, supply, attack duration, cancellation, target selection, and different propagation rules. Do not build balance or progression on the current semantics. See [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -274,11 +277,11 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Every land component connected to a live State structure is protected from annexation.
 - A live State structure projects a **12 px defense aura** adding **+20 defense** to every land pixel in range. The structure cell itself is inside the aura. Overlapping auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
-- Only State structures anchor protection. Mines, Barracks, and Defense Posts do not prevent annexation.
-- Structures are rendered as large owner-colored circles with a cream capital star on the map, and ringed dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- Only State structures anchor protection. Mines, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
+- State structures are large owner-colored circles with a cream capital star. Buildables are smaller owner discs with a type icon (pickaxe, swords, shield, command mast, academy chevrons). The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
-State is the permanent anchor structure. Mines, Barracks, and Defense Posts are the first player-built structures; construction beyond cards, more types, and ownership transfer are future work.
+State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
 
 ### 4.16 Elevation and defense
 
@@ -309,8 +312,10 @@ The human commander has a small card economy; bots do not build cards yet.
 - Playing a card requires dragging it onto **controlled land** with no existing structure.
 - The build command is queued, applied at the next tick, deducts its cost, removes the card, and creates the structure.
 - **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
-- Costs: Mine **3**, Barracks **2**, Defense Post **1**.
-- Cards are not a deck: every draw is an independent uniform choice among the three printed card types, so duplicates are possible.
+- Costs: Mine **3**, Barracks **2**, Defense Post **1**, Command Post **4**, War Academy **6**.
+- Cards are not a deck: every draw is an independent uniform choice among the five printed card types, so duplicates are possible.
+- Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is added above the refresh cap.
+- War Academies add **+1 to the attack-order refresh cap** while alive. Multiple academies stack.
 - Captured buildable structures are razed and their effects disappear.
 
 | Card         | Cost | Effect                                                               |
@@ -318,6 +323,8 @@ The human commander has a small card economy; bots do not build cards yet.
 | Mine         | 3    | +1 income every 10 seconds                                           |
 | Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per Barracks |
 | Defense Post | 1    | +1 defense in an 8 px radius; multiple posts stack                   |
+| Command Post | 4    | +1 attack order every 60 seconds                                     |
+| War Academy  | 6    | +1 attack-order refresh cap                                          |
 
 Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
 
@@ -354,6 +361,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - Bottom card tray with gold, income, three cards, and Refresh; drag a card into controlled territory to build.
+- The ORDERS readout shows available attack orders / refresh cap and updates as orders are spent or refreshed.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
@@ -449,7 +457,7 @@ Full detail: [DETERMINISM.md](DETERMINISM.md).
 4. PRNG seeded; bot draw order fixed by ascending player id.
 5. Commands apply at tick boundaries in stable order.
 6. Attack ordering by creation id; queue processing FIFO; neighbour enqueue order W/E/N/S.
-7. Checksums cover tick, RNG, growth modes, attack state/anchors, owners, per-cell claim provenance, players, and winner.
+7. Checksums cover tick, RNG, growth modes, attack state/anchors, attack orders/timers, owners, per-cell claim provenance, players, cards, and winner.
 8. Any behavior change requires tests and a protocol-version decision.
 
 ---
@@ -534,7 +542,9 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
 - [x] A live State structure adds 20 defense within 12 px; the bonus disappears when the structure is destroyed.
 - [x] The human starts with three cards and 3 gold, earns income, can drag cards onto owned land, and can refresh the hand.
-- [x] Mine, Barracks, and Defense Post apply their income, attack-strength, and defense effects.
+- [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
+- [x] Attack orders start full, are spent per launch, and refresh every 10 seconds; bot orders use the same rules.
+- [x] Command Posts grant orders on 60-second pulses, and War Academies raise the refresh cap.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

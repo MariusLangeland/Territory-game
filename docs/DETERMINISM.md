@@ -62,7 +62,7 @@ All authoritative quantities are integers:
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
-In this experiment there are no troop, income, cap, launch-cost, or per-capture-cost values.
+In this experiment there are no troop or production-cap values. Gold, card draws, attack orders, and attack-order caps are integer authoritative state; attacks spend 30 integer points per tick.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -114,10 +114,10 @@ Bots are processed in ascending player id order, every 10 ticks. The random draw
 
 ### 5.1 Current local model
 
-- `enqueueAttack` validates against current state and appends to `pendingCommands`.
-- `step()` increments the tick, drains pending commands, and sorts by `(sequence, playerId)`.
+- `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
+- `step()` increments the tick, refreshes orders on 100-tick boundaries, applies Command Post pulses on 600-tick boundaries, pays income, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
-- Income is paid at the tick boundary before commands. Build/refresh/attack commands are then applied before bot decisions and attack processing.
+- Applying an attack command spends one order. Build/refresh commands are then applied before bot decisions and attack processing.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
 
 ### 5.2 Online requirement
@@ -165,11 +165,13 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
-Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array`: max-stacking State auras first, then additive Defense Post auras. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense.
+Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array`: max-stacking State auras first, then additive Defense Post auras. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
-Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the three buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, and land at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
+Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the five buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, and land at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
+
+Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots), refresh to `max(current, cap)` every 100 ticks, and can exceed the cap through Command Post grants. Command Posts add to their owner's orders on every 600-tick boundary; War Academies add to the live cap. Attack order arrays and both timer values are checksummed.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -207,7 +209,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, and cell index,
-9. human gold, income tick, card RNG state, and hand card ids/types,
+9. human gold, income tick, card RNG state, hand card ids/types, every player's attack orders, and order refresh/bonus timers;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -299,6 +301,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 21. A live State structure adds 20 defense within 12 px (including its own cell); destroying it removes the aura.
 22. Starting hand and every refresh are deterministic from a dedicated card RNG and use independent pool draws with replacement.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
+24. Attack orders are spent only when an attack command or bot decision creates a front; refresh and Command Post pulses are fixed tick-boundary events.
+25. War Academy cap changes are derived from live structures; Command Post grants are applied in registry order on the 60-second boundary.
 
 Commands to run:
 

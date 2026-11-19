@@ -236,7 +236,7 @@ Run simulation and rendering on the main thread in v0.1. Revisit when online pre
 
 ## ADR-009 — Temporarily remove the economy and stress 108 states
 
-**Status:** accepted for EXP-001; provisional  
+**Status:** superseded by ADR-013 through ADR-016  
 **Date:** 2026-11-19
 
 ### Context
@@ -483,3 +483,40 @@ State structures are anchors, but the player needs buildable structures and a re
 - Click-to-select then click-to-place: rejected in favor of direct drag-and-drop.
 - Global Barracks attack bonus: ignores the requested radius.
 - Additive State auras: can push defense above the attack budget permanently; keep max for State, additive for Defense Posts.
+
+---
+
+## ADR-016 — Attack orders refresh every 10 seconds; Command Post and War Academy cards
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+The previous system capped active fronts (3 human / 2 bots) and effectively refunded a slot when an attack ended. The requested model is a pool of attack orders that refreshes on a timer instead: each launch spends an order, and orders come back every 10 seconds. Two new cards modify that pool.
+
+### Decision
+
+- Give each player integer **attack orders**: base cap **3 human / 2 bots**, starting full.
+- Launching an attack spends one order. Active attacks no longer block new launches; only available orders do.
+- Every **100 ticks (10 seconds)**, refresh each living player's orders to `max(current, cap)`. Orders do not decrease on refresh.
+- Add **Command Post** (4g): every 60-second global boundary, add +1 attack order per live Command Post. Grants may push orders above the cap.
+- Add **War Academy** (6g): add +1 to the owner's live attack-order refresh cap per academy.
+- Show available orders / cap in the HUD. Snapshot and checksum include orders and both timer values.
+- Bots use the same order rules but have no cards.
+
+### Consequences
+
+- The human can burst up to the current order count immediately, then waits for the 10-second refresh; attacks no longer refund on completion.
+- Allowing Command Post grants above the cap is necessary: 60 seconds is a multiple of the 10-second refresh, so a hard cap would make the 4-cost card's Pulse always redundant.
+- The "cap" is therefore the refresh level, not an absolute maximum. War Academies raise sustained order income; Command Posts create burst stock.
+- Bot pressure drops relative to the old free-active-front model because bots spend 2 orders per 10-second window.
+- The card pool grows to five types; starting gold (3) cannot immediately buy either new card.
+
+### Alternatives considered
+
+- **3 charges, one refreshing every 10 seconds:** weaker and does not match “attacks refresh” as directly as a full refill.
+- **Hard cap with Command Post clamped:** makes the 4-cost card nearly useless because its pulse lands on the same 10-second boundary as refresh.
+- **Keep active-front caps in addition to orders:** double-limiting and contrary to the request.
+- **Human-only orders:** would leave bot behavior on a different attack economy; the shared rule is simpler.
+- **Generic “Order Post” / “War College” names:** Command Post and War Academy are clearer while remaining provisional.

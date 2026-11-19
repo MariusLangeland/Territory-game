@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.8.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.9.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.8.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -79,7 +79,8 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts). Rebuilt on structure destruction.
 - `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
 - Human economy: `gold`, `hand`, dedicated `cardRng`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
-- Start hand: three independent draws from the buildable pool (with replacement). Bots do not build cards yet.
+- Attack orders: one charge per player, base cap 3 human / 2 bot, refreshed to cap every 100 ticks. Orders may exceed cap from Command Posts. `nextAttackOrderTick` and `nextOrderBonusTick` schedule the timers.
+- Start hand: three independent draws from the five-type buildable pool (with replacement). Bots do not build cards yet.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -137,9 +138,12 @@ step()
  ├─ if ended: emit snapshot only
  ├─ tick += 1
  ├─ apply pending growth-mode switch
+ ├─ refresh attack orders every 100 ticks
+ ├─ apply Command Post order pulses every 600 ticks
+ ├─ pay human income every 100 ticks
  ├─ applyPendingCommands()
- │    └─ sort by (sequence, playerId), validate, create attacks
- ├─ runBotDecisions() every 10 ticks
+ │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds/refreshes
+ ├─ runBotDecisions() every 10 ticks (requires an attack order)
  ├─ processAttacks()
  │    ├─ drop fronts older than ATTACK_LIFETIME_TICKS (50 ticks / 5 s)
  │    ├─ for each attack id: ask its growth layer for the next candidate
@@ -184,7 +188,7 @@ The simulation validates every candidate identically. The layer never claims own
 
 ### Territory integrity
 
-`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Mines, Barracks, or Defense Posts — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Mines, Barracks, Defense Posts, Command Posts, or War Academies — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
 
 Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`. The structure disappears from the map, minimap, snapshot, and checksums, its aura is removed, and the owner loses protection for all remaining components. A dead state's territory is therefore not a valid annexation target, though it can still be attacked.
 
@@ -196,6 +200,8 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - Defense Post: `defense-aura` radius 8, +1, additive stacking.
 - Barracks: `attack-aura` radius 18, attack strength 1.
 - Mine: `income`, +1 per interval.
+- Command Post: `order-gain`, +1 attack order on the global 60-second pulse.
+- War Academy: `order-cap`, +1 attack-order refresh cap.
 
 `simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras. `defenseAt` reads it, so effects share the attack-point economy. Rebuilding is ~48k cells for the 108 State capitals plus any posts and only happens at world creation or structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
 
@@ -216,7 +222,7 @@ type GameCommand =
 	| { type: 'refresh'; playerId; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. This separation is the model for future network intents. Income is paid at the tick boundary before the command queue.
+`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold and cards again. This separation is the model for future network intents. Order refresh, Command Post pulses, and income are paid at tick boundaries before the command queue.
 
 ### 3.7 Snapshots
 
@@ -225,7 +231,7 @@ type GameCommand =
 - tick, seed, land counts, claimed land;
 - public player records;
 - active attacks and live structures with effect descriptors;
-- human gold, income, and hand cards;
+- human gold, income, hand cards, available attack orders, and refresh cap;
 - winner/ended/human id and growth mode.
 
 The UI never receives frontier sets, queue internals, or the PRNG.
@@ -238,6 +244,7 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - every owner cell;
 - each player's alive flag and territory;
 - current/pending growth mode, annex scheduling, gold, next income tick, card RNG, and hand;
+- every player's attack orders, order refresh/bonus timers, and live order-cap effects;
 - live structures and per-cell claim provenance;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;
 - each attack's growth-layer frontier state (heap, buckets, organic RNG/entries).
@@ -271,7 +278,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~310–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 4 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~260–300 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 4 MiB per simulation.
 
 ---
 
@@ -359,7 +366,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The bottom card tray reads gold/income/hand from snapshots; HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Refresh queues a hand replacement.
+- The bottom card tray reads gold/income/hand from snapshots; HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Refresh queues a hand replacement. The ORDERS readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.
@@ -403,7 +410,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~310–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~260–300 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

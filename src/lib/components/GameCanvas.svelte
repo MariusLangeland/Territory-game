@@ -126,6 +126,41 @@
 			context.stroke();
 		}
 
+		function drawCommandPost(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.moveTo(x, y + radius * 0.65);
+			context.lineTo(x, y - radius * 0.55);
+			context.moveTo(x - radius * 0.45, y + radius * 0.65);
+			context.lineTo(x + radius * 0.45, y + radius * 0.65);
+			context.stroke();
+			context.beginPath();
+			context.arc(x, y - radius * 0.1, radius * 0.42, -Math.PI * 0.8, -Math.PI * 0.2);
+			context.stroke();
+		}
+
+		function drawWarAcademy(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.moveTo(x, y - radius * 0.7);
+			context.lineTo(x + radius * 0.65, y - radius * 0.3);
+			context.lineTo(x, y + radius * 0.1);
+			context.lineTo(x - radius * 0.65, y - radius * 0.3);
+			context.closePath();
+			context.moveTo(x - radius * 0.55, y + radius * 0.18);
+			context.lineTo(x, y + radius * 0.48);
+			context.lineTo(x + radius * 0.55, y + radius * 0.18);
+			context.stroke();
+		}
+
 		function drawStructures(): void {
 			if (!renderer || !structureCanvas) return;
 			const camera = renderer.camera;
@@ -240,8 +275,12 @@
 					drawPickaxe(context, x, y, radius);
 				} else if (structure.type === 'barracks') {
 					drawCrossedSwords(context, x, y, radius);
-				} else {
+				} else if (structure.type === 'defense-post') {
 					drawShield(context, x, y, radius);
+				} else if (structure.type === 'command-post') {
+					drawCommandPost(context, x, y, radius);
+				} else {
+					drawWarAcademy(context, x, y, radius);
 				}
 			}
 		}

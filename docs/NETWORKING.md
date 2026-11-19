@@ -6,7 +6,7 @@
 
 ## 1. Goals
 
-1. **Server authority:** the server owns authoritative game state, including ownership, attacks, eliminations, and winners. Resource values such as troops are absent in the current attack experiment but would also be server-owned.
+1. **Server authority:** the server owns authoritative game state, including ownership, attacks, attack orders, gold/cards, structures, eliminations, and winners.
 2. **Deterministic lockstep:** clients run the same simulation and can verify agreement via checksums.
 3. **Responsive input:** a click should feel immediate even with 50–200 ms latency.
 4. **Recoverability:** reconnect or desync must produce a clean resync, never a silently corrupted match.
@@ -89,8 +89,8 @@ A player joining mid-match needs:
 - current tick;
 - full public player state;
 - a baseline owner map at that tick;
-- active attacks and the last event sequence;
-- current checksum.
+- active attacks, live structures, human gold/income/hand, and available attack orders;
+- the last event sequence and current checksum.
 
 The owner map is 2M owner bytes. Options:
 
@@ -110,10 +110,10 @@ Server tick at 10 Hz:
 
 1. Acquire the room's command queue.
 2. Drain all intents accepted for this tick.
-3. Validate ownership, player, sequence, rate limit, and attack constraints.
+3. Validate ownership, player, sequence, rate limit, attack orders, gold, and card constraints.
 4. Sort accepted commands by `(playerId, clientSequence)` (or another fixed rule).
 5. Apply them to the simulation at the tick boundary.
-6. Run bot decisions, attacks, eliminations, and victory. (Restore an economy phase only after the final attack/economy design exists.)
+6. Refresh attack orders, run Command Post pulses, pay income, run bot decisions/attacks, then eliminations and victory.
 7. Broadcast a tick delta to all clients.
 8. Every N ticks, broadcast checksum.
 9. If the match ended, broadcast results and freeze tick advancement.
@@ -189,14 +189,14 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Client → server
 
-| Message       | Purpose                                                   |
-| ------------- | --------------------------------------------------------- |
-| `hello`       | Protocol version, display name                            |
-| `join`        | Enter a room/match                                        |
-| `intent`      | One attack intent with target tick and sequence           |
-| `growth-mode` | Select the growth layer for new orders (host/test policy) |
-| `ping`        | RTT probe                                                 |
-| `leave`       | Voluntary departure                                       |
+| Message       | Purpose                                                       |
+| ------------- | ------------------------------------------------------------- |
+| `hello`       | Protocol version, display name                                |
+| `join`        | Enter a room/match                                            |
+| `intent`      | One attack/build/refresh intent with target tick and sequence |
+| `growth-mode` | Select the growth layer for new orders (host/test policy)     |
+| `ping`        | RTT probe                                                     |
+| `leave`       | Voluntary departure                                           |
 
 ### Server → client
 
@@ -248,10 +248,11 @@ Structures:
 
 Player economy and cards:
 
-- gold, income, and the hand are authoritative snapshot fields (`gold`, `income`, `hand`);
+- gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
 - build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, and occupied structure cells;
 - card draws use the seeded authoritative card RNG; clients never choose the drawn type;
-- a captured buildable is razed at the tick of capture and its aura/income effect disappears immediately;
+- attack-order refresh, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
+- a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;
 - bots do not participate in the card economy in this build, so their snapshot economy is omitted.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
@@ -291,7 +292,7 @@ Server validation:
 - attack coordinate is integer, inside map, on land;
 - origin is owned by the player at the target tick;
 - attack has a shared border;
-- active attack count is within the configured cap;
+- the player has an available attack order at the target tick;
 - sequence numbers strictly increase;
 - intents per second per player are rate-limited;
 - rejected intents do not mutate state.
@@ -355,7 +356,7 @@ At 10 Hz with the online target of 8 human states:
 
 - Public player state ~8 × ~100 bytes = < 1 KiB/tick in JSON.
 - Owner changes are typically tens to hundreds of changed pixels/tick; binary is a few KiB.
-- Active attacks: up to 24 × small records.
+- Active attacks: bounded by outstanding attack orders; usually well under 24 records per client.
 - Checksum: 4 bytes (hex/string overhead in JSON).
 
 Baseline join is the expensive payload (owner map). Compress it.

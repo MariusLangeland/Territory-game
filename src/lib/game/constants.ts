@@ -68,18 +68,20 @@ export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
 export const STARTING_HAND_SIZE = 3;
 export const REFRESH_COST = 1;
 
-/** Technical guardrail only: prevents unbounded simultaneous orders while stress testing. */
-export const MAX_ATTACKS_PER_PLAYER = 3;
+/** Attack-order charges. Orders refresh to the cap every 10 seconds. */
+export const BASE_HUMAN_ATTACK_ORDERS = 3;
+export const BASE_BOT_ATTACK_ORDERS = 2;
+export const ATTACK_ORDER_REFRESH_TICKS = TICK_RATE * 10;
+export const COMMAND_POST_ORDER_TICKS = TICK_RATE * 60;
 
 /** How far from a click the simulation looks for a shared border. */
 export const ATTACK_SEARCH_RADIUS = 34;
 
 /** Bots act once per second. */
 export const BOT_DECISION_INTERVAL = TICK_RATE;
-export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

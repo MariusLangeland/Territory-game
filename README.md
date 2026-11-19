@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.8.0).** Troops, production caps, and launch costs remain removed, but a light human gold/card economy now drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.9.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -21,17 +21,17 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, State structures, three growth layers, 3 active fronts (human) / 2 (bots), 30 attack points/front/tick, terrain defense         |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                     |
-| State auras     | Live capitals project a 12 px field of +20 defense, rendered as dashed rings at combat zoom                                                 |
-| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), three random cards, drag/drop build, paid hand refresh                                           |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
-| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                         |
+| Area            | Implementation                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attack stress   | 108 states, State structures, three growth layers, 3 human / 2 bot attack orders refreshed every 10s, 30 attack points/front/tick, terrain defense |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail         |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                            |
+| State auras     | Live capitals project a 12 px field of +20 defense, rendered as dashed rings at combat zoom                                                        |
+| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), five card types, drag/drop build, paid hand refresh, order cards                                        |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                 |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input           |
+| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout        |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                                |
 
 ## Quick start
 
@@ -78,13 +78,13 @@ pnpm format     # Prettier write
 | Drag a build card           | Drop on controlled land to buy/build that structure          |
 | Refresh button              | Spend 1 gold to replace the hand with three new cards        |
 
-A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and active attack-limit failures. Attacks consume no resources; build cards cost gold.
+A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and no-attack-orders failures. Attacks consume attack orders; build cards cost gold.
 
 ## How the attack works right now
 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
-3. A free attack front opens, with a technical cap of 3 active fronts (2 for bots).
+3. A launch consumes one attack order: 3 for the human, 2 for bots. Orders refresh to the cap every 10 seconds and do not refund when a front ends.
 4. Each tick, a front has **30 attack points**. Capturing a pixel costs its defense: `1 + elevation`, plus **1 if the pixel is occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
 5. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
 6. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
@@ -98,13 +98,16 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 
 The map has six discrete elevation tiers: **lowland, plains, hills, highlands, mountains, peaks**. Elevation is part of the generated map, rendered as a green-to-ochre-to-grey-to-snow palette and marked with subtle contour boundaries.
 
-| Property                         | Value                        |
-| -------------------------------- | ---------------------------- |
-| Base defense                     | `1 + elevation tier` (1–6)   |
-| Occupied bonus                   | `+1`                         |
-| State aura                       | `+20` within 12 px, max once |
-| Attack points per front per tick | 30                           |
-| Capture cost                     | Target pixel defense         |
+| Property                         | Value                         |
+| -------------------------------- | ----------------------------- |
+| Base defense                     | `1 + elevation tier` (1–6)    |
+| Occupied bonus                   | `+1`                          |
+| State aura                       | `+20` within 12 px, max once  |
+| Attack points per front per tick | 30                            |
+| Capture cost                     | Target pixel defense          |
+| Attack orders                    | 3 human / 2 bots, refresh 10s |
+| Command Post                     | +1 order per 60s              |
+| War Academy                      | +1 refresh cap                |
 
 Hovering a land cell shows its elevation, base defense, and total defense in the status console.
 
@@ -137,8 +140,12 @@ The human commander starts with **3 gold** and three random cards. Income is **1
 | Mine         | 3    | +1 income every 10 seconds                          |
 | Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius |
 | Defense Post | 1    | +1 pixel defense in a medium radius; stacks         |
+| Command Post | 4    | +1 attack order every 60 seconds                    |
+| War Academy  | 6    | +1 attack-order refresh cap                         |
 
-The hand is filled by independent random draws from the printed pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+The hand is filled by independent random draws from the five-card pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+
+The HUD shows available **attack orders / refresh cap**. Orders refresh every 10 seconds. Command Posts add bonus orders above the cap on their 60-second pulse; War Academies permanently raise the refresh cap while alive.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -167,17 +174,17 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~298 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick    | ~2.1 ms                                              |
-| Smooth-layer all-bot attack tick          | ~2.7 ms                                              |
-| Organic-layer all-bot attack tick         | ~2.0 ms                                              |
-| Full-state checksum                       | ~18.3 ms (on-demand; includes claim provenance)      |
+| Map generation + 108 starts               | ~299 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick    | ~1.7 ms                                              |
+| Smooth-layer all-bot attack tick          | ~2.2 ms                                              |
+| Organic-layer all-bot attack tick         | ~1.5 ms                                              |
+| Full-state checksum                       | ~19.6 ms (on-demand; includes claim provenance)      |
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~310–340 MiB                                         |
+| Node benchmark RSS (all benchmark worlds) | ~260–300 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 2.0–2.7% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.5–2.2% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

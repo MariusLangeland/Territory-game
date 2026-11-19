@@ -105,4 +105,26 @@ describe('player economy and cards', () => {
 		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x, y)).toBe(1);
 		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x + 19, y)).toBe(0);
 	});
+
+	it('raises the attack-order refresh cap with a War Academy', () => {
+		const sim = new TerritorySimulation({ seed: 112358 });
+		expect(sim.getSnapshot().attackOrderCap).toBe(3);
+		buildCard(sim, 'war-academy');
+		expect(sim.getSnapshot().attackOrderCap).toBe(4);
+		for (let tick = 0; tick < INCOME_INTERVAL_TICKS; tick++) sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(4);
+	});
+
+	it('grants a Command Post attack order on its 60-second pulse', () => {
+		const sim = new TerritorySimulation({ seed: 132134 });
+		buildCard(sim, 'command-post');
+		const internals = sim as unknown as {
+			nextOrderBonusTick: number;
+			attackOrders: number[];
+		};
+		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 0;
+		internals.nextOrderBonusTick = sim.tick + 1;
+		sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(1);
+	});
 });

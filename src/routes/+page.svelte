@@ -7,7 +7,6 @@
 		ATTACK_LIFETIME_TICKS,
 		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
-		MAX_ATTACKS_PER_PLAYER,
 		MAP_HEIGHT,
 		MAP_WIDTH,
 		PLAYER_COUNT,
@@ -115,11 +114,6 @@
 	let aliveCount = $derived(snapshot ? snapshot.players.filter((p) => p.alive).length : 0);
 	let worldClaim = $derived(
 		snapshot && snapshot.landCount > 0 ? (snapshot.claimedLand / snapshot.landCount) * 100 : 0
-	);
-	let activeHumanAttacks = $derived(
-		snapshot && human
-			? snapshot.attacks.filter((attack) => attack.attackerId === human.id).length
-			: 0
 	);
 	let winner = $derived(
 		snapshot?.winnerId
@@ -703,7 +697,8 @@
 			</div>
 			<div class="orders-block">
 				<span class="status-label">ORDERS</span>
-				<strong>{activeHumanAttacks}<em>/{MAX_ATTACKS_PER_PLAYER}</em></strong>
+				<strong>{snapshot.attackOrders}<em>/{snapshot.attackOrderCap}</em></strong>
+				<small>REFRESH / 10s</small>
 			</div>
 			<div class="defense-block">
 				<span class="status-label">DEFENSE</span>
@@ -800,9 +795,17 @@
 										<svg viewBox="0 0 24 24">
 											<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
 										</svg>
-									{:else}
+									{:else if card.type === 'defense-post'}
 										<svg viewBox="0 0 24 24">
 											<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+										</svg>
+									{:else if card.type === 'command-post'}
+										<svg viewBox="0 0 24 24">
+											<path d="M12 21V9M8 9a6 6 0 0 1 8 0M5 6a10 10 0 0 1 14 0M9 21h6" />
+										</svg>
+									{:else}
+										<svg viewBox="0 0 24 24">
+											<path d="M12 4 20 8l-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
 										</svg>
 									{/if}
 								</span>
@@ -948,7 +951,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.8.0 / PROTOCOL 12</span>
+				<span>BUILD 0.9.0 / PROTOCOL 13</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1105,9 +1108,10 @@
 						<p>
 							Troops and production caps are removed. The human commander earns 1 gold every 10
 							seconds and draws three build cards; drag a card into controlled territory to build a
-							Mine, Barracks, or Defense Post. Terrain matters: base defense is 1 plus the elevation
-							tier, occupied pixels add 1 more, and each front spends 30 attack points per tick.
-							State auras add another 20 defense. This is still not the final combat design.
+							Mine, Barracks, Defense Post, Command Post, or War Academy. Attack orders refresh
+							every 10 seconds. Terrain matters: base defense is 1 plus the elevation tier, occupied
+							pixels add 1 more, and each front spends 30 attack points per tick. State auras add
+							another 20 defense. This is still not the final combat design.
 						</p>
 					</section>
 					<section>
@@ -1836,6 +1840,13 @@
 
 	.orders-block strong em {
 		font-style: normal;
+		color: var(--ink-faint);
+	}
+
+	.orders-block small {
+		font-family: var(--font-mono);
+		font-size: 5.5px;
+		letter-spacing: 0.06em;
 		color: var(--ink-faint);
 	}
 

@@ -4,15 +4,15 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ---
 
-## EXP-001 — Resource-free attack stress test
+## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.8.x`  
+**Status:** active in application `0.9.x`  
 **Started:** 2026-11-19  
-**Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states attacking simultaneously and no economy throttling?
+**Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, 10-second attack-order refreshes, and a light human card economy?
 
 ### Motivation
 
-The normal economy (troops, income, caps, attack costs) limits how many attacks can run and how quickly the map changes. That is useful for gameplay but hides attack-layer bugs and performance limits. This experiment removes the economy to stress the actual attack path:
+The normal economy (troops, production caps, launch costs) limits how many attacks can run and how quickly the map changes. This experiment removes troops/production caps and keeps only attack orders, terrain defense, and a light human card economy to stress the actual attack path:
 
 - many simultaneous flood-fill fronts,
 - dense territory collision,
@@ -20,30 +20,32 @@ The normal economy (troops, income, caps, attack costs) limits how many attacks 
 - many dispersed dirty texture regions,
 - 108 frontier sets and bot decisions.
 
-**This is not the intended final combat model.** The user explicitly requested this simplification for attack-focused development.
+**This is not the intended final combat model.** Attack orders, cards, and structures are experimental layers on the attack stress test.
 
 ### Temporary rules
 
-| Rule                   | Value                                                    |
-| ---------------------- | -------------------------------------------------------- |
-| States                 | 108 (1 human + 107 AI)                                   |
-| Troops / income / caps | removed                                                  |
-| Attack launch cost     | removed                                                  |
-| Capture cost           | removed                                                  |
-| Attack budget          | 30 points per attack per tick                            |
-| Pixel defense          | `1 + elevation + occupied` (1–7)                         |
-| Elevation              | six tiers, lowland through peaks                         |
-| Attack lifetime        | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)           |
-| Active attack limit    | 3 per player (technical safety valve, not a design rule) |
-| Bot attack limit       | 2 (technical safety valve)                               |
-| Bot decisions          | once per second                                          |
-| Starting territory     | radius ~16, ragged, spaced across the map                |
-| Structures             | one capturable State structure per state at its capital  |
-| State aura             | +20 defense within 12 px; overlaps do not stack          |
-| Human economy          | 3 starting gold; 1 gold / 10s; 3-card hand               |
-| Build cards            | Mine 3g, Barracks 2g, Defense Post 1g; Refresh 1g        |
+| Rule                     | Value                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| States                   | 108 (1 human + 107 AI)                                                             |
+| Troops / production caps | removed                                                                            |
+| Gold / cards             | light human economy; 3 starting gold, +1/10s                                       |
+| Attack launch cost       | 1 attack order                                                                     |
+| Capture cost             | target pixel defense                                                               |
+| Attack budget            | 30 points per attack per tick                                                      |
+| Pixel defense            | `1 + elevation + occupied + aura` (1–27)                                           |
+| Elevation                | six tiers, lowland through peaks                                                   |
+| Attack lifetime          | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)                                     |
+| Attack orders            | 3 human / 2 bots; refresh every 10 seconds                                         |
+| Extra order gain         | Command Post: +1 every 60 seconds                                                  |
+| Order cap growth         | War Academy: +1 refresh cap                                                        |
+| Bot decisions            | once per second                                                                    |
+| Starting territory       | radius ~16, ragged, spaced across the map                                          |
+| Structures               | one capturable State structure per state at its capital                            |
+| State aura               | +20 defense within 12 px; overlaps do not stack                                    |
+| Human economy            | 3 starting gold; 1 gold / 10s; 3-card hand                                         |
+| Build cards              | Mine 3g, Barracks 2g, Defense Post 1g, Command Post 4g, War Academy 6g; Refresh 1g |
 
-The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
+Each launch consumes one attack order. Orders refresh to the cap every 10 seconds and are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
 ### Growth layers and territorial cleanup
 
@@ -62,7 +64,8 @@ Two cleanup rules plus the first structure are always active:
 - **Mutual front cancellation:** if two states are attacking each other and a front touches land claimed by the opposing attack, every order between the pair ends and the contact line becomes the border.
 - **State structure anchoring:** each state starts with one State structure at its capital. Every territory component connected to a live State structure is protected from annexation. Capturing the structure destroys it and removes protection.
 - **State aura:** a live State projects +20 defense over a 12 px radius; overlapping auras take the maximum. Capturing the structure removes the aura immediately.
-- **Human card economy:** start with 3 gold and 3 random cards from the buildable pool. Income is 1 gold/10s plus 1 per Mine. Drag a card onto controlled, structure-free land to build it. Refresh costs 1 gold and replaces the hand with three fresh independent pool draws. Bots do not build yet.
+- **Human card economy:** start with 3 gold and 3 random cards from the five-type buildable pool. Income is 1 gold/10s plus 1 per Mine. Drag a card onto controlled, structure-free land to build it. Refresh costs 1 gold and replaces the hand with three fresh independent pool draws. Bots do not build yet.
+- **Attack orders:** 3 for the human, 2 for bots, refreshed to the cap every 10 seconds. Command Posts add +1 order on each 60-second pulse; War Academies add +1 live refresh cap. Orders may exceed the cap through Command Posts.
 - **Detached-land annexation:** once per second, and immediately after a cancellation, components without a live State structure are transferred to the owner of the adjacent protected mainland with the largest shared border.
 
 This is the current attack-shape test surface, not a final gameplay choice.
@@ -71,10 +74,10 @@ This is the current attack-shape test surface, not a final gameplay choice.
 
 - There is no economy HUD.
 - AI states attack automatically from tick 10 and prefer neutral land while it exists, so the experiment stresses attack throughput before rival dogpiling.
-- Attack counts are a load guardrail rather than a strategy constraint.
+- Attack orders are now a gameplay constraint; the 10-second refresh is part of the experiment.
 - The match may end quickly or settle into a patchwork; balance is not validated in this build.
 - The leaderboard is scrollable because 108 states are alive at the start.
-- Attack limits may change or disappear as stress findings demand.
+- Attack-order caps, refresh cadence, and the two order cards may change as stress findings demand.
 
 ### Success criteria
 
@@ -99,6 +102,8 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] State auras add +20 within 12 px and disappear with their structure.
 - [x] Human economy pays income, draws three cards, consumes cards on drag-build, and supports paid refresh.
 - [x] Mine income, Barracks attack strength, and Defense Post auras affect the simulation.
+- [x] Attack orders are spent per launch, refresh every 10 seconds, and can be raised by War Academies or granted by Command Posts.
+- [x] The card pool now contains five types, including the 4-cost Command Post and 6-cost War Academy.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -108,9 +113,9 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
-- Full-state checksum is ~18.3 ms (claim provenance doubles the owner-map pass) and is not run per tick.
-- Growth-layer tick cost at 108 states: circular ~2.1 ms, smooth ~2.7 ms, organic ~2.0 ms (Node benchmark; includes throttled integrity scans, structure effects, and defense spending).
-- Capital auras and defense costs reduce capture volume; the benchmark ended around 145–160 fronts.
+- Full-state checksum is ~19.6 ms (claim provenance doubles the owner-map pass) and is not run per tick.
+- Growth-layer tick cost at 108 states: circular ~1.7 ms, smooth ~2.2 ms, organic ~1.5 ms (Node benchmark; includes throttled integrity scans, structure effects, defense spending, and attack-order refreshes).
+- Attack orders, capital auras, and defense costs reduce capture volume; the benchmark ended around 77–96 fronts.
 - One-second integrity scans cost ~8.5 ms and are capped by a cooldown.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 
@@ -131,6 +136,6 @@ When the attack design is ready:
 ### Do not
 
 - Build balance, progression, or monetization on top of this attack model.
-- Treat active-attack limits as final design.
+- Treat attack-order caps or the 10-second refresh as final design.
 - Assume the 108-state spawn/leaderboard is the shipping experience.
 - Remove determinism or attack invariants while stress-testing.

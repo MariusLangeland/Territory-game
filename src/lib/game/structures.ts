@@ -6,13 +6,28 @@
  * territory. Any structure whose cell is captured is razed.
  */
 
-export const STRUCTURE_TYPES = ['state', 'mine', 'barracks', 'defense-post'] as const;
+import { COMMAND_POST_ORDER_TICKS } from './constants';
+
+export const STRUCTURE_TYPES = [
+	'state',
+	'mine',
+	'barracks',
+	'defense-post',
+	'command-post',
+	'war-academy'
+] as const;
 
 export type StructureType = (typeof STRUCTURE_TYPES)[number];
 
 export type BuildableStructureType = Exclude<StructureType, 'state'>;
 
-export const BUILDABLE_STRUCTURE_TYPES = ['mine', 'barracks', 'defense-post'] as const;
+export const BUILDABLE_STRUCTURE_TYPES = [
+	'mine',
+	'barracks',
+	'defense-post',
+	'command-post',
+	'war-academy'
+] as const;
 
 /** State capitals project a defensive field over nearby land. */
 export const STATE_AURA_RADIUS = 12;
@@ -47,7 +62,19 @@ export interface IncomeEffect {
 	goldPerInterval: number;
 }
 
-export type StructureEffect = DefenseAuraEffect | AttackAuraEffect | IncomeEffect;
+export interface OrderGainEffect {
+	kind: 'order-gain';
+	intervalTicks: number;
+	amount: number;
+}
+
+export interface OrderCapEffect {
+	kind: 'order-cap';
+	amount: number;
+}
+
+export type StructureEffect =
+	DefenseAuraEffect | AttackAuraEffect | IncomeEffect | OrderGainEffect | OrderCapEffect;
 
 export interface StructureDefinition {
 	label: string;
@@ -105,6 +132,26 @@ export const STRUCTURE_DEFINITIONS: Record<StructureType, StructureDefinition> =
 				stacking: 'add'
 			}
 		]
+	},
+	'command-post': {
+		label: 'COMMAND POST',
+		description: 'Gain +1 attack order every 60 seconds.',
+		cost: 4,
+		buildable: true,
+		effects: [
+			{
+				kind: 'order-gain',
+				intervalTicks: COMMAND_POST_ORDER_TICKS,
+				amount: 1
+			}
+		]
+	},
+	'war-academy': {
+		label: 'WAR ACADEMY',
+		description: 'Increase the attack-order refresh cap by 1.',
+		cost: 6,
+		buildable: true,
+		effects: [{ kind: 'order-cap', amount: 1 }]
 	}
 };
 

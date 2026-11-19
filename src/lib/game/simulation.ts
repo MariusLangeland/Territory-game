@@ -3,14 +3,16 @@ import {
 	ATTACK_DAMAGE_PER_TICK,
 	ATTACK_LIFETIME_TICKS,
 	ATTACK_SEARCH_RADIUS,
+	BASE_BOT_ATTACK_ORDERS,
 	BASE_DEFENSE_OFFSET,
 	BASE_GOLD_INCOME,
-	BOT_ATTACK_LIMIT,
+	BASE_HUMAN_ATTACK_ORDERS,
 	BOT_DECISION_INTERVAL,
 	BOT_SEARCH_TRIES,
+	COMMAND_POST_ORDER_TICKS,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
-	MAX_ATTACKS_PER_PLAYER,
+	ATTACK_ORDER_REFRESH_TICKS,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
@@ -97,6 +99,8 @@ export interface GameSnapshot {
 	gold: number;
 	income: number;
 	hand: PublicCard[];
+	attackOrders: number;
+	attackOrderCap: number;
 	winnerId: number | null;
 	ended: boolean;
 	humanId: number;
@@ -115,13 +119,7 @@ export interface SimEvent {
 }
 
 export type AttackFailure =
-	| 'ended'
-	| 'eliminated'
-	| 'ocean'
-	| 'own-territory'
-	| 'no-shared-border'
-	| 'too-many-attacks'
-	| 'invalid';
+	'ended' | 'eliminated' | 'ocean' | 'own-territory' | 'no-shared-border' | 'no-orders' | 'invalid';
 
 export interface AttackOrderResult {
 	ok: boolean;
@@ -211,6 +209,9 @@ export class TerritorySimulation {
 
 	private pendingGrowthMode: GrowthMode | null = null;
 	private nextIncomeTick = INCOME_INTERVAL_TICKS;
+	private nextAttackOrderTick = ATTACK_ORDER_REFRESH_TICKS;
+	private nextOrderBonusTick = COMMAND_POST_ORDER_TICKS;
+	private attackOrders: number[] = [];
 	private nextCardId = 1;
 	private readonly cardRng: DeterministicRng;
 	private readonly rng: DeterministicRng;
@@ -284,6 +285,7 @@ export class TerritorySimulation {
 		}
 		this.rebuildAuraDefense();
 		this.hand = this.drawHand();
+		this.attackOrders = this.players.map((player) => this.attackOrderCap(player.id));
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
@@ -306,6 +308,43 @@ export class TerritorySimulation {
 			}
 		}
 		return income;
+	}
+
+	private attackOrderCap(playerId: number): number {
+		let cap = playerId === HUMAN_PLAYER_ID ? BASE_HUMAN_ATTACK_ORDERS : BASE_BOT_ATTACK_ORDERS;
+		for (const structure of this.structures.forOwner(playerId)) {
+			for (const effect of structure.effects) {
+				if (effect.kind === 'order-cap') cap += effect.amount;
+			}
+		}
+		return cap;
+	}
+
+	private availableAttackOrders(playerId: number): number {
+		let pending = 0;
+		for (const command of this.pendingCommands) {
+			if (command.type === 'attack' && command.playerId === playerId) pending++;
+		}
+		return this.attackOrders[playerId - 1] - pending;
+	}
+
+	private refreshAttackOrders(): void {
+		for (const player of this.players) {
+			if (!player.alive) continue;
+			const index = player.id - 1;
+			this.attackOrders[index] = Math.max(this.attackOrders[index], this.attackOrderCap(player.id));
+		}
+	}
+
+	private grantCommandPostOrders(): void {
+		for (const structure of this.structures.all) {
+			const owner = this.players[structure.ownerId - 1];
+			if (!owner?.alive) continue;
+			for (const effect of structure.effects) {
+				if (effect.kind !== 'order-gain') continue;
+				this.attackOrders[structure.ownerId - 1] += effect.amount;
+			}
+		}
 	}
 
 	/** Queue a human attack. It is applied at the start of the next tick. */
@@ -341,11 +380,8 @@ export class TerritorySimulation {
 		if (this.owners[index] === playerId) {
 			return fail('own-territory', 'That territory is already yours.');
 		}
-		if (this.activeAttackCount(playerId) >= MAX_ATTACKS_PER_PLAYER) {
-			return fail(
-				'too-many-attacks',
-				`At most ${MAX_ATTACKS_PER_PLAYER} attacks can be active at once.`
-			);
+		if (this.availableAttackOrders(playerId) <= 0) {
+			return fail('no-orders', 'No attack orders. Orders refresh every 10 seconds.');
 		}
 		if (this.findAttackSeeds(playerId, index).length === 0) {
 			return fail('no-shared-border', 'No friendly border is close enough. Move your frontier.');
@@ -456,6 +492,16 @@ export class TerritorySimulation {
 			if (this.pendingGrowthMode) {
 				this.growthMode = this.pendingGrowthMode;
 				this.pendingGrowthMode = null;
+			}
+
+			if (this.tick >= this.nextAttackOrderTick) {
+				this.refreshAttackOrders();
+				this.nextAttackOrderTick += ATTACK_ORDER_REFRESH_TICKS;
+			}
+
+			if (this.tick >= this.nextOrderBonusTick) {
+				this.grantCommandPostOrders();
+				this.nextOrderBonusTick += COMMAND_POST_ORDER_TICKS;
 			}
 
 			if (this.tick >= this.nextIncomeTick) {
@@ -581,6 +627,9 @@ export class TerritorySimulation {
 		mix(this.lastAnnexTick);
 		mix(this.gold);
 		mix(this.nextIncomeTick);
+		mix(this.nextAttackOrderTick);
+		mix(this.nextOrderBonusTick);
+		for (const orders of this.attackOrders) mix(orders);
 		mix(this.nextCardId);
 		mix(this.cardRng.getState());
 		for (const card of this.hand) {
@@ -674,11 +723,13 @@ export class TerritorySimulation {
 				continue;
 			}
 
+			if (this.attackOrders[command.playerId - 1] <= 0) continue;
 			const index = command.y * this.width + command.x;
 			if (index < 0 || index >= this.owners.length) continue;
 			const seeds = this.findAttackSeeds(command.playerId, index);
 			if (seeds.length === 0) continue;
-			this.createAttack(command.playerId, index, seeds);
+			if (!this.createAttack(command.playerId, index, seeds)) continue;
+			this.attackOrders[command.playerId - 1]--;
 		}
 	}
 
@@ -689,17 +740,6 @@ export class TerritorySimulation {
 
 	private drawHand(): Card[] {
 		return Array.from({ length: STARTING_HAND_SIZE }, () => this.drawCard());
-	}
-
-	private activeAttackCount(playerId: number): number {
-		let count = 0;
-		for (const attack of this.attacks) {
-			if (attack.attackerId === playerId && !attack.done) count++;
-		}
-		for (const command of this.pendingCommands) {
-			if (command.type === 'attack' && command.playerId === playerId) count++;
-		}
-		return count;
 	}
 
 	private findAttackSeeds(attackerId: number, targetIndex: number): number[] {
@@ -819,7 +859,6 @@ export class TerritorySimulation {
 	private createAttack(attackerId: number, targetIndex: number, seeds: number[]): boolean {
 		const attacker = this.players[attackerId - 1];
 		if (!attacker?.alive || seeds.length === 0) return false;
-		if (this.activeAttackCount(attackerId) >= MAX_ATTACKS_PER_PLAYER) return false;
 
 		const defenderId = this.owners[targetIndex];
 		if (defenderId === attackerId) return false;
@@ -1116,7 +1155,7 @@ export class TerritorySimulation {
 
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			if (this.activeAttackCount(player.id) >= BOT_ATTACK_LIMIT) continue;
+			if (this.attackOrders[player.id - 1] <= 0) continue;
 			if (player.border.size === 0) continue;
 
 			for (let attempt = 0; attempt < BOT_SEARCH_TRIES; attempt++) {
@@ -1125,7 +1164,10 @@ export class TerritorySimulation {
 
 				const target = this.pickAttackTarget(player, borderIndex);
 				if (target === null) continue;
-				if (this.createAttack(player.id, target, [target])) break;
+				if (this.createAttack(player.id, target, [target])) {
+					this.attackOrders[player.id - 1]--;
+					break;
+				}
 			}
 		}
 	}
@@ -1266,6 +1308,8 @@ export class TerritorySimulation {
 			gold: this.gold,
 			income: this.income,
 			hand: this.hand.map((card) => ({ id: card.id, type: card.type })),
+			attackOrders: this.attackOrders[HUMAN_PLAYER_ID - 1] ?? 0,
+			attackOrderCap: this.attackOrderCap(HUMAN_PLAYER_ID),
 			winnerId: this.winnerId,
 			ended: this.ended,
 			humanId: HUMAN_PLAYER_ID,
@@ -1321,6 +1365,10 @@ function structureTypeCode(type: StructureType): number {
 			return 3;
 		case 'defense-post':
 			return 4;
+		case 'command-post':
+			return 5;
+		case 'war-academy':
+			return 6;
 	}
 }
 

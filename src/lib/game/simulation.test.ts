@@ -64,7 +64,7 @@ function findDeepAttackablePixel(
 function runDefenseCapture(elevationLevel: number): number {
 	const sim = new TerritorySimulation({ seed: 424242 });
 	// Isolate the defense-budget curve from capital auras.
-	(sim as unknown as { auraDefense: Uint8Array }).auraDefense.fill(0);
+	(sim as unknown as { auraDefense: Uint16Array }).auraDefense.fill(0);
 	const width = sim.width;
 	let startX = -1;
 	let rowY = -1;
@@ -296,9 +296,28 @@ describe('attack stress mode', () => {
 		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
 	});
 
+	it('spends attack orders and refreshes them every 10 seconds', () => {
+		const sim = new TerritorySimulation({ seed: 271828 });
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+
+		expect(sim.getSnapshot().attackOrders).toBe(3);
+		expect(sim.getSnapshot().attackOrderCap).toBe(3);
+		for (let i = 0; i < 3; i++) {
+			expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		}
+		const blocked = sim.enqueueAttack(1, target.x, target.y);
+		expect(blocked.ok).toBe(false);
+		expect(blocked.reason).toBe('no-orders');
+
+		for (let tick = 0; tick < 100; tick++) sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(3);
+	});
+
 	it('runs many simultaneous bot fronts and keeps ownership valid', () => {
 		const sim = new TerritorySimulation({ seed: 314159 });
-		for (let tick = 0; tick < 80; tick++) {
+		for (let tick = 0; tick < 100; tick++) {
 			const result = sim.step();
 			expect(result.changeCount).toBeLessThanOrEqual(result.changes.length);
 			expect(result.changesOverflow).toBe(false);
