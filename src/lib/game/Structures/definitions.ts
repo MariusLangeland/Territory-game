@@ -37,6 +37,34 @@ export const STRUCTURE_DEFINITIONS: Record<StructureType, StructureDefinition> =
 	'war-academy': WAR_ACADEMY_DEFINITION
 };
 
+export const STRUCTURE_TYPE_CODES: Record<StructureType, number> = {
+	state: 1,
+	mine: 2,
+	barracks: 3,
+	'defense-post': 4,
+	'command-post': 5,
+	'war-academy': 6
+};
+
+export function structureTypeFromCode(code: number): StructureType | null {
+	switch (code) {
+		case 1:
+			return 'state';
+		case 2:
+			return 'mine';
+		case 3:
+			return 'barracks';
+		case 4:
+			return 'defense-post';
+		case 5:
+			return 'command-post';
+		case 6:
+			return 'war-academy';
+		default:
+			return null;
+	}
+}
+
 export const STRUCTURE_ACCENTS: Record<StructureType, string> = {
 	state: STATE_DEFINITION.accent,
 	mine: MINE_DEFINITION.accent,

@@ -8,5 +8,6 @@ export const MINE_DEFINITION: StructureDefinition = {
 	cost: 3,
 	buildable: true,
 	accent: '#f5b85c',
+	districtRange: 32,
 	effects: [{ kind: 'income', goldPerInterval: MINE_INCOME_PER_INTERVAL }]
 };

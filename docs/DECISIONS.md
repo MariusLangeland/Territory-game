@@ -427,7 +427,7 @@ Structures were static anchors with no gameplay effect. The next step is effects
 - Apply the aura to all land pixels in radius, including the structure cell, regardless of owner. Overlapping auras take the maximum rather than summing.
 - Derive a `Uint8Array` aura-defense overlay by stamping live structures. Rebuild the overlay when a structure is destroyed. Defense becomes `1 + elevation + occupied + aura`.
 - Include effect descriptors in public structure snapshots/protocol so clients can draw and predict auras.
-- Render auras as faint owner-colored fields with dashed boundaries at tactical zoom; hide them when their screen radius is smaller than the capital marker. Keep capital markers on top.
+- Render auras as faint owner-colored fields with dashed boundaries at tactical zoom; hide them when their screen radius is smaller than the capital marker. Keep capital markers on top. **Superseded by ADR-018:** aura circles were removed in favor of district tinting.
 - Show the aura bonus in the hover defense readout.
 
 ### Consequences
@@ -521,3 +521,43 @@ The previous system capped active fronts (3 human / 2 bots) and effectively refu
 - **Keep active-front caps in addition to orders:** double-limiting and contrary to the request.
 - **Human-only orders:** would leave bot behavior on a different attack economy; the shared rule is simpler.
 - **Generic “Order Post” / “War College” names:** Command Post and War Academy are clearer while remaining provisional.
+
+---
+
+## ADR-018 — Bounded Voronoi districts and same-type stacking
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Structures need territorial identity beyond their auras. The requested model gives each structure a district that fills nearby owned land, stops at borders and a maximum range, splits against other districts by nearest-pixel distance, and prevents incompatible structures from sharing the area. Larger districts should reduce clutter, and players should be able to create more districts of the same type.
+
+### Decision
+
+- Every **buildable** structure seeds a district. Ranges are Mine 32, Defense Post 40, Barracks 44, Command Post 32, War Academy 32. State capitals have `districtRange: 0`; a 32 px capital district would cover the entire starting territory and make cards unplayable.
+- Recompute districts as a constrained Voronoi map over current ownership: each owned cell chooses the nearest eligible structure of its owner within that structure's range. Ties break on type code, then structure id.
+- Multiple structures and districts per owner/type are allowed. A same-type drop inside a district increments that district structure's `stacks`; the same type dropped outside all districts creates another structure/district. A different type inside any district is rejected.
+- `districtStructureIds` records the winning structure per cell, so stacking and auras can distinguish same-type districts. State auras remain radius-based.
+- `stacks` multiply the structure's effect magnitude (income, defense, attack strength, order gain, order cap). Geometry/range stays fixed.
+- Defense auras only apply to cells whose district id matches the structure, plus owner and radius checks.
+- Full district recomputation runs on structure creation/destruction; ordinary ownership changes reassign one cell. Stacking does not change geometry.
+- Render district palettes by packing a 5-bit code (four variants per structure type) into control-texture alpha above 3 elevation bits; tint by type, vary brightness per district, and darken shared boundaries. Aura circles are removed.
+
+### Consequences
+
+- Same-type districts remain visually distinct despite sharing a type color family.
+- State capitals no longer block construction, and the first build is possible in the starting territory.
+- Large districts deliberately reduce building density: a district can cover most of a small territory, so further different-type construction waits for expansion.
+- District recomputation is occasional and bounded; per-capture updates are local, and district color needs no extra texture binding. Per-cell structure ids add 8 MiB.
+- Auras are mechanically clipped to buildable district geometry; State auras remain a radius field.
+- Existing 8 px spacing remains a secondary placement guard, though district ranges usually dominate.
+
+### Alternatives considered
+
+- **One structure per owner/type:** rejected because players should be able to create more same-type districts.
+- **Capital districts:** rejected because a 32 px district covers the start and disables the card loop.
+- **Unbounded Voronoi over the whole map:** districts would ignore ownership borders and ranges.
+- **BFS flood fill instead of Euclidean Voronoi:** would follow terrain connectivity but not the requested nearest-pixel split.
+- **Extra district texture:** more bindings and uploads; packing into alpha is sufficient for five palette groups with four variants.
+- **Stack increases district radius:** would make geometry churn and make placement rules unstable; stack effects scale instead.

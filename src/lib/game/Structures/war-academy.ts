@@ -6,5 +6,6 @@ export const WAR_ACADEMY_DEFINITION: StructureDefinition = {
 	cost: 6,
 	buildable: true,
 	accent: '#c6a2ff',
+	districtRange: 32,
 	effects: [{ kind: 'order-cap', amount: 1 }]
 };

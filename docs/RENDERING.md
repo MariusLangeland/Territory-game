@@ -43,8 +43,8 @@ There is exactly one WebGPU draw call per frame for territory.
 Structures are not encoded in the ownership texture. A transparent 2D canvas sits above the WebGPU canvas and draws up to 108 owner-colored capital-star circles at structure cells each frame:
 
 - uses the same `MapCamera.mapToScreen` transform as the map;
-- draws defense auras as faint owner-colored fields and attack auras as amber dashed fields, scaled by `effect.radius * camera.scale`; auras smaller than 16 px are hidden under the marker;
 - draws a dark halo, cream ring, and owner-colored disc for every structure; placement exclusion is simulation state, not rendered as a persistent ring;
+- aura circles are no longer drawn; district tint and boundaries carry the territorial read instead;
 - uses a cream five-point capital star for State structures, a pickaxe for Mines, crossed swords for Barracks, a shield for Defense Posts, a command mast for Command Posts, and layered chevrons for War Academies;
 - renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
@@ -66,16 +66,16 @@ Card dragging uses a transparent native drag image and a second full-screen SVG 
 
 The control texture is created as `rgba8unorm`, with usage `TEXTURE_BINDING | COPY_DST`.
 
-| Channel | Value                  | Used by                                  |
-| ------- | ---------------------- | ---------------------------------------- |
-| R       | Owner id 0–108         | Player color, border comparison          |
-| G       | `0` ocean / `255` land | Ocean styling, coastlines                |
-| B       | Terrain shade 0–255    | Relief brightness and grain              |
-| A       | Elevation tier 0–255   | Six-tier terrain color and contour edges |
+| Channel | Value                  | Used by                                                       |
+| ------- | ---------------------- | ------------------------------------------------------------- |
+| R       | Owner id 0–108         | Player color, border comparison                               |
+| G       | `0` ocean / `255` land | Ocean styling, coastlines                                     |
+| B       | Terrain shade 0–255    | Relief brightness and grain                                   |
+| A       | Packed bits            | Low 3 bits elevation tier; upper 5 bits district palette code |
 
 ### Elevation rendering
 
-The alpha channel stores `elevation / (ELEVATION_LEVELS - 1)`. The fragment shader decodes it back to a tier and:
+The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is no longer normalized. Palette codes are grouped four-per-structure-type (`1–4` State, `5–8` Mine, `9–12` Barracks, `13–16` Defense Post, `17–20` Command Post, `21–24` War Academy), with a small brightness variation inside each group. This keeps separate same-type districts visually distinct. The fragment shader decodes both and:
 
 - mixes an elevation palette into land color — green lowland, olive plains, ochre hills, brown highlands, grey mountains, pale peaks;
 - keeps owner colors dominant (18% terrain mix) while unclaimed land shows the terrain palette more strongly (52%);
@@ -83,9 +83,9 @@ The alpha channel stores `elevation / (ELEVATION_LEVELS - 1)`. The fragment shad
 - darkens pixels where a neighbour has a different tier, producing subtle contour boundaries;
 - leaves the continuous shade channel for relief grain.
 
-This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation.
+This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle structure-type tint, a per-district brightness variant, and darker boundaries, making Voronoi districts readable without hiding terrain or ownership.
 
-Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer only writes R for ownership changes; G/B are written at initialization/resync.
+Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer writes R and packed A for ownership changes; G/B are written at initialization/resync. District-wide changes (structure built, razed, or stack-district changes) trigger one chunked full resync.
 
 The CPU shadow is `Uint8Array(2048 * 1024 * 4) = 8 MiB`. The GPU texture is another 8 MiB. This is acceptable for the target map size.
 
@@ -320,7 +320,7 @@ Unit tests can cover camera math and packing/unpacking without a GPU.
 2. **Adaptive resolution** for high-DPR/low-power devices.
 3. **Render-on-demand mode** to pause water animation and idle frames.
 4. **Map labels and attack vectors** as a second overlay pass or shader input.
-5. **Fog of war** requiring a visibility mask texture and likely a second control channel.
+5. **Fog of war** requiring a visibility mask texture and likely a second control channel; district palettes currently use 5 bits of the alpha channel.
 6. **Larger maps** requiring texture-array tiling, frustum culling, and more aggressive dirty-tile uploads.
 7. **Post-processing** (bloom/grade) only after the base pass budget is measured.
 8. **GPU timestamps** for real performance regression tests.

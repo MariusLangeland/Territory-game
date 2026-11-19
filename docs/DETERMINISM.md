@@ -44,21 +44,22 @@ Design consequence: a slow frame can cause two simulation steps in one frame, bu
 
 All authoritative quantities are integers:
 
-| Quantity                   | Representation                         |
-| -------------------------- | -------------------------------------- |
-| Territory count            | JS number, integer                     |
-| Owner id                   | uint16 (`1..108` in the stress build)  |
-| Tick                       | integer                                |
-| PRNG state                 | uint32                                 |
-| Growth layer               | one of `circular`, `smooth`, `organic` |
-| Frontier candidate storage | layer-specific deterministic structure |
-| Attack claim provenance    | attack id (uint32) per cell            |
-| Structure identity         | integer id, type enum, owner, map cell |
-| Attack seed distance       | squared integer distance               |
-| Attack budget              | 30 points per front per tick           |
-| Defense                    | `1 + elevation + occupied + aura`      |
-| State aura                 | 12 px radius, +20, max once, friendly  |
-| Elevation tier             | uint8, 0–5                             |
+| Quantity                   | Representation                                 |
+| -------------------------- | ---------------------------------------------- |
+| Territory count            | JS number, integer                             |
+| Owner id                   | uint16 (`1..108` in the stress build)          |
+| Tick                       | integer                                        |
+| PRNG state                 | uint32                                         |
+| Growth layer               | one of `circular`, `smooth`, `organic`         |
+| Frontier candidate storage | layer-specific deterministic structure         |
+| Attack claim provenance    | attack id (uint32) per cell                    |
+| Structure identity         | integer id, type enum, owner, map cell, stacks |
+| District                   | per-cell structure type code (0 = none)        |
+| Attack seed distance       | squared integer distance                       |
+| Attack budget              | 30 points per front per tick                   |
+| Defense                    | `1 + elevation + occupied + aura`              |
+| State aura                 | 16 px radius, +20, max once, friendly          |
+| Elevation tier             | uint8, 0–5                                     |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
@@ -165,11 +166,13 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
-Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner: max-stacking State auras first, then additive Defense Post auras. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense. Capturing an ordinary cell calls `updateAuraAt` for that cell, dropping the old owner's aura and applying the new owner's aura deterministically. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
+Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner and covered by that structure's district (State auras use their fixed radius): max-stacking State auras first, then additive Defense Post auras. Effect magnitudes multiply by `structure.stacks`. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds districts and auras before later attacks see defense. Capturing an ordinary cell calls `updateDistrictAt` and `updateAuraAt` for that cell. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
+
+Districts are derived deterministically by a bounded Voronoi pass over each owner's cells. For every buildable structure-range bounding box, each owned cell chooses the nearest eligible owner structure; ties use type code then structure id. No explicit random draw is involved. Multiple structures of the same type are allowed, so each cell also records the winning structure id; stacking targets that district's structure and does not alter geometry. State capitals have no district and keep their radius aura.
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
-Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the five buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, and land at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
+Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the five buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, land, district placement, and stack eligibility at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
 
 Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts add their grant on every 600-tick boundary, also clamped. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays and both timer values are checksummed.
 
@@ -208,7 +211,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 5. current and pending growth mode, annexation request/cooldown state,
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
-8. live structure ids, type, owner, and cell index,
+8. live structure ids, type, owner, cell index, and stack count,
 9. human gold, income tick, card RNG state, hand card ids/types, every player's attack orders, and order grant/bonus timers;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
@@ -298,11 +301,13 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
-21. A live State structure adds 20 defense within 12 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
+21. A live State structure adds 20 defense within 16 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
 22. Starting hand and every refresh are deterministic from a dedicated card RNG and use independent pool draws with replacement.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
 24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 grant and Command Post pulses are fixed tick-boundary events clamped to cap.
 25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and Command Post grants apply in registry order on the 60-second boundary.
+26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
+27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
 
 Commands to run:
 

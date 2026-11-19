@@ -35,12 +35,13 @@ import {
 	BUILDABLE_STRUCTURE_TYPES,
 	StructureRegistry,
 	STRUCTURE_DEFINITIONS,
+	STRUCTURE_TYPE_CODES,
+	structureTypeFromCode,
 	type BuildableStructureType,
 	type Card,
 	type PublicCard,
 	type PublicStructure,
-	type Structure,
-	type StructureType
+	type Structure
 } from './Structures';
 import { DeterministicRng } from './rng';
 
@@ -162,6 +163,7 @@ export type BuildFailure =
 	| 'not-owned'
 	| 'occupied'
 	| 'too-close'
+	| 'inside-district'
 	| 'invalid';
 
 export interface BuildOrderResult {
@@ -176,6 +178,7 @@ export interface StepResult {
 	changes: Uint32Array;
 	changeCount: number;
 	changesOverflow: boolean;
+	districtsChanged: boolean;
 	events: SimEvent[];
 	snapshot: GameSnapshot;
 }
@@ -207,6 +210,13 @@ export class TerritorySimulation {
 	readonly claimedBy: Uint32Array;
 	/** Structure aura defense bonus per cell. Derived from live structures. */
 	private readonly auraDefense: Uint16Array;
+	/** Structure type code of the district covering each cell, or 0. */
+	readonly districtTypes: Uint8Array;
+	/** Structure id owning each district cell, or 0. */
+	readonly districtStructureIds: Uint32Array;
+	/** Compact 5-bit render palette code for the district; 0 = none. */
+	readonly districtColorCodes: Uint8Array;
+	private districtsChanged = false;
 	readonly players: PlayerState[];
 
 	tick = 0;
@@ -267,6 +277,9 @@ export class TerritorySimulation {
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
 		this.auraDefense = new Uint16Array(this.width * this.height);
+		this.districtTypes = new Uint8Array(this.width * this.height);
+		this.districtStructureIds = new Uint32Array(this.width * this.height);
+		this.districtColorCodes = new Uint8Array(this.width * this.height);
 		this.integrity = new TerritoryIntegrity(this.width, this.height, PLAYER_COUNT);
 
 		if (this.landCount <= 0) throw new Error('Generated map has no land.');
@@ -292,6 +305,7 @@ export class TerritorySimulation {
 			const start = this.map.starts[i];
 			this.structures.create('state', i + 1, start.x, start.y, this.width);
 		}
+		this.rebuildDistricts();
 		this.rebuildAuraDefense();
 		this.hand = this.drawHand();
 		this.attackOrders = this.players.map((player) => this.attackOrderCap(player.id));
@@ -313,7 +327,7 @@ export class TerritorySimulation {
 		let income = BASE_GOLD_INCOME;
 		for (const structure of this.structures.forOwner(HUMAN_PLAYER_ID)) {
 			for (const effect of structure.effects) {
-				if (effect.kind === 'income') income += effect.goldPerInterval;
+				if (effect.kind === 'income') income += effect.goldPerInterval * structure.stacks;
 			}
 		}
 		return income;
@@ -323,7 +337,7 @@ export class TerritorySimulation {
 		let cap = playerId === HUMAN_PLAYER_ID ? BASE_HUMAN_ATTACK_ORDERS : BASE_BOT_ATTACK_ORDERS;
 		for (const structure of this.structures.forOwner(playerId)) {
 			for (const effect of structure.effects) {
-				if (effect.kind === 'order-cap') cap += effect.amount;
+				if (effect.kind === 'order-cap') cap += effect.amount * structure.stacks;
 			}
 		}
 		return cap;
@@ -363,7 +377,7 @@ export class TerritorySimulation {
 			if (!owner?.alive) continue;
 			for (const effect of structure.effects) {
 				if (effect.kind !== 'order-gain') continue;
-				this.addAttackOrders(structure.ownerId, effect.amount);
+				this.addAttackOrders(structure.ownerId, effect.amount * structure.stacks);
 			}
 		}
 	}
@@ -452,6 +466,27 @@ export class TerritorySimulation {
 				message: 'Drop the card inside your controlled territory.'
 			};
 		}
+		const districtId = this.districtStructureIds[index];
+		if (districtId !== 0) {
+			const districtStructure = this.structures.byId(districtId);
+			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
+				return {
+					ok: true,
+					message: `Reinforce ${STRUCTURE_DEFINITIONS[card.type].label} to x${
+						districtStructure.stacks + 1
+					}.`
+				};
+			}
+			const districtType = structureTypeFromCode(this.districtTypes[index]);
+			return {
+				ok: false,
+				reason: 'inside-district',
+				message: `Cannot place this inside a ${
+					districtType ? STRUCTURE_DEFINITIONS[districtType].label : 'different'
+				} district.`
+			};
+		}
+
 		if (this.structures.at(index)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
 		}
@@ -512,6 +547,7 @@ export class TerritorySimulation {
 	step(): StepResult {
 		this.changeCount = 0;
 		this.changesOverflow = false;
+		this.districtsChanged = false;
 		this.events = [];
 
 		if (!this.ended) {
@@ -559,6 +595,7 @@ export class TerritorySimulation {
 			changes: this.changes,
 			changeCount: this.changeCount,
 			changesOverflow: this.changesOverflow,
+			districtsChanged: this.districtsChanged,
 			events: this.events.slice(),
 			snapshot: this.lastSnapshot
 		};
@@ -662,7 +699,7 @@ export class TerritorySimulation {
 		mix(this.cardRng.getState());
 		for (const card of this.hand) {
 			mix(card.id);
-			mix(structureTypeCode(card.type));
+			mix(STRUCTURE_TYPE_CODES[card.type]);
 		}
 
 		for (let i = 0; i < this.owners.length; i++) {
@@ -678,9 +715,10 @@ export class TerritorySimulation {
 
 		for (const structure of this.structures.all) {
 			mix(structure.id);
-			mix(structureTypeCode(structure.type));
+			mix(STRUCTURE_TYPE_CODES[structure.type]);
 			mix(structure.ownerId);
 			mix(structure.index);
+			mix(structure.stacks);
 		}
 
 		for (const attack of this.attacks) {
@@ -735,6 +773,19 @@ export class TerritorySimulation {
 				const cost = STRUCTURE_DEFINITIONS[card.type].cost;
 				this.gold -= cost;
 				this.hand = this.hand.filter((entry) => entry.id !== command.cardId);
+				const targetIndex = command.y * this.width + command.x;
+				const districtId = this.districtStructureIds[targetIndex];
+				const districtStructure = districtId ? this.structures.byId(districtId) : undefined;
+				if (districtStructure && districtStructure.type === card.type) {
+					const stacks = this.structures.reinforce(districtStructure);
+					this.rebuildAuraDefense();
+					this.pushEvent(
+						'build',
+						`${STRUCTURE_DEFINITIONS[card.type].label} reinforced to x${stacks} for ${cost} gold.`,
+						command.playerId
+					);
+					continue;
+				}
 				const structure = this.structures.create(
 					card.type,
 					command.playerId,
@@ -742,6 +793,7 @@ export class TerritorySimulation {
 					command.y,
 					this.width
 				);
+				this.rebuildDistricts();
 				this.rebuildAuraDefense();
 				this.pushEvent(
 					'build',
@@ -803,6 +855,95 @@ export class TerritorySimulation {
 		return found.slice(0, 96).map((entry) => entry.index);
 	}
 
+	/**
+	 * Rebuild all districts as a constrained Voronoi map: each owned cell goes
+	 * to the nearest eligible structure of its owner, up to that structure's
+	 * district range. Ties are broken by type code and then structure id.
+	 */
+	private rebuildDistricts(): void {
+		this.districtTypes.fill(0);
+		this.districtStructureIds.fill(0);
+		this.districtColorCodes.fill(0);
+		for (const structure of this.structures.all) {
+			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			if (range <= 0) continue;
+			const minX = Math.max(0, structure.x - range);
+			const maxX = Math.min(this.width - 1, structure.x + range);
+			const minY = Math.max(0, structure.y - range);
+			const maxY = Math.min(this.height - 1, structure.y + range);
+			for (let y = minY; y <= maxY; y++) {
+				for (let x = minX; x <= maxX; x++) {
+					const index = y * this.width + x;
+					if (this.owners[index] !== structure.ownerId) continue;
+					const owner = this.nearestDistrictStructure(structure.ownerId, x, y);
+					this.districtTypes[index] = owner ? STRUCTURE_TYPE_CODES[owner.type] : 0;
+					this.districtStructureIds[index] = owner?.id ?? 0;
+					this.districtColorCodes[index] = owner ? this.districtColorCode(owner) : 0;
+				}
+			}
+		}
+		this.districtsChanged = true;
+	}
+
+	private nearestDistrictStructure(ownerId: number, x: number, y: number): Structure | null {
+		let bestDistance = Number.POSITIVE_INFINITY;
+		let best: Structure | null = null;
+		for (const structure of this.structures.forOwner(ownerId)) {
+			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			const dx = x - structure.x;
+			const dy = y - structure.y;
+			const distance = dx * dx + dy * dy;
+			if (distance > range * range) continue;
+			const code = STRUCTURE_TYPE_CODES[structure.type];
+			const bestCode = best ? STRUCTURE_TYPE_CODES[best.type] : 0;
+			if (
+				distance < bestDistance ||
+				(distance === bestDistance &&
+					(code < bestCode || (code === bestCode && structure.id < (best?.id ?? Infinity))))
+			) {
+				bestDistance = distance;
+				best = structure;
+			}
+		}
+		return best;
+	}
+
+	private districtColorCode(structure: Structure): number {
+		const base = STRUCTURE_TYPE_CODES[structure.type] * 4 - 3;
+		return base + (structure.id % 4);
+	}
+
+	private updateDistrictAt(index: number): void {
+		const owner = this.owners[index];
+		if (!owner) {
+			this.districtTypes[index] = 0;
+			this.districtStructureIds[index] = 0;
+			this.districtColorCodes[index] = 0;
+			return;
+		}
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		const structure = this.nearestDistrictStructure(owner, x, y);
+		this.districtTypes[index] = structure ? STRUCTURE_TYPE_CODES[structure.type] : 0;
+		this.districtStructureIds[index] = structure?.id ?? 0;
+		this.districtColorCodes[index] = structure ? this.districtColorCode(structure) : 0;
+	}
+
+	getDistrictType(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.districtTypes[y * this.width + x];
+	}
+
+	getDistrictStructureId(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.districtStructureIds[y * this.width + x];
+	}
+
+	getDistrictColorCode(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.districtColorCodes[y * this.width + x];
+	}
+
 	private rebuildAuraDefense(): void {
 		this.auraDefense.fill(0);
 		const width = this.width;
@@ -826,13 +967,17 @@ export class TerritorySimulation {
 							if (dx * dx + dy * dy > radiusSq) continue;
 							const index = y * width + x;
 							if (this.owners[index] !== structure.ownerId) continue;
+							if (
+								STRUCTURE_DEFINITIONS[structure.type].districtRange > 0 &&
+								this.districtStructureIds[index] !== structure.id
+							) {
+								continue;
+							}
+							const defense = effect.defense * structure.stacks;
 							if (stacking === 'max') {
-								this.auraDefense[index] = Math.max(this.auraDefense[index], effect.defense);
+								this.auraDefense[index] = Math.max(this.auraDefense[index], defense);
 							} else {
-								this.auraDefense[index] = Math.min(
-									65_535,
-									this.auraDefense[index] + effect.defense
-								);
+								this.auraDefense[index] = Math.min(65_535, this.auraDefense[index] + defense);
 							}
 						}
 					}
@@ -860,13 +1005,20 @@ export class TerritorySimulation {
 		let max = 0;
 		let add = 0;
 		for (const structure of this.structures.forOwner(owner)) {
+			if (
+				STRUCTURE_DEFINITIONS[structure.type].districtRange > 0 &&
+				this.districtStructureIds[index] !== structure.id
+			) {
+				continue;
+			}
 			for (const effect of structure.effects) {
 				if (effect.kind !== 'defense-aura') continue;
 				const dx = structure.x - x;
 				const dy = structure.y - y;
 				if (dx * dx + dy * dy > effect.radius * effect.radius) continue;
-				if (effect.stacking === 'max') max = Math.max(max, effect.defense);
-				else add += effect.defense;
+				const defense = effect.defense * structure.stacks;
+				if (effect.stacking === 'max') max = Math.max(max, defense);
+				else add += defense;
 			}
 		}
 		this.auraDefense[index] = Math.min(65_535, max + add);
@@ -882,7 +1034,7 @@ export class TerritorySimulation {
 				const dx = structure.x - x;
 				const dy = structure.y - y;
 				if (dx * dx + dy * dy <= effect.radius * effect.radius) {
-					strength += effect.strength;
+					strength += effect.strength * structure.stacks;
 				}
 			}
 		}
@@ -1142,6 +1294,7 @@ export class TerritorySimulation {
 
 		const structure = this.structures.destroyAt(index);
 		if (structure) {
+			this.rebuildDistricts();
 			this.rebuildAuraDefense();
 			this.clampAttackOrders(structure.ownerId);
 			const owner = this.players[structure.ownerId - 1];
@@ -1165,7 +1318,10 @@ export class TerritorySimulation {
 		if (x + 1 < this.width) this.refreshBorder(index + 1);
 		if (y > 0) this.refreshBorder(index - this.width);
 		if (y + 1 < this.height) this.refreshBorder(index + this.width);
-		if (!structure) this.updateAuraAt(index);
+		if (!structure) {
+			this.updateDistrictAt(index);
+			this.updateAuraAt(index);
+		}
 
 		this.recordChange(index, newOwner);
 	}
@@ -1395,6 +1551,7 @@ export class TerritorySimulation {
 			ownerId: structure.ownerId,
 			x: structure.x,
 			y: structure.y,
+			stacks: structure.stacks,
 			effects: structure.effects
 		};
 	}
@@ -1412,23 +1569,6 @@ export class TerritorySimulation {
 
 function fail(reason: AttackFailure, message: string): AttackOrderResult {
 	return { ok: false, reason, message };
-}
-
-function structureTypeCode(type: StructureType): number {
-	switch (type) {
-		case 'state':
-			return 1;
-		case 'mine':
-			return 2;
-		case 'barracks':
-			return 3;
-		case 'defense-post':
-			return 4;
-		case 'command-post':
-			return 5;
-		case 'war-academy':
-			return 6;
-	}
 }
 
 function growthModeCode(mode: GrowthMode): number {

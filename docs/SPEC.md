@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.9.4 (attack stress experiment)  
+**Version:** 0.11.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.9.4, map version 3, protocol draft 16
+**Last synchronized with:** application 0.11.0, map version 3, protocol draft 18
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 16`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 18`.
 
 ### 4.2 Starting positions
 
@@ -275,7 +275,7 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Each state starts with one State structure on its start cell.
 - The structure is part of the owning state's territory and can be captured by an attack.
 - Every land component connected to a live State structure is protected from annexation.
-- A live State structure projects a **12 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
+- A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - Only State structures anchor protection. Mines, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
 - State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
@@ -290,7 +290,7 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 | Elevation tiers                  | 0 lowland, 1 plains, 2 hills, 3 highlands, 4 mountains, 5 peaks |
 | Base defense                     | `1 + elevation`                                                 |
 | Occupied bonus                   | `+1` when the pixel has a nonzero owner                         |
-| State aura                       | `+20` within 12 px; overlapping auras do not stack              |
+| State aura                       | `+20` within 16 px; overlapping auras do not stack              |
 | Attack points per front per tick | 30                                                              |
 | Capture cost                     | Target pixel defense                                            |
 | Defense range                    | 1–6 unowned, 2–7 occupied, up to 27 in a State aura; posts add  |
@@ -300,7 +300,7 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 - A front cannot spend more than 30 points per tick. Cheap neutral lowland can move 30 pixels per tick; defended peaks move 4, and aura-covered occupied high ground moves 1.
 - The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
-- State auras are rendered as faint owner-colored fields with dashed boundaries at tactical zoom.
+- Aura circles are not rendered; district tint and boundaries communicate territorial structure.
 
 ### 4.17 Player economy and build cards
 
@@ -309,26 +309,48 @@ The human commander has a small card economy; bots do not build cards yet.
 - Start with **3 gold** and **3 random cards**, drawn independently from the buildable pool with replacement.
 - Earn **1 gold every 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine**.
 - Income is paid at the start of the tick. A Mine built before the payment adds to that payment.
-- Playing a card requires dragging it onto **controlled land** with no existing structure and at least **8 px from every other structure**.
-- The build command is queued, applied at the next tick, deducts its cost, removes the card, and creates the structure.
+- Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
+- If the same structure type already exists for that owner, the card must be dropped inside that type's district and it **stacks** onto the existing structure instead of creating another one.
+- The build command is queued, applied at the next tick, deducts its cost, removes the card, and either creates the first structure of that type or adds a stack to the existing one.
 - **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
 - Costs: Mine **3**, Barracks **2**, Defense Post **2**, Command Post **4**, War Academy **6**.
 - Cards are not a deck: every draw is an independent uniform choice among the five printed card types, so duplicates are possible.
 - Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is clamped to the cap.
-- War Academies add **+1 to the attack-order cap** while alive. Multiple academies stack.
+- War Academies add **+1 to the attack-order cap** while alive; additional War Academy cards stack this cap bonus.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells currently owned by the structure's owner; it never raises the cost of that owner's attacks into neutral or enemy territory.
 - Structure placement has an **8 px centre-to-centre exclusion radius**. The existing cell and every other structure block a drop inside that radius.
 
-| Card         | Cost | Effect                                                                |
-| ------------ | ---- | --------------------------------------------------------------------- |
-| Mine         | 3    | +1 income every 10 seconds                                            |
-| Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per Barracks  |
-| Defense Post | 2    | +5 defense to friendly pixels in a 16 px radius; multiple posts stack |
-| Command Post | 4    | +1 attack order every 60 seconds                                      |
-| War Academy  | 6    | +1 attack-order cap                                                   |
+| Card         | Cost | Effect                                                            |
+| ------------ | ---- | ----------------------------------------------------------------- |
+| Mine         | 3    | +1 income every 10 seconds                                        |
+| Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per stack |
+| Defense Post | 2    | +5 defense to friendly pixels in a 16 px radius; stacks           |
+| Command Post | 4    | +1 attack order every 60 seconds                                  |
+| War Academy  | 6    | +1 attack-order cap                                               |
 
 Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
+
+### 4.18 Districts and structure stacking
+
+- Every **buildable** structure seeds a **district** for its owner. State capitals are special aura anchors and do not claim districts, so the starting territory remains buildable.
+- Districts are computed as a constrained Voronoi map: an owned cell joins the nearest eligible structure of its owner, with ties broken by structure type code then structure id.
+- A district cannot exceed its structure's `districtRange`, cannot leave the owner's borders, and cannot overlap another district. Cells outside every structure's range remain unassigned.
+- Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
+- A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
+- Auras apply only within the owning structure's district (State auras use their radius around the capital).
+- Each stack increases the structure's effect: income, aura defense, attack strength, order gain, or order cap.
+- Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
+
+| Structure    | District range | Stack effect                     |
+| ------------ | -------------: | -------------------------------- |
+| Mine         |          32 px | +1 income per interval per stack |
+| Barracks     |          44 px | +1 attack strength per stack     |
+| Defense Post |          40 px | +5 defense per stack             |
+| Command Post |          32 px | +1 order per 60s per stack       |
+| War Academy  |          32 px | +1 cap per stack                 |
+
+District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -546,10 +568,12 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
-- [x] A live State structure adds 20 defense within 12 px; the bonus disappears when the structure is destroyed.
+- [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
 - [x] The human starts with three cards and 3 gold, earns income, can drag cards onto owned land, and can refresh the hand.
 - [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
 - [x] Attack orders start full, are spent per launch, and grant +1 every 10 seconds up to the cap; bot orders use the same rules.
+- [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
+- [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts grant orders on 60-second pulses, and War Academies raise the cap.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).

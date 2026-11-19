@@ -1,10 +1,15 @@
-import { ELEVATION_LEVELS, PALETTE } from '../constants';
+import { PALETTE } from '../constants';
 import type { TerritorySimulation } from '../simulation';
 import { MapCamera } from './camera';
 import { TERRITORY_SHADER } from './territory.wgsl';
 
 const UNIFORM_FLOATS = 16;
 const MAX_DEVICE_PIXEL_RATIO = 2;
+
+/** Low 3 bits: elevation tier. Upper 5 bits: district palette code (0 = none). */
+function controlAlpha(elevation: number, districtColor: number): number {
+	return ((districtColor & 31) << 3) | (elevation & 7);
+}
 /**
  * Smaller tiles matter in the 108-state stress build: hundreds of attack
  * fronts can change scattered pixels in one tick. 64×64 tiles would upload
@@ -251,8 +256,13 @@ export class TerritoryRenderer {
 	 * Apply a completed simulation tick. Must be called before the next tick so
 	 * the packed change buffer is still valid.
 	 */
-	applyChanges(changes: Uint32Array, count: number, overflow = false): void {
-		if (overflow) {
+	applyChanges(
+		changes: Uint32Array,
+		count: number,
+		overflow = false,
+		districtsChanged = false
+	): void {
+		if (overflow || districtsChanged) {
 			this.rebuildFromSimulation();
 			this.queueFullUpload();
 			return;
@@ -275,6 +285,10 @@ export class TerritoryRenderer {
 			if (x < 0 || y < 0 || x >= width || y >= height) continue;
 
 			this.controlPixels[index * 4] = owner;
+			this.controlPixels[index * 4 + 3] = controlAlpha(
+				this.simulation.terrainElevation[index],
+				this.simulation.districtColorCodes[index]
+			);
 
 			const tileX = Math.floor(x / UPLOAD_TILE_SIZE);
 			const tileY = Math.floor(y / UPLOAD_TILE_SIZE);
@@ -300,15 +314,13 @@ export class TerritoryRenderer {
 
 	/** Full resync, for reconnects, GPU reset, or a dropped change batch. */
 	rebuildFromSimulation(): void {
-		const { owners, terrain, terrainShade, terrainElevation } = this.simulation;
+		const { owners, terrain, terrainShade, terrainElevation, districtColorCodes } = this.simulation;
 		for (let i = 0; i < owners.length; i++) {
 			const offset = i * 4;
 			this.controlPixels[offset] = owners[i];
 			this.controlPixels[offset + 1] = terrain[i] ? 255 : 0;
 			this.controlPixels[offset + 2] = terrainShade[i];
-			this.controlPixels[offset + 3] = Math.round(
-				(terrainElevation[i] / (ELEVATION_LEVELS - 1)) * 255
-			);
+			this.controlPixels[offset + 3] = controlAlpha(terrainElevation[i], districtColorCodes[i]);
 		}
 	}
 
@@ -394,15 +406,13 @@ export class TerritoryRenderer {
 	}
 
 	private buildControlTexture(): void {
-		const { owners, terrain, terrainShade, terrainElevation } = this.simulation;
+		const { owners, terrain, terrainShade, terrainElevation, districtColorCodes } = this.simulation;
 		for (let i = 0; i < owners.length; i++) {
 			const offset = i * 4;
 			this.controlPixels[offset] = owners[i];
 			this.controlPixels[offset + 1] = terrain[i] ? 255 : 0;
 			this.controlPixels[offset + 2] = terrainShade[i];
-			this.controlPixels[offset + 3] = Math.round(
-				(terrainElevation[i] / (ELEVATION_LEVELS - 1)) * 255
-			);
+			this.controlPixels[offset + 3] = controlAlpha(terrainElevation[i], districtColorCodes[i]);
 		}
 	}
 

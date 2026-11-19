@@ -9,6 +9,7 @@ export const DEFENSE_POST_DEFINITION: StructureDefinition = {
 	cost: 2,
 	buildable: true,
 	accent: '#63c6d7',
+	districtRange: 40,
 	effects: [
 		{
 			kind: 'defense-aura',

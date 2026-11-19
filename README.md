@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.9.4).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.11.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -26,8 +26,9 @@
 | Attack stress   | 108 states, State structures, three growth layers, 3 human / 2 bot attack orders with +1 per 10s up to cap, 30 attack points/front/tick, terrain defense |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail               |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                                  |
-| State auras     | Live capitals project a 12 px field of +20 defense, rendered as dashed rings at combat zoom                                                              |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                       |
 | Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), five card types, drag/drop build, paid hand refresh, order cards                                              |
+| Districts       | Bounded owner-local Voronoi districts, type tint/boundaries, aura clipping, same-type stacking                                                           |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                       |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                 |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout              |
@@ -102,7 +103,7 @@ The map has six discrete elevation tiers: **lowland, plains, hills, highlands, m
 | -------------------------------- | ----------------------------------------------- |
 | Base defense                     | `1 + elevation tier` (1–6)                      |
 | Occupied bonus                   | `+1`                                            |
-| State aura                       | `+20` within 12 px, max once                    |
+| State aura                       | `+20` within 16 px, max once                    |
 | Attack points per front per tick | 30                                              |
 | Capture cost                     | Target pixel defense                            |
 | Attack orders                    | Start 3 human / 2 bots; +1 per 10s, cap-limited |
@@ -127,7 +128,7 @@ Circular and smooth both grow radially from the border and can look similar by d
 
 Each state starts with one **State structure** at its capital. It is the anchor for that state's protected mainland: every territory component connected to a live State structure cannot be annexed. The structure is visible as a large owner-colored circle with a cream capital star on the map, and a ringed dot on the minimap.
 
-The State also projects a **12 px defensive aura** that adds **+20 defense** to every land pixel inside it. Overlapping auras use the strongest bonus, not a sum. At tactical zoom the aura draws as a faint owner-colored field with a dashed boundary; at atlas zoom it is hidden under the capital marker.
+The State also projects a **16 px defensive aura** that adds **+20 defense** to every land pixel inside it. Overlapping auras use the strongest bonus, not a sum. Aura circles were removed; districts provide the territorial tint instead.
 
 State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner; its aura disappears immediately, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
 
@@ -147,7 +148,30 @@ The hand is filled by independent random draws from the five-card pool, so dupli
 
 Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks.
 
-Structures must be at least **8 px apart** (centre to centre); dropping a card too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
+### Districts
+
+Every buildable structure claims a **district** from its owner's territory. State capitals are aura anchors only; they do not claim a district, so they never lock the whole starting territory out of building:
+
+- districts are a constrained Voronoi split: each owned cell belongs to the nearest eligible structure of that owner;
+- a district never crosses an ownership border or exceeds its structure's range;
+- districts cannot overlap;
+- auras only affect the owning structure's district;
+- multiple structures and districts of the same type are allowed;
+- dropping the same type inside a district **stacks** onto that district's structure, multiplying its effect;
+- dropping the same type outside all districts creates another structure/district;
+- a different type cannot be dropped inside any existing district.
+
+| Structure    | District range | Stack effect       |
+| ------------ | -------------: | ------------------ |
+| Mine         |             32 | +1 income          |
+| Barracks     |             44 | +1 attack strength |
+| Defense Post |             40 | +5 defense         |
+| Command Post |             32 | +1 order per 60s   |
+| War Academy  |             32 | +1 order cap       |
+
+District pixels receive a subtle structure-type tint, a per-district brightness variant, and darkened boundaries in the WebGPU territory shader. This keeps even adjacent same-type districts distinguishable.
+
+Structures must be at least **8 px apart** (centre to centre); dropping a new type too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, leave when played or refreshed, flip into new positions, lift on hover, and tilt while dragged. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 

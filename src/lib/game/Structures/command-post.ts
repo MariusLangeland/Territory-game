@@ -7,6 +7,7 @@ export const COMMAND_POST_DEFINITION: StructureDefinition = {
 	cost: 4,
 	buildable: true,
 	accent: '#95e07a',
+	districtRange: 32,
 	effects: [
 		{
 			kind: 'order-gain',

@@ -115,11 +115,12 @@ Potential optimizations if needed:
 - Claim-provenance writes on every capture and mutual-front checks.
 - Per-capture defense lookup from elevation + occupancy + aura, plus attacker Barracks strength.
 - Aura overlay (friendly-owned State/Defense Post fields) built at start, rebuilt on structure changes, and locally recomputed for captured cells.
+- District Voronoi pass over owner-local structure ranges; full recompute on structure creation/destruction, single-cell update on ordinary captures. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 8 MiB and palette codes add 2 MiB per simulation.
 - Attack-order grants and cap scans; Command Post pulses every 60 seconds.
 - Human income check and card command validation; card RNG only on starting hand/refresh.
 - Structure lookup on claims and structure metadata in checksums.
 - Integrity scan once per second: component labeling plus detached-component border counts.
-- Structure overlay: 15/11 px State capitals, 10 px type-specific buildable icons, and visible aura fields per rendered frame on a 2D canvas. Icon radii are camera-independent screen pixels.
+- Structure overlay: 15/11 px State capitals, 10 px type-specific buildable icons, and stack-count badges per rendered frame on a 2D canvas. Aura circles were removed. Icon radii are camera-independent screen pixels. District tint/boundaries are decoded from the packed control alpha in the territory shader.
 - Card hand: at most three DOM cards, gold/income readout, refresh button; transitions/flip/hover/drag are compositor-friendly CSS/Svelte animations. Drag/drop conversion is input-only.
 
 No per-cell object allocation. Attack frontiers use flat arrays/heaps and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.
@@ -173,7 +174,7 @@ Replacing per-attack Set bookkeeping with flat frontier structures also cut memo
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
 | Node benchmark RSS (five worlds)        | ~240–280 MiB                        |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~240–280 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 4 MiB per simulation. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~240–280 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
 
 ---
 

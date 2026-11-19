@@ -240,16 +240,16 @@ Conflict and integrity state:
 
 Structures:
 
-- live structure ids, types, owners, map cells, and effect descriptors are part of the authoritative snapshot (`structures`);
+- live structure ids, types, owners, map cells, stack counts, and effect descriptors are part of the authoritative snapshot (`structures`);
 - capturing a structure cell destroys it at the same tick, removes its aura, and changes annexation protection immediately;
 - clients may draw structures and auras from the snapshot, but the server owns placement, destruction, effects, and protection;
-- aura defense is derived from live structure effects and is not sent as per-pixel state;
+- aura defense and district assignment are derived from live structure effects/positions and are not sent as per-pixel authoritative state; clients recompute them with the same Voronoi and ownership rules;
 - future build/transfer commands must be tick-stamped and authorized.
 
 Player economy and cards:
 
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
-- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, occupied structure cells, and the 8 px structure exclusion radius;
+- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility;
 - card draws use the seeded authoritative card RNG; clients never choose the drawn type;
 - attack-order grants, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;

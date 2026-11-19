@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.9.4. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.11.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.4. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.11.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -76,11 +76,16 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, capture counts, and lifetime.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
 - `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks attack strength.
-- `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts), only on cells owned by the structure owner. Rebuilt on structure changes; captured cells are locally recomputed.
+- `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts), only on cells owned by the structure owner and covered by that structure's district. State auras use their fixed radius. Rebuilt on structure changes; captured cells are locally recomputed.
+- `districtTypes: Uint8Array` — structure-type code of each cell's district, or 0.
+- `districtStructureIds: Uint32Array` — winning structure id for each district cell; needed now that an owner can have multiple same-type structures.
+- `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
+- Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
 - Human economy: `gold`, `hand`, dedicated `cardRng`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
 - Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap; Command Posts grant extra orders on their pulse. `nextAttackOrderGrantTick` and `nextOrderBonusTick` schedule the timers.
 - Start hand: three independent draws from the five-type buildable pool (with replacement). Bots do not build cards yet.
+- Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies income, aura defense, attack strength, order gain, and order cap. Stacking does not change its district.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -203,7 +208,13 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - Command Post: `order-gain`, +1 attack order on the global 60-second pulse.
 - War Academy: `order-cap`, +1 attack-order cap.
 
-`simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner. `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
+`simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner **or outside that structure's district** (State auras use their radius, with no district). `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
+
+### Districts
+
+`simulation.rebuildDistricts` clears the district arrays, then for each buildable structure scans its `districtRange` bounding box. Every owned cell in range is assigned the nearest eligible structure of that owner; distance ties break on structure type code then id. The result is a Voronoi partition constrained to current ownership and each structure's range, with no overlaps. `districtStructureIds` records the winning structure so same-type districts remain distinct; `districtColorCodes` gives each a render palette variant. `updateDistrictAt` handles an ordinary ownership change by reassigning just that cell.
+
+Placing a new type requires an unassigned owned cell outside all districts. If the target is inside a same-type district, that district's structure's `stacks` is incremented. If the same type lands outside all districts, a new structure and district are created. Different types inside any district are rejected. Full district recomputation runs on structure creation/destruction; stacking leaves the district map unchanged.
 
 The scan is preallocated and runs at most once per second (or immediately after a mutual cancellation with a cooldown). Labeling is single-threaded and deterministic.
 
@@ -222,7 +233,7 @@ type GameCommand =
 	| { type: 'refresh'; playerId; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold, cards, the destination cell, and the 8 px structure exclusion radius again. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
+`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold, cards, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
 
 ### 3.7 Snapshots
 

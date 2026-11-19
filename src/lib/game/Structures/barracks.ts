@@ -9,6 +9,7 @@ export const BARRACKS_DEFINITION: StructureDefinition = {
 	cost: 2,
 	buildable: true,
 	accent: '#ff7868',
+	districtRange: 44,
 	effects: [
 		{
 			kind: 'attack-aura',

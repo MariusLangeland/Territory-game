@@ -53,6 +53,8 @@ export interface StructureDefinition {
 	buildable: boolean;
 	/** UI and map-marker accent used by cards, icons, and selection states. */
 	accent: string;
+	/** Maximum Euclidean claim radius for this structure's district. */
+	districtRange: number;
 	effects: readonly StructureEffect[];
 }
 
@@ -74,6 +76,7 @@ export interface Structure {
 	index: number;
 	x: number;
 	y: number;
+	stacks: number;
 	effects: readonly StructureEffect[];
 }
 
@@ -84,5 +87,6 @@ export interface PublicStructure {
 	ownerId: number;
 	x: number;
 	y: number;
+	stacks: number;
 	effects: readonly StructureEffect[];
 }

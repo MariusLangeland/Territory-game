@@ -11,6 +11,8 @@ import { TerritorySimulation } from './simulation';
 import {
 	BUILDABLE_STRUCTURE_TYPES,
 	DEFENSE_POST_DEFENSE,
+	STRUCTURE_DEFINITIONS,
+	STRUCTURE_TYPE_CODES,
 	type BuildableStructureType
 } from './Structures';
 
@@ -19,7 +21,18 @@ function findBuildCell(sim: TerritorySimulation): number {
 		if (sim.owners[i] !== HUMAN_PLAYER_ID || !sim.terrain[i] || sim.structures.at(i)) continue;
 		const x = i % sim.width;
 		const y = (i - x) / sim.width;
+		if (sim.getDistrictType(x, y) !== 0) continue;
 		if (!sim.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING)) return i;
+	}
+	return -1;
+}
+
+function findDistrictCell(sim: TerritorySimulation, code: number): number {
+	for (let i = 0; i < sim.owners.length; i++) {
+		if (sim.owners[i] !== HUMAN_PLAYER_ID || !sim.terrain[i] || sim.structures.at(i)) continue;
+		const x = i % sim.width;
+		const y = (i - x) / sim.width;
+		if (sim.getDistrictType(x, y) === code) return i;
 	}
 	return -1;
 }
@@ -70,6 +83,62 @@ describe('player economy and cards', () => {
 		expect(sim.income).toBe(BASE_GOLD_INCOME + 1);
 	});
 
+	it('forms bounded, non-overlapping owner districts', () => {
+		const sim = new TerritorySimulation({ seed: 515151 });
+		buildCard(sim, 'mine');
+		for (let i = 0; i < sim.districtTypes.length; i++) {
+			const code = sim.districtTypes[i];
+			if (code === 0) continue;
+			const owner = sim.owners[i];
+			expect(owner).toBeGreaterThan(0);
+			if (owner !== HUMAN_PLAYER_ID) continue;
+			const structureId = sim.districtStructureIds[i];
+			expect(structureId).toBeGreaterThan(0);
+			const structure = sim.structures.byId(structureId);
+			expect(structure).toBeDefined();
+			if (!structure) continue;
+			expect(structure.ownerId).toBe(owner);
+			expect(STRUCTURE_TYPE_CODES[structure.type]).toBe(code);
+			const x = i % sim.width;
+			const y = (i - x) / sim.width;
+			const dx = x - structure.x;
+			const dy = y - structure.y;
+			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			expect(dx * dx + dy * dy).toBeLessThanOrEqual(range * range);
+		}
+	});
+
+	it('stacks the same structure type inside its district', () => {
+		const sim = new TerritorySimulation({ seed: 616161 });
+		const { index } = buildCard(sim, 'mine');
+		const structure = sim.structures.at(index);
+		expect(structure?.stacks).toBe(1);
+		sim.hand = [{ id: 8801, type: 'mine' }];
+		sim.gold = 10;
+		const result = sim.playCard(
+			HUMAN_PLAYER_ID,
+			8801,
+			index % sim.width,
+			Math.floor(index / sim.width)
+		);
+		expect(result.ok).toBe(true);
+		sim.step();
+		expect(sim.structures.all.filter((entry) => entry.type === 'mine')).toHaveLength(1);
+		expect(sim.structures.at(index)?.stacks).toBe(2);
+		expect(sim.income).toBe(BASE_GOLD_INCOME + 2);
+
+		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.mine);
+		expect(other).toBeGreaterThan(-1);
+		if (other < 0) return;
+		const x = other % sim.width;
+		const y = (other - x) / sim.width;
+		sim.hand = [{ id: 8802, type: 'defense-post' }];
+		sim.gold = 10;
+		const blocked = sim.playCard(HUMAN_PLAYER_ID, 8802, x, y);
+		expect(blocked.ok).toBe(false);
+		expect(blocked.reason).toBe('inside-district');
+	});
+
 	it('refreshes the whole hand for one gold', () => {
 		const sim = new TerritorySimulation({ seed: 864209 });
 		const previousIds = sim.hand.map((card) => card.id);
@@ -95,29 +164,74 @@ describe('player economy and cards', () => {
 		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
 	});
 
-	it('rejects structures inside the minimum spacing radius', () => {
+	it('multiplies a Defense Post aura when stacked', () => {
+		const sim = new TerritorySimulation({ seed: 727272 });
+		const { index } = buildCard(sim, 'defense-post');
+		const x = index % sim.width;
+		const y = (index - x) / sim.width;
+		const before = sim.getAuraDefense(x, y);
+		sim.hand = [{ id: 9901, type: 'defense-post' }];
+		sim.gold = 10;
+		expect(sim.playCard(HUMAN_PLAYER_ID, 9901, x, y).ok).toBe(true);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(2);
+		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
+	});
+
+	it('rejects a different structure inside an existing district', () => {
 		const sim = new TerritorySimulation({ seed: 424242 });
-		const start = sim.map.starts[HUMAN_PLAYER_ID - 1];
-		let blocked: { x: number; y: number } | null = null;
-		for (let dy = -7; dy <= 7 && !blocked; dy++) {
-			for (let dx = -7; dx <= 7; dx++) {
-				const x = start.x + dx;
-				const y = start.y + dy;
-				const index = y * sim.width + x;
-				if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
-				if (sim.structures.at(index)) continue;
-				if (dx * dx + dy * dy >= STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) continue;
-				blocked = { x, y };
-				break;
-			}
-		}
-		expect(blocked).not.toBeNull();
-		if (!blocked) return;
+		buildCard(sim, 'mine');
+		const blocked = findDistrictCell(sim, STRUCTURE_TYPE_CODES.mine);
+		expect(blocked).toBeGreaterThan(-1);
+		if (blocked < 0) return;
 		sim.hand = [{ id: 7001, type: 'defense-post' }];
 		sim.gold = 2;
-		const result = sim.playCard(HUMAN_PLAYER_ID, 7001, blocked.x, blocked.y);
+		const result = sim.playCard(
+			HUMAN_PLAYER_ID,
+			7001,
+			blocked % sim.width,
+			Math.floor(blocked / sim.width)
+		);
 		expect(result.ok).toBe(false);
-		expect(result.reason).toBe('too-close');
+		expect(result.reason).toBe('inside-district');
+	});
+
+	it('allows another district of the same structure type outside the first', () => {
+		const sim = new TerritorySimulation({ seed: 919191 });
+		const first = buildCard(sim, 'mine');
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		let secondIndex = -1;
+		for (let i = 0; i < sim.owners.length; i++) {
+			if (!sim.terrain[i] || sim.structures.at(i)) continue;
+			const x = i % sim.width;
+			const y = (i - x) / sim.width;
+			const dx = x - (first.index % sim.width);
+			const dy = y - Math.floor(first.index / sim.width);
+			if (dx * dx + dy * dy <= 40 * 40) continue;
+			if (sim.getDistrictType(x, y) !== 0) continue;
+			internals.claim(i, HUMAN_PLAYER_ID, 999);
+			secondIndex = i;
+			break;
+		}
+		expect(secondIndex).toBeGreaterThan(-1);
+		if (secondIndex < 0) return;
+		sim.hand = [{ id: 8803, type: 'mine' }];
+		sim.gold = 10;
+		const result = sim.playCard(
+			HUMAN_PLAYER_ID,
+			8803,
+			secondIndex % sim.width,
+			Math.floor(secondIndex / sim.width)
+		);
+		expect(result.ok).toBe(true);
+		sim.step();
+		const mines = sim.structures.all.filter((entry) => entry.type === 'mine');
+		expect(mines).toHaveLength(2);
+		expect(
+			sim.getDistrictStructureId(secondIndex % sim.width, Math.floor(secondIndex / sim.width))
+		).not.toBe(sim.structures.at(first.index)?.id);
 	});
 
 	it('razes a captured Mine and drops its income', () => {
@@ -145,14 +259,15 @@ describe('player economy and cards', () => {
 		const postX = postIndex % sim.width;
 		const postY = (postIndex - postX) / sim.width;
 		let target = -1;
-		for (let dy = -7; dy <= 7 && target < 0; dy++) {
-			for (let dx = -7; dx <= 7; dx++) {
+		for (let dy = -15; dy <= 15 && target < 0; dy++) {
+			for (let dx = -15; dx <= 15; dx++) {
 				const x = postX + dx;
 				const y = postY + dy;
 				const index = y * sim.width + x;
 				if (index === postIndex) continue;
 				if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
 				if (sim.terrain[index] === 0 || sim.structures.at(index)) continue;
+				if (sim.getDistrictType(x, y) !== STRUCTURE_TYPE_CODES['defense-post']) continue;
 				target = index;
 				break;
 			}

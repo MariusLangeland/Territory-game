@@ -190,44 +190,6 @@
 			context.clearRect(0, 0, structureCanvas.width, structureCanvas.height);
 			context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-			// Auras render beneath every capital so markers stay crisp. At atlas
-			// zoom the aura is smaller than the marker and is intentionally hidden.
-			for (const structure of simulation.structures.all) {
-				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
-				for (const effect of structure.effects) {
-					if (effect.kind !== 'defense-aura' && effect.kind !== 'attack-aura') continue;
-					const auraRadius = effect.radius * camera.scale;
-					if (auraRadius < 16) continue;
-					if (
-						point.x < -auraRadius ||
-						point.y < -auraRadius ||
-						point.x > width + auraRadius ||
-						point.y > height + auraRadius
-					) {
-						continue;
-					}
-
-					const human = structure.ownerId === HUMAN_PLAYER_ID;
-					const attackAura = effect.kind === 'attack-aura';
-					const color = attackAura
-						? ([255, 184, 94] as const)
-						: colorForPlayer(structure.ownerId).rgb;
-					context.beginPath();
-					context.arc(point.x, point.y, auraRadius, 0, Math.PI * 2);
-					context.fillStyle = attackAura
-						? 'rgba(255, 184, 94, 0.045)'
-						: `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.16 : 0.085})`;
-					context.fill();
-					context.setLineDash(attackAura ? [2, 7] : [5, 5]);
-					context.lineWidth = human ? 1.6 : 1.2;
-					context.strokeStyle = attackAura
-						? 'rgba(255, 184, 94, 0.42)'
-						: `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.68 : 0.45})`;
-					context.stroke();
-					context.setLineDash([]);
-				}
-			}
-
 			for (const structure of simulation.structures.all) {
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
 				if (point.x < -18 || point.y < -18 || point.x > width + 18 || point.y > height + 18) {
@@ -296,6 +258,23 @@
 				} else {
 					drawWarAcademy(context, x, y, radius);
 				}
+
+				if (structure.stacks > 1) {
+					const badgeX = x + radius * 0.78;
+					const badgeY = y + radius * 0.78;
+					context.beginPath();
+					context.arc(badgeX, badgeY, 6.5, 0, Math.PI * 2);
+					context.fillStyle = 'rgba(5, 14, 18, 0.96)';
+					context.fill();
+					context.lineWidth = 1;
+					context.strokeStyle = accent;
+					context.stroke();
+					context.fillStyle = '#fff7df';
+					context.font = '600 8px ui-monospace, monospace';
+					context.textAlign = 'center';
+					context.textBaseline = 'middle';
+					context.fillText(String(structure.stacks), badgeX, badgeY + 0.5);
+				}
 			}
 		}
 
@@ -314,7 +293,12 @@
 
 				while (accumulator >= TICK_MS && steps < 4 && !simulation.ended) {
 					const result = simulation.step();
-					renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow);
+					renderer.applyChanges(
+						result.changes,
+						result.changeCount,
+						result.changesOverflow,
+						result.districtsChanged
+					);
 					latestSnapshot = result.snapshot;
 					pendingEvents.push(...result.events);
 					accumulator -= TICK_MS;

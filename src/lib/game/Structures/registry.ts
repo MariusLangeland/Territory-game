@@ -4,6 +4,7 @@ import type { Structure, StructureType } from './types';
 export class StructureRegistry {
 	private readonly items: Structure[] = [];
 	private readonly byIndex = new Map<number, Structure>();
+	private readonly byStructureId = new Map<number, Structure>();
 	private readonly byOwner = new Map<number, Structure[]>();
 	private nextId = 1;
 
@@ -16,10 +17,12 @@ export class StructureRegistry {
 			index,
 			x,
 			y,
+			stacks: 1,
 			effects: effectsForType(type)
 		};
 		this.items.push(structure);
 		this.byIndex.set(index, structure);
+		this.byStructureId.set(structure.id, structure);
 
 		let ownerStructures = this.byOwner.get(ownerId);
 		if (!ownerStructures) {
@@ -32,6 +35,10 @@ export class StructureRegistry {
 
 	at(index: number): Structure | undefined {
 		return this.byIndex.get(index);
+	}
+
+	byId(structureId: number): Structure | undefined {
+		return this.byStructureId.get(structureId);
 	}
 
 	/** True when a structure centre lies inside the forbidden build radius. */
@@ -49,11 +56,21 @@ export class StructureRegistry {
 		return this.byOwner.get(ownerId) ?? [];
 	}
 
+	forOwnerType(ownerId: number, type: StructureType): Structure | undefined {
+		return this.byOwner.get(ownerId)?.find((structure) => structure.type === type);
+	}
+
+	reinforce(structure: Structure): number {
+		structure.stacks++;
+		return structure.stacks;
+	}
+
 	destroy(structure: Structure): boolean {
 		const position = this.items.indexOf(structure);
 		if (position < 0) return false;
 		this.items.splice(position, 1);
 		this.byIndex.delete(structure.index);
+		this.byStructureId.delete(structure.id);
 
 		const ownerStructures = this.byOwner.get(structure.ownerId);
 		if (ownerStructures) {

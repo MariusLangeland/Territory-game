@@ -44,6 +44,31 @@ fn paletteAt(owner: u32) -> vec3<f32> {
   return textureSampleLevel(paletteTexture, mapSampler, vec2<f32>(index, 0.5), 0.0).rgb;
 }
 
+fn elevationOf(control: vec4<f32>) -> f32 {
+  return f32(u32(round(control.a * 255.0)) & 7u);
+}
+
+fn districtOf(control: vec4<f32>) -> u32 {
+  return u32(round(control.a * 255.0)) >> 3u;
+}
+
+fn districtColor(code: u32) -> vec3<f32> {
+  if (code == 0u) { return vec3<f32>(0.0); }
+  let group = (code - 1u) / 4u;
+  let variant = (code - 1u) % 4u;
+  var base = vec3<f32>(0.0);
+  switch group {
+    case 0u: { base = vec3<f32>(0.95, 0.90, 0.74); }
+    case 1u: { base = vec3<f32>(0.96, 0.70, 0.30); }
+    case 2u: { base = vec3<f32>(0.96, 0.40, 0.34); }
+    case 3u: { base = vec3<f32>(0.34, 0.76, 0.82); }
+    case 4u: { base = vec3<f32>(0.52, 0.86, 0.45); }
+    default: { base = vec3<f32>(0.72, 0.58, 0.96); }
+  }
+  let variantScale = 0.88 + f32(variant) * 0.07;
+  return clamp(base * variantScale, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 fn elevationColor(level: f32) -> vec3<f32> {
   if (level >= 4.5) {
     return vec3<f32>(0.78, 0.82, 0.80);
@@ -100,7 +125,8 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let owner = u32(round(control.r * 255.0));
   let isLand = control.g > 0.5;
   let shade = control.b;
-  let elevation = control.a;
+  let elevation = elevationOf(control);
+  let district = districtOf(control);
 
   let west = controlAt(uv - vec2<f32>(texel.x, 0.0));
   let east = controlAt(uv + vec2<f32>(texel.x, 0.0));
@@ -122,10 +148,23 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   if (isLand) {
     let base = paletteAt(owner);
     let tint = 0.64 + shade * 0.52;
-    let level = round(elevation * 5.0);
+    let level = elevation;
     let terrainColor = elevationColor(level);
     let terrainMix = select(0.52, 0.18, owner > 0u);
     color = mix(base * tint, terrainColor * (0.58 + shade * 0.52), terrainMix);
+
+    // Districts are a subtle structure-type wash plus a soft shared boundary.
+    if (owner > 0u && district > 0u) {
+      color = mix(color, districtColor(district), 0.33);
+      let districtEdge =
+        districtOf(west) != district ||
+        districtOf(east) != district ||
+        districtOf(north) != district ||
+        districtOf(south) != district;
+      if (districtEdge) {
+        color = mix(color, color * 0.4, 0.7);
+      }
+    }
 
     // High ground reads as bright rock/snow even inside an owner's color.
     let snow = smoothstep(4.1, 5.0, level);
@@ -154,8 +193,8 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     // A subtle contour line at elevation-tier boundaries. Ownership changes do
     // not affect this channel.
     let elevationEdge = max(
-      max(abs(elevation - west.a), abs(elevation - east.a)),
-      max(abs(elevation - north.a), abs(elevation - south.a))
+      max(abs(elevation - elevationOf(west)), abs(elevation - elevationOf(east))),
+      max(abs(elevation - elevationOf(north)), abs(elevation - elevationOf(south)))
     );
     if (elevationEdge > 0.04) {
       color = mix(color, color * 0.80, 0.45);
