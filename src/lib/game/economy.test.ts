@@ -201,6 +201,16 @@ describe('player economy and cards', () => {
 		const structure = sim.structures.at(index);
 		expect(structure?.stacks).toBe(1);
 		sim.hand = [{ id: 8801, type: 'mine' }];
+		sim.gold = 3;
+		const tooPoor = sim.playCard(
+			HUMAN_PLAYER_ID,
+			8801,
+			index % sim.width,
+			Math.floor(index / sim.width)
+		);
+		expect(tooPoor.ok).toBe(false);
+		expect(tooPoor.reason).toBe('no-gold');
+
 		sim.gold = 10;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
@@ -212,6 +222,7 @@ describe('player economy and cards', () => {
 		sim.step();
 		expect(sim.structures.all.filter((entry) => entry.type === 'mine')).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
+		expect(sim.gold).toBe(6);
 		expect(sim.income).toBe(BASE_GOLD_INCOME + 2);
 
 		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.mine);

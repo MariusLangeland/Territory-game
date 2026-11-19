@@ -249,7 +249,7 @@ Structures:
 Player economy and cards:
 
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
-- builds are tick-stamped commands, validated server-side against permanent-hand membership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility;
+- builds are tick-stamped commands, validated server-side against permanent-hand membership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility; a matching district build pays base cost + current level, while a new structure pays base cost;
 - upgrades are tick-stamped commands targeting an owned district; the server resolves the district's structure, spends `base card cost + projected current level`, and increments stacks without consuming a card;
 - the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - base order grants, continuous Command Post order accrual, continuous Mine income, and War Academy caps are server-authoritative; clients only display the snapshot;

@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.18.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.19.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -137,7 +137,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **3 gold** and **all five build cards** permanently available. Base income is **1 gold per 10 seconds**, plus 1 per live Mine level; it is paid continuously across the interval rather than as a lump sum. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it. Clicking any pixel of one of your districts upgrades its structure by one level for its **base card cost plus its current level**:
+The human commander starts with **3 gold** and **all five build cards** permanently available. Base income is **1 gold per 10 seconds**, plus 1 per live Mine level; it is paid continuously across the interval rather than as a lump sum. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it. Clicking any pixel of one of your districts, or dropping a matching card inside it, upgrades its structure by one level for its **base card cost plus its current level**:
 
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |

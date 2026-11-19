@@ -746,26 +746,27 @@ Barracks previously granted a local defense-piercing aura. The requested model m
 
 ### Context
 
-Click-to-upgrade was priced at the structure's flat card cost, so every level cost the same. The requested economy adds a level-dependent surcharge.
+Click-to-upgrade was priced at the structure's flat card cost, so every level cost the same. The requested economy adds a level-dependent surcharge. The follow-up requirement extends the same rule to matching cards dropped on an already-built district.
 
 ### Decision
 
-- Upgrade cost is `structure card cost + current structure level`.
-- The level is projected through already-queued upgrades for the same district, so rapid clicks quote and reserve increasing costs.
-- The quoted cost is stored in the queued `UpgradeCommand`; execution spends that quote and does not consume a card.
-- Card-based stacking (dropping a matching card inside a district) keeps its card cost; only click-to-upgrade uses the level surcharge.
+- Any upgrade to an existing district costs `structure card cost + current structure level`.
+- This applies both to clicking a district and to dropping a matching card inside it. A card that creates a new structure still pays the base card cost.
+- Click upgrades project the level through already-queued upgrades for the same district, so rapid clicks quote and reserve increasing costs. The quoted cost is stored in the queued `UpgradeCommand`.
+- Card stacking recomputes the current level at execution and pays the same surcharge.
+- The card is never consumed.
 
 ### Consequences
 
-- High-level districts become progressively expensive to upgrade.
+- High-level districts become progressively expensive to upgrade through either gesture.
 - The upgrade toast shows the exact level and cost.
-- Pending upgrades reserve their quoted costs and cannot overspend.
-- Flat-cost repeat builds via cards remain available, preserving that purchase path.
+- Pending click upgrades reserve their quoted costs and cannot overspend.
+- A matching card costs more than its printed base when dropped on an existing district; the landing validation shows the dynamic gold requirement.
 
 ### Alternatives considered
 
-- **Apply the surcharge to card stacking too:** would make the card cost label misleading and was not requested.
-- **Compute cost only at execution:** would allow rapid clicks to overspend or fail late.
+- **Apply the surcharge only to clicks:** rejected by the follow-up requirement.
+- **Compute cost only at execution for clicks:** would allow rapid clicks to overspend or fail late.
 - **Exponential cost:** steeper than requested; the rule explicitly says additional gold equal to current level.
 
 ---

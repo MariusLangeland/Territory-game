@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.18.0 (attack stress experiment)  
+**Version:** 0.19.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.18.0, map version 3, protocol draft 25
+**Last synchronized with:** application 0.19.0, map version 3, protocol draft 26
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 25`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 26`.
 
 ### 4.2 Starting positions
 
@@ -316,7 +316,7 @@ The human commander has a small card economy; bots do not build cards yet.
 - Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base card cost + current level` (projected through any already-queued upgrades). No card is consumed.
 - Build and upgrade commands reserve gold against other queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
-- Dropping inside a same-type district **stacks** onto that district's structure; dropping the same type outside all districts creates another structure/district.
+- Dropping inside a same-type district upgrades that district's structure at `base card cost + current level`; dropping the same type outside all districts creates another structure at its base card cost.
 - The build command is queued, applied at the next tick, deducts its cost, keeps the card, and either creates a new structure or adds a stack to the matching district.
 - Cards are permanent actions, not a consumable hand: any affordable card can be bought again immediately. There is no draw, deck, or reroll.
 - Costs: Mine **3**, Barracks **2**, Defense Post **2**, Command Post **4**, War Academy **6**.
