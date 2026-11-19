@@ -101,15 +101,16 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and high-defense captures are visibly slower.
 9. Confirm State structure capital-star circles are drawn at capitals, their aura fields appear at tactical zoom, minimap ringed dots track them, and the commander readout says ANCHORED.
 10. Hover an aura pixel and confirm the defense readout includes `AURA +20` and the total is raised accordingly.
-11. Deploy, drag a card into controlled territory, and confirm gold/card removal/structure placement; try an invalid drop and confirm no cost.
-12. Click Refresh and confirm 1 gold is spent and three fresh cards replace the hand.
-13. Confirm the ORDERS readout drops per launch, accepts up to 3 immediate human attacks, rejects a fourth until refresh, and refills after 10 seconds.
-14. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the refresh cap rises.
-15. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, and a war-feed event appears.
-16. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
-17. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-18. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
-19. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
+11. Deploy, confirm the CCG hand is free-floating at bottom center, has no empty placeholders, and leaves the bottom rail clear; hover and drag cards to see lift/tilt animations.
+12. Drag a card into controlled territory, confirm the card leaves with an animation, gold is spent, and the structure appears; try an invalid drop and confirm no cost.
+13. Click Refresh and confirm 1 gold is spent, old cards animate out, and three fresh cards animate in.
+14. Confirm the ORDERS readout drops per launch, accepts up to 3 immediate human attacks, rejects a fourth until refresh, and refills after 10 seconds.
+15. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the refresh cap rises.
+16. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, and a war-feed event appears.
+17. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
+18. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+19. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
+20. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

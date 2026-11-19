@@ -46,7 +46,8 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - draws defense auras as faint owner-colored fields and attack auras as amber dashed fields, scaled by `effect.radius * camera.scale`; auras smaller than 16 px are hidden under the marker;
 - draws a dark halo, cream ring, and owner-colored disc for every structure;
 - uses a cream five-point capital star for State structures, a pickaxe for Mines, crossed swords for Barracks, a shield for Defense Posts, a command mast for Command Posts, and layered chevrons for War Academies;
-- uses 10/7.5 px radii for human/AI State capitals, 6 px for buildables, plus an extra human capital halo;
+- renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
+- uses 10/7.5 px radii for human/AI State capitals, 7.2 px for buildables, plus an extra human capital halo;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);
 - `pointer-events: none`, so attacks/drags still target the WebGPU canvas;

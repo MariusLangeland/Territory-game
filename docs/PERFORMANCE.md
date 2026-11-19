@@ -120,7 +120,7 @@ Potential optimizations if needed:
 - Structure lookup on claims and structure metadata in checksums.
 - Integrity scan once per second: component labeling plus detached-component border counts.
 - Structure overlay: State capitals, type-specific buildable icons, and visible aura fields per rendered frame on a 2D canvas.
-- Card tray: three DOM cards, gold/income readout, refresh button; drag/drop conversion is input-only.
+- Card hand: at most three DOM cards, gold/income readout, refresh button; transitions/flip/hover/drag are compositor-friendly CSS/Svelte animations. Drag/drop conversion is input-only.
 
 No per-cell object allocation. Attack frontiers use flat arrays/heaps and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.
 

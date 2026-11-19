@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.9.0 (attack stress experiment)  
+**Version:** 0.9.1 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.9.0, map version 3, protocol draft 13
+**Last synchronized with:** application 0.9.1, map version 3, protocol draft 13
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -278,7 +278,7 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - A live State structure projects a **12 px defense aura** adding **+20 defense** to every land pixel in range. The structure cell itself is inside the aura. Overlapping auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - Only State structures anchor protection. Mines, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star. Buildables are smaller owner discs with a type icon (pickaxe, swords, shield, command mast, academy chevrons). The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- State structures are large owner-colored circles with a cream capital star. Buildables are dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
@@ -360,7 +360,9 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
-- Bottom card tray with gold, income, three cards, and Refresh; drag a card into controlled territory to build.
+- A free-floating CCG-style hand at the bottom center; gold and Refresh float at its sides with no enclosing tray and no empty-card placeholders.
+- Cards have frame/art/rules layouts, animate in from below, animate out when played or refreshed, flip-animate on hand changes, lift on hover, and tilt/scale while dragged.
+- The bottom center is reserved for the hand: the recon console moved to the top center and the growth selector to the left rail above the minimap.
 - The ORDERS readout shows available attack orders / refresh cap and updates as orders are spent or refreshed.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.

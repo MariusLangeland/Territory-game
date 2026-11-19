@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.9.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.9.1).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -144,6 +144,8 @@ The human commander starts with **3 gold** and three random cards. Income is **1
 | War Academy  | 6    | +1 attack-order refresh cap                         |
 
 The hand is filled by independent random draws from the five-card pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+
+The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, leave when played or refreshed, flip into new positions, lift on hover, and tilt while dragged. The bottom center is kept clear for the hand; recon and growth controls live above it.
 
 The HUD shows available **attack orders / refresh cap**. Orders refresh every 10 seconds. Command Posts add bonus orders above the cap on their 60-second pulse; War Academies permanently raise the refresh cap while alive.
 

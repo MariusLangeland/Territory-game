@@ -29,6 +29,6 @@ This directory is the long-term reference for the project. Start with the specif
 | ------------------------ | --------- | -------------------------------------------------------- |
 | Map + start generation   | `3`       | `MAP_VERSION` in `src/lib/game/constants.ts`             |
 | Wire protocol draft      | `13`      | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application              | `0.9.0`   | `package.json`                                           |
+| Application              | `0.9.1`   | `package.json`                                           |
 | Simulation tick rate     | 10 Hz     | `TICK_RATE` in `src/lib/game/constants.ts`               |
 | Attack stress experiment | `EXP-001` | [EXPERIMENTS.md](EXPERIMENTS.md)                         |

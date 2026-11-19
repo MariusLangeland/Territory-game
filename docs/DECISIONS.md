@@ -473,7 +473,7 @@ State structures are anchors, but the player needs buildable structures and a re
 - Starting at 3 gold is a provisional choice so the first hand can be played immediately.
 - Refresh replaces rather than refills the hand; this is the chosen interpretation of “draw three back into hand.”
 - Pending commands can race: the first build removes a card, later duplicates fail validation.
-- The card tray is a bottom overlay; drag/drop must work at any camera zoom and must only succeed inside controlled territory.
+- The card hand is a bottom overlay; drag/drop must work at any camera zoom and must only succeed inside controlled territory.
 - Card economy is human-only until bot production/build AI exists.
 
 ### Alternatives considered

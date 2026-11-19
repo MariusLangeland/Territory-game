@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
+	import { STRUCTURE_ACCENTS } from '#lib/game/structures';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import { TerritoryRenderer, type RendererFrameStats } from '#lib/game/render/territory-renderer';
 
@@ -229,27 +230,30 @@
 
 				const human = structure.ownerId === HUMAN_PLAYER_ID;
 				const isState = structure.type === 'state';
-				const radius = isState ? (human ? 10 : 7.5) : 6;
+				const radius = isState ? (human ? 10 : 7.5) : 7.2;
+				const ownerColor = colorForPlayer(structure.ownerId);
+				const accent = STRUCTURE_ACCENTS[structure.type];
 				const x = point.x;
 				const y = point.y;
 
 				// A dark halo keeps every structure readable over bright terrain
-				// and territory colors; the owner disc carries ownership.
+				// and territory colors. State keeps the owner-colored disc; buildables
+				// use a dark badge with an owner ring so their type icon stays legible.
 				context.beginPath();
-				context.arc(x, y, radius + (isState ? 2.8 : 2), 0, Math.PI * 2);
-				context.fillStyle = 'rgba(2, 8, 12, 0.38)';
+				context.arc(x, y, radius + (isState ? 2.8 : 2.4), 0, Math.PI * 2);
+				context.fillStyle = 'rgba(2, 8, 12, 0.42)';
 				context.fill();
 				context.beginPath();
-				context.arc(x, y, radius + (isState ? 1.3 : 1), 0, Math.PI * 2);
-				context.fillStyle = 'rgba(4, 12, 16, 0.9)';
+				context.arc(x, y, radius + (isState ? 1.3 : 1.2), 0, Math.PI * 2);
+				context.fillStyle = 'rgba(4, 12, 16, 0.92)';
 				context.fill();
 
 				context.beginPath();
 				context.arc(x, y, radius, 0, Math.PI * 2);
-				context.fillStyle = colorForPlayer(structure.ownerId).hex;
+				context.fillStyle = isState ? ownerColor.hex : 'rgba(5, 15, 20, 0.96)';
 				context.fill();
-				context.lineWidth = isState ? (human ? 2 : 1.5) : 1.2;
-				context.strokeStyle = 'rgba(252, 246, 225, 0.96)';
+				context.lineWidth = isState ? (human ? 2 : 1.5) : 2.2;
+				context.strokeStyle = isState ? 'rgba(252, 246, 225, 0.96)' : ownerColor.hex;
 				context.stroke();
 
 				if (human && isState) {
@@ -260,8 +264,8 @@
 					context.stroke();
 				}
 
-				context.strokeStyle = 'rgba(255, 248, 225, 0.98)';
-				context.lineWidth = 1.4;
+				context.strokeStyle = isState ? 'rgba(255, 248, 225, 0.98)' : accent;
+				context.lineWidth = isState ? 1.4 : 1.7;
 				context.lineCap = 'round';
 				context.lineJoin = 'round';
 				if (structure.type === 'state') {

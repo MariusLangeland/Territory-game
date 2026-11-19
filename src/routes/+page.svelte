@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import Minimap from '#lib/components/Minimap.svelte';
@@ -22,7 +24,12 @@
 		type GrowthMode
 	} from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
-	import { STRUCTURE_DEFINITIONS, type PublicCard } from '#lib/game/structures';
+	import {
+		STRUCTURE_ACCENTS,
+		STRUCTURE_DEFINITIONS,
+		type BuildableStructureType,
+		type PublicCard
+	} from '#lib/game/structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 
@@ -358,6 +365,21 @@
 
 	function cardDefinition(card: PublicCard) {
 		return STRUCTURE_DEFINITIONS[card.type];
+	}
+
+	function cardCategory(type: BuildableStructureType): string {
+		switch (type) {
+			case 'mine':
+				return 'ECONOMY';
+			case 'barracks':
+				return 'MILITARY';
+			case 'defense-post':
+				return 'FORTIFICATION';
+			case 'command-post':
+				return 'COMMAND';
+			case 'war-academy':
+				return 'DOCTRINE';
+		}
 	}
 
 	function startCardDrag(event: DragEvent, card: PublicCard): void {
@@ -768,25 +790,30 @@
 			</div>
 
 			<div class="hand-row">
-				{#each [0, 1, 2] as slot (`slot-${slot}`)}
-					{@const card = snapshot.hand[slot]}
-					{#if card}
-						{@const definition = cardDefinition(card)}
-						<article
-							class="build-card"
-							class:unaffordable={snapshot.gold < definition.cost}
-							class:dragging={draggingCardId === card.id}
-							draggable="true"
-							ondragstart={(event) => startCardDrag(event, card)}
-							ondragend={endCardDrag}
-							title={`Drag ${definition.label} into your territory`}
-						>
-							<div class="build-card-head">
-								<span>{definition.label}</span>
-								<b>{definition.cost}g</b>
+				{#each snapshot.hand as card, index (card.id)}
+					{@const definition = cardDefinition(card)}
+					{@const accent = STRUCTURE_ACCENTS[card.type]}
+					<article
+						class="build-card"
+						class:unaffordable={snapshot.gold < definition.cost}
+						class:dragging={draggingCardId === card.id}
+						style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
+						draggable={snapshot.gold >= definition.cost}
+						in:fly={{ y: 42, duration: 360, delay: Math.min(index, 2) * 55 }}
+						out:fly={{ y: 28, duration: 240 }}
+						animate:flip={{ duration: 260 }}
+						ondragstart={(event) => startCardDrag(event, card)}
+						ondragend={endCardDrag}
+						title={`Drag ${definition.label} into your territory`}
+					>
+						<div class="card-face">
+							<div class="card-banner">
+								<span>BUILD CARD</span>
+								<div class="card-cost"><b>{definition.cost}</b><small>G</small></div>
 							</div>
-							<div class="build-card-body">
-								<span class="build-card-icon" aria-hidden="true">
+							<h3 class="card-title">{definition.label}</h3>
+							<div class="card-art" aria-hidden="true">
+								<span class="card-art-icon">
 									{#if card.type === 'mine'}
 										<svg viewBox="0 0 24 24">
 											<path d="M4 20 16 8M12 4c3 0 6 1 8 4M8 8c2-2 6-3 9-2" />
@@ -809,14 +836,12 @@
 										</svg>
 									{/if}
 								</span>
-								<p>{definition.description}</p>
 							</div>
-						</article>
-					{:else}
-						<div class="build-card empty">
-							<span>EMPTY</span>
+							<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
+							<p class="card-rules">{definition.description}</p>
+							<div class="card-footer"><span>DRAG TO DEPLOY</span><span>◆</span></div>
 						</div>
-					{/if}
+					</article>
 				{/each}
 			</div>
 
@@ -827,6 +852,7 @@
 				disabled={snapshot.gold < REFRESH_COST}
 				title="Replace your hand with three new cards"
 			>
+				<span class="refresh-glyph" aria-hidden="true">↻</span>
 				<span>REFRESH</span>
 				<small>{REFRESH_COST}g</small>
 			</button>
@@ -835,15 +861,6 @@
 		{#if draggingCardId !== null}
 			<div class="build-drop-hint hud">DROP CARD INSIDE CONTROLLED TERRITORY</div>
 		{/if}
-
-		<div class="key-hints hud">
-			<span><kbd>DRAG</kbd> PAN</span>
-			<span><kbd>SCROLL</kbd> ZOOM</span>
-			<span><kbd>CLICK</kbd> ATTACK</span>
-			<span><kbd>SPACE</kbd> {paused ? 'RESUME' : 'PAUSE'}</span>
-			<span><kbd>F</kbd> FIT</span>
-			<span><kbd>C</kbd> FOCUS</span>
-		</div>
 
 		{#if paused && !showResult}
 			<div class="paused-flag hud">SIMULATION PAUSED <span>SPACE TO RESUME</span></div>
@@ -951,7 +968,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.9.0 / PROTOCOL 13</span>
+				<span>BUILD 0.9.1 / PROTOCOL 13</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1757,7 +1774,8 @@
 
 	.status-console {
 		left: 50%;
-		bottom: 22px;
+		top: 84px;
+		bottom: auto;
 		transform: translateX(-50%);
 		display: flex;
 		align-items: stretch;
@@ -1766,7 +1784,7 @@
 		background: rgba(5, 13, 18, 0.8);
 		backdrop-filter: blur(18px);
 		box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-		animation: hud-in 600ms 220ms ease-out both;
+		animation: hud-fade 600ms 220ms ease-out both;
 	}
 
 	.coords-block,
@@ -1927,31 +1945,40 @@
 
 	.card-tray {
 		left: 50%;
-		bottom: 150px;
+		bottom: 12px;
 		transform: translateX(-50%);
 		display: flex;
-		align-items: stretch;
-		gap: 10px;
-		padding: 7px;
-		border: 1px solid var(--line-strong);
-		background: rgba(5, 13, 18, 0.88);
-		backdrop-filter: blur(16px);
-		box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
-		animation: hud-in 600ms 200ms ease-out both;
+		align-items: flex-end;
+		gap: 16px;
+		padding: 0;
+		border: 0;
+		background: none;
+		backdrop-filter: none;
+		box-shadow: none;
+		pointer-events: none;
+		animation: hud-fade 600ms 200ms ease-out both;
 	}
 
 	.economy-readout {
 		display: flex;
 		flex-direction: column;
+		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		width: 64px;
-		padding: 0 8px;
-		border-right: 1px solid var(--line-soft);
+		width: 68px;
+		margin-bottom: 24px;
+		padding: 11px 8px;
+		border: 1px solid rgba(255, 214, 144, 0.28);
+		background:
+			linear-gradient(150deg, rgba(255, 214, 144, 0.1), transparent 55%), rgba(7, 16, 21, 0.86);
+		box-shadow:
+			0 14px 34px rgba(0, 0, 0, 0.38),
+			inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+		pointer-events: auto;
 	}
 
 	.economy-readout span,
-	.build-card-head span,
 	.refresh-button span {
 		font-family: var(--font-mono);
 		font-size: 6.5px;
@@ -1961,9 +1988,10 @@
 
 	.economy-readout strong {
 		font-family: var(--font-display);
-		font-size: 20px;
-		line-height: 0.9;
+		font-size: 26px;
+		line-height: 0.85;
 		color: #ffd690;
+		text-shadow: 0 0 18px rgba(255, 214, 144, 0.28);
 	}
 
 	.economy-readout small {
@@ -1974,97 +2002,263 @@
 
 	.hand-row {
 		display: flex;
-		gap: 6px;
+		align-items: flex-end;
+		gap: 10px;
+		padding: 0 4px 10px;
+		pointer-events: none;
 	}
 
 	.build-card {
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
-		width: 136px;
-		height: 76px;
-		padding: 6px 8px;
-		border: 1px solid var(--line-strong);
-		background: rgba(255, 255, 255, 0.035);
+		position: relative;
+		z-index: 1;
+		flex: none;
+		width: 156px;
+		height: 224px;
 		cursor: grab;
 		user-select: none;
+		transform: translateY(0) rotate(var(--card-tilt));
+		transform-origin: 50% 100%;
 		transition:
-			border-color 140ms ease,
-			background 140ms ease,
-			opacity 140ms ease;
+			transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
+			filter 200ms ease,
+			opacity 160ms ease;
+		filter: drop-shadow(0 18px 20px rgba(0, 0, 0, 0.42));
+		pointer-events: auto;
 	}
 
 	.build-card:hover {
-		border-color: var(--signal);
-		background: rgba(255, 255, 255, 0.06);
+		z-index: 6;
+		transform: translateY(-18px) rotate(0deg) scale(1.035);
+		filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55));
 	}
 
 	.build-card.dragging {
-		opacity: 0.35;
+		z-index: 8;
+		opacity: 0.4;
+		transform: translateY(-28px) rotate(4deg) scale(0.94);
+		filter: drop-shadow(0 30px 38px rgba(0, 0, 0, 0.65));
+		cursor: grabbing;
 	}
 
 	.build-card.unaffordable {
-		opacity: 0.55;
 		cursor: not-allowed;
+		filter: saturate(0.46) brightness(0.8) drop-shadow(0 12px 16px rgba(0, 0, 0, 0.38));
 	}
 
-	.build-card-head {
+	.build-card.unaffordable:hover {
+		filter: saturate(0.62) brightness(0.9) drop-shadow(0 20px 24px rgba(0, 0, 0, 0.5));
+	}
+
+	.card-face {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		padding: 9px;
+		overflow: hidden;
+		border: 1px solid color-mix(in srgb, var(--card-accent) 58%, #d8cfae 42%);
+		background:
+			radial-gradient(
+				circle at 50% 8%,
+				color-mix(in srgb, var(--card-accent) 16%, transparent),
+				transparent 48%
+			),
+			linear-gradient(150deg, rgba(255, 255, 255, 0.055), transparent 34%),
+			linear-gradient(165deg, #15252c 0%, #0a151b 55%, #071116 100%);
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 248, 220, 0.08),
+			inset 0 0 32px rgba(0, 0, 0, 0.45);
+		clip-path: polygon(
+			11px 0,
+			calc(100% - 11px) 0,
+			100% 11px,
+			100% calc(100% - 11px),
+			calc(100% - 11px) 100%,
+			11px 100%,
+			0 calc(100% - 11px),
+			0 11px
+		);
+	}
+
+	.card-face::before {
+		content: '';
+		position: absolute;
+		inset: 3px;
+		border: 1px solid color-mix(in srgb, var(--card-accent) 24%, transparent);
+		clip-path: inherit;
+		pointer-events: none;
+	}
+
+	.card-face::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			115deg,
+			transparent 35%,
+			rgba(255, 255, 255, 0.08) 48%,
+			transparent 58%
+		);
+		opacity: 0;
+		transition: opacity 220ms ease;
+		pointer-events: none;
+	}
+
+	.build-card:hover .card-face::after {
+		opacity: 1;
+	}
+
+	.card-banner {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		min-height: 28px;
+		font-family: var(--font-mono);
+		font-size: 5.8px;
+		letter-spacing: 0.16em;
+		color: color-mix(in srgb, var(--card-accent) 72%, #f7eed0 28%);
+	}
+
+	.card-cost {
 		display: flex;
 		align-items: baseline;
-		justify-content: space-between;
-		gap: 6px;
+		justify-content: center;
+		gap: 1px;
+		width: 30px;
+		height: 34px;
+		margin-top: -7px;
+		margin-right: -5px;
+		padding-top: 4px;
+		background: radial-gradient(
+			circle at 34% 28%,
+			#fff6cd 0%,
+			#e7c477 34%,
+			#a66b28 72%,
+			#634017 100%
+		);
+		clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+		color: #211508;
+		box-shadow: 0 0 16px color-mix(in srgb, var(--card-accent) 38%, transparent);
 	}
 
-	.build-card-head b {
+	.card-cost b {
+		font-family: var(--font-display);
+		font-size: 15px;
+		line-height: 1;
+	}
+
+	.card-cost small {
 		font-family: var(--font-mono);
-		font-size: 9px;
-		color: #ffd690;
+		font-size: 5.5px;
+		letter-spacing: 0;
 	}
 
-	.build-card-body {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		min-height: 0;
+	.card-title {
+		position: relative;
+		z-index: 1;
+		margin: 1px 0 5px;
+		font-family: var(--font-display);
+		font-size: 17px;
+		font-weight: 500;
+		line-height: 0.95;
+		letter-spacing: 0.02em;
+		color: #fff7df;
+		text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
 	}
 
-	.build-card-icon {
+	.card-art {
+		position: relative;
 		display: grid;
 		place-items: center;
 		flex: none;
-		width: 25px;
-		height: 25px;
-		border: 1px solid var(--line-soft);
-		color: #f7eed0;
+		height: 78px;
+		margin-bottom: 5px;
+		overflow: hidden;
+		border-top: 1px solid color-mix(in srgb, var(--card-accent) 30%, transparent);
+		border-bottom: 1px solid color-mix(in srgb, var(--card-accent) 30%, transparent);
+		background:
+			repeating-linear-gradient(135deg, transparent 0 7px, rgba(255, 255, 255, 0.02) 7px 8px),
+			radial-gradient(
+				circle at 50% 45%,
+				color-mix(in srgb, var(--card-accent) 30%, transparent),
+				transparent 65%
+			),
+			linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.18));
 	}
 
-	.build-card-icon svg {
-		width: 17px;
-		height: 17px;
+	.card-art::before {
+		content: '';
+		position: absolute;
+		width: 82px;
+		height: 82px;
+		border: 1px solid color-mix(in srgb, var(--card-accent) 20%, transparent);
+		border-radius: 50%;
+		box-shadow: 0 0 0 10px color-mix(in srgb, var(--card-accent) 4%, transparent);
+	}
+
+	.card-art-icon {
+		position: relative;
+		z-index: 1;
+		display: grid;
+		place-items: center;
+		width: 48px;
+		height: 48px;
+		color: var(--card-accent);
+		filter: drop-shadow(0 0 14px color-mix(in srgb, var(--card-accent) 45%, transparent));
+	}
+
+	.card-art-icon svg {
+		width: 100%;
+		height: 100%;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 1.5;
+		stroke-width: 1.35;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
 
-	.build-card p {
-		margin: 0;
-		overflow: hidden;
-		font-size: 8px;
-		line-height: 1.3;
-		color: var(--ink-dim);
+	.card-type {
+		position: relative;
+		z-index: 1;
+		margin-bottom: 4px;
+		padding-bottom: 4px;
+		border-bottom: 1px solid rgba(255, 248, 220, 0.11);
+		font-family: var(--font-mono);
+		font-size: 5.8px;
+		letter-spacing: 0.1em;
+		color: color-mix(in srgb, var(--card-accent) 68%, #f7eed0 32%);
 	}
 
-	.build-card.empty {
+	.card-rules {
+		position: relative;
+		z-index: 1;
+		flex: 1;
+		margin: 0;
+		font-size: 9px;
+		line-height: 1.32;
+		color: #c9d4cc;
+	}
+
+	.card-footer {
+		position: relative;
+		z-index: 1;
+		display: flex;
 		align-items: center;
-		justify-content: center;
-		border-style: dashed;
-		color: var(--ink-faint);
+		justify-content: space-between;
+		gap: 8px;
+		margin-top: 4px;
+		padding-top: 4px;
+		border-top: 1px solid rgba(255, 248, 220, 0.1);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: 5.2px;
 		letter-spacing: 0.12em;
-		cursor: default;
+		color: var(--ink-faint);
+	}
+
+	.card-footer span:last-child {
+		color: var(--card-accent);
 	}
 
 	.refresh-button {
@@ -2072,14 +2266,30 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 3px;
-		width: 62px;
-		border: 1px solid var(--line-soft);
-		background: transparent;
+		gap: 2px;
+		width: 66px;
+		min-height: 84px;
+		margin-bottom: 24px;
+		padding: 9px 6px;
+		border: 1px solid rgba(183, 224, 198, 0.26);
+		background:
+			linear-gradient(155deg, rgba(183, 224, 198, 0.08), transparent 55%), rgba(7, 16, 21, 0.86);
+		box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 		cursor: pointer;
+		pointer-events: auto;
 		transition:
-			border-color 140ms ease,
-			color 140ms ease;
+			transform 180ms ease,
+			border-color 180ms ease,
+			background 180ms ease;
+	}
+
+	.refresh-glyph {
+		font-family: var(--font-display);
+		font-size: 24px;
+		line-height: 0.9;
+		color: var(--signal);
+		transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
 	.refresh-button small {
@@ -2090,16 +2300,23 @@
 
 	.refresh-button:hover:not(:disabled) {
 		border-color: var(--signal);
+		background:
+			linear-gradient(155deg, rgba(183, 224, 198, 0.14), transparent 55%), rgba(10, 22, 28, 0.92);
+		transform: translateY(-5px);
+	}
+
+	.refresh-button:hover:not(:disabled) .refresh-glyph {
+		transform: rotate(-190deg);
 	}
 
 	.refresh-button:disabled {
-		opacity: 0.35;
+		opacity: 0.32;
 		cursor: not-allowed;
 	}
 
 	.build-drop-hint {
 		left: 50%;
-		bottom: 246px;
+		bottom: 250px;
 		transform: translateX(-50%);
 		padding: 8px 12px;
 		border: 1px dashed rgba(255, 214, 144, 0.6);
@@ -2112,9 +2329,9 @@
 	}
 
 	.growth-switcher {
-		left: 50%;
-		bottom: 112px;
-		transform: translateX(-50%);
+		left: 22px;
+		bottom: 210px;
+		transform: none;
 		display: flex;
 		align-items: center;
 		gap: 10px;
@@ -2166,21 +2383,6 @@
 		color: #0a1310;
 	}
 
-	.key-hints {
-		left: 50%;
-		bottom: 82px;
-		transform: translateX(-50%);
-		display: flex;
-		gap: 15px;
-		white-space: nowrap;
-		font-family: var(--font-mono);
-		font-size: 7px;
-		letter-spacing: 0.07em;
-		color: var(--ink-faint);
-		opacity: 0.8;
-		animation: hud-in 800ms 500ms ease-out both;
-	}
-
 	kbd {
 		display: inline-block;
 		padding: 2px 4px;
@@ -2193,7 +2395,7 @@
 	}
 
 	.paused-flag {
-		top: 82px;
+		top: 148px;
 		left: 50%;
 		transform: translateX(-50%);
 		padding: 7px 14px;
@@ -2992,6 +3194,24 @@
 		}
 	}
 
+	@keyframes hud-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes hud-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
 	@keyframes veil-in {
 		from {
 			opacity: 0;
@@ -3077,15 +3297,30 @@
 		}
 
 		.build-card {
-			width: 116px;
+			width: 138px;
+			height: 198px;
 		}
 
-		.build-card p {
-			font-size: 7.5px;
+		.card-title {
+			font-size: 15px;
 		}
 
-		.economy-readout {
-			width: 56px;
+		.card-art {
+			height: 64px;
+		}
+
+		.card-rules {
+			font-size: 8px;
+		}
+
+		.economy-readout,
+		.refresh-button {
+			width: 60px;
+		}
+
+		.status-console {
+			left: 22px;
+			transform: none;
 		}
 	}
 
@@ -3112,7 +3347,6 @@
 		}
 
 		.right-rail,
-		.key-hints,
 		.growth-switcher,
 		.clock-block {
 			display: none;
@@ -3121,12 +3355,18 @@
 		.minimap-dock {
 			left: 14px;
 			bottom: 14px;
-			width: 200px;
+			width: 180px;
 		}
 
 		.status-console {
-			bottom: 14px;
+			top: 72px;
+			left: 50%;
+			right: auto;
+			bottom: auto;
+			transform: translateX(-50%);
+			width: auto;
 			height: 45px;
+			max-width: calc(100vw - 24px);
 		}
 
 		.target-block {
@@ -3221,39 +3461,57 @@
 		}
 
 		.card-tray {
-			bottom: 74px;
-			max-width: calc(100vw - 24px);
-			gap: 6px;
-			padding: 5px;
+			bottom: 10px;
+			max-width: calc(100vw - 16px);
+			gap: 8px;
+			padding: 0;
+		}
+
+		.hand-row {
+			gap: 7px;
+			padding-bottom: 8px;
 		}
 
 		.build-card {
-			width: 108px;
-			height: 70px;
+			width: 116px;
+			height: 174px;
 		}
 
-		.build-card p {
-			font-size: 7px;
+		.card-face {
+			padding: 8px;
+		}
+
+		.card-title {
+			font-size: 14px;
+		}
+
+		.card-art {
+			height: 56px;
+		}
+
+		.card-art-icon {
+			width: 40px;
+			height: 40px;
+		}
+
+		.card-rules {
+			font-size: 7.5px;
 		}
 
 		.economy-readout {
-			width: 54px;
-			padding: 0 6px;
+			width: 56px;
+			margin-bottom: 18px;
+			padding: 8px 6px;
 		}
 
 		.refresh-button {
 			width: 56px;
+			min-height: 76px;
+			margin-bottom: 18px;
 		}
 
 		.build-drop-hint {
-			bottom: 170px;
-		}
-
-		.status-console {
-			left: auto;
-			right: 72px;
-			transform: none;
-			max-width: calc(100vw - 300px);
+			bottom: 200px;
 		}
 
 		.coords-block {
@@ -3267,7 +3525,7 @@
 		}
 
 		.paused-flag {
-			top: 66px;
+			top: 126px;
 			font-size: 7px;
 		}
 	}
@@ -3294,41 +3552,117 @@
 		}
 
 		.card-tray {
-			bottom: 68px;
+			bottom: 8px;
 			justify-content: flex-start;
+			max-width: calc(100vw - 16px);
 			overflow-x: auto;
+			gap: 7px;
+			padding: 0 2px;
+		}
+
+		.hand-row {
+			gap: 6px;
+			padding-bottom: 6px;
 		}
 
 		.build-card {
-			width: 96px;
-			height: 68px;
+			width: 98px;
+			height: 150px;
 		}
 
-		.build-card p {
+		.card-face {
+			padding: 6px;
+		}
+
+		.card-banner {
+			min-height: 22px;
+			font-size: 5px;
+		}
+
+		.card-cost {
+			width: 25px;
+			height: 28px;
+			margin-top: -5px;
+			margin-right: -4px;
+			padding-top: 2px;
+		}
+
+		.card-cost b {
+			font-size: 12px;
+		}
+
+		.card-title {
+			margin-bottom: 3px;
+			font-size: 12px;
+		}
+
+		.card-art {
+			height: 44px;
+			margin-bottom: 3px;
+		}
+
+		.card-art::before {
+			width: 54px;
+			height: 54px;
+		}
+
+		.card-art-icon {
+			width: 32px;
+			height: 32px;
+		}
+
+		.card-type {
+			margin-bottom: 2px;
+			padding-bottom: 2px;
+			font-size: 4.8px;
+		}
+
+		.card-rules {
+			font-size: 6.5px;
+			line-height: 1.22;
+		}
+
+		.card-footer {
 			display: none;
 		}
 
 		.economy-readout {
 			width: 48px;
-			padding: 0 4px;
+			margin-bottom: 14px;
+			padding: 7px 4px;
+		}
+
+		.economy-readout strong {
+			font-size: 21px;
 		}
 
 		.refresh-button {
-			width: 50px;
+			width: 48px;
+			min-height: 64px;
+			margin-bottom: 14px;
+			padding: 6px 4px;
+		}
+
+		.refresh-glyph {
+			font-size: 19px;
 		}
 
 		.build-drop-hint {
-			bottom: 158px;
+			bottom: 172px;
 		}
 
 		.toast {
-			bottom: 160px;
+			bottom: 172px;
 		}
 
 		.status-console {
-			right: 60px;
-			bottom: 14px;
-			max-width: calc(100vw - 272px);
+			top: 66px;
+			left: 50%;
+			right: auto;
+			bottom: auto;
+			transform: translateX(-50%);
+			width: calc(100vw - 24px);
+			max-width: none;
 			min-width: 0;
 		}
 
@@ -3360,7 +3694,7 @@
 		}
 
 		.minimap-dock {
-			width: 180px;
+			display: none;
 		}
 
 		.map-tools {
@@ -3397,6 +3731,100 @@
 			width: calc(100vw - 40px);
 			justify-content: center;
 			text-align: center;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.card-tray {
+			gap: 6px;
+		}
+
+		.hand-row {
+			gap: 4px;
+		}
+
+		.build-card {
+			width: 82px;
+			height: 132px;
+		}
+
+		.card-face {
+			padding: 5px;
+		}
+
+		.card-banner {
+			min-height: 19px;
+			font-size: 4.4px;
+		}
+
+		.card-cost {
+			width: 22px;
+			height: 25px;
+			margin-top: -4px;
+			margin-right: -3px;
+		}
+
+		.card-cost b {
+			font-size: 10px;
+		}
+
+		.card-title {
+			font-size: 10px;
+			margin-bottom: 2px;
+		}
+
+		.card-art {
+			height: 34px;
+			margin-bottom: 2px;
+		}
+
+		.card-art::before {
+			width: 40px;
+			height: 40px;
+		}
+
+		.card-art-icon {
+			width: 24px;
+			height: 24px;
+		}
+
+		.card-type {
+			font-size: 4.1px;
+			margin-bottom: 1px;
+			padding-bottom: 1px;
+		}
+
+		.card-rules {
+			font-size: 5.8px;
+			line-height: 1.18;
+		}
+
+		.economy-readout,
+		.refresh-button {
+			width: 42px;
+		}
+
+		.economy-readout {
+			padding: 6px 3px;
+			margin-bottom: 12px;
+		}
+
+		.economy-readout strong {
+			font-size: 18px;
+		}
+
+		.refresh-button {
+			min-height: 58px;
+			padding: 5px 3px;
+			margin-bottom: 12px;
+		}
+
+		.refresh-glyph {
+			font-size: 16px;
+		}
+
+		.refresh-button span {
+			font-size: 5.5px;
 		}
 	}
 

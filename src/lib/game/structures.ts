@@ -155,6 +155,15 @@ export const STRUCTURE_DEFINITIONS: Record<StructureType, StructureDefinition> =
 	}
 };
 
+export const STRUCTURE_ACCENTS: Record<StructureType, string> = {
+	state: '#f7eed0',
+	mine: '#f5b85c',
+	barracks: '#ff7868',
+	'defense-post': '#63c6d7',
+	'command-post': '#95e07a',
+	'war-academy': '#c6a2ff'
+};
+
 export function effectsForType(type: StructureType): readonly StructureEffect[] {
 	return STRUCTURE_DEFINITIONS[type].effects;
 }
