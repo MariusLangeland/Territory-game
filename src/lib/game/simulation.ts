@@ -12,14 +12,15 @@ import {
 	COMMAND_POST_ORDER_TICKS,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
-	ATTACK_ORDER_REFRESH_TICKS,
+	ATTACK_ORDER_GAIN_TICKS,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
 	REFRESH_COST,
 	STARTING_GOLD,
 	STARTING_HAND_SIZE,
-	START_RADIUS
+	START_RADIUS,
+	STRUCTURE_MIN_SPACING
 } from './constants';
 import {
 	createGrowthLayer,
@@ -209,7 +210,7 @@ export class TerritorySimulation {
 
 	private pendingGrowthMode: GrowthMode | null = null;
 	private nextIncomeTick = INCOME_INTERVAL_TICKS;
-	private nextAttackOrderTick = ATTACK_ORDER_REFRESH_TICKS;
+	private nextAttackOrderGrantTick = ATTACK_ORDER_GAIN_TICKS;
 	private nextOrderBonusTick = COMMAND_POST_ORDER_TICKS;
 	private attackOrders: number[] = [];
 	private nextCardId = 1;
@@ -328,11 +329,23 @@ export class TerritorySimulation {
 		return this.attackOrders[playerId - 1] - pending;
 	}
 
-	private refreshAttackOrders(): void {
+	private addAttackOrders(playerId: number, amount: number): void {
+		const index = playerId - 1;
+		this.attackOrders[index] = Math.min(
+			this.attackOrders[index] + amount,
+			this.attackOrderCap(playerId)
+		);
+	}
+
+	private clampAttackOrders(playerId: number): void {
+		const index = playerId - 1;
+		this.attackOrders[index] = Math.min(this.attackOrders[index], this.attackOrderCap(playerId));
+	}
+
+	private grantAttackOrders(): void {
 		for (const player of this.players) {
 			if (!player.alive) continue;
-			const index = player.id - 1;
-			this.attackOrders[index] = Math.max(this.attackOrders[index], this.attackOrderCap(player.id));
+			this.addAttackOrders(player.id, 1);
 		}
 	}
 
@@ -342,7 +355,7 @@ export class TerritorySimulation {
 			if (!owner?.alive) continue;
 			for (const effect of structure.effects) {
 				if (effect.kind !== 'order-gain') continue;
-				this.attackOrders[structure.ownerId - 1] += effect.amount;
+				this.addAttackOrders(structure.ownerId, effect.amount);
 			}
 		}
 	}
@@ -381,7 +394,7 @@ export class TerritorySimulation {
 			return fail('own-territory', 'That territory is already yours.');
 		}
 		if (this.availableAttackOrders(playerId) <= 0) {
-			return fail('no-orders', 'No attack orders. Orders refresh every 10 seconds.');
+			return fail('no-orders', 'No attack orders. Gain 1 order every 10 seconds.');
 		}
 		if (this.findAttackSeeds(playerId, index).length === 0) {
 			return fail('no-shared-border', 'No friendly border is close enough. Move your frontier.');
@@ -433,6 +446,13 @@ export class TerritorySimulation {
 		}
 		if (this.structures.at(index)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
+		}
+		if (this.structures.hasWithinRadius(roundedX, roundedY, STRUCTURE_MIN_SPACING)) {
+			return {
+				ok: false,
+				reason: 'too-close',
+				message: `Structures must be at least ${STRUCTURE_MIN_SPACING} px apart.`
+			};
 		}
 
 		return {
@@ -494,9 +514,9 @@ export class TerritorySimulation {
 				this.pendingGrowthMode = null;
 			}
 
-			if (this.tick >= this.nextAttackOrderTick) {
-				this.refreshAttackOrders();
-				this.nextAttackOrderTick += ATTACK_ORDER_REFRESH_TICKS;
+			if (this.tick >= this.nextAttackOrderGrantTick) {
+				this.grantAttackOrders();
+				this.nextAttackOrderGrantTick += ATTACK_ORDER_GAIN_TICKS;
 			}
 
 			if (this.tick >= this.nextOrderBonusTick) {
@@ -627,7 +647,7 @@ export class TerritorySimulation {
 		mix(this.lastAnnexTick);
 		mix(this.gold);
 		mix(this.nextIncomeTick);
-		mix(this.nextAttackOrderTick);
+		mix(this.nextAttackOrderGrantTick);
 		mix(this.nextOrderBonusTick);
 		for (const orders of this.attackOrders) mix(orders);
 		mix(this.nextCardId);
@@ -1086,6 +1106,7 @@ export class TerritorySimulation {
 		const structure = this.structures.destroyAt(index);
 		if (structure) {
 			this.rebuildAuraDefense();
+			this.clampAttackOrders(structure.ownerId);
 			const owner = this.players[structure.ownerId - 1];
 			const label = STRUCTURE_DEFINITIONS[structure.type].label;
 			this.pushEvent(

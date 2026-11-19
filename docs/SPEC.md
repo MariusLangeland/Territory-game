@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.9.1 (attack stress experiment)  
+**Version:** 0.9.2 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.9.1, map version 3, protocol draft 13
+**Last synchronized with:** application 0.9.2, map version 3, protocol draft 14
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -62,7 +62,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | 108 states (1 human + 107 AI)                             | ✅                       |
 | Pixel ownership and incremental frontier tracking         | ✅                       |
 | Resource-free local-front attacks (BFS)                   | ✅                       |
-| Attack orders: 3 human / 2 bots, refreshed every 10 s     | ✅                       |
+| Attack orders: 3 human / 2 bots, +1 per 10 s up to cap    | ✅                       |
 | Bot expansion/attacks                                     | ✅                       |
 | Elimination and last-state-standing victory               | ✅                       |
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 13`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 14`.
 
 ### 4.2 Starting positions
 
@@ -140,7 +140,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
-7. Launching consumes **1 attack order**. The human has 3 orders and bots have 2. Orders refresh to their cap every **10 seconds**; attacks no longer refund an order when they end. Multiple active fronts are allowed as long as orders remain.
+7. Launching consumes **1 attack order**. The human starts with 3 orders (cap 3) and bots with 2 (cap 2). Every **10 seconds**, each living player gains **1 order, up to the cap**; attacks do not refund an order when they end. Multiple active fronts are allowed while orders remain.
 8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until **30 attack points** are spent or no candidates remain. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
 9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
 10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
@@ -201,7 +201,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
-3. Refresh attack orders to their cap if this is a 10-second boundary.
+3. Grant each living player +1 attack order, clamped to cap, on a 10-second boundary.
 4. Apply Command Post order pulses if this is a 60-second boundary.
 5. Pay human income if this is an income boundary.
 6. Apply queued attack/build/refresh commands sorted by `(sequence, playerId)`.
@@ -216,8 +216,8 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 This attack model is intentionally provisional:
 
-- Each launch consumes one attack order; orders refresh every 10 seconds rather than refunding when a front ends.
-- Attack orders can exceed the refresh cap through Command Posts; the cap is the 10-second refill level.
+- Each launch consumes one attack order; players gain one order every 10 seconds rather than refunding when a front ends.
+- The order cap is a hard cap. Command Post grants are clamped to it; War Academies raise the cap.
 - It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, radially smoothed, or organic.
 - It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
 - Bots do not coordinate or defend strategically.
@@ -314,8 +314,8 @@ The human commander has a small card economy; bots do not build cards yet.
 - **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
 - Costs: Mine **3**, Barracks **2**, Defense Post **1**, Command Post **4**, War Academy **6**.
 - Cards are not a deck: every draw is an independent uniform choice among the five printed card types, so duplicates are possible.
-- Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is added above the refresh cap.
-- War Academies add **+1 to the attack-order refresh cap** while alive. Multiple academies stack.
+- Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is clamped to the cap.
+- War Academies add **+1 to the attack-order cap** while alive. Multiple academies stack.
 - Captured buildable structures are razed and their effects disappear.
 
 | Card         | Cost | Effect                                                               |
@@ -324,7 +324,7 @@ The human commander has a small card economy; bots do not build cards yet.
 | Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per Barracks |
 | Defense Post | 1    | +1 defense in an 8 px radius; multiple posts stack                   |
 | Command Post | 4    | +1 attack order every 60 seconds                                     |
-| War Academy  | 6    | +1 attack-order refresh cap                                          |
+| War Academy  | 6    | +1 attack-order cap                                                  |
 
 Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
 
@@ -363,7 +363,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - A free-floating CCG-style hand at the bottom center; gold and Refresh float at its sides with no enclosing tray and no empty-card placeholders.
 - Cards have frame/art/rules layouts, animate in from below, animate out when played or refreshed, flip-animate on hand changes, lift on hover, and tilt/scale while dragged.
 - The bottom center is reserved for the hand: the recon console moved to the top center and the growth selector to the left rail above the minimap.
-- The ORDERS readout shows available attack orders / refresh cap and updates as orders are spent or refreshed.
+- The ORDERS readout shows available attack orders / cap and updates as orders are spent or granted.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
@@ -545,8 +545,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] A live State structure adds 20 defense within 12 px; the bonus disappears when the structure is destroyed.
 - [x] The human starts with three cards and 3 gold, earns income, can drag cards onto owned land, and can refresh the hand.
 - [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
-- [x] Attack orders start full, are spent per launch, and refresh every 10 seconds; bot orders use the same rules.
-- [x] Command Posts grant orders on 60-second pulses, and War Academies raise the refresh cap.
+- [x] Attack orders start full, are spent per launch, and grant +1 every 10 seconds up to the cap; bot orders use the same rules.
+- [x] Command Posts grant orders on 60-second pulses, and War Academies raise the cap.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

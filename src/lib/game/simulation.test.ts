@@ -296,7 +296,7 @@ describe('attack stress mode', () => {
 		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
 	});
 
-	it('spends attack orders and refreshes them every 10 seconds', () => {
+	it('spends attack orders and gains one back every 10 seconds', () => {
 		const sim = new TerritorySimulation({ seed: 271828 });
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
@@ -310,6 +310,13 @@ describe('attack stress mode', () => {
 		const blocked = sim.enqueueAttack(1, target.x, target.y);
 		expect(blocked.ok).toBe(false);
 		expect(blocked.reason).toBe('no-orders');
+
+		for (let tick = 0; tick < 100; tick++) sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(1);
+		for (let tick = 0; tick < 100; tick++) sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(2);
+		for (let tick = 0; tick < 100; tick++) sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(3);
 
 		for (let tick = 0; tick < 100; tick++) sim.step();
 		expect(sim.getSnapshot().attackOrders).toBe(3);

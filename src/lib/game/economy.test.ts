@@ -106,13 +106,26 @@ describe('player economy and cards', () => {
 		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x + 19, y)).toBe(0);
 	});
 
-	it('raises the attack-order refresh cap with a War Academy', () => {
+	it('raises the attack-order cap with a War Academy', () => {
 		const sim = new TerritorySimulation({ seed: 112358 });
 		expect(sim.getSnapshot().attackOrderCap).toBe(3);
 		buildCard(sim, 'war-academy');
 		expect(sim.getSnapshot().attackOrderCap).toBe(4);
 		for (let tick = 0; tick < INCOME_INTERVAL_TICKS; tick++) sim.step();
 		expect(sim.getSnapshot().attackOrders).toBe(4);
+	});
+
+	it('clamps attack orders when a War Academy is razed', () => {
+		const sim = new TerritorySimulation({ seed: 161803 });
+		const { index } = buildCard(sim, 'war-academy');
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		(sim as unknown as { attackOrders: number[] }).attackOrders[HUMAN_PLAYER_ID - 1] = 4;
+		internals.claim(index, 2, 999);
+		sim.step();
+		expect(sim.getSnapshot().attackOrderCap).toBe(3);
+		expect(sim.getSnapshot().attackOrders).toBe(3);
 	});
 
 	it('grants a Command Post attack order on its 60-second pulse', () => {
@@ -126,5 +139,10 @@ describe('player economy and cards', () => {
 		internals.nextOrderBonusTick = sim.tick + 1;
 		sim.step();
 		expect(sim.getSnapshot().attackOrders).toBe(1);
+
+		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 3;
+		internals.nextOrderBonusTick = sim.tick + 1;
+		sim.step();
+		expect(sim.getSnapshot().attackOrders).toBe(3);
 	});
 });

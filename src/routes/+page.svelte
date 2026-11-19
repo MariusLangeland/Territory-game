@@ -720,7 +720,7 @@
 			<div class="orders-block">
 				<span class="status-label">ORDERS</span>
 				<strong>{snapshot.attackOrders}<em>/{snapshot.attackOrderCap}</em></strong>
-				<small>REFRESH / 10s</small>
+				<small>+1 ORDER / 10s</small>
 			</div>
 			<div class="defense-block">
 				<span class="status-label">DEFENSE</span>
@@ -968,7 +968,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.9.1 / PROTOCOL 13</span>
+				<span>BUILD 0.9.2 / PROTOCOL 14</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>

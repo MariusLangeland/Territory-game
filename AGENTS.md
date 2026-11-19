@@ -14,7 +14,7 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/production caps, attack orders of 3 human / 2 bots refreshed every 10 seconds. Attacks spend 30 points per tick against pixel defense (`1 + elevation + occupied + aura`). State structures project a +20 defense aura over 12 px. The human has a gold/card economy (3 starting gold, +1/10s, three-card hand, Refresh, five buildable card types including Command Post and War Academy). Three selectable growth layers: circular, smooth, organic. Mutual fronts cancel at contact. Each state has a capturable State structure anchoring protected territory; disconnected unprotected territory is annexed into surrounding protected mainlands. Elevation tiers color the map. This is not the final combat model.
+- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/production caps, attack orders of 3 human / 2 bots with +1 gained every 10 seconds up to cap. Attacks spend 30 points per tick against pixel defense (`1 + elevation + occupied + aura`). State structures project a +20 defense aura over 12 px. The human has a gold/card economy (3 starting gold, +1/10s, three-card hand, Refresh, five buildable card types including Command Post and War Academy). Three selectable growth layers: circular, smooth, organic. Mutual fronts cancel at contact. Each state has a capturable State structure anchoring protected territory; disconnected unprotected territory is annexed into surrounding protected mainlands. Elevation tiers color the map. This is not the final combat model.
 - Implemented: seeded 2048 × 1024 world with six elevation tiers, 108 starts, State and buildable structures, gold/card/attack-order economy, terrain defense/attack points, free attack flood fill, pluggable growth layers, claim provenance, territory-integrity cleanup, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
 - Not implemented: final attack design, bot card economy/build AI, full resource economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.
@@ -43,7 +43,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 6. **Renderer never mutates simulation state.**
 7. **Version intentional changes:** map generation → `MAP_VERSION`; wire changes → `NET_PROTOCOL_VERSION`; simulation changes → determinism review + tests.
 8. **Do not claim online support.** It is a documented target, not current behavior.
-9. **Do not treat EXP-001 as final design.** Free attacks, 108 states, 10-second attack-order refreshes, and the card pool are stress-test choices; read [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) before building on them.
+9. **Do not treat EXP-001 as final design.** Free attacks, 108 states, 10-second attack-order grants, and the card pool are stress-test choices; read [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) before building on them.
 10. **Growth layers only select frontier candidates.** Ownership, edge connectivity, capture budget, order lifetime, and checksums stay in `simulation.ts`. Never let a layer bypass those checks.
 11. **Distance-based growth starts at the border.** The attack anchor is the rounded centroid of the initial seed contact; the clicked cell is only a target/search selector. Do not anchor growth on a deep click.
 12. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
@@ -54,7 +54,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 17. **Elevation is versioned map data.** Changing tier thresholds, level count, or defense meaning requires `MAP_VERSION`/protocol review and updated tests.
 18. **Structure effects are defined by type and derived into overlays.** State auras stamp +20 within 12 px with max-overlap semantics; Defense Posts add. Rebuild derived auras when a structure is destroyed; include effect descriptors in public structure payloads. Do not serialize a mutable per-cell aura array.
 19. **Card economy is command-driven.** Build/refresh must queue and apply inside `step()`, validate gold/card/owned land/empty structure slot, and use the dedicated card RNG. Cards draw independently from the five-type buildable pool with replacement. Captured structures are razed.
-20. **Attack orders are per-player integer charges.** A launch spends exactly one order. Every 100 ticks refresh to `max(current, cap)`; orders may exceed cap only through Command Post grants. Base caps are 3 human / 2 bots; War Academy cap effects are derived from live structures. Include orders and both timers in checksums.
+20. **Attack orders are per-player integer charges.** A launch spends exactly one order. Every 100 ticks each living player gains 1 order, clamped to the cap—not a full refill. Base caps are 3 human / 2 bots; War Academy cap effects are derived from live structures and destroy-clamping applies. Include orders and both timers in checksums.
 21. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
 
 ## Where things live
@@ -104,8 +104,8 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 11. Deploy, confirm the CCG hand is free-floating at bottom center, has no empty placeholders, and leaves the bottom rail clear; hover and drag cards to see lift/tilt animations.
 12. Drag a card into controlled territory, confirm the card leaves with an animation, gold is spent, and the structure appears; try an invalid drop and confirm no cost.
 13. Click Refresh and confirm 1 gold is spent, old cards animate out, and three fresh cards animate in.
-14. Confirm the ORDERS readout drops per launch, accepts up to 3 immediate human attacks, rejects a fourth until refresh, and refills after 10 seconds.
-15. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the refresh cap rises.
+14. Confirm the ORDERS readout drops per launch, accepts up to 3 immediate human attacks, rejects a fourth, and gains only +1 (not a full refill) after 10 seconds.
+15. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the order cap rises.
 16. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, and a war-feed event appears.
 17. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
 18. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.

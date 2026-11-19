@@ -115,7 +115,7 @@ Bots are processed in ascending player id order, every 10 ticks. The random draw
 ### 5.1 Current local model
 
 - `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
-- `step()` increments the tick, refreshes orders on 100-tick boundaries, applies Command Post pulses on 600-tick boundaries, pays income, drains pending commands, and sorts by `(sequence, playerId)`.
+- `step()` increments the tick, grants +1 order to each living player on 100-tick boundaries, applies Command Post pulses on 600-tick boundaries, pays income, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
 - Applying an attack command spends one order. Build/refresh commands are then applied before bot decisions and attack processing.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
@@ -171,7 +171,7 @@ This is deterministic and part of the authoritative state. Effect definitions ar
 
 Human card economy uses a dedicated `cardRng` seeded from the world seed. Starting hand and every refresh draw three independent uniform choices from the five buildable types, with replacement. Build and refresh commands share the command sequence order with attacks. A build revalidates card, gold, ownership, emptiness, and land at execution; refresh revalidates gold. Income is paid at tick boundaries from live Mine count.
 
-Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots), refresh to `max(current, cap)` every 100 ticks, and can exceed the cap through Command Post grants. Command Posts add to their owner's orders on every 600-tick boundary; War Academies add to the live cap. Attack order arrays and both timer values are checksummed.
+Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts add their grant on every 600-tick boundary, also clamped. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays and both timer values are checksummed.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -209,7 +209,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, and cell index,
-9. human gold, income tick, card RNG state, hand card ids/types, every player's attack orders, and order refresh/bonus timers;
+9. human gold, income tick, card RNG state, hand card ids/types, every player's attack orders, and order grant/bonus timers;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -301,8 +301,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 21. A live State structure adds 20 defense within 12 px (including its own cell); destroying it removes the aura.
 22. Starting hand and every refresh are deterministic from a dedicated card RNG and use independent pool draws with replacement.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
-24. Attack orders are spent only when an attack command or bot decision creates a front; refresh and Command Post pulses are fixed tick-boundary events.
-25. War Academy cap changes are derived from live structures; Command Post grants are applied in registry order on the 60-second boundary.
+24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 grant and Command Post pulses are fixed tick-boundary events clamped to cap.
+25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and Command Post grants apply in registry order on the 60-second boundary.
 
 Commands to run:
 

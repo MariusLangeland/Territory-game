@@ -61,6 +61,9 @@ export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
 /** How often disconnected territory is reattached to a surrounding mainland. */
 export const ANNEX_INTERVAL_TICKS = 10;
 
+/** Minimum centre-to-centre distance, in map cells, between any two structures. */
+export const STRUCTURE_MIN_SPACING = 8;
+
 /** Player economy. */
 export const STARTING_GOLD = 3;
 export const BASE_GOLD_INCOME = 1;
@@ -68,10 +71,10 @@ export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
 export const STARTING_HAND_SIZE = 3;
 export const REFRESH_COST = 1;
 
-/** Attack-order charges. Orders refresh to the cap every 10 seconds. */
+/** Attack-order charges. Each living player gains 1 order every 10 seconds, up to the cap. */
 export const BASE_HUMAN_ATTACK_ORDERS = 3;
 export const BASE_BOT_ATTACK_ORDERS = 2;
-export const ATTACK_ORDER_REFRESH_TICKS = TICK_RATE * 10;
+export const ATTACK_ORDER_GAIN_TICKS = TICK_RATE * 10;
 export const COMMAND_POST_ORDER_TICKS = TICK_RATE * 60;
 
 /** How far from a click the simulation looks for a shared border. */
@@ -81,7 +84,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

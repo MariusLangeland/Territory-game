@@ -113,7 +113,7 @@ Server tick at 10 Hz:
 3. Validate ownership, player, sequence, rate limit, attack orders, gold, and card constraints.
 4. Sort accepted commands by `(playerId, clientSequence)` (or another fixed rule).
 5. Apply them to the simulation at the tick boundary.
-6. Refresh attack orders, run Command Post pulses, pay income, run bot decisions/attacks, then eliminations and victory.
+6. Grant +1 attack order, run Command Post pulses, pay income, run bot decisions/attacks, then eliminations and victory.
 7. Broadcast a tick delta to all clients.
 8. Every N ticks, broadcast checksum.
 9. If the match ended, broadcast results and freeze tick advancement.
@@ -251,7 +251,7 @@ Player economy and cards:
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
 - build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, and occupied structure cells;
 - card draws use the seeded authoritative card RNG; clients never choose the drawn type;
-- attack-order refresh, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
+- attack-order grants, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;
 - bots do not participate in the card economy in this build, so their snapshot economy is omitted.
 
