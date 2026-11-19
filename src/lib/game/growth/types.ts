@@ -10,7 +10,7 @@ export const GROWTH_MODES = ['circular', 'smooth', 'organic'] as const;
 
 export type GrowthMode = (typeof GROWTH_MODES)[number];
 
-export const DEFAULT_GROWTH_MODE: GrowthMode = 'circular';
+export const DEFAULT_GROWTH_MODE: GrowthMode = 'organic';
 
 export const GROWTH_LABELS: Record<GrowthMode, string> = {
 	circular: 'CIRCULAR',
