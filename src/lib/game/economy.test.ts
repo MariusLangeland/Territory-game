@@ -169,6 +169,59 @@ describe('player economy and cards', () => {
 		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
 	});
 
+	it('applies a Defense Post aura across its entire district', () => {
+		const sim = new TerritorySimulation({ seed: 642088 });
+		const { index: postIndex } = buildCard(sim, 'defense-post');
+		const postX = postIndex % sim.width;
+		const postY = (postIndex - postX) / sim.width;
+		let target = -1;
+		for (let dy = -35; dy <= 35 && target < 0; dy++) {
+			for (let dx = -35; dx <= 35; dx++) {
+				const distance = dx * dx + dy * dy;
+				if (distance < 20 * 20 || distance > 35 * 35) continue;
+				const x = postX + dx;
+				const y = postY + dy;
+				if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) continue;
+				const index = y * sim.width + x;
+				if (!sim.terrain[index] || sim.structures.at(index)) continue;
+				target = index;
+				break;
+			}
+		}
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		internals.claim(target, HUMAN_PLAYER_ID, 999);
+		const x = target % sim.width;
+		const y = (target - x) / sim.width;
+		expect(sim.getDistrictStructureId(x, y)).toBe(sim.structures.at(postIndex)?.id);
+		expect(sim.getAuraDefense(x, y)).toBe(DEFENSE_POST_DEFENSE);
+
+		let outside = -1;
+		for (let dy = -50; dy <= 50 && outside < 0; dy++) {
+			for (let dx = -50; dx <= 50; dx++) {
+				if (dx * dx + dy * dy < 42 * 42) continue;
+				const ox = postX + dx;
+				const oy = postY + dy;
+				if (ox < 0 || oy < 0 || ox >= sim.width || oy >= sim.height) continue;
+				const index = oy * sim.width + ox;
+				if (!sim.terrain[index] || sim.structures.at(index)) continue;
+				outside = index;
+				break;
+			}
+		}
+		expect(outside).toBeGreaterThan(-1);
+		if (outside < 0) return;
+		internals.claim(outside, HUMAN_PLAYER_ID, 1000);
+		const outsideX = outside % sim.width;
+		const outsideY = (outside - outsideX) / sim.width;
+		expect(sim.getDistrictStructureId(outsideX, outsideY)).toBe(0);
+		expect(sim.getAuraDefense(outsideX, outsideY)).toBe(0);
+	});
+
 	it('multiplies a Defense Post aura when stacked', () => {
 		const sim = new TerritorySimulation({ seed: 727272 });
 		const { index } = buildCard(sim, 'defense-post');

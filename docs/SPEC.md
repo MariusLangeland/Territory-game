@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.13.0 (attack stress experiment)  
+**Version:** 0.14.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.13.0, map version 3, protocol draft 20
+**Last synchronized with:** application 0.14.0, map version 3, protocol draft 21
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 20`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 21`.
 
 ### 4.2 Starting positions
 
@@ -325,7 +325,7 @@ The human commander has a small card economy; bots do not build cards yet.
 | ------------ | ---- | ----------------------------------------------------------------- |
 | Mine         | 3    | +1 income every 10 seconds                                        |
 | Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per stack |
-| Defense Post | 2    | +5 defense to friendly pixels in a 16 px radius; stacks           |
+| Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks  |
 | Command Post | 4    | +1 attack order every 60 seconds                                  |
 | War Academy  | 6    | +1 attack-order cap                                               |
 
@@ -338,7 +338,7 @@ Barracks attack strength is applied per captured target: effective defense = `ma
 - A district cannot exceed its structure's `districtRange`, cannot leave the owner's borders, and cannot overlap another district. Cells outside every structure's range remain unassigned.
 - Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
 - A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
-- Auras apply only within the owning structure's district (State auras use their radius around the capital).
+- Defensive auras apply to every owned cell in the owning structure's district; the old effect-radius clipping does not shrink a Defense Post's area. State auras use their radius around the capital. Barracks attack strength remains a local 18 px offensive radius.
 - Each stack increases the structure's effect: income, aura defense, attack strength, order gain, or order cap.
 - Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
 

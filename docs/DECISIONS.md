@@ -540,7 +540,7 @@ Structures need territorial identity beyond their auras. The requested model giv
 - Multiple structures and districts per owner/type are allowed. A same-type drop inside a district increments that district structure's `stacks`; the same type dropped outside all districts creates another structure/district. A different type inside any district is rejected.
 - `districtStructureIds` records the winning structure per cell, so stacking and auras can distinguish same-type districts. State auras remain radius-based.
 - `stacks` multiply the structure's effect magnitude (income, defense, attack strength, order gain, order cap). Geometry/range stays fixed.
-- Defense auras only apply to cells whose district id matches the structure, plus owner and radius checks.
+- Defense auras apply to every cell whose district id matches the structure and whose owner matches; buildable defense auras are not clipped to the old effect radius. State auras use radius 16, and Barracks attack strength remains local radius 18.
 - Full district recomputation runs on structure creation/destruction; ordinary ownership changes reassign one cell. Stacking does not change geometry.
 - Render district palettes by packing a 5-bit code (four variants per structure type) into control-texture alpha above 3 elevation bits; tint by type, vary brightness per district, and darken shared boundaries. Aura circles are removed.
 
@@ -550,7 +550,7 @@ Structures need territorial identity beyond their auras. The requested model giv
 - State capitals no longer block construction, and the first build is possible in the starting territory.
 - Large districts deliberately reduce building density: a district can cover most of a small territory, so further different-type construction waits for expansion.
 - District recomputation is occasional and bounded; per-capture updates are local, and district color needs no extra texture binding. Per-cell structure ids add 8 MiB.
-- Auras are mechanically clipped to buildable district geometry; State auras remain a radius field.
+- Defense auras fill buildable district geometry; State auras remain a radius field, and Barracks attack strength stays a local offensive radius.
 - Existing 8 px spacing remains a secondary placement guard, though district ranges usually dominate.
 
 ### Alternatives considered
@@ -632,3 +632,37 @@ The random three-card hand and paid reroll created unnecessary downtime and card
 - **Consume cards but draw replacements:** retains hand RNG and downtime.
 - **Five cards with cooldown per card:** adds hidden state without user request.
 - **Fully hide the hand:** would make card access undiscoverable; the peeking strip keeps affordance.
+
+---
+
+## ADR-021 — District geometry, not effect radius, defines buildable defense auras
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+The initial district implementation still clipped Defense Post auras to the old effect radius. That made a district visibly larger than the defense area it provided. The requested rule is that the effect covers exactly the pixels colored as its district, with no radius fallback.
+
+### Decision
+
+- A buildable defensive aura applies to every owned cell whose `districtStructureIds` equals that structure's id.
+- The effect radius is ignored for buildable defense auras; Defense Post's effect radius is stored as 0 to prevent accidental radius use.
+- State has no district and keeps its 16 px capital aura.
+- Barracks attack strength remains a local 18 px offensive buff; attack targets are outside the attacker's district, so district membership cannot define its coverage.
+- `updateAuraAt` and the full aura rebuild share the same district-id rule.
+
+### Consequences
+
+- Defense Post strength exactly matches its colored district, including stacked defense.
+- Expanding or losing district cells immediately changes aura coverage through capture updates.
+- Multiple same-type Defense Posts each buff only their own district.
+- State defense remains a special capital-radius field, separate from districts.
+- Barracks attack strength remains intentionally local and is documented separately.
+
+### Alternatives considered
+
+- **Keep radius but enlarge it to district range:** still clipped on Voronoi boundaries and by district shape.
+- **Use rectangular district bounds:** includes cells outside the district.
+- **Apply to all owner districts of the same type:** would let unrelated same-type posts share auras.
+- **Give State a district:** would blanket the starting territory and disable early builds.

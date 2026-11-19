@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.13.x`  
+**Status:** active in application `0.14.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -69,7 +69,7 @@ Two cleanup rules plus the first structure are always active:
 - **State structure anchoring:** each state starts with one State structure at its capital. Every territory component connected to a live State structure is protected from annexation. Capturing the structure destroys it and removes protection.
 - **State aura:** a live State projects +20 defense over a 16 px radius on land it owns; overlapping friendly auras take the maximum. Capturing the structure removes the aura immediately. Aura circles are no longer drawn.
 - **Human card economy:** start with 3 gold and all five cards; cards are never consumed, so any affordable card can be bought repeatedly. Income is 1 gold/10s plus 1 per Mine. Drag a card onto controlled, structure-free land to build it. There is no deck, draw, or reroll. Bots do not build yet.
-- **Districts and stacking:** every buildable structure seeds a district of at least 32 px, bounded by owner territory and its range; districts split by nearest structure. Different types cannot enter an occupied district. The same type stacks inside a district and can create another district outside all districts. State capitals are aura anchors without districts. Auras apply only within their district.
+- **Districts and stacking:** every buildable structure seeds a district of at least 32 px, bounded by owner territory and its range; districts split by nearest structure. Different types cannot enter an occupied district. The same type stacks inside a district and can create another district outside all districts. State capitals are aura anchors without districts. Defensive auras fill their district; State auras use radius 16, and Barracks attack strength stays local radius 18.
 - **Attack orders:** start at 3 for the human and 2 for bots. Gain +1 every 10 seconds, clamped to the cap. Command Posts add +1 on each 60-second pulse; War Academies add +1 live cap. Caps are hard limits.
 - **Detached-land annexation:** once per second, and immediately after a cancellation, components without a live State structure are transferred to the owner of the adjacent protected mainland with the largest shared border.
 

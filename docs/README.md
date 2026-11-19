@@ -28,7 +28,7 @@ This directory is the long-term reference for the project. Start with the specif
 | Surface                  | Version   | Defined in                                               |
 | ------------------------ | --------- | -------------------------------------------------------- |
 | Map + start generation   | `3`       | `MAP_VERSION` in `src/lib/game/constants.ts`             |
-| Wire protocol draft      | `20`      | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application              | `0.13.0`  | `package.json`                                           |
+| Wire protocol draft      | `21`      | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
+| Application              | `0.14.0`  | `package.json`                                           |
 | Simulation tick rate     | 10 Hz     | `TICK_RATE` in `src/lib/game/constants.ts`               |
 | Attack stress experiment | `EXP-001` | [EXPERIMENTS.md](EXPERIMENTS.md)                         |

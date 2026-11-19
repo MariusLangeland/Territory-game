@@ -1,11 +1,12 @@
 import type { StructureDefinition } from './types';
 
-export const DEFENSE_POST_AURA_RADIUS = 16;
+/** Kept for the shared effect shape; district coverage ignores radius entirely. */
+export const DEFENSE_POST_AURA_RADIUS = 0;
 export const DEFENSE_POST_DEFENSE = 5;
 
 export const DEFENSE_POST_DEFINITION: StructureDefinition = {
 	label: 'DEFENSE POST',
-	description: '+5 defense to friendly pixels in a medium radius.',
+	description: '+5 defense to every friendly pixel in its district.',
 	cost: 2,
 	buildable: true,
 	accent: '#63c6d7',

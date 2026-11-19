@@ -894,7 +894,9 @@ export class TerritorySimulation {
 			for (const structure of this.structures.all) {
 				for (const effect of structure.effects) {
 					if (effect.kind !== 'defense-aura' || effect.stacking !== stacking) continue;
-					const radius = Math.max(0, Math.floor(effect.radius));
+					const districtRange = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+					const hasDistrict = districtRange > 0;
+					const radius = Math.max(0, Math.floor(hasDistrict ? districtRange : effect.radius));
 					const minX = Math.max(0, structure.x - radius);
 					const maxX = Math.min(width - 1, structure.x + radius);
 					const minY = Math.max(0, structure.y - radius);
@@ -904,14 +906,15 @@ export class TerritorySimulation {
 					for (let y = minY; y <= maxY; y++) {
 						const dy = y - structure.y;
 						for (let x = minX; x <= maxX; x++) {
-							const dx = x - structure.x;
-							if (dx * dx + dy * dy > radiusSq) continue;
+							// A buildable defense aura covers its whole district.
+							// State has no district and keeps its fixed radius.
+							if (!hasDistrict) {
+								const dx = x - structure.x;
+								if (dx * dx + dy * dy > radiusSq) continue;
+							}
 							const index = y * width + x;
 							if (this.owners[index] !== structure.ownerId) continue;
-							if (
-								STRUCTURE_DEFINITIONS[structure.type].districtRange > 0 &&
-								this.districtStructureIds[index] !== structure.id
-							) {
+							if (hasDistrict && this.districtStructureIds[index] !== structure.id) {
 								continue;
 							}
 							const defense = effect.defense * structure.stacks;
@@ -946,17 +949,15 @@ export class TerritorySimulation {
 		let max = 0;
 		let add = 0;
 		for (const structure of this.structures.forOwner(owner)) {
-			if (
-				STRUCTURE_DEFINITIONS[structure.type].districtRange > 0 &&
-				this.districtStructureIds[index] !== structure.id
-			) {
-				continue;
-			}
+			const hasDistrict = STRUCTURE_DEFINITIONS[structure.type].districtRange > 0;
+			if (hasDistrict && this.districtStructureIds[index] !== structure.id) continue;
 			for (const effect of structure.effects) {
 				if (effect.kind !== 'defense-aura') continue;
-				const dx = structure.x - x;
-				const dy = structure.y - y;
-				if (dx * dx + dy * dy > effect.radius * effect.radius) continue;
+				if (!hasDistrict) {
+					const dx = structure.x - x;
+					const dy = structure.y - y;
+					if (dx * dx + dy * dy > effect.radius * effect.radius) continue;
+				}
 				const defense = effect.defense * structure.stacks;
 				if (effect.stacking === 'max') max = Math.max(max, defense);
 				else add += defense;

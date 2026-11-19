@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.13.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.14.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.13.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.14.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -205,9 +205,9 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 `Structures/` keeps each structure definition in its own file: `state.ts`, `mine.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
 
-- State: `defense-aura` radius 12, +20, max stacking, friendly-owned land only.
-- Defense Post: `defense-aura` radius 16, +5, additive stacking, friendly-owned land only.
-- Barracks: `attack-aura` radius 18, attack strength 1.
+- State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
+- Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
+- Barracks: `attack-aura` radius 18, attack strength 1, local offensive radius (not district-wide).
 - Mine: `income`, +1 per interval.
 - Command Post: `order-gain`, +1 attack order on the global 60-second pulse.
 - War Academy: `order-cap`, +1 attack-order cap.
