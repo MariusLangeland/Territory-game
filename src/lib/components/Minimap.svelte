@@ -80,17 +80,15 @@
 		if (!baseImage) return;
 		context.putImageData(baseImage, 0, 0);
 
-		// Territory starts and active human attacks.
-		for (const start of simulation.map.starts) {
-			const owner = simulation.owners[start.index];
-			const color = MAP_PIXELS[owner] ?? [220, 230, 220];
+		// Live State structures and active human attacks.
+		for (const structure of snapshot.structures) {
+			const color = MAP_PIXELS[structure.ownerId] ?? [247, 238, 208];
+			const x = (structure.x / simulation.width) * width;
+			const y = (structure.y / simulation.height) * height;
 			context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.95)`;
-			context.fillRect(
-				(start.x / simulation.width) * width - 1,
-				(start.y / simulation.height) * height - 1,
-				2,
-				2
-			);
+			context.fillRect(x - 1.5, y - 1.5, 3, 3);
+			context.fillStyle = 'rgba(252, 246, 225, 0.95)';
+			context.fillRect(x - 0.5, y - 0.5, 1, 1);
 		}
 
 		for (const attack of snapshot.attacks) {

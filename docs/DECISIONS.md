@@ -308,7 +308,7 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 
 ## ADR-011 — Cancel mutual fronts and annex detached territory
 
-**Status:** accepted for EXP-001  
+**Status:** accepted for EXP-001; largest-component mainland superseded by ADR-012  
 **Date:** 2026-11-19
 
 ### Context
@@ -328,7 +328,7 @@ Organic fronts can interpenetrate when two states attack each other, producing m
 - Dead pixels and severed pockets are reattached without deleting legitimate islands.
 - `claimedBy` adds 8 MiB per simulation and doubles the owner portion of the checksum.
 - Integrity preallocates ~16 MiB of scratch typed arrays and costs ~8.5 ms per scan. Frequency and cooldown are deliberate to avoid a 10 Hz hitch.
-- Annexation never removes a player's largest component, so it cannot directly eliminate a state.
+- At introduction, annexation never removed a player's largest component. ADR-012 replaces that rule with State-structure anchoring, so a state that loses its structure can lose any component.
 - A server must reproduce the same claim provenance and cleanup ordering.
 
 ### Alternatives considered
@@ -338,3 +338,38 @@ Organic fronts can interpenetrate when two states attack each other, producing m
 - Global component scan every tick: cleaner but adds a ~8.5 ms scan to every tick.
 - Annexe every detached component to its largest adjacent owner regardless of mainland: risks ownership churn between detached chains.
 - Delete detached territory to neutral: removes legitimate islands and creates unclaimed holes.
+
+---
+
+## ADR-012 — State structures anchor protected territory
+
+**Status:** accepted for EXP-001; first structure type  
+**Date:** 2026-11-19
+
+### Context
+
+Annexation previously treated each player's largest connected component as their mainland. That is an implicit rule with no world object behind it. Structures are the next feature area, and the State structure is the natural permanent anchor for a state's core territory.
+
+### Decision
+
+- Add a `StructureRegistry` with structure identity, type, owner, map cell, and map coordinates.
+- Create one `state` structure at each player's start cell when the world is built.
+- A connected territory component is protected from annexation when it contains a live State structure owned by that player. Components without a structure are eligible for annexation to a foreign protected component.
+- Capturing the structure's cell destroys it. The owner keeps remaining territory but loses annexation protection.
+- Render live structures as owner-colored diamonds on a transparent 2D canvas above WebGPU territory, and as dots on the minimap. Include the human anchored state in the commander readout and emit a war-feed event on destruction.
+- Include structure identity/cell in snapshots, protocol state, and checksums.
+
+### Consequences
+
+- Annexation protection now has a visible, capturable world object instead of an implicit largest-component rule.
+- Losing a State structure is strategically significant; the state can be carved up by protected neighbors.
+- A structureless state's territory is not a valid annexation recipient, so some pockets may remain until a protected neighbor can take them.
+- The renderer gains a lightweight 2D overlay; it does not alter the WebGPU territory path.
+- A future construction/build system can reuse the registry, but placement, ownership transfer, and multiple structures need design.
+
+### Alternatives considered
+
+- Keep largest-component mainland and add structures cosmetically: fails the requested anchor behavior.
+- Make structures invulnerable: prevents conquest of the anchor and creates unkillable territory.
+- Destroy the entire state when the structure falls: stronger than requested; current rule leaves surviving territory but removes protection.
+- Render structures in the WebGPU shader: more invasive for the first structure pass; a 2D overlay is cheaper and can evolve into icons/labels.

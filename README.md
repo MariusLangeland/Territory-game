@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.4).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.5).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -23,7 +23,7 @@
 
 | Area            | Implementation                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, three switchable growth layers, 3 active fronts (human) / 2 (bots), 30 px/front/tick, front cancellation and territory cleanup  |
+| Attack stress   | 108 states, State structures, three growth layers, 3 active fronts (human) / 2 (bots), 30 px/front/tick, front cancellation and cleanup     |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
@@ -85,13 +85,12 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 6. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
 7. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
 8. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
-9. **Detached land is annexed:** every second, a player's largest connected landmass is treated as their mainland. Smaller components touching another player's mainland are transferred to the owner with the largest shared border.
+9. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
+10. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
 
 ### Growth layers
 
 The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing orders keep the layer they started with, so you can compare layers in the same match.
-
-Every attack grows outward from its **border-contact centroid**, not from the clicked cell. The click selects the target owner and the border region to search; it cannot pull a narrow corridor inland.
 
 | Layer        | Behavior                                                                              |
 | ------------ | ------------------------------------------------------------------------------------- |
@@ -100,6 +99,12 @@ Every attack grows outward from its **border-contact centroid**, not from the cl
 | **Organic**  | Deterministic random frontier selection; irregular, organic lobes                     |
 
 Circular and smooth both grow radially from the border and can look similar by design; smooth trades exact circularity for banded concavity filling. Organic is the visually distinct mode.
+
+### Structures
+
+Each state starts with one **State structure** at its capital. It is the anchor for that state's protected mainland: every territory component connected to a live State structure cannot be annexed. The structure is visible as a diamond on the map and a dot on the minimap.
+
+State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -112,6 +117,7 @@ Svelte UI (+page.svelte)
         │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
         │     ├── TerritoryRng ... mulberry32
         │     ├── growth/ ........ circular / smooth / organic frontier layers
+        │     ├── structures.ts ... State structures and future structure types
         │     ├── integrity.ts ... detached-territory annexation
         │     └── attacks ........ contiguous flood fronts with finite orders
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
@@ -125,19 +131,19 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities an
 
 Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
 
-| Measurement                                   | Result                                               |
-| --------------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts                   | ~225 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick        | ~3.1–3.2 ms                                          |
-| Smooth-layer all-bot attack tick              | ~4.5 ms                                              |
-| Organic-layer all-bot attack tick             | ~3.1–3.2 ms                                          |
-| Full-state checksum                           | ~18 ms (on-demand only; includes claim provenance)   |
-| Browser render loop while panning, 209 fronts | 144 fps; p99 frame 7.1 ms; zero frames >10 ms        |
-| Upload strategy under stress                  | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
-| Full control texture                          | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds)     | ~280–340 MiB                                         |
+| Measurement                                    | Result                                               |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| Map generation + 108 starts                    | ~270 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick         | ~3.0 ms                                              |
+| Smooth-layer all-bot attack tick               | ~4.0 ms                                              |
+| Organic-layer all-bot attack tick              | ~3.0 ms                                              |
+| Full-state checksum                            | ~18.5 ms (on-demand; includes claim provenance)      |
+| Browser render loop with 108 structure markers | 143 fps; p99 7.1 ms; isolated cleanup spikes         |
+| Upload strategy under stress                   | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
+| Full control texture                           | 8 MiB VRAM + 8 MiB CPU shadow                        |
+| Node benchmark RSS (all benchmark worlds)      | ~275–340 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 3.1–4.5% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 3.0–4.0% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

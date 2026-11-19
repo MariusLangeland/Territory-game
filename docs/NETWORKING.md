@@ -200,15 +200,15 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Server → client
 
-| Message      | Purpose                                                                                                                       |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                      |
-| `tick`       | Owner changes, public players, active attacks (including their per-attack growth mode), current growth mode, events, checksum |
-| `ack`        | Intent accepted                                                                                                               |
-| `reject`     | Intent rejected with reason                                                                                                   |
-| `match-over` | Winner and final snapshot                                                                                                     |
-| `pong`       | RTT response                                                                                                                  |
-| `error`      | Room/protocol/rate-limit errors                                                                                               |
+| Message      | Purpose                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                 |
+| `tick`       | Owner changes, public players, live structures, active attacks (including per-attack growth mode), current growth mode, events, checksum |
+| `ack`        | Intent accepted                                                                                                                          |
+| `reject`     | Intent rejected with reason                                                                                                              |
+| `match-over` | Winner and final snapshot                                                                                                                |
+| `pong`       | RTT response                                                                                                                             |
+| `error`      | Room/protocol/rate-limit errors                                                                                                          |
 
 ### Encoding
 
@@ -237,6 +237,13 @@ Conflict and integrity state:
 - per-cell attack-claim provenance determines when mutual fronts cancel; clients must derive it identically from replayed attacks;
 - detached-territory annexation is authoritative tick logic and must run on the same tick boundaries (every 10 ticks, plus the post-cancellation cooldown) on server and clients;
 - claim provenance and cleanup scheduling are included in checksums, not sent as optional client visuals.
+
+Structures:
+
+- live structure ids, types, owners, and map cells are part of the authoritative snapshot (`structures`);
+- capturing a structure cell destroys it at the same tick and changes annexation protection immediately;
+- clients may draw structures from the snapshot, but the server owns placement, destruction, and protection;
+- future build/transfer commands must be tick-stamped and authorized.
 
 ### Versioning
 

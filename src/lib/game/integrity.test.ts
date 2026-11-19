@@ -25,11 +25,12 @@ function fill(
 
 function runAnnexation(
 	owners: Uint16Array,
-	land: Uint8Array
+	land: Uint8Array,
+	anchors = [{ index: 0, ownerId: 1 }]
 ): { changed: Map<number, number>; result: ReturnType<TerritoryIntegrity['run']> } {
 	const integrity = new TerritoryIntegrity(WIDTH, HEIGHT, 3);
 	const changed = new Map<number, number>();
-	const result = integrity.run(owners, land, (index, owner) => {
+	const result = integrity.run(owners, land, anchors, (index, owner) => {
 		owners[index] = owner;
 		changed.set(index, owner);
 	});
@@ -43,7 +44,10 @@ describe('territory integrity', () => {
 		fill(owners, 0, 0, 2, 2, 1);
 		fill(owners, 6, 6, 7, 7, 1);
 
-		const { changed, result } = runAnnexation(owners, land);
+		const { changed, result } = runAnnexation(owners, land, [
+			{ index: 0, ownerId: 1 },
+			{ index: 8 * WIDTH + 8, ownerId: 2 }
+		]);
 		expect(result.annexedComponents).toBe(1);
 		expect(result.annexedCells).toBe(4);
 		expect(changed.size).toBe(4);
@@ -52,7 +56,22 @@ describe('territory integrity', () => {
 		expect(owners[7 * WIDTH + 7]).toBe(2);
 	});
 
-	it('leaves detached land alone when no mainland surrounds it', () => {
+	it('annexes a larger detached component that has no State structure', () => {
+		const { owners, land } = makeGrid();
+		fill(owners, 0, 0, WIDTH - 1, HEIGHT - 1, 2);
+		fill(owners, 0, 0, 1, 1, 1);
+		fill(owners, 5, 5, 7, 7, 1);
+
+		const { changed, result } = runAnnexation(owners, land, [
+			{ index: 0, ownerId: 1 },
+			{ index: 8 * WIDTH + 8, ownerId: 2 }
+		]);
+		expect(result.annexedCells).toBe(9);
+		for (const owner of changed.values()) expect(owner).toBe(2);
+		expect(owners[5 * WIDTH + 5]).toBe(2);
+	});
+
+	it('leaves detached land alone when no protected mainland surrounds it', () => {
 		const { owners, land } = makeGrid();
 		fill(owners, 0, 0, 2, 2, 1);
 		owners[6 * WIDTH + 6] = 1;
@@ -63,7 +82,7 @@ describe('territory integrity', () => {
 		expect(owners[6 * WIDTH + 6]).toBe(1);
 	});
 
-	it('chooses the mainland with the largest shared border on a tie by lower id', () => {
+	it('chooses the protected mainland with the largest shared border on a tie by lower id', () => {
 		const { owners, land } = makeGrid();
 		fill(owners, 0, 0, WIDTH - 1, HEIGHT - 1, 2);
 		fill(owners, 0, 0, 1, 1, 1);
@@ -78,7 +97,11 @@ describe('territory integrity', () => {
 		owners[3 * WIDTH + 4] = 2;
 		owners[4 * WIDTH + 4] = 1;
 
-		const { changed } = runAnnexation(owners, land);
+		const { changed } = runAnnexation(owners, land, [
+			{ index: 0, ownerId: 1 },
+			{ index: 2 * WIDTH + 2, ownerId: 2 },
+			{ index: 8 * WIDTH + 8, ownerId: 3 }
+		]);
 		expect(changed.size).toBe(1);
 		expect(changed.get(4 * WIDTH + 4)).toBe(2);
 	});

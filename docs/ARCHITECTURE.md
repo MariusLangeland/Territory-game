@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.4.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.5.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.4.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.5.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -51,6 +51,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
 | `src/lib/game/integrity.ts`                 | Core      | Connected-component labeling and detached-territory annexation                        | `TerritoryIntegrity`         |
+| `src/lib/game/structures.ts`                | Core      | Structure registry and State structure metadata                                       | `StructureRegistry`          |
 | `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
 | `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
@@ -72,6 +73,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
 - `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, capture counts, and lifetime.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
+- `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -138,6 +140,7 @@ step()
  │    ├─ validate target ownership + attacker border at capture time
  │    ├─ detect opposing claimed-cell contact; cancel the mutual pair
  │    ├─ claim up to 30, write claim provenance, push valid neighbours
+ │    ├─ destroy a State structure if its cell is captured
  │    ├─ skip stale/disconnected candidates without spending the capture budget
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
@@ -173,7 +176,9 @@ The simulation validates every candidate identically. The layer never claims own
 
 ### Territory integrity
 
-`TerritoryIntegrity` labels every owned land component in scan order. The largest component per owner is the mainland. A smaller component is annexed only when it directly touches another owner's mainland; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another detached component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+`TerritoryIntegrity` labels every owned land component in scan order. A component is **protected** if it contains a live State structure owned by the same player; every other component is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+
+Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`. The structure disappears from the map, minimap, snapshot, and checksums, and the owner loses protection for all remaining components. A dead state's territory is therefore not a valid annexation target, though it can still be attacked.
 
 The scan is preallocated and runs at most once per second (or immediately after a mutual cancellation with a cooldown). Labeling is single-threaded and deterministic.
 
@@ -218,7 +223,8 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - current/pending growth mode;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;
 - each attack's growth-layer frontier state (heap, buckets, organic RNG/entries);
-- per-cell attack claim provenance and annexation scheduling state.
+- per-cell attack claim provenance and annexation scheduling state;
+- live structure ids, types, owners, and cell indices.
 
 It intentionally excludes renderer state, camera, UI, and border sets (derived). It is used in tests and intended for server/client verification. Cost is about 9 ms on the development machine, so it is never run per tick in production.
 
@@ -248,7 +254,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~280–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~275–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) per simulation.
 
 ---
 
@@ -334,6 +340,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - Creating a world from URL seed or random seed.
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
+- Structure markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.
@@ -377,7 +384,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~280–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~275–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

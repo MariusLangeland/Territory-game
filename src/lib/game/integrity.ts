@@ -1,11 +1,12 @@
 /**
  * Territory-integrity cleanup.
  *
- * A player's mainland is their largest connected land component. Any smaller
- * component that touches a *mainland* component of another player is annexed
- * by the owner with the largest shared border (lowest id on a tie).
+ * A live State structure anchors a player's mainland: every land component
+ * connected to one of their structures is protected. Unprotected components that
+ * touch a foreign protected component are annexed by the owner with the largest
+ * shared border (lowest id on a tie).
  *
- * Components that only touch unclaimed land, ocean, or another detached
+ * Components that only touch unclaimed land, ocean, or another unprotected
  * component are left alone. This avoids deleting legitimate islands and avoids
  * chains of detached components swapping owners every pass.
  */
@@ -25,6 +26,11 @@ interface ComponentMeta {
 	area: number;
 }
 
+export interface IntegrityAnchor {
+	index: number;
+	ownerId: number;
+}
+
 export class TerritoryIntegrity {
 	private readonly width: number;
 	private readonly height: number;
@@ -33,8 +39,7 @@ export class TerritoryIntegrity {
 	private readonly componentOf: Uint32Array;
 	private readonly cellOrder: Uint32Array;
 	private readonly components: ComponentMeta[] = [];
-	private readonly mainComponent: Uint32Array;
-	private readonly mainArea: Uint32Array;
+	private readonly protectedComponent: Uint8Array;
 	private readonly contactCounts: Uint32Array;
 	private cellCount = 0;
 
@@ -45,8 +50,7 @@ export class TerritoryIntegrity {
 		this.pixelCount = width * height;
 		this.componentOf = new Uint32Array(this.pixelCount);
 		this.cellOrder = new Uint32Array(this.pixelCount);
-		this.mainComponent = new Uint32Array(playerCount + 1);
-		this.mainArea = new Uint32Array(playerCount + 1);
+		this.protectedComponent = new Uint8Array(this.pixelCount);
 		this.contactCounts = new Uint32Array(playerCount + 1);
 	}
 
@@ -57,21 +61,25 @@ export class TerritoryIntegrity {
 	run(
 		owners: Uint16Array,
 		land: Uint8Array,
+		anchors: readonly IntegrityAnchor[],
 		onAnnex: (index: number, newOwner: number) => void
 	): IntegrityResult {
 		this.componentOf.fill(0);
-		this.mainComponent.fill(0);
-		this.mainArea.fill(0);
 		this.cellCount = 0;
 		this.components.length = 0;
 
 		this.labelComponents(owners, land);
-		this.findMainlands();
+		this.protectedComponent.fill(0, 0, this.components.length);
+		for (const anchor of anchors) {
+			if (owners[anchor.index] !== anchor.ownerId) continue;
+			const component = this.componentOf[anchor.index];
+			if (component > 0) this.protectedComponent[component - 1] = 1;
+		}
 
 		let annexedComponents = 0;
 		let annexedCells = 0;
 		for (const component of this.components) {
-			if (component.id === this.mainComponent[component.owner]) continue;
+			if (this.protectedComponent[component.id - 1]) continue;
 			const target = this.chooseAnnexingOwner(component, owners, land);
 			if (target === 0) continue;
 
@@ -134,15 +142,6 @@ export class TerritoryIntegrity {
 		this.cellOrder[this.cellCount++] = index;
 	}
 
-	private findMainlands(): void {
-		for (const component of this.components) {
-			if (component.area > this.mainArea[component.owner]) {
-				this.mainArea[component.owner] = component.area;
-				this.mainComponent[component.owner] = component.id;
-			}
-		}
-	}
-
 	private chooseAnnexingOwner(
 		component: ComponentMeta,
 		owners: Uint16Array,
@@ -188,7 +187,9 @@ export class TerritoryIntegrity {
 		if (!inBounds || !land[neighbour]) return;
 		const owner = owners[neighbour];
 		if (owner === 0 || owner === componentOwner) return;
-		if (this.componentOf[neighbour] !== this.mainComponent[owner]) return;
+		const neighbourComponent = this.componentOf[neighbour];
+		if (neighbourComponent === 0) return;
+		if (!this.protectedComponent[neighbourComponent - 1]) return;
 		this.contactCounts[owner]++;
 	}
 }

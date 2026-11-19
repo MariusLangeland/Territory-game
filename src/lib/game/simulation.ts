@@ -21,6 +21,12 @@ import {
 } from './growth';
 import { TerritoryIntegrity } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
+import {
+	StructureRegistry,
+	type PublicStructure,
+	type Structure,
+	type StructureType
+} from './structures';
 import { DeterministicRng } from './rng';
 
 export interface PlayerState {
@@ -74,6 +80,7 @@ export interface GameSnapshot {
 	claimedLand: number;
 	players: PublicPlayer[];
 	attacks: PublicAttack[];
+	structures: PublicStructure[];
 	winnerId: number | null;
 	ended: boolean;
 	humanId: number;
@@ -81,7 +88,7 @@ export interface GameSnapshot {
 	growthMode: GrowthMode;
 }
 
-export type SimEventKind = 'elimination' | 'victory' | 'system';
+export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'system';
 
 export interface SimEvent {
 	id: number;
@@ -174,6 +181,7 @@ export class TerritorySimulation {
 	private annexRequested = false;
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
 	private readonly integrity: TerritoryIntegrity;
+	readonly structures: StructureRegistry;
 
 	constructor(options: SimulationOptions) {
 		const width = options.width ?? undefined;
@@ -215,6 +223,12 @@ export class TerritorySimulation {
 		this.placeStartingTerritories(this.map.starts);
 		this.ensureEveryStateHasLand();
 		this.rebuildBorders();
+
+		this.structures = new StructureRegistry();
+		for (let i = 0; i < this.map.starts.length; i++) {
+			const start = this.map.starts[i];
+			this.structures.create('state', i + 1, start.x, start.y, this.width);
+		}
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
@@ -385,6 +399,13 @@ export class TerritorySimulation {
 			mix(player.id);
 			mix(player.alive ? 1 : 0);
 			mix(player.territory);
+		}
+
+		for (const structure of this.structures.all) {
+			mix(structure.id);
+			mix(structureTypeCode(structure.type));
+			mix(structure.ownerId);
+			mix(structure.index);
 		}
 
 		for (const attack of this.attacks) {
@@ -679,7 +700,7 @@ export class TerritorySimulation {
 	}
 
 	private annexDisconnectedTerritory(): void {
-		this.integrity.run(this.owners, this.land, (index, newOwner) => {
+		this.integrity.run(this.owners, this.land, this.structures.all, (index, newOwner) => {
 			this.claim(index, newOwner, 0);
 		});
 	}
@@ -696,6 +717,17 @@ export class TerritorySimulation {
 
 		this.owners[index] = newOwner;
 		this.claimedBy[index] = sourceAttackId;
+
+		const structure = this.structures.destroyAt(index);
+		if (structure) {
+			const owner = this.players[structure.ownerId - 1];
+			this.pushEvent(
+				'structure',
+				`${owner.name}'s State structure was destroyed. Its territory is no longer protected from annexation.`,
+				structure.ownerId
+			);
+		}
+
 		const next = this.players[newOwner - 1];
 		next.territory++;
 		this.refreshBorder(index);
@@ -900,6 +932,7 @@ export class TerritorySimulation {
 			claimedLand,
 			players,
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
+			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
 			winnerId: this.winnerId,
 			ended: this.ended,
 			humanId: HUMAN_PLAYER_ID,
@@ -919,6 +952,16 @@ export class TerritorySimulation {
 		};
 	}
 
+	private toPublicStructure(structure: Structure): PublicStructure {
+		return {
+			id: structure.id,
+			type: structure.type,
+			ownerId: structure.ownerId,
+			x: structure.x,
+			y: structure.y
+		};
+	}
+
 	private pushEvent(kind: SimEventKind, message: string, playerId?: number): void {
 		this.events.push({
 			id: this.nextEventId++,
@@ -932,6 +975,13 @@ export class TerritorySimulation {
 
 function fail(reason: AttackFailure, message: string): AttackOrderResult {
 	return { ok: false, reason, message };
+}
+
+function structureTypeCode(type: StructureType): number {
+	switch (type) {
+		case 'state':
+			return 1;
+	}
 }
 
 function growthModeCode(mode: GrowthMode): number {

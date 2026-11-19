@@ -53,6 +53,7 @@ All authoritative quantities are integers:
 | Growth layer               | one of `circular`, `smooth`, `organic` |
 | Frontier candidate storage | layer-specific deterministic structure |
 | Attack claim provenance    | attack id (uint32) per cell            |
+| Structure identity         | integer id, type enum, owner, map cell |
 | Attack seed distance       | squared integer distance               |
 | Capture rate               | 30 pixels per front per tick           |
 
@@ -157,7 +158,9 @@ Attack seeds are derived deterministically:
 
 Mutual front contact is deterministic: each capture records `claimedBy[index] = attack.id`; before a capture, neighbouring claims are checked against active mutual attacks. On contact all orders between the pair are marked done. The candidate is left uncaptured, so the border is the ownership state at contact.
 
-Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order; the largest component per owner is the mainland (first on a tie). Detached components touching a foreign mainland are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
+Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
+
+Capturing a structure cell destroys that registry entry inside `claim`, before later attacks and the integrity pass see the state. This is deterministic and part of the authoritative state.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -191,10 +194,11 @@ Border set membership has no outcome effect by itself, but bot target selection 
 2. RNG state,
 3. next attack id,
 4. ended flag and winner,
-5. every owner cell,
-6. each player's id, alive flag, and territory,
-7. current and pending growth mode, annexation request/cooldown state, plus each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state;
-8. per-cell owner and attack-claim provenance.
+5. current and pending growth mode, annexation request/cooldown state,
+6. every owner cell and per-cell attack-claim provenance,
+7. each player's id, alive flag, and territory,
+8. live structure ids, type, owner, and cell index,
+9. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 
@@ -277,8 +281,9 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
 14. A deep click produces an attack anchor at the border contact, not at the click.
 15. Mutual attacks cancel when a front touches opposing claim provenance; the candidate is not captured and all pair orders disappear.
-16. Detached territory is annexed only to a foreign mainland with the largest shared border; islands with no claimant are left.
-17. Territory-integrity unit tests cover main-component selection, no-claim islands, and deterministic tie-breaks.
+16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left.
+17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, and deterministic tie-breaks.
+18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 
 Commands to run:
 

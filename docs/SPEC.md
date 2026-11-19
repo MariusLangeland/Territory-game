@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.4.0 (attack stress experiment)  
+**Version:** 0.5.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.4.0, map version 2, protocol draft 8
+**Last synchronized with:** application 0.5.0, map version 2, protocol draft 9
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -68,6 +68,7 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
 | WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
 | Circular / smooth / organic selectable growth layers      | ✅                       |
+| State structures anchoring protected territory            | ✅                       |
 | Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
@@ -79,6 +80,7 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | Area                                                    | Target                                         |
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
+| Structure construction, other types, ownership transfer | First State structure only; design pending     |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
 | Accounts, progression, persistence                      | [ROADMAP.md](ROADMAP.md)                       |
@@ -253,14 +255,26 @@ This prevents mutually attacking organic fronts from interpenetrating, wiggling 
 
 ### 4.14 Territory integrity
 
-A player's **mainland** is their largest connected component of owned land (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and immediately after a mutual-front cancellation, the simulation labels components and annexes detached ones:
+Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and promptly after a mutual-front cancellation, the simulation labels components and annexes unprotected ones:
 
-- a smaller component is transferred only if it touches another player's **mainland**;
-- the recipient is the adjacent mainland owner with the greatest shared border;
+- a component is transferred only if it touches another player's **protected mainland**;
+- the recipient is the adjacent protected-mainland owner with the greatest shared border;
 - ties go to the lower player id;
-- components touching only ocean, unclaimed land, or another detached component are left alone.
+- components touching only ocean, unclaimed land, another unprotected component, or an unprotected territory are left alone.
 
-This restores dead pixels and severed pockets to the surrounding claim. Legitimate islands with no adjacent claimant are not deleted. The largest-component rule is deterministic; equal-size components keep the first one in scan order as the mainland.
+This restores dead pixels and severed pockets to the surrounding claim while guaranteeing that territory connected to a State structure is never annexed. Legitimate islands with no adjacent protected claimant are not deleted.
+
+### 4.15 State structures
+
+- Each state starts with one State structure on its start cell.
+- The structure is part of the owning state's territory and can be captured by an attack.
+- Every land component connected to a live State structure is protected from annexation.
+- Capturing the structure destroys it immediately. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
+- If a component contains multiple structures (future structure types), it remains protected.
+- Structures are rendered as diamonds on the map and dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- Structure placement, capture, and protection are deterministic and included in checksums.
+
+This is the first structure type; structure construction, multiple structure types, and ownership transfer are future work.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -293,6 +307,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Status console: hover coordinate/ownership and human active orders.
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
+- State structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
@@ -359,7 +374,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 6.3 Snapshot and change batch
 
 - Snapshot after each tick; no direct simulation arrays in UI.
-- Snapshot includes the current growth mode used for new orders; public attacks include the layer they were created with.
+- Snapshot includes the current growth mode used for new orders, live structures, and public attacks with their creation layer.
 - Change batch: `(owner << 21) | pixelIndex`, `Uint32Array(16_384)`.
 - Consumed before the next tick.
 - Overflow triggers renderer full resync and never changes game state.
@@ -467,7 +482,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
 - [x] Distance-based growth is anchored at the border contact, never at a deep click.
 - [x] Mutual fronts cancel at contact, leaving a stable border and terminating the pair's orders.
-- [x] Detached pockets are annexed by the adjacent mainland with the largest shared border.
+- [x] Detached pockets are annexed by the adjacent protected mainland with the largest shared border.
+- [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

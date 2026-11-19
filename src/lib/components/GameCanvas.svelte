@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { HUMAN_PLAYER_ID, TICK_MS } from '#lib/game/constants';
+	import { HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import { TerritoryRenderer, type RendererFrameStats } from '#lib/game/render/territory-renderer';
@@ -37,6 +37,7 @@
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
+	let structureCanvas: HTMLCanvasElement;
 	let renderer: TerritoryRenderer | null = null;
 	let dragging = $state(false);
 	let pointerActive = false;
@@ -55,6 +56,58 @@
 		let lastHoverKey = '';
 		let lastHoverAt = 0;
 		let lastUiUpdate = 0;
+		let structureContext: CanvasRenderingContext2D | null = null;
+
+		function drawStructures(): void {
+			if (!renderer || !structureCanvas) return;
+			const camera = renderer.camera;
+			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			const width = Math.max(1, Math.round(camera.width));
+			const height = Math.max(1, Math.round(camera.height));
+			if (
+				structureCanvas.width !== Math.round(width * dpr) ||
+				structureCanvas.height !== Math.round(height * dpr)
+			) {
+				structureCanvas.width = Math.round(width * dpr);
+				structureCanvas.height = Math.round(height * dpr);
+				structureContext = null;
+			}
+			structureContext ??= structureCanvas.getContext('2d');
+			const context = structureContext;
+			if (!context) return;
+
+			context.setTransform(1, 0, 0, 1, 0, 0);
+			context.clearRect(0, 0, structureCanvas.width, structureCanvas.height);
+			context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+			for (const structure of simulation.structures.all) {
+				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
+				if (point.x < -12 || point.y < -12 || point.x > width + 12 || point.y > height + 12) {
+					continue;
+				}
+
+				const human = structure.ownerId === HUMAN_PLAYER_ID;
+				const radius = human ? 5 : 3.4;
+				context.beginPath();
+				context.moveTo(point.x, point.y - radius);
+				context.lineTo(point.x + radius, point.y);
+				context.lineTo(point.x, point.y + radius);
+				context.lineTo(point.x - radius, point.y);
+				context.closePath();
+				context.globalAlpha = 0.94;
+				context.fillStyle = colorForPlayer(structure.ownerId).hex;
+				context.fill();
+				context.globalAlpha = 1;
+				context.lineWidth = human ? 1.5 : 1;
+				context.strokeStyle = 'rgba(252, 246, 225, 0.94)';
+				context.stroke();
+
+				context.beginPath();
+				context.arc(point.x, point.y, human ? 1.7 : 1.1, 0, Math.PI * 2);
+				context.fillStyle = 'rgba(5, 14, 18, 0.92)';
+				context.fill();
+			}
+		}
 
 		function frame(now: number): void {
 			if (disposed || !renderer) return;
@@ -92,6 +145,7 @@
 			}
 
 			renderer.render(now);
+			drawStructures();
 
 			if (now - lastViewReport > 140) {
 				cameraBridge.report();
@@ -283,6 +337,8 @@
 	aria-label="Territory map. Drag to pan, scroll to zoom, click to attack."
 ></canvas>
 
+<canvas bind:this={structureCanvas} class="structure-canvas" aria-hidden="true"></canvas>
+
 <style>
 	.territory-canvas {
 		position: absolute;
@@ -297,5 +353,14 @@
 
 	.territory-canvas.grabbing {
 		cursor: grabbing;
+	}
+
+	.structure-canvas {
+		position: absolute;
+		inset: 0;
+		display: block;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
 	}
 </style>

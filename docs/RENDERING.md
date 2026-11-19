@@ -36,7 +36,21 @@ full-screen triangle
 canvas swapchain (preferred format)
 ```
 
-There is exactly one draw call per frame.
+There is exactly one WebGPU draw call per frame for territory.
+
+### Structure overlay
+
+Structures are not encoded in the ownership texture. A transparent 2D canvas sits above the WebGPU canvas and draws up to 108 owner-colored diamonds at structure cells each frame:
+
+- uses the same `MapCamera.mapToScreen` transform as the map;
+- fixed screen-space size (human structure slightly larger), so markers remain readable at every zoom;
+- culls offscreen markers;
+- resizes with the map viewport and DPR (capped at 2);
+- `pointer-events: none`, so attacks/drags still target the WebGPU canvas;
+- reads the live `simulation.structures` registry, so a destroyed structure disappears immediately;
+- the minimap separately draws live structures as colored dots with a white center.
+
+The overlay is intentionally separate from the territory shader: structures need icons and future labels, while territory upload cost and sampling stay unchanged. Panning with all 108 markers measured 143 fps, p99 7.1 ms.
 
 ---
 

@@ -82,6 +82,11 @@
 		const humanId = snapshot.humanId;
 		return snapshot.players.find((player) => player.id === humanId) ?? null;
 	});
+	let humanStructure = $derived(
+		snapshot && human
+			? (snapshot.structures.find((structure) => structure.ownerId === human.id) ?? null)
+			: null
+	);
 	let ranked = $derived(
 		snapshot
 			? [...snapshot.players].sort(
@@ -281,6 +286,15 @@
 		if (important.length > 0) {
 			eventFeed = [...important, ...eventFeed].slice(0, 4);
 		}
+		if (
+			gameStarted &&
+			events.some((event) => event.kind === 'structure' && event.playerId === next.humanId)
+		) {
+			showToast(
+				'Your State structure was destroyed. Territory is no longer protected from annexation.',
+				'error'
+			);
+		}
 
 		if (!gameStarted) return;
 		const humanState = next.players.find((player) => player.id === next.humanId);
@@ -459,7 +473,9 @@
 					<span class="commander-swatch" aria-hidden="true"></span>
 					<span class="commander-name">
 						<strong>{human.name}</strong>
-						<small>COMMANDER</small>
+						<small class:lost={!humanStructure}>
+							{humanStructure ? 'COMMANDER / ANCHORED' : 'COMMANDER / NO ANCHOR'}
+						</small>
 					</span>
 				</div>
 				<div class="readout-stat">
@@ -580,7 +596,10 @@
 					<div class="panel-head"><span>WAR FEED</span><span class="panel-meta">LIVE</span></div>
 					<ul>
 						{#each eventFeed as event (event.id)}
-							<li class:elimination={event.kind === 'elimination'}>
+							<li
+								class:elimination={event.kind === 'elimination'}
+								class:structure={event.kind === 'structure'}
+							>
 								<span>{event.message}</span>
 								<time>{formatClock(event.tick / TICK_RATE)}</time>
 							</li>
@@ -781,7 +800,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.4.0 / PROTOCOL 8</span>
+				<span>BUILD 0.5.0 / PROTOCOL 9</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -949,9 +968,10 @@
 							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
 							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
 							front peters out immediately. If two states attack each other and their fronts touch, every
-							order between them cancels and the contact line becomes the border. The HUD growth switch
-							selects the frontier layer for new orders: circular, smooth, or organic. Existing orders
-							keep the layer they started with.
+							order between them cancels and the contact line becomes the border. Each state begins with
+							a State structure at its capital; territory connected to it cannot be annexed. The HUD growth
+							switch selects the frontier layer for new orders: circular, smooth, or organic. Existing
+							orders keep the layer they started with.
 						</p>
 					</section>
 					<section>
@@ -968,8 +988,9 @@
 						<p>
 							{TICK_RATE} fixed ticks per second, {PLAYER_COUNT - 1} free-attacking AI states, and a seeded
 							PRNG. The {(MAP_WIDTH * MAP_HEIGHT).toLocaleString('en-US')} pixel atlas is rendered from
-							a GPU control texture with only dirty tiles uploaded. Every second, land cut off from a
-							state's mainland is annexed by the adjacent mainland with the largest shared border.
+							a GPU control texture with only dirty tiles uploaded. Every second, land cut off from every
+							live State structure is annexed by an adjacent protected mainland with the largest shared
+							border. Capture a State structure to remove that state's annexation protection.
 						</p>
 					</section>
 				</div>
@@ -1175,6 +1196,10 @@
 		font-size: 17px;
 		letter-spacing: 0.08em;
 		line-height: 1;
+	}
+
+	.commander-name small.lost {
+		color: #ffab98;
 	}
 
 	.commander-name small,
@@ -1540,6 +1565,10 @@
 
 	.feed li.elimination span {
 		color: #ffab98;
+	}
+
+	.feed li.structure span {
+		color: #ffd690;
 	}
 
 	.feed time {
