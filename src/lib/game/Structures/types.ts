@@ -13,7 +13,7 @@ export interface DefenseAuraEffect {
 	kind: 'defense-aura';
 	/** Radius in map pixels. */
 	radius: number;
-	/** Flat defense added to every land pixel in range. */
+	/** Flat defense added to land in range owned by the structure owner. */
 	defense: number;
 	/** State auras use max; stacked buildings add. */
 	stacking: 'max' | 'add';

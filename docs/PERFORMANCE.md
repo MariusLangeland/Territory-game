@@ -114,7 +114,7 @@ Potential optimizations if needed:
 - No attack queue compaction; frontiers are lifetime-bounded.
 - Claim-provenance writes on every capture and mutual-front checks.
 - Per-capture defense lookup from elevation + occupancy + aura, plus attacker Barracks strength.
-- Aura overlay (State/Defense Post fields) built at start and rebuilt on structure destruction.
+- Aura overlay (friendly-owned State/Defense Post fields) built at start, rebuilt on structure changes, and locally recomputed for captured cells.
 - Attack-order grants and cap scans; Command Post pulses every 60 seconds.
 - Human income check and card command validation; card RNG only on starting hand/refresh.
 - Structure lookup on claims and structure metadata in checksums.

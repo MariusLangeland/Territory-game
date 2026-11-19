@@ -57,7 +57,7 @@ All authoritative quantities are integers:
 | Attack seed distance       | squared integer distance               |
 | Attack budget              | 30 points per front per tick           |
 | Defense                    | `1 + elevation + occupied + aura`      |
-| State aura                 | 12 px radius, +20, max once            |
+| State aura                 | 12 px radius, +20, max once, friendly  |
 | Elevation tier             | uint8, 0–5                             |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
@@ -165,7 +165,7 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
-Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array`: max-stacking State auras first, then additive Defense Post auras. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
+Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner: max-stacking State auras first, then additive Defense Post auras. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense. Capturing an ordinary cell calls `updateAuraAt` for that cell, dropping the old owner's aura and applying the new owner's aura deterministically. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
@@ -298,7 +298,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
-21. A live State structure adds 20 defense within 12 px (including its own cell); destroying it removes the aura.
+21. A live State structure adds 20 defense within 12 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
 22. Starting hand and every refresh are deterministic from a dedicated card RNG and use independent pool draws with replacement.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
 24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 grant and Command Post pulses are fixed tick-boundary events clamped to cap.

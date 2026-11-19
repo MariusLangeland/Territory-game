@@ -460,11 +460,11 @@ State structures are anchors, but the player needs buildable structures and a re
 
 - Give the human commander **3 starting gold** and **3 random cards** from a pool of Mine, Barracks, and Defense Post. Every draw is independent (with replacement); there is no deck.
 - Pay **1 gold per 10 seconds** plus 1 per live Mine. Income is paid at tick boundaries.
-- Cards cost Mine 3, Barracks 2, Defense Post 1. **Refresh** costs 1 and replaces the hand with three new draws.
+- Cards cost Mine 3, Barracks 2, Defense Post 2 (later balance), Command Post 4, War Academy 6. **Refresh** costs 1 and replaces the hand with three new draws.
 - Build/refresh are queued commands applied at the next tick. A build validates card, gold, own land, and empty structure slot, then removes the card and creates the structure.
 - Drag-and-drop is the only placement gesture. The drop point is converted through the camera to a map cell; invalid drops produce a toast and no cost.
 - Card draws use a dedicated deterministic RNG seeded from the world seed. Gold, hand, card RNG, and income tick are checksummed.
-- Mine adds income; Defense Post adds a stacking +1 defense aura; Barracks adds stacking attack strength in a large radius. Barracks strength reduces target defense cost, floor 1, for that owner's attacks.
+- Mine adds income; Defense Post adds a stacking +5 friendly-defense aura in a 16 px radius; Barracks adds stacking attack strength in a large radius. Defensive auras only protect land owned by the structure owner. Barracks strength reduces target defense cost, floor 1, for that owner's attacks.
 - Any structure whose cell is captured is razed, including buildables; effects disappear immediately.
 
 ### Consequences

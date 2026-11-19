@@ -6,7 +6,7 @@ export const STATE_AURA_DEFENSE = 20;
 
 export const STATE_DEFINITION: StructureDefinition = {
 	label: 'STATE',
-	description: 'Anchors protected territory; projects a +20 defense aura.',
+	description: 'Anchors protected territory; projects a +20 friendly-defense aura.',
 	cost: 0,
 	buildable: false,
 	accent: '#f7eed0',

@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.9.3).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.9.4).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -135,15 +135,17 @@ State structures can be captured like any other land cell. The structure is dest
 
 The human commander starts with **3 gold** and three random cards. Income is **1 gold per 10 seconds**, plus 1 per live Mine. Drag a card into your territory to buy and build it:
 
-| Card         | Cost | Effect                                              |
-| ------------ | ---- | --------------------------------------------------- |
-| Mine         | 3    | +1 income every 10 seconds                          |
-| Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius |
-| Defense Post | 1    | +1 pixel defense in a medium radius; stacks         |
-| Command Post | 4    | +1 attack order every 60 seconds                    |
-| War Academy  | 6    | +1 attack-order cap                                 |
+| Card         | Cost | Effect                                                   |
+| ------------ | ---- | -------------------------------------------------------- |
+| Mine         | 3    | +1 income every 10 seconds                               |
+| Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius      |
+| Defense Post | 2    | +5 defense to friendly pixels in a medium radius; stacks |
+| Command Post | 4    | +1 attack order every 60 seconds                         |
+| War Academy  | 6    | +1 attack-order cap                                      |
 
 The hand is filled by independent random draws from the five-card pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+
+Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks.
 
 Structures must be at least **8 px apart** (centre to centre); dropping a card too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 

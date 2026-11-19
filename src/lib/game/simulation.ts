@@ -825,6 +825,7 @@ export class TerritorySimulation {
 							const dx = x - structure.x;
 							if (dx * dx + dy * dy > radiusSq) continue;
 							const index = y * width + x;
+							if (this.owners[index] !== structure.ownerId) continue;
 							if (stacking === 'max') {
 								this.auraDefense[index] = Math.max(this.auraDefense[index], effect.defense);
 							} else {
@@ -841,6 +842,34 @@ export class TerritorySimulation {
 
 		stamp('max');
 		stamp('add');
+	}
+
+	/**
+	 * Recompute one cell after an ownership change. Defensive auras only
+	 * protect land owned by the structure's owner, so a captured cell must
+	 * immediately drop the old owner's aura (and may gain the new owner's).
+	 */
+	private updateAuraAt(index: number): void {
+		const owner = this.owners[index];
+		if (!owner) {
+			this.auraDefense[index] = 0;
+			return;
+		}
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		let max = 0;
+		let add = 0;
+		for (const structure of this.structures.forOwner(owner)) {
+			for (const effect of structure.effects) {
+				if (effect.kind !== 'defense-aura') continue;
+				const dx = structure.x - x;
+				const dy = structure.y - y;
+				if (dx * dx + dy * dy > effect.radius * effect.radius) continue;
+				if (effect.stacking === 'max') max = Math.max(max, effect.defense);
+				else add += effect.defense;
+			}
+		}
+		this.auraDefense[index] = Math.min(65_535, max + add);
 	}
 
 	private attackStrengthAt(attackerId: number, index: number): number {
@@ -1136,6 +1165,7 @@ export class TerritorySimulation {
 		if (x + 1 < this.width) this.refreshBorder(index + 1);
 		if (y > 0) this.refreshBorder(index - this.width);
 		if (y + 1 < this.height) this.refreshBorder(index + this.width);
+		if (!structure) this.updateAuraAt(index);
 
 		this.recordChange(index, newOwner);
 	}

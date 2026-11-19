@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.9.3. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.9.4. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.3. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.4. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -76,7 +76,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, capture counts, and lifetime.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
 - `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks attack strength.
-- `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts). Rebuilt on structure destruction.
+- `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts), only on cells owned by the structure owner. Rebuilt on structure changes; captured cells are locally recomputed.
 - `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
 - Human economy: `gold`, `hand`, dedicated `cardRng`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
 - Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap; Command Posts grant extra orders on their pulse. `nextAttackOrderGrantTick` and `nextOrderBonusTick` schedule the timers.
@@ -196,14 +196,14 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 `Structures/` keeps each structure definition in its own file: `state.ts`, `mine.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
 
-- State: `defense-aura` radius 12, +20, max stacking.
-- Defense Post: `defense-aura` radius 8, +1, additive stacking.
+- State: `defense-aura` radius 12, +20, max stacking, friendly-owned land only.
+- Defense Post: `defense-aura` radius 16, +5, additive stacking, friendly-owned land only.
 - Barracks: `attack-aura` radius 18, attack strength 1.
 - Mine: `income`, +1 per interval.
 - Command Post: `order-gain`, +1 attack order on the global 60-second pulse.
 - War Academy: `order-cap`, +1 attack-order cap.
 
-`simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras. `defenseAt` reads it, so effects share the attack-point economy. Rebuilding is ~48k cells for the 108 State capitals plus any posts and only happens at world creation or structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
+`simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner. `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
 
 The scan is preallocated and runs at most once per second (or immediately after a mutual cancellation with a cooldown). Labeling is single-threaded and deterministic.
 

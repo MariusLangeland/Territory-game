@@ -8,7 +8,11 @@ import {
 	STRUCTURE_MIN_SPACING
 } from './constants';
 import { TerritorySimulation } from './simulation';
-import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from './Structures';
+import {
+	BUILDABLE_STRUCTURE_TYPES,
+	DEFENSE_POST_DEFENSE,
+	type BuildableStructureType
+} from './Structures';
 
 function findBuildCell(sim: TerritorySimulation): number {
 	for (let i = 0; i < sim.owners.length; i++) {
@@ -77,7 +81,7 @@ describe('player economy and cards', () => {
 		for (const card of sim.hand) expect(previousIds).not.toContain(card.id);
 	});
 
-	it('builds a defense post and adds one aura defense', () => {
+	it('builds a defense post and adds its aura defense', () => {
 		const sim = new TerritorySimulation({ seed: 642087 });
 		const index = findBuildCell(sim);
 		const x = index % sim.width;
@@ -88,7 +92,7 @@ describe('player economy and cards', () => {
 		expect(sim.playCard(HUMAN_PLAYER_ID, 4567, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.type).toBe('defense-post');
-		expect(sim.getAuraDefense(x, y)).toBe(before + 1);
+		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
 	});
 
 	it('rejects structures inside the minimum spacing radius', () => {
@@ -133,6 +137,36 @@ describe('player economy and cards', () => {
 		const { x, y } = buildCard(sim, 'barracks');
 		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x, y)).toBe(1);
 		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x + 19, y)).toBe(0);
+	});
+
+	it('does not let a Defense Post buff enemy-owned pixels', () => {
+		const sim = new TerritorySimulation({ seed: 808080 });
+		const { index: postIndex } = buildCard(sim, 'defense-post');
+		const postX = postIndex % sim.width;
+		const postY = (postIndex - postX) / sim.width;
+		let target = -1;
+		for (let dy = -7; dy <= 7 && target < 0; dy++) {
+			for (let dx = -7; dx <= 7; dx++) {
+				const x = postX + dx;
+				const y = postY + dy;
+				const index = y * sim.width + x;
+				if (index === postIndex) continue;
+				if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
+				if (sim.terrain[index] === 0 || sim.structures.at(index)) continue;
+				target = index;
+				break;
+			}
+		}
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		expect(sim.getAuraDefense(target % sim.width, Math.floor(target / sim.width))).toBeGreaterThan(
+			0
+		);
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		internals.claim(target, 2, 999);
+		expect(sim.getAuraDefense(target % sim.width, Math.floor(target / sim.width))).toBe(0);
 	});
 
 	it('raises the attack-order cap with a War Academy', () => {
