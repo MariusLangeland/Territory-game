@@ -1071,7 +1071,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.19.0 / PROTOCOL 26</span>
+				<span>BUILD 0.20.0 / PROTOCOL 27</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>

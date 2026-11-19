@@ -36,6 +36,8 @@ import {
 import { TerritoryIntegrity } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import {
+	BARRACKS_LEVELS_PER_ORDER,
+	BARRACKS_MAX_BONUS_ORDERS,
 	BUILDABLE_STRUCTURE_TYPES,
 	StructureRegistry,
 	STRUCTURE_DEFINITIONS,
@@ -747,14 +749,19 @@ export class TerritorySimulation {
 	}
 
 	getAttackOrderStrength(ownerId: number): number {
-		let orders = 1;
+		let bonusLevels = 0;
 		for (const structure of this.structures.forOwner(ownerId)) {
 			for (const effect of structure.effects) {
 				if (effect.kind !== 'attack-order-bonus') continue;
-				orders += effect.amount * structure.stacks;
+				bonusLevels += effect.amount * structure.stacks;
 			}
 		}
-		return orders;
+		// Diminishing returns: one order per two levels, hard-capped.
+		const bonus = Math.min(
+			BARRACKS_MAX_BONUS_ORDERS,
+			Math.ceil(bonusLevels / BARRACKS_LEVELS_PER_ORDER)
+		);
+		return 1 + bonus;
 	}
 
 	get totalLand(): number {

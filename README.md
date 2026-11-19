@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.19.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.20.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -87,7 +87,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
 3. A launch consumes one attack order: start with 3 for the human and 2 for bots. Every 10 seconds each living player gains 1 order, up to the cap; orders do not refund when a front ends.
-4. Each attack embeds **1 order plus one per live Barracks stack**. More embedded orders mean more capture points, defense piercing, and lifetime. The launch still costs one inventory order; clicking again creates a separate attack, never upgrades the first.
+4. Each attack embeds **1 order plus one per two live Barracks levels, capped at +5**. More embedded orders mean more capture points, defense piercing, and lifetime. The launch still costs one inventory order; clicking again creates a separate attack, never upgrades the first.
 5. Each tick, a front has **30 + 15 per extra embedded order attack points**. Capturing a pixel costs `max(1, defense − embeddedOrders + 1)`: `1 + elevation`, plus **1 if occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
 6. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
 7. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
@@ -142,7 +142,7 @@ The human commander starts with **3 gold** and **all five build cards** permanen
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |
 | Mine         | 3    | +1 gold per 10 seconds, paid continuously                  |
-| Barracks     | 2    | Your attacks now issue 1 extra order per stack             |
+| Barracks     | 12   | +1 embedded attack order per 2 levels, up to +5            |
 | Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
 | Command Post | 4    | +1 attack order per 60 seconds, paid continuously          |
 | War Academy  | 6    | +1 attack-order cap                                        |
@@ -164,13 +164,13 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - dropping the same type outside all districts creates another structure/district;
 - a different type cannot be dropped inside any existing district.
 
-| Structure    | District range | Stack effect      |
-| ------------ | -------------: | ----------------- |
-| Mine         |             32 | +1 income         |
-| Barracks     |             44 | +1 embedded order |
-| Defense Post |             40 | +5 defense        |
-| Command Post |             32 | +1 order per 60s  |
-| War Academy  |             32 | +1 order cap      |
+| Structure    | District range | Stack effect     |
+| ------------ | -------------: | ---------------- |
+| Mine         |             32 | +1 income        |
+| Barracks     |             44 | +1 order / 2 Lv. |
+| Defense Post |             40 | +5 defense       |
+| Command Post |             32 | +1 order per 60s |
+| War Academy  |             32 | +1 order cap     |
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
@@ -180,7 +180,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 
-The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive. Barracks stacks increase the orders embedded in each attack, not the inventory cap.
+The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive. Barracks levels add one embedded order per two levels (max +5), not inventory cap.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 

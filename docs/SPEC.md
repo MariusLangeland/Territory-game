@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.19.0 (attack stress experiment)  
+**Version:** 0.20.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.19.0, map version 3, protocol draft 26
+**Last synchronized with:** application 0.20.0, map version 3, protocol draft 27
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 26`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 27`.
 
 ### 4.2 Starting positions
 
@@ -141,7 +141,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
 7. Launching consumes **1 attack order**. The human starts with 3 orders (cap 3) and bots with 2 (cap 2). Every **10 seconds**, each living player gains **1 order, up to the cap**; attacks do not refund an order when they end. Multiple active fronts are allowed while orders remain.
-8. Every launched attack **embeds orders**: base 1, plus 1 per live Barracks stack owned by the attacker. The launch still costs one inventory order. Repeated clicks create separate attacks; they never add orders to an existing attack.
+8. Every launched attack **embeds orders**: base 1, plus `min(5, ceil(live Barracks levels / 2))`. The launch still costs one inventory order. Repeated clicks create separate attacks; they never add orders to an existing attack.
 9. Each tick, the front's selected **growth layer** nominates candidate frontier cells until its attack-point budget is spent or no candidates remain. Budget is `30 + 15 × (embeddedOrders − 1)`. For each capture, the simulation samples up to **10** of the highest-priority candidates and takes the one with the lowest current defense cost; ties keep growth priority. Capture cost is `max(1, defense − embeddedOrders + 1)`, so stronger attacks are less slowed by defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
 10. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
 11. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack in a mutual war. If so, the defender spends `min(its attack strength, its remaining attack-order inventory, incoming embedded orders)` orders. Each spent order removes one embedded order from the incoming attack. If the incoming attack reaches 0 embedded orders it halts; otherwise the clash pauses that front for the tick. A defender with no spendable orders cannot reduce it, and the attack breaks through. See section 4.13.
@@ -254,7 +254,7 @@ The HUD growth switcher selects the layer for new orders. It has no effect on or
 
 Each captured cell records the attack id that claimed it. When an attack is about to capture a cell adjacent to a cell claimed by an **opposing active attack**, and the two attacks target each other's owners, the pair is in direct conflict:
 
-- the defender's attack strength is `1 + its live Barracks stacks`;
+- the defender's attack strength is `1 + min(5, ceil(live Barracks levels / 2))`;
 - it spends up to `min(attack strength, remaining attack-order inventory, incoming embedded orders)` inventory orders;
 - each spent order removes one embedded order from the incoming attack;
 - if the incoming attack reaches 0, it halts;
@@ -319,7 +319,7 @@ The human commander has a small card economy; bots do not build cards yet.
 - Dropping inside a same-type district upgrades that district's structure at `base card cost + current level`; dropping the same type outside all districts creates another structure at its base card cost.
 - The build command is queued, applied at the next tick, deducts its cost, keeps the card, and either creates a new structure or adds a stack to the matching district.
 - Cards are permanent actions, not a consumable hand: any affordable card can be bought again immediately. There is no draw, deck, or reroll.
-- Costs: Mine **3**, Barracks **2**, Defense Post **2**, Command Post **4**, War Academy **6**.
+- Costs: Mine **3**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6**.
 - Command Posts accrue **+1 attack order per 60 seconds continuously**. A level-30 post therefore produces 30 orders over 60 seconds rather than a 30-order pulse. Grants are clamped to the cap and excess is lost.
 - War Academies add **+1 to the attack-order cap** while alive; additional War Academy cards stack this cap bonus.
 - Captured buildable structures are razed and their effects disappear.
@@ -329,12 +329,12 @@ The human commander has a small card economy; bots do not build cards yet.
 | Card         | Cost | Effect                                                           |
 | ------------ | ---- | ---------------------------------------------------------------- |
 | Mine         | 3    | +1 gold per 10 seconds, paid continuously                        |
-| Barracks     | 2    | Your attacks issue 1 extra embedded order per stack              |
+| Barracks     | 12   | +1 embedded order per 2 levels, capped at +5                     |
 | Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
 | Command Post | 4    | +1 attack order per 60 seconds, paid continuously                |
 | War Academy  | 6    | +1 attack-order cap                                              |
 
-Each live Barracks stack adds one embedded order to every attack its owner launches. Embedded orders increase capture speed, defense piercing, and lifetime. Barracks also raises the owner's defensive clash strength because defense uses the same issued attack strength.
+Every two live Barracks levels add one embedded order to the owner's attacks, rounded up and capped at +5. Embedded orders increase capture speed, defense piercing, and lifetime. Barracks also raises the owner's defensive clash strength because defense uses the same issued attack strength.
 
 ### 4.18 Districts and structure stacking
 
@@ -351,7 +351,7 @@ Each live Barracks stack adds one embedded order to every attack its owner launc
 | Structure    | District range | Stack effect                     |
 | ------------ | -------------: | -------------------------------- |
 | Mine         |          32 px | +1 income per interval per stack |
-| Barracks     |          44 px | +1 embedded order per stack      |
+| Barracks     |          44 px | +1 order per 2 levels, max +5    |
 | Defense Post |          40 px | +5 defense per stack             |
 | Command Post |          32 px | +1 order per 60s per stack       |
 | War Academy  |          32 px | +1 cap per stack                 |

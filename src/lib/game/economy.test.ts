@@ -47,7 +47,7 @@ function buildCard(
 	const x = index % sim.width;
 	const y = (index - x) / sim.width;
 	sim.hand = [{ id: 900 + index, type }];
-	sim.gold = 10;
+	sim.gold = Math.max(10, STRUCTURE_DEFINITIONS[type].cost);
 	const result = sim.playCard(HUMAN_PLAYER_ID, 900 + index, x, y);
 	expect(result.ok).toBe(true);
 	sim.step();
@@ -411,12 +411,22 @@ describe('player economy and cards', () => {
 		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(1);
 		const { index } = buildCard(sim, 'barracks');
 		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(2);
-		sim.gold = 10;
+		sim.gold = 30;
+		expect(
+			sim.upgradeDistrict(HUMAN_PLAYER_ID, index % sim.width, Math.floor(index / sim.width)).ok
+		).toBe(true);
+		sim.step();
+		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(2);
+		sim.gold = 30;
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, index % sim.width, Math.floor(index / sim.width)).ok
 		).toBe(true);
 		sim.step();
 		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(3);
+
+		const structure = sim.structures.at(index);
+		if (structure) structure.stacks = 20;
+		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(6);
 	});
 
 	it('does not let a Defense Post buff enemy-owned pixels', () => {

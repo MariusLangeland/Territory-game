@@ -97,7 +97,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 26;
+export const PROTOCOL_VERSION = 27;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

@@ -713,13 +713,13 @@ Barracks previously granted a local defense-piercing aura. The requested model m
 
 ### Decision
 
-- Barracks effect becomes `attack-order-bonus`, +1 embedded order per stack.
-- A launch still costs one inventory attack order. The created attack embeds `1 + attacker Barracks stacks` orders; clicking again creates another attack and never adds to an existing one.
+- Barracks effect becomes `attack-order-bonus`, +1 embedded order per stack. **Scaling later superseded by ADR-026:** one order per two levels, capped at +5.
+- A launch still costs one inventory attack order. The created attack embeds `1 + attacker Barracks scaling` orders; clicking again creates another attack and never adds to an existing one.
 - Attack points per tick = `30 + 15 × (orders − 1)`.
 - Capture cost = `max(1, defense − (orders − 1))`.
 - Lifetime = `50 + 10 × (initial orders − 1)` ticks.
 - At a mutual claim contact, the defender spends `min(its issued attack strength, remaining inventory orders, incoming orders)` from inventory. Each spent order removes one incoming embedded order. Zero halts the attack; otherwise the clash pauses the front for the tick. No spendable orders means the attack breaks through.
-- Issued attack strength is `1 + live Barracks stacks` for both launching and defensive clash strength.
+- Issued attack strength is `1 + live Barracks scaling` for both launching and defensive clash strength. **Superseded by ADR-026:** one order per two levels, max +5.
 - Remove the old attack-aura radius and defense-piercing field.
 
 ### Consequences
@@ -768,6 +768,37 @@ Click-to-upgrade was priced at the structure's flat card cost, so every level co
 - **Apply the surcharge only to clicks:** rejected by the follow-up requirement.
 - **Compute cost only at execution for clicks:** would allow rapid clicks to overspend or fail late.
 - **Exponential cost:** steeper than requested; the rule explicitly says additional gold equal to current level.
+
+---
+
+## ADR-026 — Barracks diminishing returns and higher base cost
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+Barracks gave +1 embedded order per level with no cap. At high levels this produced enormous attack speed, defense piercing, lifetime, and clash strength, so a single structure type dominated scaling.
+
+### Decision
+
+- Barracks base cost increases from 2 to **12** gold.
+- Attack-order bonus becomes **one embedded order per two Barracks levels**, rounded up, capped at **+5** (six embedded orders total).
+- The same capped strength is used for defensive clash spending.
+- `BARRACKS_LEVELS_PER_ORDER` and `BARRACKS_MAX_BONUS_ORDERS` own the tuning values.
+
+### Consequences
+
+- Level 1 still grants +1 order, preserving the core card promise.
+- Level 2 does not increase strength; level 3 reaches +2.
+- Level 10 and above cap at +5, preventing runaway speed, piercing, and lifetime.
+- The 12-gold entry price makes early Barracks a real commitment.
+
+### Alternatives considered
+
+- **Keep linear growth and reduce point/pierce constants:** still allows unbounded clash strength and lifetime.
+- **Cap levels only:** level-ups would give no benefit without warning and would not address early exponential effect.
+- **Quadratic/square-root scaling:** harder to communicate; two-level steps plus a hard cap are transparent.
 
 ---
 

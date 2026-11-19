@@ -308,7 +308,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever gold and placement rules allow.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
 24. Inventory attack orders are spent on launch and defensive clashes; embedded attack orders are a separate per-front count and are never added by repeated clicks.
-25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap. Barracks stacks increase embedded orders, not inventory.
+25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap. Barracks levels increase embedded orders one per two levels (max +5), not inventory.
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
 28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.

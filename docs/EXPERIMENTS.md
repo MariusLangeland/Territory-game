@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.19.x`  
+**Status:** active in application `0.20.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -36,7 +36,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)         |
 | Elevation                | six tiers, lowland through peaks                                                |
 | Attack lifetime          | `50 + 10 × (initial embedded orders − 1)` ticks                                 |
-| Embedded orders          | 1 + live Barracks stacks per attack; repeated clicks never stack                |
+| Embedded orders          | 1 + min(5, ceil(Barracks levels / 2)); clicks never stack                       |
 | Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                               |
 | Extra order gain         | Command Post: +1 per 60 seconds, accrued continuously                           |
 | District upgrades        | Click a district or drop its card for base cost + current level                 |
@@ -49,9 +49,9 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Structure stacking       | multiple same-type districts allowed; drops inside a district add stacks        |
 | State aura               | +20 friendly defense within 16 px; overlaps do not stack                        |
 | Human economy            | 3 starting gold; 1 gold / 10s; permanent five-card hand                         |
-| Build cards              | Mine 3g, Barracks 2g, Defense Post 2g, Command Post 4g, War Academy 6g          |
+| Build cards              | Mine 3g, Barracks 12g, Defense Post 2g, Command Post 4g, War Academy 6g         |
 
-Each launch consumes one inventory order. The attack also embeds `1 + live Barracks stacks` orders without costing extra inventory. A player gains +1 inventory order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels; extra embedded orders add capture points, defense piercing, and lifetime. A capture costs `max(1, defense − embeddedOrders + 1)`, so high ground and defended pixels fall more slowly. Each capture samples the 10 highest-priority frontier cells and takes the cheapest defense. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures on a non-clash tick peters out. At a mutual front, the defender spends inventory orders up to its own issued attack strength to strip incoming embedded orders. Attacks process in creation-id order; repeated clicks create separate fronts.
+Each launch consumes one inventory order. The attack also embeds `1 + min(5, ceil(Barracks levels / 2))` orders without costing extra inventory. A player gains +1 inventory order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels; extra embedded orders add capture points, defense piercing, and lifetime. A capture costs `max(1, defense − embeddedOrders + 1)`, so high ground and defended pixels fall more slowly. Each capture samples the 10 highest-priority frontier cells and takes the cheapest defense. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures on a non-clash tick peters out. At a mutual front, the defender spends inventory orders up to its own issued attack strength to strip incoming embedded orders. Attacks process in creation-id order; repeated clicks create separate fronts.
 
 ### Growth layers and territorial cleanup
 

@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.19.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.20.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.19.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.20.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -207,7 +207,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
-- Barracks: `attack-order-bonus`, +1 embedded order per stack in every attack.
+- Barracks: `attack-order-bonus`, +1 embedded order per two levels (up to +5) in every attack.
 - Mine: `income`, +1 gold per 100 ticks, accrued continuously.
 - Command Post: `order-gain`, +1 attack order per 600 ticks, accrued continuously.
 - War Academy: `order-cap`, +1 attack-order cap.
