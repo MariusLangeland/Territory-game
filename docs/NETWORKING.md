@@ -113,7 +113,7 @@ Server tick at 10 Hz:
 3. Validate ownership, player, sequence, rate limit, attack orders, gold, and card constraints.
 4. Sort accepted commands by `(playerId, clientSequence)` (or another fixed rule).
 5. Apply them to the simulation at the tick boundary.
-6. Grant +1 attack order, run Command Post pulses, pay income, run bot decisions/attacks, then eliminations and victory.
+6. Grant base attack orders, accrue Mine gold and Command Post orders, run bot decisions/attacks, then eliminations and victory.
 7. Broadcast a tick delta to all clients.
 8. Every N ticks, broadcast checksum.
 9. If the match ended, broadcast results and freeze tick advancement.
@@ -189,14 +189,14 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Client → server
 
-| Message       | Purpose                                                   |
-| ------------- | --------------------------------------------------------- |
-| `hello`       | Protocol version, display name                            |
-| `join`        | Enter a room/match                                        |
-| `intent`      | One attack/build intent with target tick and sequence     |
-| `growth-mode` | Select the growth layer for new orders (host/test policy) |
-| `ping`        | RTT probe                                                 |
-| `leave`       | Voluntary departure                                       |
+| Message       | Purpose                                                       |
+| ------------- | ------------------------------------------------------------- |
+| `hello`       | Protocol version, display name                                |
+| `join`        | Enter a room/match                                            |
+| `intent`      | One attack/build/upgrade intent with target tick and sequence |
+| `growth-mode` | Select the growth layer for new orders (host/test policy)     |
+| `ping`        | RTT probe                                                     |
+| `leave`       | Voluntary departure                                           |
 
 ### Server → client
 
@@ -244,14 +244,15 @@ Structures:
 - capturing a structure cell destroys it at the same tick, removes its aura, and changes annexation protection immediately;
 - clients may draw structures and auras from the snapshot, but the server owns placement, destruction, effects, and protection;
 - aura defense and district assignment are derived from live structure effects/positions and are not sent as per-pixel authoritative state; clients recompute them with the same Voronoi and ownership rules;
-- future build/transfer commands must be tick-stamped and authorized.
+- future transfer commands must be tick-stamped and authorized.
 
 Player economy and cards:
 
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
 - builds are tick-stamped commands, validated server-side against permanent-hand membership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility;
+- upgrades are tick-stamped commands targeting an owned district; the server resolves the district's structure, spends its card cost, and increments stacks without consuming a card;
 - the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
-- attack-order grants, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
+- base order grants, continuous Command Post order accrual, continuous Mine income, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;
 - bots do not participate in the card economy in this build, so their snapshot economy is omitted.
 

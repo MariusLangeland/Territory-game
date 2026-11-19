@@ -145,7 +145,15 @@ export interface BuildCommand {
 	sequence: number;
 }
 
-export type GameCommand = AttackCommand | BuildCommand;
+export interface UpgradeCommand {
+	type: 'upgrade';
+	playerId: number;
+	x: number;
+	y: number;
+	sequence: number;
+}
+
+export type GameCommand = AttackCommand | BuildCommand | UpgradeCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -157,6 +165,7 @@ export type BuildFailure =
 	| 'occupied'
 	| 'too-close'
 	| 'inside-district'
+	| 'no-district'
 	| 'invalid';
 
 export interface BuildOrderResult {
@@ -220,10 +229,10 @@ export class TerritorySimulation {
 	hand: Card[] = [];
 
 	private pendingGrowthMode: GrowthMode | null = null;
-	private nextIncomeTick = INCOME_INTERVAL_TICKS;
+	private goldAccrual = 0;
 	private nextAttackOrderGrantTick = ATTACK_ORDER_GAIN_TICKS;
-	private nextOrderBonusTick = COMMAND_POST_ORDER_TICKS;
 	private attackOrders: number[] = [];
+	private readonly commandPostAccrual: Uint32Array;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -285,6 +294,7 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
+		this.commandPostAccrual = new Uint32Array(PLAYER_COUNT);
 
 		this.placeStartingTerritories(this.map.starts);
 		this.ensureEveryStateHasLand();
@@ -361,14 +371,33 @@ export class TerritorySimulation {
 		}
 	}
 
-	private grantCommandPostOrders(): void {
-		for (const structure of this.structures.all) {
-			const owner = this.players[structure.ownerId - 1];
-			if (!owner?.alive) continue;
-			for (const effect of structure.effects) {
-				if (effect.kind !== 'order-gain') continue;
-				this.addAttackOrders(structure.ownerId, effect.amount * structure.stacks);
+	/**
+	 * Resource structures pay continuously. A level-30 Mine contributes 30
+	 * gold per 100 ticks, so it adds 30 gold over ten seconds rather than a
+	 * lump sum at the end. Command Posts use the same model over 600 ticks.
+	 */
+	private accrueResources(): void {
+		this.goldAccrual += this.income;
+		const earnedGold = Math.floor(this.goldAccrual / INCOME_INTERVAL_TICKS);
+		if (earnedGold > 0) {
+			this.gold += earnedGold;
+			this.goldAccrual -= earnedGold * INCOME_INTERVAL_TICKS;
+		}
+
+		for (const player of this.players) {
+			if (!player.alive) continue;
+			let orderRate = 0;
+			for (const structure of this.structures.forOwner(player.id)) {
+				for (const effect of structure.effects) {
+					if (effect.kind !== 'order-gain') continue;
+					orderRate += effect.amount * structure.stacks;
+				}
 			}
+			if (orderRate <= 0) continue;
+			const next = this.commandPostAccrual[player.id - 1] + orderRate;
+			const earnedOrders = Math.floor(next / COMMAND_POST_ORDER_TICKS);
+			this.commandPostAccrual[player.id - 1] = next - earnedOrders * COMMAND_POST_ORDER_TICKS;
+			if (earnedOrders > 0) this.addAttackOrders(player.id, earnedOrders);
 		}
 	}
 
@@ -509,6 +538,83 @@ export class TerritorySimulation {
 		return validation;
 	}
 
+	/**
+	 * Queue a one-level upgrade for the structure whose district owns this
+	 * pixel. Clicking a district is enough; no card is consumed.
+	 */
+	upgradeDistrict(playerId: number, x: number, y: number): BuildOrderResult {
+		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
+		const player = this.players[playerId - 1];
+		if (!player?.alive) {
+			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
+		}
+		if (playerId !== HUMAN_PLAYER_ID) {
+			return {
+				ok: false,
+				reason: 'invalid',
+				message: 'Only the human commander upgrades districts.'
+			};
+		}
+		const target = this.resolveUpgradeTarget(playerId, x, y);
+		if (!target) {
+			return {
+				ok: false,
+				reason: 'no-district',
+				message: 'Click one of your structure districts to upgrade it.'
+			};
+		}
+		const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		if (this.gold - this.pendingUpgradeCost(playerId) < cost) {
+			return {
+				ok: false,
+				reason: 'no-gold',
+				message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label}.`
+			};
+		}
+		this.pendingCommands.push({
+			type: 'upgrade',
+			playerId,
+			x: Math.floor(x),
+			y: Math.floor(y),
+			sequence: this.nextCommandSequence++
+		});
+		return {
+			ok: true,
+			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${
+				target.structure.stacks + 1
+			} for ${cost} gold.`
+		};
+	}
+
+	private resolveUpgradeTarget(
+		playerId: number,
+		x: number,
+		y: number
+	): { index: number; structure: Structure } | null {
+		const roundedX = Math.floor(x);
+		const roundedY = Math.floor(y);
+		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
+			return null;
+		}
+		const index = roundedY * this.width + roundedX;
+		if (this.owners[index] !== playerId) return null;
+		const districtId = this.districtStructureIds[index];
+		if (!districtId) return null;
+		const structure = this.structures.byId(districtId);
+		if (!structure || structure.ownerId !== playerId) return null;
+		return { index, structure };
+	}
+
+	private pendingUpgradeCost(playerId: number): number {
+		let cost = 0;
+		for (const command of this.pendingCommands) {
+			if (command.type !== 'upgrade' || command.playerId !== playerId) continue;
+			const target = this.resolveUpgradeTarget(playerId, command.x, command.y);
+			if (target) cost += STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		}
+		return cost;
+	}
+
 	step(): StepResult {
 		this.changeCount = 0;
 		this.changesOverflow = false;
@@ -528,16 +634,7 @@ export class TerritorySimulation {
 				this.nextAttackOrderGrantTick += ATTACK_ORDER_GAIN_TICKS;
 			}
 
-			if (this.tick >= this.nextOrderBonusTick) {
-				this.grantCommandPostOrders();
-				this.nextOrderBonusTick += COMMAND_POST_ORDER_TICKS;
-			}
-
-			if (this.tick >= this.nextIncomeTick) {
-				this.gold += this.income;
-				this.nextIncomeTick += INCOME_INTERVAL_TICKS;
-			}
-
+			this.accrueResources();
 			this.applyPendingCommands();
 
 			this.runBotDecisions();
@@ -656,9 +753,9 @@ export class TerritorySimulation {
 		mix(this.annexRequested ? 1 : 0);
 		mix(this.lastAnnexTick);
 		mix(this.gold);
-		mix(this.nextIncomeTick);
+		mix(this.goldAccrual);
 		mix(this.nextAttackOrderGrantTick);
-		mix(this.nextOrderBonusTick);
+		for (const accrual of this.commandPostAccrual) mix(accrual);
 		for (const orders of this.attackOrders) mix(orders);
 
 		for (let i = 0; i < this.owners.length; i++) {
@@ -748,6 +845,22 @@ export class TerritorySimulation {
 				this.pushEvent(
 					'build',
 					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${cost} gold.`,
+					command.playerId
+				);
+				continue;
+			}
+
+			if (command.type === 'upgrade') {
+				const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
+				if (!target) continue;
+				const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+				if (this.gold < cost) continue;
+				this.gold -= cost;
+				const stacks = this.structures.reinforce(target.structure);
+				this.rebuildAuraDefense();
+				this.pushEvent(
+					'build',
+					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} gold.`,
 					command.playerId
 				);
 				continue;

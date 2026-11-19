@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.14.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.15.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -27,8 +27,8 @@
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail               |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                                  |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                       |
-| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), all five cards always available, repeatable drag/drop builds                                                  |
-| Districts       | Bounded owner-local Voronoi districts, type tint/boundaries, aura clipping, same-type stacking                                                           |
+| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable drag/drop builds, click-to-upgrade districts                   |
+| Districts       | Bounded owner-local Voronoi districts, type tint/boundaries, district-wide defense auras, same-type stacking                                             |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                       |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                 |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout              |
@@ -67,6 +67,7 @@ pnpm format     # Prettier write
 | Input                       | Action                                                       |
 | --------------------------- | ------------------------------------------------------------ |
 | Click / tap a shared border | Open a free attack front into neutral land or a rival state  |
+| Click / tap your district   | Upgrade that district's structure by one level for gold      |
 | Drag                        | Pan the map                                                  |
 | Scroll                      | Zoom at the pointer                                          |
 | `Space`                     | Pause / resume the simulation                                |
@@ -135,14 +136,14 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **3 gold** and **all five build cards** permanently available. Income is **1 gold per 10 seconds**, plus 1 per live Mine. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it:
+The human commander starts with **3 gold** and **all five build cards** permanently available. Base income is **1 gold per 10 seconds**, plus 1 per live Mine level; it is paid continuously across the interval rather than as a lump sum. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it. Clicking any pixel of one of your districts upgrades its structure by one level for the same gold cost:
 
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |
-| Mine         | 3    | +1 income every 10 seconds                                 |
+| Mine         | 3    | +1 gold per 10 seconds, paid continuously                  |
 | Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius        |
 | Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
-| Command Post | 4    | +1 attack order every 60 seconds                           |
+| Command Post | 4    | +1 attack order per 60 seconds, paid continuously          |
 | War Academy  | 6    | +1 attack-order cap                                        |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
@@ -176,7 +177,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 
-The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts add +1 on their 60-second pulse, clamped to the cap; War Academies permanently raise the cap while alive.
+The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -205,7 +206,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~272 ms, one-time on world creation                  |
+| Map generation + 108 starts               | ~259 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -213,9 +214,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~338 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~337 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.6–2.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.7–3.0% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

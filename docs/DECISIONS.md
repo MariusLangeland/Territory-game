@@ -666,3 +666,38 @@ The initial district implementation still clipped Defense Post auras to the old 
 - **Use rectangular district bounds:** includes cells outside the district.
 - **Apply to all owner districts of the same type:** would let unrelated same-type posts share auras.
 - **Give State a district:** would blanket the starting territory and disable early builds.
+
+---
+
+## ADR-022 — Click-to-upgrade districts and continuous resource accrual
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Players could upgrade a district only by dragging another matching card onto it. Resource structures paid in lumps at interval boundaries, so a level-30 Mine produced nothing for ten seconds and then paid 30 gold. The requested behavior is a direct district upgrade gesture and a smooth resource stream.
+
+### Decision
+
+- Clicking any owned buildable district queues an `upgrade` command for that district's structure.
+- Upgrades cost the structure's card cost, add one `stacks` level, rebuild auras, and do not consume a hand card. Multiple pending upgrade costs are reserved so rapid clicks cannot overspend.
+- Mine income is accrued every tick: `goldAccrual += income`; whole 100-point chunks become gold. A level-30 Mine therefore contributes 30 gold across 100 ticks.
+- Command Post orders use the same model: `commandPostAccrual += orderRate`; whole 600-point chunks become orders, clamped to the cap.
+- Base +1 order per 100 ticks remains a boundary grant.
+- Integer remainders are authoritative checksum state; no floating point is introduced.
+
+### Consequences
+
+- Resource income feels continuous and scales smoothly with levels.
+- Clicking a district is now a deliberate economy action; clicking other territory still attacks.
+- Upgrade costs are the same as buying the structure again; level growth is unbounded by data structures but limited by gold and district ownership.
+- Mine/Command Post effects stop immediately when the structure is captured because rates are read from live structures.
+- Command Post orders at cap are lost, matching the prior clamped pulse semantics.
+
+### Alternatives considered
+
+- **Keep lump payments but pay at construction time:** front-loads resources and complicates build/destroy timing.
+- **Store fractional gold as floats:** harms deterministic exactness.
+- **Charge an escalating upgrade cost:** not requested and needs UI communication.
+- **Upgrade only by clicking the structure icon:** the request explicitly targets districts, and the whole colored area is larger and easier to hit.

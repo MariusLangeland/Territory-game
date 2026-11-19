@@ -4,7 +4,7 @@ export const MINE_INCOME_PER_INTERVAL = 1;
 
 export const MINE_DEFINITION: StructureDefinition = {
 	label: 'MINE',
-	description: '+1 income every 10 seconds.',
+	description: '+1 gold per 10 seconds, paid continuously.',
 	cost: 3,
 	buildable: true,
 	accent: '#f5b85c',

@@ -349,6 +349,14 @@
 			showToast('Simulation paused. Resume to issue orders.', 'warn');
 			return;
 		}
+		if (
+			sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID &&
+			sim.getDistrictStructureId(Math.floor(x), Math.floor(y)) !== 0
+		) {
+			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y);
+			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
+			return;
+		}
 		const result = sim.enqueueAttack(HUMAN_PLAYER_ID, x, y);
 		showToast(result.message, result.ok ? 'success' : 'error');
 	}
@@ -1060,7 +1068,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.14.0 / PROTOCOL 21</span>
+				<span>BUILD 0.15.0 / PROTOCOL 22</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1217,9 +1225,10 @@
 						<p>
 							Troops and production caps are removed. The human commander earns 1 gold every 10
 							seconds and always has all five build cards; buy any of them whenever you can afford
-							it by dragging it into controlled territory. The hand sinks out of the way and rises
-							when you hover it. Attack orders recover every 10 seconds. Terrain matters: base
-							defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
+							it by dragging it into controlled territory. Click a district to upgrade its
+							structure. Mine gold and Command Post orders are paid continuously over their
+							intervals. The hand sinks out of the way and rises when you hover it. Terrain matters:
+							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
 							spends 30 attack points per tick. State auras add another 20 defense. Each front
 							samples nearby frontier cells and presses the cheapest defense, so it bends around
 							strongpoints when a weaker lane exists. This is still not the final combat design.

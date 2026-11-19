@@ -116,7 +116,7 @@ Bots are processed in ascending player id order, every 10 ticks. The random draw
 ### 5.1 Current local model
 
 - `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
-- `step()` increments the tick, grants +1 order to each living player on 100-tick boundaries, applies Command Post pulses on 600-tick boundaries, pays income, drains pending commands, and sorts by `(sequence, playerId)`.
+- `step()` increments the tick, grants +1 order to each living player on 100-tick boundaries, accrues Mine gold and Command Post orders for this tick, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
 - Applying an attack command spends one order. Build commands are then applied before bot decisions and attack processing.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
@@ -168,15 +168,15 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
-Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner. A buildable defense aura fills **every cell in its own district**, ignoring the effect radius entirely; State auras use their fixed 16 px radius because State has no district. Max-stacking State auras are applied first, then additive Defense Post auras. Effect magnitudes multiply by `structure.stacks`. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds districts and auras before later attacks see defense. Capturing an ordinary cell calls `updateDistrictAt` and `updateAuraAt` for that cell. Income, order gain, and order cap effects are read directly from live structures on their timer/cap calculation, so capture removes them immediately.
+Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner. A buildable defense aura fills **every cell in its own district**, ignoring the effect radius entirely; State auras use their fixed 16 px radius because State has no district. Max-stacking State auras are applied first, then additive Defense Post auras. Effect magnitudes multiply by `structure.stacks`. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds districts and auras before later attacks see defense. Capturing an ordinary cell calls `updateDistrictAt` and `updateAuraAt` for that cell. Income and order-gain rates are read from live structures every tick, so capture changes accrual immediately; order-cap effects are read from the live registry.
 
 Districts are derived deterministically by a bounded Voronoi pass over each owner's cells. For every buildable structure-range bounding box, each owned cell chooses the nearest eligible owner structure; ties use type code then structure id. No explicit random draw is involved. Multiple structures of the same type are allowed, so each cell also records the winning structure id; stacking targets that district's structure and does not alter geometry. State capitals have no district and keep their radius aura.
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
-Human card economy has no RNG: the hand always contains all five buildable types with fixed ids. Build commands share the command sequence order with attacks. A build revalidates card membership, gold, ownership, emptiness, land, district placement, and stack eligibility at execution. The card is never removed, so repeat purchases require no new draw. Income is paid at tick boundaries from live Mine count.
+Human card economy has no RNG: the hand always contains all five buildable types with fixed ids. Build and upgrade commands share the command sequence order with attacks. A build revalidates card membership, gold, ownership, emptiness, land, district placement, and stack eligibility at execution; an upgrade resolves the district's structure and spends its card cost without consuming a card. The card is never removed, so repeat purchases require no new draw. Income is accrued continuously: each tick adds `1 + mine stacks` to `goldAccrual`, and whole 100-point chunks become gold. Command posts accrue similarly toward a 600-point order threshold.
 
-Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts add their grant on every 600-tick boundary, also clamped. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays and both timer values are checksummed.
+Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts accrue their order-gain rate each tick, converting whole 600-point chunks into clamped orders. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays, the base grant timer, and command-post accrual are checksummed.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -214,7 +214,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
-9. human gold, income tick, every player's attack orders, and order grant/bonus timers;
+9. human gold and gold accrual, every player's attack orders, the base order grant timer, and command-post accrual;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -306,8 +306,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 21. A live State structure adds 20 defense within 16 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
 22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever gold and placement rules allow.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
-24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 grant and Command Post pulses are fixed tick-boundary events clamped to cap.
-25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and Command Post grants apply in registry order on the 60-second boundary.
+24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 base grant is a fixed 100-tick boundary event, while Command Post orders accrue every tick.
+25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap.
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
 28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.

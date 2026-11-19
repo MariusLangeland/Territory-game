@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.14.0 (attack stress experiment)  
+**Version:** 0.15.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.14.0, map version 3, protocol draft 21
+**Last synchronized with:** application 0.15.0, map version 3, protocol draft 22
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 21`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 22`.
 
 ### 4.2 Starting positions
 
@@ -202,15 +202,14 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
 3. Grant each living player +1 attack order, clamped to cap, on a 10-second boundary.
-4. Apply Command Post order pulses if this is a 60-second boundary.
-5. Pay human income if this is an income boundary.
-6. Apply queued attack/build commands sorted by `(sequence, playerId)`.
-7. Run bot decisions (only on every 10th tick).
-8. Process active attacks in creation-id order.
-9. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
-10. Eliminate states with no territory and remove their attacks.
-11. Check victory.
-12. Build the public snapshot.
+4. Accrue Mine gold and Command Post orders continuously for this tick.
+5. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
+6. Run bot decisions (only on every 10th tick).
+7. Process active attacks in creation-id order.
+8. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
+9. Eliminate states with no territory and remove their attacks.
+10. Check victory.
+11. Build the public snapshot.
 
 ### 4.10 Experimental attack caveats
 
@@ -308,14 +307,16 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 The human commander has a small card economy; bots do not build cards yet.
 
 - Start with **3 gold** and **all five buildable cards** always available in the hand.
-- Earn **1 gold every 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine**.
-- Income is paid at the start of the tick. A Mine built before the payment adds to that payment.
+- Earn **1 gold per 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine stack**.
+- Gold is accrued **continuously every tick**, not as a lump sum. A level-30 Mine contributes 30 gold over the next 100 ticks. An integer remainder accumulator keeps the total exact and deterministic.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade for that district's structure at the same cost as its card. No card is consumed.
+- Build and upgrade commands reserve gold against other queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district **stacks** onto that district's structure; dropping the same type outside all districts creates another structure/district.
 - The build command is queued, applied at the next tick, deducts its cost, keeps the card, and either creates a new structure or adds a stack to the matching district.
 - Cards are permanent actions, not a consumable hand: any affordable card can be bought again immediately. There is no draw, deck, or reroll.
 - Costs: Mine **3**, Barracks **2**, Defense Post **2**, Command Post **4**, War Academy **6**.
-- Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is clamped to the cap.
+- Command Posts accrue **+1 attack order per 60 seconds continuously**. A level-30 post therefore produces 30 orders over 60 seconds rather than a 30-order pulse. Grants are clamped to the cap and excess is lost.
 - War Academies add **+1 to the attack-order cap** while alive; additional War Academy cards stack this cap bonus.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells currently owned by the structure's owner; it never raises the cost of that owner's attacks into neutral or enemy territory.
@@ -323,10 +324,10 @@ The human commander has a small card economy; bots do not build cards yet.
 
 | Card         | Cost | Effect                                                            |
 | ------------ | ---- | ----------------------------------------------------------------- |
-| Mine         | 3    | +1 income every 10 seconds                                        |
+| Mine         | 3    | +1 gold per 10 seconds, paid continuously                         |
 | Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per stack |
 | Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks  |
-| Command Post | 4    | +1 attack order every 60 seconds                                  |
+| Command Post | 4    | +1 attack order per 60 seconds, paid continuously                 |
 | War Academy  | 6    | +1 attack-order cap                                               |
 
 Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
@@ -576,7 +577,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
-- [x] Command Posts grant orders on 60-second pulses, and War Academies raise the cap.
+- [x] Command Posts accrue orders continuously, and War Academies raise the cap.
+- [x] Clicking an owned district upgrades its structure without consuming a card.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

@@ -10,7 +10,7 @@ import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 import type { PublicCard, PublicStructure } from '../Structures';
 
-export const NET_PROTOCOL_VERSION = 21;
+export const NET_PROTOCOL_VERSION = 22;
 
 export type MatchId = string;
 export type PlayerId = number;

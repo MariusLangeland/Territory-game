@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.14.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.15.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.14.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.15.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -82,8 +82,8 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
-- Human economy: `gold`, a permanent five-card `hand`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
-- Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap; Command Posts grant extra orders on their pulse. `nextAttackOrderGrantTick` and `nextOrderBonusTick` schedule the timers.
+- Human economy: `gold`, `goldAccrual`, and a permanent five-card `hand`. Income is `1 + mine stacks` per 100 ticks and is accrued every tick through an integer remainder.
+- Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap. `commandPostAccrual` drips order-gain effects over 600 ticks; `nextAttackOrderGrantTick` schedules the base grant.
 - Permanent hand: all five buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll. Bots do not build cards yet.
 - Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies income, aura defense, attack strength, order gain, and order cap. Stacking does not change its district.
 - `rng: DeterministicRng` — simulation PRNG.
@@ -144,8 +144,7 @@ step()
  ├─ tick += 1
  ├─ apply pending growth-mode switch
  ├─ grant +1 attack order to each living player every 100 ticks
- ├─ apply Command Post order pulses every 600 ticks
- ├─ pay human income every 100 ticks
+ ├─ accrue Mine gold and Command Post orders every tick
  ├─ applyPendingCommands()
  │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds
  ├─ runBotDecisions() every 10 ticks (requires an attack order)
@@ -208,8 +207,8 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
 - Barracks: `attack-aura` radius 18, attack strength 1, local offensive radius (not district-wide).
-- Mine: `income`, +1 per interval.
-- Command Post: `order-gain`, +1 attack order on the global 60-second pulse.
+- Mine: `income`, +1 gold per 100 ticks, accrued continuously.
+- Command Post: `order-gain`, +1 attack order per 600 ticks, accrued continuously.
 - War Academy: `order-cap`, +1 attack-order cap.
 
 `simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner **or outside that structure's district** (State auras use their radius, with no district). `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
@@ -236,7 +235,7 @@ type GameCommand =
 	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack` and `playCard` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. Cards are not removed. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
+`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. Upgrades resolve the district's structure, spend its card cost, and increment stacks without consuming a card; pending upgrade costs are reserved during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
 
 ### 3.7 Snapshots
 
@@ -257,8 +256,8 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
 - each player's alive flag and territory;
-- current/pending growth mode, annex scheduling, gold, next income tick, attack orders and their timers, districts, and structures;
-- every player's attack orders, order grant/bonus timers, and live order-cap effects;
+- current/pending growth mode, annex scheduling, gold/gold accrual, attack orders and their timers, command-post accrual, districts, and structures;
+- every player's attack orders, order grant timer, command-post accrual, and live order-cap effects;
 - live structures and per-cell claim provenance;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;
 - each attack's growth-layer frontier state (heap, buckets, organic RNG/entries).
@@ -292,7 +291,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~338 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~337 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
 
 ---
 
@@ -380,7 +379,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The free-floating card hand reads gold/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance, leave, and reflow. Hover/drag transforms are CSS. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command; Refresh queues a hand replacement. The compact gold/ORDERS/defense readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
+- The free-floating card hand reads gold/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues an upgrade command. The compact gold/ORDERS/defense readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.
@@ -424,7 +423,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~338 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~337 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

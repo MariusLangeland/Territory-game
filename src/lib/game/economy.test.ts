@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	BASE_GOLD_INCOME,
+	COMMAND_POST_ORDER_TICKS,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	STARTING_GOLD,
@@ -67,6 +68,42 @@ describe('player economy and cards', () => {
 		const startGold = sim.gold;
 		for (let i = 0; i < INCOME_INTERVAL_TICKS; i++) sim.step();
 		expect(sim.gold).toBe(startGold + BASE_GOLD_INCOME);
+	});
+
+	it('drips Mine income over the whole interval', () => {
+		const sim = new TerritorySimulation({ seed: 135792 });
+		const { index } = buildCard(sim, 'mine');
+		const structure = sim.structures.at(index);
+		expect(structure).toBeDefined();
+		if (!structure) return;
+		structure.stacks = 30;
+		const internals = sim as unknown as { goldAccrual: number };
+		sim.gold = 0;
+		internals.goldAccrual = 0;
+		for (let i = 0; i < 10; i++) sim.step();
+		expect(sim.gold).toBe(3);
+		for (let i = 0; i < 90; i++) sim.step();
+		expect(sim.gold).toBe(31);
+	});
+
+	it('upgrades a district by clicking anywhere inside it', () => {
+		const sim = new TerritorySimulation({ seed: 246813 });
+		const { index } = buildCard(sim, 'mine');
+		const structure = sim.structures.at(index);
+		expect(structure?.stacks).toBe(1);
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.mine);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		sim.gold = 10;
+		const result = sim.upgradeDistrict(
+			HUMAN_PLAYER_ID,
+			target % sim.width,
+			Math.floor(target / sim.width)
+		);
+		expect(result.ok).toBe(true);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(2);
+		expect(sim.gold).toBe(7);
 	});
 
 	it('builds a mine, spends gold, keeps the card, and raises income', () => {
@@ -364,20 +401,20 @@ describe('player economy and cards', () => {
 		expect(sim.getSnapshot().attackOrders).toBe(3);
 	});
 
-	it('grants a Command Post attack order on its 60-second pulse', () => {
+	it('drips Command Post attack orders over its 60-second interval', () => {
 		const sim = new TerritorySimulation({ seed: 132134 });
 		buildCard(sim, 'command-post');
 		const internals = sim as unknown as {
-			nextOrderBonusTick: number;
+			commandPostAccrual: Uint32Array;
 			attackOrders: number[];
 		};
 		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 0;
-		internals.nextOrderBonusTick = sim.tick + 1;
+		internals.commandPostAccrual[HUMAN_PLAYER_ID - 1] = COMMAND_POST_ORDER_TICKS - 1;
 		sim.step();
 		expect(sim.getSnapshot().attackOrders).toBe(1);
 
 		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 3;
-		internals.nextOrderBonusTick = sim.tick + 1;
+		internals.commandPostAccrual[HUMAN_PLAYER_ID - 1] = COMMAND_POST_ORDER_TICKS - 1;
 		sim.step();
 		expect(sim.getSnapshot().attackOrders).toBe(3);
 	});
