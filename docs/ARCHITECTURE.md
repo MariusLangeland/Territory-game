@@ -366,7 +366,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The free-floating card hand reads gold/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance, leave, and reflow. Hover/drag transforms are CSS. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command; Refresh queues a hand replacement. The ORDERS readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count.
+- The free-floating card hand reads gold/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance, leave, and reflow. Hover/drag transforms are CSS. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command; Refresh queues a hand replacement. The compact gold/ORDERS/defense readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.

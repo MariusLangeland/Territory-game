@@ -102,16 +102,17 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 9. Confirm State structure capital-star circles are drawn at capitals, their aura fields appear at tactical zoom, minimap ringed dots track them, and the commander readout says ANCHORED.
 10. Hover an aura pixel and confirm the defense readout includes `AURA +20` and the total is raised accordingly.
 11. Deploy, confirm the CCG hand is free-floating at bottom center, has no empty placeholders, and leaves the bottom rail clear; hover and drag cards to see lift/tilt animations.
-12. Drag a card into controlled territory, confirm the card leaves with an animation, gold is spent, and the structure appears; try a drop within 8 px of an existing structure and confirm it is rejected at no cost.
-13. Zoom in and out and confirm structure icons keep the same screen size (15/11 px State, 10 px buildable) rather than growing with zoom.
-14. Click Refresh and confirm 1 gold is spent, old cards animate out, and three fresh cards animate in.
-15. Confirm the ORDERS readout drops per launch, accepts up to 3 immediate human attacks, rejects a fourth, and gains only +1 (not a full refill) after 10 seconds.
-16. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the order cap rises.
-17. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, and a war-feed event appears.
-18. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
-19. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-20. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
-21. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
+12. Drag a card and confirm there is no ghost card at the cursor: a curved arrow runs from the raised card, and the landing exclusion circle is green for legal cells and red for blocked cells.
+13. Drop into controlled territory; confirm the card leaves with an animation, gold is spent, and the structure appears. Try a drop within 8 px of an existing structure and confirm it is rejected at no cost.
+14. Zoom in and out and confirm structure icons keep the same screen size (15/11 px State, 10 px buildable) rather than growing with zoom.
+15. Click Refresh and confirm 1 gold is spent, old cards animate out, and three fresh cards animate in.
+16. Confirm the compact ORDERS readout beside gold drops per launch, accepts up to 3 immediate human attacks, rejects a fourth, and gains only +1 (not a full refill) after 10 seconds.
+17. Build a Command Post and observe an extra order on the next 60-second pulse; build a War Academy and confirm the order cap rises.
+18. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, and a war-feed event appears.
+19. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
+20. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+21. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
+22. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

@@ -109,7 +109,7 @@ The map has six discrete elevation tiers: **lowland, plains, hills, highlands, m
 | Command Post                     | +1 order per 60s                                |
 | War Academy                      | +1 order cap                                    |
 
-Hovering a land cell shows its elevation, base defense, and total defense in the status console.
+Hovering a land cell updates the compact defense readout beside the card hand; its tooltip shows elevation, base defense, and aura details. Grid reference and target-description panels were removed to keep vertical space clear.
 
 ### Growth layers
 
@@ -147,7 +147,7 @@ The hand is filled by independent random draws from the five-card pool, so dupli
 
 Structures must be at least **8 px apart** (centre to centre); dropping a card too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 
-The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, leave when played or refreshed, flip into new positions, lift on hover, and tilt while dragged. The bottom center is kept clear for the hand; recon and growth controls live above it.
+The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, leave when played or refreshed, flip into new positions, lift on hover, and tilt while dragged. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 
 The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts add +1 on their 60-second pulse, clamped to the cap; War Academies permanently raise the cap while alive.
 

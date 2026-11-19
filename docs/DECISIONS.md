@@ -391,7 +391,7 @@ Attacks were a flat 30 pixels per tick regardless of terrain or whether the targ
 - Store elevation in a `Uint8Array`; derive **base defense = 1 + elevation**. Add **+1** when the pixel has a nonzero owner.
 - Give each attack **30 attack points per tick**. A capture subtracts the target's defense. If the next candidate costs more than the remaining budget, requeue it and end the tick.
 - Render elevation by storing the normalized tier in the control texture's previously unused alpha channel. The shader maps tiers to lowland/plains/hills/highlands/mountains/peaks colors, tints owner colors, brightens snow, and draws tier-boundary contours.
-- Expose elevation, base defense, and total defense in the hover status console.
+- Expose elevation, base defense, and total defense in the compact hover readout.
 - Bump `MAP_VERSION` to 3 and protocol version to 10.
 
 ### Consequences

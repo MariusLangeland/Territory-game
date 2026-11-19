@@ -56,6 +56,10 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 
 The overlay is intentionally separate from the territory shader: structures need icons and future labels, while territory upload cost and sampling stay unchanged. A combined elevation + structure + organic run measured 144 fps, p99 7.1 ms.
 
+### Card drag overlay
+
+Card dragging uses a transparent native drag image and a second full-screen SVG overlay. The overlay draws a quadratic accent arrow from the raised card to the cursor and a landing-radius circle at the target map cell. The circle radius is `STRUCTURE_MIN_SPACING × camera.scale`, so it reflects the actual simulation exclusion zone; it is green when `validateBuild` accepts the cell and red otherwise. Both the arrow and circle are pointer-events-none and never mutate simulation state.
+
 ---
 
 ## 3. Control texture layout

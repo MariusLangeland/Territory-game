@@ -339,7 +339,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
 2. **Intro:** seed load, deploy. Simulation paused. Copy identifies the attack stress build.
-3. **Live match:** 108-state HUD, virtualized scrollable leaderboard, map, minimap, status console, perf readout.
+3. **Live match:** 108-state HUD, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
 6. **Result:** last state wins; final standings.
@@ -363,8 +363,10 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center; gold and Refresh float at its sides with no enclosing tray and no empty-card placeholders.
 - Cards have frame/art/rules layouts, animate in from below, animate out when played or refreshed, flip-animate on hand changes, lift on hover, and tilt/scale while dragged.
-- The bottom center is reserved for the hand: the recon console moved to the top center and the growth selector to the left rail above the minimap.
-- The ORDERS readout shows available attack orders / cap and updates as orders are spent or granted.
+- The bottom center is reserved for the hand; the growth selector lives in the left rail above the minimap.
+- The top-center status console was removed. Gold, attack orders/cap, and the hovered defense value now share a compact readout beside the hand. Grid reference and target-description text are gone.
+- While dragging, a curved accent arrow connects the raised card to the cursor, with no browser ghost card. The landing cell shows the 8 px exclusion radius: green when the build is legal, red when blocked.
+- The ORDERS value updates as orders are spent or granted.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
@@ -397,14 +399,14 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Invalid order → specific reason toast.
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
-- Active human attack count in status console.
+- Available human attack orders in the compact economy readout.
 - 108-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
 - Paused clicks do not issue orders.
 
 ### 5.6 Accessibility/responsive
 
 - Buttons have labels/focus states; reduced-motion support.
-- Desktop: topbar, scrollable right rail, minimap, status console, tool rail.
+- Desktop: topbar, scrollable right rail, minimap, compact bottom economy/orders/defense panel, tool rail.
 - Narrow: right rail/key hints collapse, topbar compresses, minimap/status shrink.
 - Pinch zoom missing; mobile parity not claimed.
 

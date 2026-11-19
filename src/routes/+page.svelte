@@ -13,6 +13,7 @@
 		MAP_WIDTH,
 		PLAYER_COUNT,
 		REFRESH_COST,
+		STRUCTURE_MIN_SPACING,
 		TICK_RATE,
 		colorForPlayer
 	} from '#lib/game/constants';
@@ -78,6 +79,15 @@
 	let rankViewportHeight = $state(360);
 	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
 	let draggingCardId = $state<number | null>(null);
+	let dragOrigin = $state<{ x: number; y: number } | null>(null);
+	let dragPointer = $state<{ x: number; y: number } | null>(null);
+	let dragLanding = $state<{
+		x: number;
+		y: number;
+		radius: number;
+		ok: boolean;
+	} | null>(null);
+	let transparentDragImage: HTMLCanvasElement | null = null;
 
 	const RANK_ROW_HEIGHT = 28;
 	const RANK_OVERSCAN = 3;
@@ -131,26 +141,37 @@
 	let seedHex = $derived(currentSeed.toString(16).toUpperCase().padStart(8, '0'));
 	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null);
 	let matchClock = $derived(formatClock((snapshot?.tick ?? 0) / TICK_RATE));
-	let hoverTitle = $derived.by(() => {
-		if (!hover) return 'NO TARGET';
-		if (!hover.land) return 'OPEN WATER';
-		if (hover.owner === 0) return 'UNCLAIMED LAND';
-		const ownerId = hover.owner;
-		const owner = snapshot?.players.find((player) => player.id === ownerId);
-		return owner ? `${owner.name} TERRITORY` : 'UNKNOWN TERRITORY';
-	});
-	let hoverSub = $derived.by(() => {
-		if (!hover) return 'Move the cursor over the atlas.';
-		if (!hover.land) return 'Ocean cannot be claimed.';
-		if (hover.owner === 0) return 'Unclaimed terrain — base defense still applies.';
-		if (hover.owner === snapshot?.humanId) return 'Friendly territory.';
-		return 'Hostile frontier. Click to order an assault.';
-	});
-	let hoverCoords = $derived(
-		hover
-			? `${String(hover.x).padStart(4, '0')} : ${String(hover.y).padStart(4, '0')}`
-			: '---- : ----'
+	let draggingCard = $derived(
+		draggingCardId === null
+			? null
+			: (snapshot?.hand.find((card) => card.id === draggingCardId) ?? null)
 	);
+	let dragAccent = $derived(draggingCard ? STRUCTURE_ACCENTS[draggingCard.type] : '#f7eed0');
+	let dragArrow = $derived.by(() => {
+		if (!dragOrigin || !dragPointer) return null;
+		const startX = dragOrigin.x;
+		const startY = dragOrigin.y;
+		const endX = dragPointer.x;
+		const endY = dragPointer.y;
+		const dx = endX - startX;
+		const dy = endY - startY;
+		const length = Math.max(1, Math.hypot(dx, dy));
+		const bend = Math.min(95, Math.max(34, length * 0.2));
+		const midX = (startX + endX) / 2;
+		const midY = (startY + endY) / 2;
+		const controlX = midX + (-dy / length) * bend;
+		const controlY = midY + (dx / length) * bend;
+		const angle = Math.atan2(endY - controlY, endX - controlX);
+		const head = 13;
+		const left = angle + Math.PI * 0.82;
+		const right = angle - Math.PI * 0.82;
+		return {
+			path: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
+			head: `M ${endX} ${endY} L ${endX + Math.cos(left) * head} ${
+				endY + Math.sin(left) * head
+			} L ${endX + Math.cos(right) * head} ${endY + Math.sin(right) * head} Z`
+		};
+	});
 	let scaleLegend = $derived(
 		cameraView ? `${Math.round(100 / cameraView.scale)} px / 100 px` : '—'
 	);
@@ -219,7 +240,7 @@
 		cameraView = null;
 		rankScrollTop = 0;
 		growthMode = DEFAULT_GROWTH_MODE;
-		draggingCardId = null;
+		clearDragState();
 		eventFeed = [];
 		toast = null;
 		currentSeed = seed >>> 0;
@@ -382,29 +403,80 @@
 		}
 	}
 
+	function clearDragState(): void {
+		draggingCardId = null;
+		dragOrigin = null;
+		dragPointer = null;
+		dragLanding = null;
+	}
+
+	function transparentDragSource(): HTMLCanvasElement {
+		if (!transparentDragImage) {
+			transparentDragImage = document.createElement('canvas');
+			transparentDragImage.width = 1;
+			transparentDragImage.height = 1;
+		}
+		return transparentDragImage;
+	}
+
 	function startCardDrag(event: DragEvent, card: PublicCard): void {
 		draggingCardId = card.id;
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		dragOrigin = { x: rect.left + rect.width / 2, y: rect.top + 28 };
+		dragPointer = { x: event.clientX, y: event.clientY };
+		dragLanding = null;
 		if (event.dataTransfer) {
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData('text/plain', String(card.id));
+			event.dataTransfer.setDragImage(transparentDragSource(), 0, 0);
 		}
 	}
 
 	function endCardDrag(): void {
-		draggingCardId = null;
+		clearDragState();
+	}
+
+	function updateDragHover(event: DragEvent): void {
+		if (draggingCardId === null) return;
+		dragPointer = { x: event.clientX, y: event.clientY };
+		if (!sim || !snapshot || !cameraView || !draggingCard) {
+			dragLanding = null;
+			return;
+		}
+		if ((event.target as HTMLElement).closest('.card-tray')) {
+			dragLanding = null;
+			return;
+		}
+
+		const mapX =
+			cameraView.centerX +
+			(event.clientX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
+		const mapY =
+			cameraView.centerY +
+			(event.clientY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
+		const cellX = Math.floor(mapX);
+		const cellY = Math.floor(mapY);
+		const validation = sim.validateBuild(HUMAN_PLAYER_ID, draggingCard.id, cellX, cellY);
+		dragLanding = {
+			x: cameraView.viewportWidth / 2 + (cellX + 0.5 - cameraView.centerX) * cameraView.scale,
+			y: cameraView.viewportHeight / 2 + (cellY + 0.5 - cameraView.centerY) * cameraView.scale,
+			radius: STRUCTURE_MIN_SPACING * cameraView.scale,
+			ok: validation.ok
+		};
 	}
 
 	function handleDragOver(event: DragEvent): void {
 		if (draggingCardId === null) return;
 		event.preventDefault();
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+		updateDragHover(event);
 	}
 
 	function handleCardDrop(event: DragEvent): void {
 		event.preventDefault();
 		const rawCardId = event.dataTransfer?.getData('text/plain');
 		const cardId = rawCardId ? Number(rawCardId) : draggingCardId;
-		draggingCardId = null;
+		clearDragState();
 		if (!sim || !snapshot || !gameStarted || !cameraView || cardId === null) return;
 		if (paused || defeatOpen || snapshot.ended) {
 			showToast('Resume the simulation before building.', 'warn');
@@ -701,40 +773,6 @@
 			</div>
 		</div>
 
-		<div class="status-console hud">
-			<div class="coords-block">
-				<span class="status-label">GRID REF</span>
-				<strong>{hoverCoords}</strong>
-			</div>
-			<div class="target-block">
-				<span class="status-label">
-					{#if hover && hover.land && hover.owner === human.id}FRIENDLY
-					{:else if hover && hover.land && hover.owner !== 0}HOSTILE
-					{:else if hover && hover.land}NEUTRAL
-					{:else}RECON
-					{/if}
-				</span>
-				<strong>{hoverTitle}</strong>
-				<small>{hoverSub}</small>
-			</div>
-			<div class="orders-block">
-				<span class="status-label">ORDERS</span>
-				<strong>{snapshot.attackOrders}<em>/{snapshot.attackOrderCap}</em></strong>
-				<small>+1 ORDER / 10s</small>
-			</div>
-			<div class="defense-block">
-				<span class="status-label">DEFENSE</span>
-				<strong>{hover?.land ? hover.defense : '—'}</strong>
-				<small>
-					{hover?.land
-						? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}${
-								hover.auraDefense > 0 ? ` / AURA +${hover.auraDefense}` : ''
-							}`
-						: '—'}
-				</small>
-			</div>
-		</div>
-
 		<div class="map-tools hud" aria-label="Map controls">
 			<div class="tool-stack">
 				<button type="button" onclick={() => cameraBridge.zoomIn()} aria-label="Zoom in">+</button>
@@ -784,9 +822,26 @@
 
 		<div class="card-tray hud" aria-label="Build cards">
 			<div class="economy-readout">
-				<span>GOLD</span>
-				<strong>{snapshot.gold}</strong>
-				<small>+{snapshot.income} / 10s</small>
+				<div class="economy-row">
+					<span>GOLD</span>
+					<strong>{snapshot.gold}</strong>
+				</div>
+				<div class="economy-row economy-orders">
+					<span>ORDERS</span>
+					<b>{snapshot.attackOrders}/{snapshot.attackOrderCap}</b>
+				</div>
+				<div
+					class="economy-row economy-defense"
+					title={hover?.land
+						? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}${
+								hover.auraDefense > 0 ? ` / AURA +${hover.auraDefense}` : ''
+							}`
+						: 'Hover land to inspect defense'}
+				>
+					<span>DEF</span>
+					<b>{hover?.land ? hover.defense : '—'}</b>
+				</div>
+				<small>+{snapshot.income}G / 10s · +1 ORDER / 10s</small>
 			</div>
 
 			<div class="hand-row">
@@ -803,6 +858,7 @@
 						out:fly={{ y: 28, duration: 240 }}
 						animate:flip={{ duration: 260 }}
 						ondragstart={(event) => startCardDrag(event, card)}
+						ondrag={updateDragHover}
 						ondragend={endCardDrag}
 						title={`Drag ${definition.label} into your territory`}
 					>
@@ -858,8 +914,35 @@
 			</button>
 		</div>
 
-		{#if draggingCardId !== null}
-			<div class="build-drop-hint hud">DROP CARD INSIDE CONTROLLED TERRITORY</div>
+		{#if draggingCardId !== null && dragOrigin && dragPointer && dragArrow}
+			<svg class="drag-overlay" aria-hidden="true">
+				{#if dragLanding}
+					<g class:blocked={!dragLanding.ok} class:valid={dragLanding.ok}>
+						<circle
+							cx={dragLanding.x}
+							cy={dragLanding.y}
+							r={dragLanding.radius}
+							class="drag-landing-field"
+						/>
+						<circle
+							cx={dragLanding.x}
+							cy={dragLanding.y}
+							r={dragLanding.radius}
+							class="drag-landing-ring"
+						/>
+						<circle cx={dragLanding.x} cy={dragLanding.y} r="3.5" class="drag-landing-dot" />
+					</g>
+				{/if}
+				<path d={dragArrow.path} class="drag-arrow-path" style={`--drag-accent:${dragAccent}`} />
+				<path d={dragArrow.head} class="drag-arrow-head" style={`--drag-accent:${dragAccent}`} />
+				<circle
+					cx={dragOrigin.x}
+					cy={dragOrigin.y}
+					r="4"
+					class="drag-arrow-origin"
+					style={`--drag-accent:${dragAccent}`}
+				/>
+			</svg>
 		{/if}
 
 		{#if paused && !showResult}
@@ -1772,122 +1855,6 @@
 		color: var(--ink-faint);
 	}
 
-	.status-console {
-		left: 50%;
-		top: 84px;
-		bottom: auto;
-		transform: translateX(-50%);
-		display: flex;
-		align-items: stretch;
-		height: 50px;
-		border: 1px solid var(--line-strong);
-		background: rgba(5, 13, 18, 0.8);
-		backdrop-filter: blur(18px);
-		box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-		animation: hud-fade 600ms 220ms ease-out both;
-	}
-
-	.coords-block,
-	.orders-block,
-	.defense-block {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: 4px;
-		padding: 0 16px;
-		min-width: 110px;
-	}
-
-	.orders-block {
-		min-width: 70px;
-		border-left: 1px solid var(--line-soft);
-	}
-
-	.defense-block {
-		min-width: 82px;
-		padding: 0 13px;
-		border-left: 1px solid var(--line-soft);
-	}
-
-	.defense-block strong {
-		font-family: var(--font-mono);
-		font-size: 13px;
-		font-weight: 600;
-		color: #ffd690;
-	}
-
-	.defense-block small {
-		font-family: var(--font-mono);
-		font-size: 7px;
-		letter-spacing: 0.04em;
-		color: var(--ink-faint);
-		white-space: nowrap;
-	}
-
-	.target-block {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: 2px;
-		width: clamp(190px, 18vw, 280px);
-		padding: 0 18px;
-		border-left: 1px solid var(--line-soft);
-		border-right: 1px solid var(--line-soft);
-		background: rgba(255, 255, 255, 0.018);
-	}
-
-	.status-label {
-		font-family: var(--font-mono);
-		font-size: 6.5px;
-		letter-spacing: 0.14em;
-		color: var(--ink-faint);
-	}
-
-	.coords-block strong,
-	.orders-block strong {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		font-weight: 500;
-		letter-spacing: 0.03em;
-		color: var(--ink-dim);
-	}
-
-	.orders-block strong {
-		color: var(--signal);
-	}
-
-	.orders-block strong em {
-		font-style: normal;
-		color: var(--ink-faint);
-	}
-
-	.orders-block small {
-		font-family: var(--font-mono);
-		font-size: 5.5px;
-		letter-spacing: 0.06em;
-		color: var(--ink-faint);
-	}
-
-	.target-block strong {
-		overflow: hidden;
-		font-family: var(--font-mono);
-		font-size: 10px;
-		font-weight: 500;
-		letter-spacing: 0.06em;
-		color: var(--ink);
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
-	.target-block small {
-		overflow: hidden;
-		font-size: 9px;
-		line-height: 1.25;
-		color: var(--ink-faint);
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
 	.map-tools {
 		right: 22px;
 		bottom: 22px;
@@ -1962,12 +1929,12 @@
 	.economy-readout {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
+		align-items: stretch;
 		justify-content: center;
-		gap: 2px;
-		width: 68px;
-		margin-bottom: 24px;
-		padding: 11px 8px;
+		gap: 4px;
+		width: 112px;
+		margin-bottom: 20px;
+		padding: 9px 10px;
 		border: 1px solid rgba(255, 214, 144, 0.28);
 		background:
 			linear-gradient(150deg, rgba(255, 214, 144, 0.1), transparent 55%), rgba(7, 16, 21, 0.86);
@@ -1978,6 +1945,13 @@
 		pointer-events: auto;
 	}
 
+	.economy-row {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 6px;
+	}
+
 	.economy-readout span,
 	.refresh-button span {
 		font-family: var(--font-mono);
@@ -1986,17 +1960,36 @@
 		color: var(--ink-faint);
 	}
 
-	.economy-readout strong {
+	.economy-row strong {
 		font-family: var(--font-display);
-		font-size: 26px;
-		line-height: 0.85;
+		font-size: 25px;
+		line-height: 0.8;
 		color: #ffd690;
 		text-shadow: 0 0 18px rgba(255, 214, 144, 0.28);
 	}
 
+	.economy-orders,
+	.economy-defense {
+		padding-top: 3px;
+		border-top: 1px solid rgba(255, 248, 220, 0.1);
+	}
+
+	.economy-orders b,
+	.economy-defense b {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--signal);
+	}
+
+	.economy-defense b {
+		color: #ffd690;
+	}
+
 	.economy-readout small {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: 6px;
+		line-height: 1.35;
 		color: var(--ink-dim);
 	}
 
@@ -2314,18 +2307,65 @@
 		cursor: not-allowed;
 	}
 
-	.build-drop-hint {
-		left: 50%;
-		bottom: 250px;
-		transform: translateX(-50%);
-		padding: 8px 12px;
-		border: 1px dashed rgba(255, 214, 144, 0.6);
-		background: rgba(5, 13, 18, 0.86);
-		font-family: var(--font-mono);
-		font-size: 8px;
-		letter-spacing: 0.1em;
-		color: #ffd690;
+	.drag-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 80;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
 		pointer-events: none;
+	}
+
+	.drag-arrow-path {
+		fill: none;
+		stroke: var(--drag-accent);
+		stroke-width: 2.6;
+		stroke-linecap: round;
+		filter: drop-shadow(0 0 6px color-mix(in srgb, var(--drag-accent) 55%, transparent));
+	}
+
+	.drag-arrow-head {
+		fill: var(--drag-accent);
+		filter: drop-shadow(0 0 5px color-mix(in srgb, var(--drag-accent) 55%, transparent));
+	}
+
+	.drag-arrow-origin {
+		fill: var(--drag-accent);
+		stroke: rgba(6, 14, 18, 0.9);
+		stroke-width: 2;
+	}
+
+	.drag-landing-field {
+		fill: rgba(255, 95, 87, 0.17);
+		stroke: none;
+	}
+
+	.drag-landing-ring {
+		fill: none;
+		stroke: #ff5f57;
+		stroke-width: 2.8;
+		stroke-dasharray: 6 5;
+		filter: drop-shadow(0 0 9px rgba(255, 95, 87, 0.65));
+	}
+
+	.drag-landing-dot {
+		fill: #ff7069;
+		stroke: rgba(6, 14, 18, 0.9);
+		stroke-width: 1.4;
+	}
+
+	.drag-overlay .valid .drag-landing-field {
+		fill: rgba(131, 226, 124, 0.15);
+	}
+
+	.drag-overlay .valid .drag-landing-ring {
+		stroke: #83e27c;
+		filter: drop-shadow(0 0 9px rgba(131, 226, 124, 0.65));
+	}
+
+	.drag-overlay .valid .drag-landing-dot {
+		fill: #93e08d;
 	}
 
 	.growth-switcher {
@@ -2395,7 +2435,7 @@
 	}
 
 	.paused-flag {
-		top: 148px;
+		top: 84px;
 		left: 50%;
 		transform: translateX(-50%);
 		padding: 7px 14px;
@@ -3203,15 +3243,6 @@
 		}
 	}
 
-	@keyframes hud-fade {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
 	@keyframes veil-in {
 		from {
 			opacity: 0;
@@ -3313,14 +3344,12 @@
 			font-size: 8px;
 		}
 
-		.economy-readout,
-		.refresh-button {
-			width: 60px;
+		.economy-readout {
+			width: 104px;
 		}
 
-		.status-console {
-			left: 22px;
-			transform: none;
+		.refresh-button {
+			width: 60px;
 		}
 	}
 
@@ -3356,36 +3385,6 @@
 			left: 14px;
 			bottom: 14px;
 			width: 180px;
-		}
-
-		.status-console {
-			top: 72px;
-			left: 50%;
-			right: auto;
-			bottom: auto;
-			transform: translateX(-50%);
-			width: auto;
-			height: 45px;
-			max-width: calc(100vw - 24px);
-		}
-
-		.target-block {
-			width: 180px;
-		}
-
-		.coords-block {
-			min-width: 94px;
-			padding: 0 11px;
-		}
-
-		.orders-block {
-			min-width: 58px;
-			padding: 0 10px;
-		}
-
-		.defense-block {
-			min-width: 62px;
-			padding: 0 9px;
 		}
 
 		.map-tools {
@@ -3499,9 +3498,9 @@
 		}
 
 		.economy-readout {
-			width: 56px;
+			width: 96px;
 			margin-bottom: 18px;
-			padding: 8px 6px;
+			padding: 8px 7px;
 		}
 
 		.refresh-button {
@@ -3510,22 +3509,8 @@
 			margin-bottom: 18px;
 		}
 
-		.build-drop-hint {
-			bottom: 200px;
-		}
-
-		.coords-block {
-			display: none;
-		}
-
-		.target-block {
-			width: auto;
-			min-width: 160px;
-			border-left: 0;
-		}
-
 		.paused-flag {
-			top: 126px;
+			top: 72px;
 			font-size: 7px;
 		}
 	}
@@ -3627,12 +3612,12 @@
 		}
 
 		.economy-readout {
-			width: 48px;
+			width: 88px;
 			margin-bottom: 14px;
-			padding: 7px 4px;
+			padding: 7px 6px;
 		}
 
-		.economy-readout strong {
+		.economy-row strong {
 			font-size: 21px;
 		}
 
@@ -3647,50 +3632,8 @@
 			font-size: 19px;
 		}
 
-		.build-drop-hint {
-			bottom: 172px;
-		}
-
 		.toast {
 			bottom: 172px;
-		}
-
-		.status-console {
-			top: 66px;
-			left: 50%;
-			right: auto;
-			bottom: auto;
-			transform: translateX(-50%);
-			width: calc(100vw - 24px);
-			max-width: none;
-			min-width: 0;
-		}
-
-		.target-block {
-			min-width: 0;
-			width: auto;
-			padding: 0 10px;
-		}
-
-		.target-block small {
-			display: none;
-		}
-
-		.target-block strong {
-			font-size: 8px;
-		}
-
-		.orders-block {
-			display: none;
-		}
-
-		.defense-block {
-			min-width: 54px;
-			padding: 0 7px;
-		}
-
-		.defense-block small {
-			display: none;
 		}
 
 		.minimap-dock {
@@ -3799,18 +3742,31 @@
 			line-height: 1.18;
 		}
 
-		.economy-readout,
-		.refresh-button {
-			width: 42px;
-		}
-
 		.economy-readout {
-			padding: 6px 3px;
+			width: 68px;
+			padding: 6px 5px;
 			margin-bottom: 12px;
 		}
 
-		.economy-readout strong {
+		.economy-row span {
+			font-size: 5.5px;
+		}
+
+		.economy-row strong {
 			font-size: 18px;
+		}
+
+		.economy-orders b,
+		.economy-defense b {
+			font-size: 9px;
+		}
+
+		.economy-readout small {
+			font-size: 5px;
+		}
+
+		.refresh-button {
+			width: 42px;
 		}
 
 		.refresh-button {
