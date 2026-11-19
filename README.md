@@ -1,8 +1,8 @@
 # TERRITORY
 
-**A deterministic, WebGPU-rendered pixel territory war.** Every pixel of the 2048 × 1024 atlas is land, ocean, or somebody's country. Expand from your beachhead, break seven rival states, and paint the map.
+**A deterministic, WebGPU-rendered pixel territory war.** Every pixel of the 2048 × 1024 atlas is land, ocean, or somebody's country.
 
-![Territory gameplay](docs/media/gameplay.png)
+![Territory attack stress test](docs/media/gameplay.png)
 
 <details>
 <summary>More screens</summary>
@@ -13,23 +13,26 @@
 
 </details>
 
-> **Status: playable local vertical slice (v0.1).** The deterministic simulation, procedural map, combat, bots, WebGPU renderer, HUD, minimap, and replayable seed flow are implemented. Online multiplayer is fully specified but **not wired up yet** — see [docs/NETWORKING.md](docs/NETWORKING.md).
+> **Status: attack stress experiment (v0.2).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+>
+> The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. Online multiplayer remains specified but **not wired up**.
 
 ---
 
-## Why this architecture
+## What this build demonstrates
 
-| Requirement            | Implementation                                                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Large pixel map        | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with a shader-side pixel grid at combat zoom |
-| Deterministic          | Fixed 10 Hz tick, integer troop economy, seeded integer PRNG, stable command ordering, FNV-1a state checksums, deterministic tests            |
-| Fast rendering         | Full-screen WebGPU pass; only changed 64 × 64 tiles are uploaded, with adjacent tiles merged into strips. No per-frame full-map uploads       |
-| Fast territory changes | Simulation emits a packed `Uint32Array` of changed pixels. A typical combat tick touches ≤ 1,200 cells across a handful of local fronts       |
-| Ease of development    | SvelteKit 3 + Svelte 5 runes + TypeScript, with a strict separation between pure simulation, GPU rendering, and UI                            |
+| Area            | Implementation                                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Attack stress   | 108 states, up to 3 active fronts per player, 30 captured pixels per front per tick, ownership-checked flood fill                          |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                         |
+| Rendering speed | Full-screen WebGPU pass; only changed 32 × 32 tiles are uploaded, adjacent tiles merged into strips                                        |
+| UI scale        | Scrollable 108-state leaderboard, per-player generated palette, minimap, attack counters, perf readout                                     |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                        |
 
 ## Quick start
 
-**Requirements:** Node.js ≥ 24, pnpm ≥ 11, and a browser with WebGPU enabled (current Chrome or Edge on desktop). Safari/Firefox support varies; unsupported browsers get an explicit error screen rather than a broken canvas.
+**Requirements:** Node.js ≥ 24, pnpm ≥ 11, and a WebGPU-enabled browser (current Chrome or Edge on desktop).
 
 ```sh
 pnpm install
@@ -47,8 +50,8 @@ http://localhost:5173/?seed=1234
 ```sh
 pnpm dev        # Vite dev server (HMR)
 pnpm check      # svelte-check + TypeScript
-pnpm test       # deterministic simulation tests
-pnpm bench      # map/tick/checksum benchmark (Node)
+pnpm test       # deterministic + 108-state stress tests
+pnpm bench      # map/tick/checksum benchmark
 pnpm build      # production build via adapter-node
 pnpm preview    # preview the production build
 pnpm lint       # Prettier check
@@ -57,67 +60,73 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                | Action                                                            |
-| -------------------- | ----------------------------------------------------------------- |
-| Click / tap a border | Expand into neutral land, or attack a rival's connected territory |
-| Drag                 | Pan the map                                                       |
-| Scroll               | Zoom at the pointer                                               |
-| `Space`              | Pause / resume the simulation                                     |
-| `F`                  | Fit the whole atlas                                               |
-| `C`                  | Return to your beachhead                                          |
-| `+` / `−`            | Zoom                                                              |
-| `H`                  | Open the field manual                                             |
-| Minimap click        | Jump the camera                                                   |
+| Input                       | Action                                                      |
+| --------------------------- | ----------------------------------------------------------- |
+| Click / tap a shared border | Open a free attack front into neutral land or a rival state |
+| Drag                        | Pan the map                                                 |
+| Scroll                      | Zoom at the pointer                                         |
+| `Space`                     | Pause / resume the simulation                               |
+| `F`                         | Fit the whole atlas                                         |
+| `C`                         | Return to your beachhead                                    |
+| `+` / `−`                   | Zoom                                                        |
+| `H`                         | Open the field manual                                       |
+| Minimap click               | Jump the camera                                             |
 
-The camera stays independent of the simulation, so pausing, zooming, and panning never influence game state.
+A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and active attack-limit failures. No resources are consumed.
 
-## How it works
+## How the attack works right now
+
+1. Click a target cell near your frontier.
+2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
+3. A free attack front opens, with a technical cap of 3 active fronts (2 for bots).
+4. Each tick, a front captures up to 30 connected target-owned pixels, traversing through the target's territory.
+5. It ends when its frontier is exhausted or the target ownership changes underneath it.
+
+This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
+
+## Architecture at a glance
 
 ```text
 Svelte UI (+page.svelte)
   └── GameCanvas.svelte ......... fixed-step driver, pointer input, camera bridge
         ├── TerritorySimulation .. pure deterministic game core
-        │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas
+        │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
         │     ├── TerritoryRng ... mulberry32
-        │     └── border sets .... derived from owner + land arrays
+        │     └── attack queues .. packed Uint32Array flood fronts
         ├── TerritoryRenderer .... WebGPU device, textures, shader, dirty-tile uploads
         └── MapCamera ............ CSS-pixel camera, zoom, clamping
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
 ```
 
-- **Simulation** owns the authoritative arrays: land, terrain shade, owner IDs, player state, frontier sets, active attacks, and the PRNG. It uses no DOM, no wall clock, and no `Math.random`.
-- **Renderer** owns the CPU-side RGBA control texture and GPU resources. It never mutates simulation state. After each tick it consumes the packed change buffer and uploads changed tiles.
-- **UI** consumes immutable snapshots at tick boundaries. The render loop is intentionally separate from the fixed tick loop.
-
-Read the full breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities and data flow.
 
 ## Measured baseline
 
-These are ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
+Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
 
-| Measurement                               | Result                                    |
-| ----------------------------------------- | ----------------------------------------- |
-| Map generation (2048 × 1024)              | ~200–210 ms, one-time on world creation   |
-| Idle simulation tick                      | ~0.08 ms                                  |
-| Mid-match simulation tick with bot combat | ~0.06–0.07 ms                             |
-| Full-state checksum                       | ~8.9 ms (on-demand only)                  |
-| Browser render loop                       | 144 fps at 1600 × 1000 in headless Chrome |
-| Map upload rate under bot combat          | ~0.55–1.0M pixels/s (~55–100K per tick)   |
-| Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow             |
-| Node benchmark RSS (two worlds)           | ~142–147 MiB                              |
+| Measurement                            | Result                                                   |
+| -------------------------------------- | -------------------------------------------------------- |
+| Map generation + 108 starts            | ~225–230 ms, one-time on world creation                  |
+| Sustained all-bot attack tick          | ~1.4 ms                                                  |
+| All-bot attack tick (collision-heavy)  | ~1.4 ms                                                  |
+| Full-state checksum                    | ~8.2 ms (on-demand only)                                 |
+| Browser render loop                    | 126–132 fps at 1600 × 1000 in headless Chrome under load |
+| Map upload rate under 108-state stress | ~2.2–4.7M pixels/s (~220K–470K per tick)                 |
+| Full control texture                   | 8 MiB VRAM + 8 MiB CPU shadow                            |
+| Node benchmark RSS (two worlds)        | ~198–228 MiB                                             |
 
-At 10 Hz, the simulation uses well under 1% of a 100 ms tick budget on this hardware. The renderer is the more interesting performance surface. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses about 1.4% of a 100 ms tick budget. Rendering and texture upload volume are the limiting factors in this experiment. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 
 1. Every client and server runs the same simulation code at the same fixed 10 Hz tick.
-2. The map is generated deterministically from a 32-bit seed and a **map version**. Changing map generation requires bumping `MAP_VERSION`.
-3. Simulation arithmetic is integer-based. Rendering, frame rate, and camera state cannot affect outcomes.
+2. The map is generated deterministically from a 32-bit seed and a **map version**. Changing map or start generation requires bumping `MAP_VERSION`.
+3. Attack outcomes depend on integer positions, ownership, queue order, and command order — never on frame rate, camera, or rendering.
 4. Bots draw from one seeded PRNG in a fixed player order.
 5. Commands are applied at tick boundaries in a stable order.
 6. State checksums can be compared across clients and servers; a mismatch forces a resync rather than silently diverging.
 
-The details and contributor rules live in [docs/DETERMINISM.md](docs/DETERMINISM.md).
+The attack experiment is still subject to the full determinism contract in [docs/DETERMINISM.md](docs/DETERMINISM.md).
 
 ## Project map
 
@@ -132,12 +141,12 @@ src/
       GameCanvas.svelte          canvas lifecycle, fixed loop, pointer handling
       Minimap.svelte             throttled 2D overview
     game/
-      constants.ts               rules, palette, protocol-visible constants
+      constants.ts               attack stress rules, 108-state palette/names
       rng.ts                     deterministic PRNG
-      map.ts                     integer-hash + fBm map generation, starts
-      simulation.ts              world state, economy, attacks, bots, checksum
-      simulation.test.ts         determinism and invariant tests
-      net/protocol.ts            multiplayer wire protocol sketch
+      map.ts                     map generation and 108 start placement
+      simulation.ts              world state, free attacks, bots, checksums
+      simulation.test.ts         determinism, ownership, frontier, stress tests
+      net/protocol.ts            multiplayer wire protocol draft
       render/
         camera.ts                pan / zoom / clamp logic
         camera-bridge.ts         imperative bridge for Svelte controls
@@ -145,6 +154,7 @@ src/
         territory-renderer.ts    WebGPU setup, control texture, dirty uploads
 docs/
   SPEC.md                        canonical product + technical specification
+  EXPERIMENTS.md                 active attack stress experiment and exit plan
   ARCHITECTURE.md                module responsibilities and data flow
   DETERMINISM.md                 invariants, replay, multiplayer rules
   RENDERING.md                   WebGPU pipeline and upload strategy
@@ -154,28 +164,30 @@ docs/
   DECISIONS.md                   architecture decision records
   README.md                      documentation index
 scripts/
-  benchmark.ts                   tick/map/checksum benchmark
+  benchmark.ts                   attack tick/map/checksum benchmark
 AGENTS.md                        orientation for future coding agents
 ```
 
 ## Current limitations
 
+- The economy and final attack semantics are intentionally missing; this build is not game-balanced.
+- The 108-state leaderboard and AI load are a stress mode, not the shipping match format.
 - Online play, accounts, matchmaking, and persistence are specified but not implemented.
-- One human against seven bots; no diplomacy or alliances.
-- No audio, fog of war, or spectator camera UI.
+- No audio, fog of war, diplomacy, or spectator camera UI.
 - Touch pan/tap works; pinch-to-zoom is not implemented yet.
 - WebGPU is required. There is no WebGL/Canvas2D fallback.
-- The simulation runs on the main thread. At current tick costs this is fine, but a worker move is planned before large-scale online play.
+- The simulation runs on the main thread.
 
 ## Documentation index
 
-| Document                                     | Read it for                                         |
-| -------------------------------------------- | --------------------------------------------------- |
-| [docs/SPEC.md](docs/SPEC.md)                 | The canonical game and technical specification      |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, data flow, extension points               |
-| [docs/DETERMINISM.md](docs/DETERMINISM.md)   | Rules that keep every client in lockstep            |
-| [docs/RENDERING.md](docs/RENDERING.md)       | WebGPU pipeline, texture layout, upload batching    |
-| [docs/NETWORKING.md](docs/NETWORKING.md)     | Authoritative server, protocol, latency, anti-cheat |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)   | Budgets, measured baseline, profiling playbook      |
-| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phased plan and acceptance criteria                 |
-| [docs/DECISIONS.md](docs/DECISIONS.md)       | Why the stack and engine work this way              |
+| Document                                     | Read it for                                            |
+| -------------------------------------------- | ------------------------------------------------------ |
+| [docs/SPEC.md](docs/SPEC.md)                 | The canonical game and technical specification         |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)   | Temporary attack stress rules, findings, and exit plan |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, data flow, extension points                  |
+| [docs/DETERMINISM.md](docs/DETERMINISM.md)   | Rules that keep every client in lockstep               |
+| [docs/RENDERING.md](docs/RENDERING.md)       | WebGPU pipeline, texture layout, upload batching       |
+| [docs/NETWORKING.md](docs/NETWORKING.md)     | Authoritative server, protocol, latency, anti-cheat    |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)   | Budgets, measured baseline, profiling playbook         |
+| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phased plan and acceptance criteria                    |
+| [docs/DECISIONS.md](docs/DECISIONS.md)       | Why the stack and engine work this way                 |

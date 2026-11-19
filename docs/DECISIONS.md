@@ -126,18 +126,18 @@ Simulate at exactly 10 ticks per second, driven by a fixed-step accumulator. Use
 
 ### Context
 
-A single dirty bounding box across eight bot attacks spanning different continents uploads nearly the full 8 MiB texture each tick (~21M pixels/s measured).
+A single dirty bounding box across bot attacks spanning different continents uploads nearly the full 8 MiB texture each tick (~21M pixels/s measured). With 108 attacking states the problem is worse and changes are scattered across hundreds of fronts.
 
 ### Decision
 
-Divide the control texture into 64 × 64 tiles. Mark dirty tiles with a generation-stamped buffer, merge adjacent dirty tiles into horizontal strips, and upload each strip. Keep full uploads for initialization and resync only.
+Divide the control texture into 32 × 32 tiles. Mark dirty tiles with a generation-stamped buffer, merge adjacent dirty tiles into horizontal strips, and upload each strip. Keep full uploads for initialization and resync only.
 
 ### Consequences
 
-- Typical upload drops to ~0.55–1.0M pixels/s in observed bot combat.
+- Under the 108-state attack stress test, uploads range from ~2.2–4.7M pixels/s with active-front count while rendering stays ~126–132 fps in the test browser.
 - More `writeTexture` calls than one rectangle, but far fewer pixels.
-- Tile bookkeeping memory is negligible (512 marks + 16 row flags).
-- Tile size is a tuning knob; 64 balances overhead and upload precision.
+- Tile bookkeeping memory is negligible (2,048 marks + 32 row flags).
+- Tile size is a tuning knob; 32 favors precision for dispersed fronts. Larger tiles reduce API calls for compact normal-play changes.
 - Renderer needs a full-resync path for overflow/device issues.
 
 ### Alternatives considered
@@ -213,7 +213,7 @@ Generate the map on the client/server from a 32-bit seed with deterministic hash
 
 ### Context
 
-A 10 Hz simulation measured at ~0.06–0.08 ms/tick is trivial on the main thread. A worker adds serialization and rendering synchronization complexity.
+A 10 Hz simulation measured at ~1.4 ms/tick under the 108-state stress load (and far less in the earlier 8-state build) is cheap on the main thread. A worker adds serialization and rendering synchronization complexity.
 
 ### Decision
 
@@ -230,3 +230,37 @@ Run simulation and rendering on the main thread in v0.1. Revisit when online pre
 
 - Worker immediately: ahead of measured need.
 - Server-only simulation for local play: unnecessary network dependency.
+
+---
+
+## ADR-009 — Temporarily remove the economy and stress 108 states
+
+**Status:** accepted for EXP-001; provisional  
+**Date:** 2026-11-19
+
+### Context
+
+Attack correctness and performance were entangled with troops, income, caps, attack costs, and a low player count. The next feature focus is attacking itself: many fronts, free clicks, dense territory collision, and 100+ AI opponents.
+
+### Decision
+
+Temporarily remove all economy and resource gating, add 100 AI states (108 total), make attacks free, keep only technical active-front caps, and use 32 × 32 dirty uploads plus packed attack queues to survive the load. Track the deviation explicitly in [EXPERIMENTS.md](EXPERIMENTS.md).
+
+### Consequences
+
+- The attack flood-fill and renderer are exercised far beyond normal intended load.
+- AI states saturate the map quickly; balance and match pacing are not meaningful in this build.
+- The UI must handle 108 leaderboard rows and generated colors/names.
+- Attack limits are a technical safety valve, not a design rule.
+- The economy must be redesigned/restored after the final attack model is chosen.
+- Do not build progression or balance on this build.
+
+### Alternatives considered
+
+- Keep the economy and test only limited attacks: slower to expose attack/queue/rendering limits.
+- Simulate bots without rendering: misses GPU upload and HUD costs.
+- Lower the player count: fails the explicit stress-test request.
+
+### Exit plan
+
+Documented in [EXPERIMENTS.md](EXPERIMENTS.md): decide the real attack semantics, restore/replace the economy, remove stress-only guards and UI, and update tests/specs/benchmarks.

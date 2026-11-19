@@ -18,7 +18,7 @@ The renderer is WebGPU-only and designed around one large raster map with small,
 
 ```text
 CPU control shadow (RGBA8, 2048 × 1024)
-        │ dirty tiles, 64 × 64
+        │ dirty tiles, 32 × 32
         ▼
 queue.writeTexture (partial updates)
         │
@@ -60,7 +60,7 @@ The CPU shadow is `Uint8Array(2048 * 1024 * 4) = 8 MiB`. The GPU texture is anot
 `PALETTE` in `constants.ts` is index-aligned with owner ids:
 
 - index 0 = unclaimed land,
-- indices 1–8 = player colors.
+- indices 1–108 = player colors (eight hand-picked, the rest generated on a golden-angle hue wheel).
 
 The palette texture is 256 × 1. Unused indices remain black. The shader looks up `(owner + 0.5) / 256`.
 
@@ -70,17 +70,17 @@ The palette texture is 256 × 1. Unused indices remain black. The shader looks u
 
 ### The problem
 
-A naive dirty rectangle is wrong for this game. Up to eight bots can be attacking different continents in one tick. The union of all changed pixels becomes almost the whole map, and the renderer uploads ~2.1M pixels per tick (21M px/s at 10 Hz).
+A naive dirty rectangle is wrong for this game. With 108 states attacking simultaneously, the union of all changed pixels becomes almost the whole map, and the renderer would upload ~2.1M pixels per tick (21M px/s at 10 Hz).
 
 ### The solution
 
-- Divide the map into 64 × 64 tiles (`32 × 16 = 512` tiles).
+- Divide the map into 32 × 32 tiles (`64 × 32 = 2,048` tiles).
 - Use a generation-stamped `Uint32Array` to mark dirty tiles cheaply.
 - Track dirty tile rows in a small `Uint8Array`.
 - After each tick, scan each dirty row and merge contiguous dirty tiles into one horizontal strip.
 - Upload each strip from the CPU shadow using its full row stride and an offset.
 
-Worst case is still bounded by changed tiles, but real attacks are local and produce a handful of strips. Observed under bot combat: ~0.55–1.0M pixels/s (~55–100K/tick), roughly a 20–38× reduction from the naive bounding box.
+Smaller 32 × 32 tiles reduce wasted upload area when hundreds of fronts change isolated pixels. Adjacent tiles still merge into strips, so call count stays manageable. Observed under the 108-state stress run: **~2.2–4.7M pixels/s** depending on active fronts (~220K–470K/tick) at ~126–132 fps. A lower-load match with fewer active fronts was far below that; this experiment is deliberately harsher.
 
 ### Upload call
 
@@ -93,7 +93,7 @@ device.queue.writeTexture(
 );
 ```
 
-A tile is uploaded in full even if only one pixel inside it changed. At 64 × 64, this is still cheaper than many tiny uploads and much cheaper than a global rectangle.
+A tile is uploaded in full even if only one pixel inside it changed. At 32 × 32, this is cheaper than many per-pixel uploads and much cheaper than a global rectangle. The tile size is a tuning knob: smaller means less overdraw, larger means fewer API calls.
 
 ### Full uploads
 
@@ -214,26 +214,26 @@ Ocean shimmer and pointer-driven zoom/pan need smooth frames. A full-screen frag
 
 ### Baseline measured in headless Chrome
 
-| Measurement                  | Value                                                    |
-| ---------------------------- | -------------------------------------------------------- |
-| Render loop                  | 144 fps (rAF ceiling in test environment) at 1600 × 1000 |
-| Map uploads under bot combat | ~0.55–1.0M pixels/s                                      |
-| Initial upload               | 2.1M pixels (8 MiB)                                      |
-| Draw calls                   | 1                                                        |
-| Control texture              | 8 MiB CPU + 8 MiB GPU                                    |
-| Compute per fragment         | 5 texture samples + arithmetic                           |
+| Measurement                        | Value                                             |
+| ---------------------------------- | ------------------------------------------------- |
+| Render loop                        | 126–132 fps under 108-state stress at 1600 × 1000 |
+| Map uploads under 108-state stress | ~2.2–4.7M pixels/s                                |
+| Initial upload                     | 2.1M pixels (8 MiB)                               |
+| Draw calls                         | 1                                                 |
+| Control texture                    | 8 MiB CPU + 8 MiB GPU                             |
+| Compute per fragment               | 5 texture samples + arithmetic                    |
 
 These are not guarantees. GPU fill rate, display size, DPR, browser compositor, and background throttling all affect results.
 
 ### Budgets
 
-| Metric                         | Budget                            |
-| ------------------------------ | --------------------------------- |
-| Map uploads per tick (normal)  | < 200K pixels; avoid full texture |
-| Full-frame GPU time at 1440p   | < 4 ms on mid-range hardware      |
-| JS renderer overhead per frame | < 1 ms                            |
-| CPU texture updates per tick   | < 1 ms for ≤ 1,200 changes        |
-| Frame pacing                   | Stable 60 fps on integrated GPU   |
+| Metric                         | Budget                          |
+| ------------------------------ | ------------------------------- |
+| Map uploads per tick (stress)  | < 1M pixels; avoid full texture |
+| Full-frame GPU time at 1440p   | < 4 ms on mid-range hardware    |
+| JS renderer overhead per frame | < 1 ms                          |
+| CPU texture updates per tick   | < 2 ms for ≤ 8,000 changes      |
+| Frame pacing                   | Stable 60 fps on integrated GPU |
 
 ### Profiling
 

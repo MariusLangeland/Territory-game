@@ -100,7 +100,7 @@
 
 				const camera = renderer.camera;
 				const humanStart = simulation.map.starts[HUMAN_PLAYER_ID - 1];
-				camera.focusOn(humanStart.x, humanStart.y, 3.1);
+				camera.focusOn(humanStart.x, humanStart.y, 3.8);
 
 				renderer.onDeviceLost = (message) => {
 					onError?.(new Error(message));
@@ -110,7 +110,7 @@
 					zoomIn: () => camera.zoomAt(camera.width / 2, camera.height / 2, 1.32),
 					zoomOut: () => camera.zoomAt(camera.width / 2, camera.height / 2, 1 / 1.32),
 					fitMap: () => camera.focusOn(simulation.width / 2, simulation.height / 2, 1),
-					focusHuman: () => camera.focusOn(humanStart.x, humanStart.y, 3.1),
+					focusHuman: () => camera.focusOn(humanStart.x, humanStart.y, 3.8),
 					centerOn: (x, y, zoom) => {
 						if (zoom === undefined) camera.centerOn(x, y);
 						else camera.focusOn(x, y, zoom);

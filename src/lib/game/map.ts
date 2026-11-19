@@ -122,15 +122,17 @@ function localLandDensity(land: Uint8Array, index: number, radius: number): numb
 function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 	const rng = new DeterministicRng((seed ^ 0x51ed270b) >>> 0);
 	const candidates: Candidate[] = [];
+	const targetCandidates = Math.max(1_200, PLAYER_COUNT * 64);
+	const maxAttempts = 400_000;
 	let attempts = 0;
 
-	while (candidates.length < 900 && attempts < 60_000) {
+	while (candidates.length < targetCandidates && attempts < maxAttempts) {
 		attempts++;
 		const index = rng.nextInt(land.length);
 		if (!land[index]) continue;
 		const x = index % MAP_WIDTH;
 		const y = (index - x) / MAP_WIDTH;
-		if (localLandDensity(land, index, START_RADIUS + 8) < 0.72) continue;
+		if (localLandDensity(land, index, START_RADIUS + 10) < 0.64) continue;
 		candidates.push({ index, x, y });
 	}
 
@@ -148,29 +150,65 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 		return da - db || a.index - b.index;
 	});
 
-	const chosen: Candidate[] = [candidates[0]];
+	const chosen: Candidate[] = [];
+	const removed = new Uint8Array(candidates.length);
+	const nearestDistance = new Float64Array(candidates.length);
+	nearestDistance.fill(Number.POSITIVE_INFINITY);
+
+	const first = candidates[0];
+	chosen.push(first);
+	removed[0] = 1;
+	for (let i = 1; i < candidates.length; i++) {
+		const dx = candidates[i].x - first.x;
+		const dy = candidates[i].y - first.y;
+		nearestDistance[i] = dx * dx + dy * dy;
+	}
+
+	// Keep 108 beachheads from interpenetrating. The map has far more than
+	// enough land for this packing; the fallback exists only for pathological
+	// seeds and still produces a deterministic set of starts.
+	const preferredSpacing = (START_RADIUS * 2 + 2) ** 2;
 
 	while (chosen.length < PLAYER_COUNT) {
-		let best: Candidate | null = null;
-		let bestMinDistance = -1;
+		let bestIndex = -1;
+		let bestDistance = -1;
 
-		for (const candidate of candidates) {
-			let minDistance = Number.POSITIVE_INFINITY;
-			for (const start of chosen) {
-				const dx = candidate.x - start.x;
-				const dy = candidate.y - start.y;
-				const distance = dx * dx + dy * dy;
-				if (distance < minDistance) minDistance = distance;
-			}
-			if (minDistance > bestMinDistance) {
-				bestMinDistance = minDistance;
-				best = candidate;
+		for (let i = 1; i < candidates.length; i++) {
+			if (removed[i]) continue;
+			const distance = nearestDistance[i];
+			if (distance < preferredSpacing) continue;
+			if (distance > bestDistance) {
+				bestDistance = distance;
+				bestIndex = i;
 			}
 		}
 
-		if (!best) break;
-		chosen.push(best);
-		candidates.splice(candidates.indexOf(best), 1);
+		if (bestIndex === -1) {
+			for (let i = 1; i < candidates.length; i++) {
+				if (removed[i]) continue;
+				if (nearestDistance[i] > bestDistance) {
+					bestDistance = nearestDistance[i];
+					bestIndex = i;
+				}
+			}
+		}
+
+		if (bestIndex === -1) break;
+		const next = candidates[bestIndex];
+		chosen.push(next);
+		removed[bestIndex] = 1;
+
+		for (let i = 1; i < candidates.length; i++) {
+			if (removed[i]) continue;
+			const dx = candidates[i].x - next.x;
+			const dy = candidates[i].y - next.y;
+			const distance = dx * dx + dy * dy;
+			if (distance < nearestDistance[i]) nearestDistance[i] = distance;
+		}
+	}
+
+	if (chosen.length < PLAYER_COUNT) {
+		throw new Error(`Map generation could only place ${chosen.length}/${PLAYER_COUNT} starts.`);
 	}
 
 	return chosen.map((candidate) => ({

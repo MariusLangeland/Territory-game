@@ -119,6 +119,11 @@
 		return String(Math.max(0, Math.round(value)));
 	}
 
+	function formatShare(share: number): string {
+		const percent = share * 100;
+		return percent >= 10 ? percent.toFixed(1) : percent.toFixed(2);
+	}
+
 	function formatClock(totalSeconds: number): string {
 		const seconds = Math.max(0, Math.floor(totalSeconds));
 		return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -362,7 +367,7 @@
 </script>
 
 <svelte:head>
-	<title>TERRITORY — Deterministic pixel warfare</title>
+	<title>TERRITORY — Attack stress test</title>
 </svelte:head>
 
 <main class="game-shell">
@@ -389,7 +394,7 @@
 			<div class="brand-lockup">
 				<div class="brand-mark" aria-hidden="true"><span></span></div>
 				<div class="brand-type">
-					<p class="eyebrow">ATLAS COMMAND / LIVE</p>
+					<p class="eyebrow">ATTACK STRESS / {PLAYER_COUNT} STATES</p>
 					<h1>TERRITORY<span>.</span></h1>
 				</div>
 			</div>
@@ -403,22 +408,16 @@
 					</span>
 				</div>
 				<div class="readout-stat">
-					<span>ARMY</span>
-					<strong>{formatCompact(human.troops)}</strong>
-				</div>
-				<div class="readout-stat">
-					<span>INCOME</span>
-					<strong>+{formatCompact(human.income)}<em>/s</em></strong>
-				</div>
-				<div class="readout-stat">
 					<span>LAND</span>
-					<strong>
-						{human.landShare > 0 ? (human.landShare * 100).toFixed(1) : '0.0'}<em>%</em>
-					</strong>
+					<strong>{formatShare(human.landShare)}<em>%</em></strong>
 				</div>
 				<div class="readout-stat">
 					<span>RANK</span>
 					<strong>#{humanRank}<em>/{aliveCount}</em></strong>
+				</div>
+				<div class="readout-stat">
+					<span>STATES</span>
+					<strong>{aliveCount}<em>/{PLAYER_COUNT}</em></strong>
 				</div>
 			</div>
 
@@ -462,7 +461,7 @@
 			<section class="panel board" aria-label="World leaderboard">
 				<div class="panel-head">
 					<span>WORLD CONTROL</span>
-					<span class="panel-meta">{aliveCount}/{PLAYER_COUNT} ACTIVE</span>
+					<span class="panel-meta">{aliveCount} ALIVE · {snapshot.attacks.length} FRONTS</span>
 				</div>
 				<div class="world-meter">
 					<div class="world-meter-copy">
@@ -476,26 +475,27 @@
 					</div>
 				</div>
 
-				<ol class="rank-list">
-					{#each ranked as player, index (player.id)}
-						<li
-							class:is-human={player.id === human.id}
-							class:is-dead={!player.alive}
-							style={`--player-color:${colorForPlayer(player.id).hex};--share:${Math.min(100, player.landShare * 100)}%`}
-						>
-							<span class="rank-index">{String(index + 1).padStart(2, '0')}</span>
-							<span class="rank-swatch" aria-hidden="true"></span>
-							<span class="rank-name">
-								{player.name}
-								{#if player.id === human.id}<em>YOU</em>{/if}
-								{#if !player.alive}<em class="dead-tag">OUT</em>{/if}
-							</span>
-							<span class="rank-land">{(player.landShare * 100).toFixed(1)}%</span>
-							<span class="rank-troops">{formatCompact(player.troops)}<em>T</em></span>
-							<span class="rank-progress" aria-hidden="true"></span>
-						</li>
-					{/each}
-				</ol>
+				<div class="rank-scroll">
+					<ol class="rank-list">
+						{#each ranked as player, index (player.id)}
+							<li
+								class:is-human={player.id === human.id}
+								class:is-dead={!player.alive}
+								style={`--player-color:${colorForPlayer(player.id).hex};--share:${Math.min(100, player.landShare * 100)}%`}
+							>
+								<span class="rank-index">{String(index + 1).padStart(3, '0')}</span>
+								<span class="rank-swatch" aria-hidden="true"></span>
+								<span class="rank-name">
+									{player.name}
+									{#if player.id === human.id}<em>YOU</em>{/if}
+									{#if !player.alive}<em class="dead-tag">OUT</em>{/if}
+								</span>
+								<span class="rank-land">{formatShare(player.landShare)}%</span>
+								<span class="rank-progress" aria-hidden="true"></span>
+							</li>
+						{/each}
+					</ol>
+				</div>
 
 				<div class="panel-foot">
 					<span><i class="live-dot"></i>WEBGPU</span>
@@ -599,7 +599,7 @@
 			<h2>SURVEYING THE<br />FRONTIER.</h2>
 			<p class="loading-copy">
 				Generating {MAP_WIDTH.toLocaleString('en-US')} × {MAP_HEIGHT.toLocaleString('en-US')} terrain
-				cells and deploying eight states.
+				cells and deploying {PLAYER_COUNT} states.
 			</p>
 		</div>
 	{/if}
@@ -619,17 +619,19 @@
 
 			<div class="intro-content">
 				<div class="intro-copy">
-					<p class="overlay-kicker"><span class="kicker-line"></span>DETERMINISTIC PIXEL WARFARE</p>
+					<p class="overlay-kicker">
+						<span class="kicker-line"></span>ATTACK SYSTEM / STRESS BUILD
+					</p>
 					<h2 id="intro-title">DRAW THE<br /><em>FRONTIER.</em></h2>
 					<p class="intro-lede">
-						Every pixel is territory. Every tick is law. Expand from your beachhead, break your
-						rivals, and paint the atlas in your colours.
+						Free, resource-free attacks are the experiment. Launch fronts into neutral land or rival
+						states and watch {PLAYER_COUNT} deterministic actors fight over the same pixel atlas.
 					</p>
 
 					<div class="spec-strip">
 						<div><strong>{MAP_WIDTH} × {MAP_HEIGHT}</strong><span>PIXEL ATLAS</span></div>
 						<div><strong>{TICK_RATE} HZ</strong><span>FIXED SIMULATION</span></div>
-						<div><strong>WEBGPU</strong><span>DIRTY-RECT RENDER</span></div>
+						<div><strong>WEBGPU</strong><span>DIRTY-TILE RENDER</span></div>
 						<div><strong>{PLAYER_COUNT}</strong><span>STATES DEPLOYED</span></div>
 					</div>
 
@@ -657,8 +659,8 @@
 					</div>
 
 					<p class="intro-footnote">
-						Single-player vertical slice. Seven deterministic bot states contest the map. Share a
-						seed to replay the same world.
+						Attack stress prototype: {PLAYER_COUNT - 1} AI states attack automatically, no economy. This
+						is not the intended final combat model. Share a seed to replay the same test.
 					</p>
 				</div>
 
@@ -667,19 +669,19 @@
 						<span>FIELD BRIEF / 01</span>
 						<span class="brief-status"><i></i>{rendererReady ? 'READY' : 'LINKING'}</span>
 					</div>
-					<h3>CONTROL IS<br />MEASURED IN PIXELS.</h3>
+					<h3>ATTACK IS<br />THE ONLY VERB.</h3>
 					<ol>
 						<li>
 							<span>01</span>
-							<p>Click neutral land beside your border to expand.</p>
+							<p>Click any land touching your frontier to open a free attack.</p>
 						</li>
 						<li>
 							<span>02</span>
-							<p>Click a rival's edge to pour troops into their territory.</p>
+							<p>The front consumes up to 30 connected pixels per tick.</p>
 						</li>
 						<li>
 							<span>03</span>
-							<p>Hold land to grow income. Land is the only economy.</p>
+							<p>Every state attacks at once. This stress build has no economy.</p>
 						</li>
 					</ol>
 					<div class="brief-footer">
@@ -690,7 +692,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.1.0 / PROTOCOL 1</span>
+				<span>BUILD 0.2.0 / PROTOCOL 2</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -827,8 +829,8 @@
 			<article class="modal help-modal">
 				<header class="help-head">
 					<div>
-						<p class="overlay-kicker">FIELD MANUAL / 0.1</p>
-						<h2 id="help-title">HOW TO<br /><em>HOLD GROUND.</em></h2>
+						<p class="overlay-kicker">FIELD MANUAL / ATTACK STRESS</p>
+						<h2 id="help-title">HOW TO<br /><em>ATTACK.</em></h2>
 					</div>
 					<button
 						class="square-button close-manual"
@@ -842,21 +844,21 @@
 
 				<div class="manual-grid">
 					<section>
-						<span class="manual-index">01 / THE LOOP</span>
-						<h3>Pixels are population.</h3>
+						<span class="manual-index">01 / THE EXPERIMENT</span>
+						<h3>No economy. Just fronts.</h3>
 						<p>
-							Territory produces troops continuously. Troops are the only resource: launching an
-							attack costs 50, and each captured pixel costs one more. Break the enemy's income by
-							taking their land.
+							Troops, income, caps, and attack costs are intentionally removed. This build exists to
+							stress-test clicking, flood-fill conquest, many simultaneous attackers, and the map
+							update path. It is not the final combat design.
 						</p>
 					</section>
 					<section>
 						<span class="manual-index">02 / ORDERS</span>
 						<h3>Click a shared frontier.</h3>
 						<p>
-							Click neutral ground or a rival's border near your territory. A local front opens
-							there and eats through connected enemy pixels at up to 30 pixels per tick. Up to three
-							attacks can run at once.
+							Click neutral ground or a rival's border near your territory. A free front opens there
+							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
+							once; each continues until its frontier is exhausted.
 						</p>
 					</section>
 					<section>
@@ -868,12 +870,12 @@
 						</p>
 					</section>
 					<section>
-						<span class="manual-index">04 / SYSTEM</span>
-						<h3>Determinism is the referee.</h3>
+						<span class="manual-index">04 / STRESS TEST</span>
+						<h3>{PLAYER_COUNT} states, one tick.</h3>
 						<p>
-							Simulation runs at {TICK_RATE} fixed ticks per second with integer troop arithmetic and
-							a seeded PRNG. The map is {(MAP_WIDTH * MAP_HEIGHT).toLocaleString('en-US')} pixels rendered
-							from a GPU control texture, with only dirty rectangles uploaded.
+							{TICK_RATE} fixed ticks per second, {PLAYER_COUNT - 1} free-attacking AI states, and a seeded
+							PRNG. The {(MAP_WIDTH * MAP_HEIGHT).toLocaleString('en-US')} pixel atlas is rendered from
+							a GPU control texture with only dirty tiles uploaded.
 						</p>
 					</section>
 				</div>
@@ -918,16 +920,17 @@
 		background:
 			radial-gradient(
 				ellipse at 50% 40%,
-				transparent 40%,
-				rgba(2, 7, 10, 0.12) 72%,
-				rgba(2, 6, 9, 0.52) 100%
+				transparent 34%,
+				rgba(2, 7, 10, 0.18) 72%,
+				rgba(2, 6, 9, 0.56) 100%
 			),
 			linear-gradient(
 				to bottom,
-				rgba(2, 7, 10, 0.18),
-				transparent 18%,
-				transparent 78%,
-				rgba(2, 6, 9, 0.38)
+				rgba(2, 7, 10, 0.6),
+				rgba(2, 7, 10, 0.18) 10%,
+				transparent 22%,
+				transparent 72%,
+				rgba(2, 6, 9, 0.58)
 			);
 	}
 
@@ -956,6 +959,7 @@
 		gap: 12px;
 		min-width: 0;
 		padding-top: 2px;
+		filter: drop-shadow(0 2px 18px rgba(0, 0, 0, 0.78));
 	}
 
 	.brand-mark {
@@ -1289,6 +1293,13 @@
 		transition: width 450ms ease;
 	}
 
+	.rank-scroll {
+		max-height: min(40vh, 360px);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable;
+	}
+
 	.rank-list {
 		margin: 0;
 		padding: 5px 0;
@@ -1298,10 +1309,10 @@
 	.rank-list li {
 		position: relative;
 		display: grid;
-		grid-template-columns: 21px 6px minmax(0, 1fr) 47px 42px;
+		grid-template-columns: 25px 6px minmax(0, 1fr) 50px;
 		align-items: center;
 		gap: 8px;
-		height: 31px;
+		height: 28px;
 		padding: 0 13px;
 		overflow: hidden;
 		font-size: 11px;
@@ -1383,19 +1394,11 @@
 		color: var(--ink-faint);
 	}
 
-	.rank-land,
-	.rank-troops {
+	.rank-land {
 		font-family: var(--font-mono);
 		font-size: 9px;
 		text-align: right;
 		color: var(--ink-dim);
-	}
-
-	.rank-troops em {
-		margin-left: 1px;
-		font-style: normal;
-		font-size: 7px;
-		color: var(--ink-faint);
 	}
 
 	.panel-foot {
@@ -2675,8 +2678,7 @@
 			grid-template-columns: 1fr auto;
 		}
 
-		.readout-stat:nth-child(4),
-		.readout-stat:nth-child(5) {
+		.readout-stat:nth-child(4) {
 			display: none;
 		}
 

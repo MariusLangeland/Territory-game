@@ -12,14 +12,15 @@ Delivered:
 
 - SvelteKit 3 / Svelte 5 / TypeScript project.
 - 2048 × 1024 seeded atlas.
-- 8 states, one human + seven bots.
-- Pixel ownership, economy, attacks, border maintenance, elimination, victory.
-- WebGPU renderer with 64 × 64 dirty-tile uploads and strip merging.
+- Pixel ownership, attacks, border maintenance, elimination, victory.
+- WebGPU renderer with dirty-tile uploads and strip merging.
 - HUD, minimap, field manual, intro/result/defeat/error states.
 - Seed loading, rematch, URL seed.
 - Deterministic tests and benchmark.
 - Specification and architecture docs.
 - Responsive layout and WebGPU error handling.
+
+> Phase 0 initially shipped with troops/income and 8 states. That economy is currently removed and the state count is 108 for the attack stress experiment below.
 
 Acceptance criteria met:
 
@@ -33,6 +34,36 @@ Acceptance criteria met:
 
 ---
 
+## Phase 0.5 — Attack stress experiment (current)
+
+**Outcome:** Prove the attack pipeline stays deterministic and interactive with no economy and 108 attacking states, then decide what the real attack model should be.
+
+Status: implemented; final attack design still open. See [EXPERIMENTS.md](EXPERIMENTS.md).
+
+Work completed:
+
+- Removed troops, income, caps, launch costs, and capture costs.
+- Added 100 AI states (108 total).
+- Implemented spaced start placement for every state, with fallback.
+- Replaced per-attack Sets/arrays with packed `Uint32Array` queues and ownership-based dedup.
+- Reduced dirty tiles to 32 × 32 for dispersed fronts.
+- Made the leaderboard scrollable for 108 rows.
+- Added attack stress tests, an all-bot benchmark, and honest experiment documentation.
+
+Acceptance criteria:
+
+- [x] All 108 states spawn with non-zero territory.
+- [x] Deterministic with all bots attacking.
+- [x] No ownership/border invariant failures under sustained load.
+- [x] Browser stays interactive under sustained attack load.
+- [x] No per-tick full-map upload.
+- [ ] Final attack semantics approved.
+- [ ] Stress-only UI/guards removed or promoted to real rules.
+
+**Exit condition:** a documented attack design replaces the free flood-fill experiment; economy work can resume against that design.
+
+---
+
 ## Phase 1 — Harden the local game
 
 **Outcome:** A vertical slice that a new player can understand and finish without developer guidance.
@@ -41,13 +72,13 @@ Acceptance criteria met:
 
 1. **Tutorial and onboarding**
    - Highlight a recommended first expansion.
-   - One-time contextual prompts for the first attack, first income tick, and first rival contact.
+   - One-time contextual prompts for the first attack and first rival contact.
    - Field manual link from the intro.
 2. **Game feel**
    - Attack pulse/flash on recently captured pixels.
    - Front-line direction indicator.
    - Victory/defeat transitions and final standings polish.
-   - Bot aggression and pacing tuned to a 4–10 minute match.
+   - Bot aggression and pacing tuned to a 4–10 minute match after the economy returns.
 3. **Mobile parity**
    - Pinch zoom.
    - Safer tap targets and a compact HUD mode.
@@ -72,7 +103,7 @@ Acceptance criteria met:
    - Better copy for rejection reasons.
 8. **Balance**
    - Measure average match length and human win rate.
-   - Tune capture rate, income, troop cap, and bot aggression from data.
+   - Tune the final attack model, economy, and bot aggression from data. The current free-attack stress build is not a balance baseline.
 
 ### Acceptance criteria
 
@@ -131,7 +162,7 @@ Acceptance criteria met:
 - Reconnect resumes within the grace window without corrupting state.
 - Late joins receive a valid baseline.
 - Server rejects invalid ownership/attack attempts and logs them.
-- No client can set troop/territory values.
+- No client can set territory or other authoritative values.
 - Server tick p95 stays within budget with the load target.
 
 ---
@@ -209,7 +240,7 @@ Prioritize by retention and fairness data, not by feature count.
 - Unit upgrades or leader abilities.
 - Terrain effects (mountains, rivers).
 - Naval traversal.
-- More than 8 states.
+- Shipping state count/mode after the 108-state stress experiment.
 - Map editor and shareable custom maps.
 - Deterministic daily challenges.
 - Spectator UI with timelines.

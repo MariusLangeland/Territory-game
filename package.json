@@ -1,8 +1,8 @@
 {
 	"name": "territory",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
-	"description": "A deterministic, WebGPU-rendered pixel territory war.",
+	"description": "A deterministic, WebGPU-rendered pixel territory war. Attack stress experiment.",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

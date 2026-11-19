@@ -6,7 +6,7 @@
 
 ## 1. Goals
 
-1. **Server authority:** the server owns troop counts, ownership, attacks, eliminations, and winners.
+1. **Server authority:** the server owns authoritative game state, including ownership, attacks, eliminations, and winners. Resource values such as troops are absent in the current attack experiment but would also be server-owned.
 2. **Deterministic lockstep:** clients run the same simulation and can verify agreement via checksums.
 3. **Responsive input:** a click should feel immediate even with 50–200 ms latency.
 4. **Recoverability:** reconnect or desync must produce a clean resync, never a silently corrupted match.
@@ -63,7 +63,8 @@ Suggested room configuration:
 
 | Field                | Default                         | Notes                                      |
 | -------------------- | ------------------------------- | ------------------------------------------ |
-| `maxHumans`          | 8                               | One state per human slot                   |
+| `maxHumans`          | 8                               | Online target; stress mode uses 108 states |
+| `totalStates`        | 8                               | Configurable; 108 for stress tests         |
 | `fillWithBots`       | true                            | Bots fill empty states                     |
 | `tickRate`           | 10                              | Must equal `TICK_RATE`                     |
 | `minPlayersToStart`  | 1                               | Bots allow immediate start                 |
@@ -112,7 +113,7 @@ Server tick at 10 Hz:
 3. Validate ownership, player, sequence, rate limit, and attack constraints.
 4. Sort accepted commands by `(playerId, clientSequence)` (or another fixed rule).
 5. Apply them to the simulation at the tick boundary.
-6. Run economy, bot decisions, attacks, eliminations, victory.
+6. Run bot decisions, attacks, eliminations, and victory. (Restore an economy phase only after the final attack/economy design exists.)
 7. Broadcast a tick delta to all clients.
 8. Every N ticks, broadcast checksum.
 9. If the match ended, broadcast results and freeze tick advancement.
@@ -215,7 +216,7 @@ Start with JSON over WebSocket for development visibility. Before production sca
 - encode ticks/deltas as binary frames (MessagePack, custom binary, or protobuf);
 - compress baseline owner maps;
 - avoid sending unchanged pixel data;
-- send public player state every tick (8 players is tiny) or only on change with sequence numbers.
+- send public player state every tick (small even at 108 stress states) or only on change with sequence numbers.
 
 Owner changes:
 
@@ -241,8 +242,8 @@ Mismatch: reject with a clear error and do not enter the room. Determinism acros
 Never trust a client for:
 
 - player id,
-- troop count,
 - territory,
+- resource counts (when an economy exists),
 - owner id,
 - win state,
 - tick authority,
@@ -255,8 +256,7 @@ Server validation:
 - attack coordinate is integer, inside map, on land;
 - origin is owned by the player at the target tick;
 - attack has a shared border;
-- active attack count ≤ 3;
-- troop budget covers launch cost;
+- active attack count is within the configured cap;
 - sequence numbers strictly increase;
 - intents per second per player are rate-limited;
 - rejected intents do not mutate state.
@@ -316,7 +316,7 @@ Checksums are diagnostic, not cryptographic proof. The server always wins.
 
 ## 9. Snapshots and bandwidth
 
-At 10 Hz with 8 players:
+At 10 Hz with the online target of 8 human states:
 
 - Public player state ~8 × ~100 bytes = < 1 KiB/tick in JSON.
 - Owner changes are typically tens to hundreds of changed pixels/tick; binary is a few KiB.
@@ -394,7 +394,7 @@ A room's simulation is small (~0.1 ms/tick measured). Do not create one OS proce
 
 ### Load
 
-- 100 rooms × 8 players; measure tick time p95, event-loop lag, memory growth.
+- 100 rooms × target player count; also stress 108-state rooms with unthrottled attack load to measure tick time p95, event-loop lag, and memory growth.
 - Simulate heavy attack activity to stress change batches and broadcast size.
 
 ### Security

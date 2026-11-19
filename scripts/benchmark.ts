@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { generateMap } from '../src/lib/game/map';
 import { TerritorySimulation } from '../src/lib/game/simulation';
-import { MAP_HEIGHT, MAP_WIDTH } from '../src/lib/game/constants';
+import { MAP_HEIGHT, MAP_WIDTH, PLAYER_COUNT } from '../src/lib/game/constants';
 
 function measure(label: string, iterations: number, fn: () => void): number {
 	// Warm up the JIT before recording.
@@ -17,19 +17,22 @@ function measure(label: string, iterations: number, fn: () => void): number {
 }
 
 console.log(
-	`Map: ${MAP_WIDTH} x ${MAP_HEIGHT} pixels = ${(MAP_WIDTH * MAP_HEIGHT).toLocaleString()} cells\n`
+	`Map: ${MAP_WIDTH} x ${MAP_HEIGHT} pixels = ${(MAP_WIDTH * MAP_HEIGHT).toLocaleString()} cells`
 );
+console.log(`States: ${PLAYER_COUNT} (1 human + ${PLAYER_COUNT - 1} attacking AI)\n`);
 
-const generation = measure('generate map', 5, () => {
+const generation = measure('generate map + starts', 5, () => {
 	generateMap(0xbeefcafe);
 });
 
-const idle = new TerritorySimulation({ seed: 0x12345678 });
-const idleStep = measure('idle simulation tick', 1000, () => idle.step());
+const sustained = new TerritorySimulation({ seed: 0x12345678 });
+const sustainedStep = measure('all-bot attack tick (sustained)', 1000, () => sustained.step());
+const sustainedSnapshot = sustained.getSnapshot();
 
 const busy = new TerritorySimulation({ seed: 0x87654321 });
 for (let i = 0; i < 100; i++) busy.step();
-const busyStep = measure('mid-match simulation tick', 500, () => busy.step());
+const busyStep = measure('all-bot attack tick (collision-heavy)', 500, () => busy.step());
+const busySnapshot = busy.getSnapshot();
 
 const checksum = measure('full-state checksum', 5, () => {
 	busy.checksum();
@@ -39,10 +42,13 @@ const memory = process.memoryUsage();
 console.log('');
 console.log(`Map generation: ${generation.toFixed(1)} ms`);
 console.log(
-	`Idle tick: ${idleStep.toFixed(3)} ms (${((idleStep / 100) * 100).toFixed(2)}% of a 10 Hz tick budget)`
+	`Sustained stress tick: ${sustainedStep.toFixed(3)} ms (${sustainedStep.toFixed(2)}% of a 10 Hz tick budget)`
 );
 console.log(
-	`Busy tick: ${busyStep.toFixed(3)} ms (${((busyStep / 100) * 100).toFixed(2)}% of a 10 Hz tick budget)`
+	`Collision-heavy tick: ${busyStep.toFixed(3)} ms (${busyStep.toFixed(2)}% of a 10 Hz tick budget)`
+);
+console.log(
+	`Active attacks after run: ${sustainedSnapshot.attacks.length} / ${busySnapshot.attacks.length}`
 );
 console.log(`Checksum: ${checksum.toFixed(1)} ms`);
 console.log(`Node RSS: ${(memory.rss / 1024 / 1024).toFixed(1)} MiB`);

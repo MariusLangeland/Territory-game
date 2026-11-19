@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { generateMap } from './map';
 import { TerritorySimulation } from './simulation';
-import { LAND_FRACTION, MAP_HEIGHT, MAP_WIDTH } from './constants';
+import {
+	LAND_FRACTION,
+	MAP_HEIGHT,
+	MAP_WIDTH,
+	PALETTE,
+	PLAYER_COUNT,
+	PLAYER_NAMES
+} from './constants';
 
 function findAttackablePixel(
 	sim: TerritorySimulation,
@@ -23,20 +30,22 @@ function findAttackablePixel(
 	return null;
 }
 
-function bruteForceBorder(sim: TerritorySimulation, playerId: number): Set<number> {
-	const expected = new Set<number>();
+function bruteForceBorders(sim: TerritorySimulation): Map<number, Set<number>> {
+	const expected = new Map<number, Set<number>>();
+	for (const player of sim.players) expected.set(player.id, new Set<number>());
+
 	for (let y = 0; y < sim.height; y++) {
 		for (let x = 0; x < sim.width; x++) {
-			if (sim.getOwner(x, y) !== playerId) continue;
+			const owner = sim.getOwner(x, y);
+			if (owner === 0) continue;
 			const neighbours = [
 				[x - 1, y],
 				[x + 1, y],
 				[x, y - 1],
 				[x, y + 1]
 			];
-			if (neighbours.some(([nx, ny]) => sim.isLand(nx, ny) && sim.getOwner(nx, ny) !== playerId)) {
-				const index = y * sim.width + x;
-				expected.add(index);
+			if (neighbours.some(([nx, ny]) => sim.isLand(nx, ny) && sim.getOwner(nx, ny) !== owner)) {
+				expected.get(owner)?.add(y * sim.width + x);
 			}
 		}
 	}
@@ -53,7 +62,34 @@ describe('map generation', () => {
 		expect(a.landCount).toBeLessThan(MAP_WIDTH * MAP_HEIGHT * (LAND_FRACTION + 0.01));
 		expect(Array.from(a.land.subarray(0, 5000))).toEqual(Array.from(b.land.subarray(0, 5000)));
 		expect(a.starts).toEqual(b.starts);
-		expect(a.starts).toHaveLength(8);
+		expect(a.starts).toHaveLength(PLAYER_COUNT);
+	});
+
+	it('places enough spaced starts for every stress-test state', () => {
+		for (const seed of [1234, 1337, 424242]) {
+			const map = generateMap(seed);
+			expect(map.starts).toHaveLength(PLAYER_COUNT);
+
+			const unique = new Set(map.starts.map((start) => start.index));
+			expect(unique.size).toBe(PLAYER_COUNT);
+
+			for (const start of map.starts) {
+				expect(map.land[start.index]).toBe(1);
+			}
+
+			const sim = new TerritorySimulation({ seed });
+			expect(sim.players).toHaveLength(PLAYER_COUNT);
+			expect(PLAYER_NAMES).toHaveLength(PLAYER_COUNT);
+			expect(new Set(PLAYER_NAMES).size).toBe(PLAYER_COUNT);
+			expect(PALETTE).toHaveLength(PLAYER_COUNT + 1);
+			for (const player of sim.players) {
+				expect(player.alive).toBe(true);
+				expect(player.territory).toBeGreaterThan(100);
+			}
+			expect(sim.getSnapshot().claimedLand).toBe(
+				sim.players.reduce((total, player) => total + player.territory, 0)
+			);
+		}
 	});
 });
 
@@ -125,14 +161,56 @@ describe('frontier bookkeeping', () => {
 		sim.enqueueAttack(1, target.x, target.y);
 		for (let tick = 0; tick < 35; tick++) sim.step();
 
+		const expected = bruteForceBorders(sim);
 		for (const player of sim.players) {
 			if (!player.alive) {
 				expect(player.border.size).toBe(0);
 				continue;
 			}
-			const expected = bruteForceBorder(sim, player.id);
-			expect(player.border.size).toBe(expected.size);
-			for (const index of expected) expect(player.border.has(index)).toBe(true);
+			const playerBorder = expected.get(player.id) ?? new Set<number>();
+			expect(player.border.size).toBe(playerBorder.size);
+			for (const index of playerBorder) expect(player.border.has(index)).toBe(true);
 		}
+	});
+});
+
+describe('attack stress mode', () => {
+	it('launches and resolves attacks with no troop economy', () => {
+		const sim = new TerritorySimulation({ seed: 2026 });
+		expect(sim.players).toHaveLength(PLAYER_COUNT);
+		expect(sim.getSnapshot().players.every((player) => !('troops' in player))).toBe(true);
+
+		const before = sim.players[0].territory;
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+
+		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		for (let tick = 0; tick < 10; tick++) sim.step();
+		expect(sim.players[0].territory).toBeGreaterThan(before);
+
+		sim.step();
+		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
+	});
+
+	it('runs many simultaneous bot fronts and keeps ownership valid', () => {
+		const sim = new TerritorySimulation({ seed: 314159 });
+		for (let tick = 0; tick < 80; tick++) {
+			const result = sim.step();
+			expect(result.changeCount).toBeLessThanOrEqual(result.changes.length);
+			expect(result.changesOverflow).toBe(false);
+		}
+
+		let claimed = 0;
+		for (let i = 0; i < sim.owners.length; i++) {
+			const owner = sim.owners[i];
+			if (owner === 0) continue;
+			expect(owner).toBeGreaterThanOrEqual(1);
+			expect(owner).toBeLessThanOrEqual(PLAYER_COUNT);
+			expect(sim.terrain[i]).toBe(1);
+			claimed++;
+		}
+		expect(claimed).toBe(sim.getSnapshot().claimedLand);
+		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
 	});
 });

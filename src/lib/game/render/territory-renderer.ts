@@ -5,7 +5,12 @@ import { TERRITORY_SHADER } from './territory.wgsl';
 
 const UNIFORM_FLOATS = 16;
 const MAX_DEVICE_PIXEL_RATIO = 2;
-const UPLOAD_TILE_SIZE = 64;
+/**
+ * Smaller tiles matter in the 108-state stress build: hundreds of attack
+ * fronts can change scattered pixels in one tick. 64×64 tiles would upload
+ * 4× more unchanged pixels per local front.
+ */
+const UPLOAD_TILE_SIZE = 32;
 
 export class WebGPUUnavailableError extends Error {
 	constructor(message: string) {
@@ -379,9 +384,9 @@ export class TerritoryRenderer {
 	}
 
 	/**
-	 * Changes from one tick are collected into 64x64 upload tiles. Adjacent
-	 * dirty tiles on the same row become a single strip upload. This keeps far
-	 * apart bot battles from inflating a single global dirty rectangle.
+	 * Changes from one tick are collected into 32×32 upload tiles. Adjacent
+	 * dirty tiles on the same row become a single strip upload. This keeps
+	 * hundreds of dispersed attack fronts from inflating a global rectangle.
 	 */
 	private uploadDirty(): void {
 		if (this.fullUploadNeeded) {

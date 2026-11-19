@@ -44,20 +44,20 @@ Design consequence: a slow frame can cause two simulation steps in one frame, bu
 
 All authoritative quantities are integers:
 
-| Quantity                   | Representation                                 |
-| -------------------------- | ---------------------------------------------- |
-| Troops                     | JS number, integer-valued (safe integer range) |
-| Territory count            | JS number, integer                             |
-| Owner id                   | uint16                                         |
-| Tick                       | integer                                        |
-| PRNG state                 | uint32                                         |
-| Attack head / queue length | integer                                        |
-| Income                     | `2 + floor(territory / 100)`                   |
-| Troop cap                  | `2000 + territory * 3`                         |
-| Launch cost                | 50                                             |
-| Capture cost               | 1 per cell                                     |
+| Quantity                   | Representation                        |
+| -------------------------- | ------------------------------------- |
+| Territory count            | JS number, integer                    |
+| Owner id                   | uint16 (`1..108` in the stress build) |
+| Tick                       | integer                               |
+| PRNG state                 | uint32                                |
+| Attack head / queue length | integer                               |
+| Attack queue storage       | `Uint32Array` of pixel indices        |
+| Attack seed distance       | squared integer distance              |
+| Capture rate               | 30 pixels per front per tick          |
 
-No floating-point army, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
+No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
+
+In this experiment there are no troop, income, cap, launch-cost, or per-capture-cost values.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -94,8 +94,9 @@ return (t ^ (t >>> 14)) >>> 0
 Bots use the PRNG for:
 
 - choosing a frontier cell,
-- choosing the target among available neighbours,
-- choosing whether to prefer neutral land.
+- choosing the attack target among available neutral/hostile neighbours.
+
+The stress-build bot policy always chooses neutral when available, so removing that rule changes PRNG draw counts and results.
 
 Changing the number or order of these draws changes all subsequent bot behavior. A refactor that "just moves a random call" is a simulation change.
 
@@ -110,7 +111,7 @@ Bots are processed in ascending player id order, every 10 ticks. The random draw
 - `enqueueAttack` validates against current state and appends to `pendingCommands`.
 - `step()` increments the tick, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
-- Commands are applied before economy, bot decisions, and attack processing.
+- Commands are applied before bot decisions and attack processing. No economy phase exists in the stress build.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
 
 ### 5.2 Online requirement
@@ -136,11 +137,11 @@ Attacks have monotonically increasing ids. Each `step()` iterates active attacks
 For each attack:
 
 - pop cells from the head of its queue,
-- skip cells that are no longer owned by the expected target owner,
+- skip cells that are no longer owned by the expected target owner (without spending the capture budget),
 - claim valid cells with a deterministic `claim()` operation,
-- cost one troop per cell,
-- enqueue neighbours in the fixed order west, east, north, south,
-- stop after 30 captures or when troops reach zero.
+- enqueue still-target-owned neighbours in the fixed order west, east, north, south,
+- stop after 30 captures or when the queue is exhausted,
+- compact processed queue entries after 4,096 to bound retained memory.
 
 Attack seeds are derived deterministically:
 
@@ -149,7 +150,7 @@ Attack seeds are derived deterministically:
 - sort by `(distance, index)`;
 - cap at 96.
 
-The `seen` set and queue are both insertion-ordered and depend on this deterministic sequence. JavaScript specifies `Set` insertion iteration order, so iterating a set in these paths is stable for a given insertion history.
+Each attack uses a growable `Uint32Array` FIFO queue. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate queue entries fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S enqueue order and are harmless to outcomes. Queue compaction rewrites the same remaining entries in order, so it cannot change behavior.
 
 ### Caution
 
@@ -178,8 +179,8 @@ Border set membership has no outcome effect by itself, but bot target selection 
 3. next attack id,
 4. ended flag and winner,
 5. every owner cell,
-6. each player's id/alive/troops/territory,
-7. each active attack's id, attacker, defender, head, queue length, remaining queue cells.
+6. each player's id, alive flag, and territory,
+7. each active attack's id, attacker, defender, head, queue length, and remaining queue cells.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 
@@ -231,9 +232,14 @@ It is deterministic on conforming JS engines for a fixed build. Because floating
 - The server and all clients must agree on both seed and version.
 - Long-term, pre-baking maps into versioned assets with content hashes is an option (see [SPEC.md](SPEC.md) open questions).
 
-### Current start-paint wobble
+### Start selection and paint
 
-Start boundaries use an integer hash of `(x, y, seed ^ playerOffset)` and integer squared distance. This does not add non-determinism to gameplay; it only shapes the initial territory.
+- 108 starts are selected by deterministic farthest-point sampling from a seeded candidate pool.
+- A preferred 34-cell spacing keeps initial beachheads from overlapping.
+- Start boundaries use an integer hash of `(x, y, seed ^ playerOffset)` and integer squared distance.
+- The start count, candidate count, spacing, and selection order are part of map version 2.
+
+These do not add non-determinism to gameplay; they shape the initial territory. Changing any of them requires a `MAP_VERSION` bump.
 
 ---
 
@@ -242,11 +248,13 @@ Start boundaries use an integer hash of `(x, y, seed ^ playerOffset)` and intege
 `src/lib/game/simulation.test.ts` covers:
 
 1. Map generation is repeatable and lands near the target fraction.
-2. Identical seeds + commands produce identical checksums and player snapshots after 120 ticks.
-3. Different commands diverge.
-4. No ocean cell receives an owner after combat.
-5. Claimed land totals agree with player territory counts.
-6. Frontier sets match a brute-force scan after combat.
+2. Each `PLAYER_COUNT` (108) start is unique and on land across multiple seeds.
+3. Every state spawns with nonzero territory and claimed land matches territory totals.
+4. Identical seeds + commands produce identical checksums and player snapshots after 120 ticks.
+5. Different commands diverge.
+6. No ocean cell receives an owner after combat; ownership counts remain valid.
+7. Frontier sets match a brute-force scan after combat under 108-bot load.
+8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
 
 Commands to run:
 
@@ -281,7 +289,8 @@ For a new determinism-sensitive feature, add at minimum:
 - Use `Math.random()`, `Date.now()`, `performance.now()`, `crypto.randomUUID()`, or browser APIs in the simulation.
 - Use frame delta or render state in a gameplay decision.
 - Depend on object property order, network arrival order, or asynchronous callback order.
-- Trust client-provided owner/troop values.
+- Trust client-provided owner/territory values (or resource values when an economy returns).
+- Treat the experimental free-attack model as final design; see [EXPERIMENTS.md](EXPERIMENTS.md).
 - Change PRNG draw order as a "refactor".
 - Run a checksum every tick without a performance update.
 

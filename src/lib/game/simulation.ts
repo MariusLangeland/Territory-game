@@ -1,20 +1,14 @@
 import {
-	ATTACK_LAUNCH_COST,
 	ATTACK_SEARCH_RADIUS,
 	BOT_ATTACK_LIMIT,
 	BOT_DECISION_INTERVAL,
-	BOT_MIN_TROOPS,
 	BOT_SEARCH_TRIES,
 	CAPTURE_PER_TICK,
 	HUMAN_PLAYER_ID,
 	MAX_ATTACKS_PER_PLAYER,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
-	START_TROOPS,
-	START_RADIUS,
-	TICK_RATE,
-	incomeForTerritory,
-	troopCap
+	START_RADIUS
 } from './constants';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import { DeterministicRng } from './rng';
@@ -24,9 +18,7 @@ export interface PlayerState {
 	name: string;
 	isBot: boolean;
 	alive: boolean;
-	troops: number;
 	territory: number;
-	income: number;
 	/** Land frontier cells. Derived from owners + land; never trusted across a network. */
 	border: Set<number>;
 }
@@ -37,8 +29,9 @@ export interface AttackState {
 	defenderId: number;
 	targetX: number;
 	targetY: number;
-	queue: number[];
-	seen: Set<number>;
+	/** Growable packed index queue. `queueLength` is the live count. */
+	queue: Uint32Array;
+	queueLength: number;
 	head: number;
 	createdAtTick: number;
 	captures: number;
@@ -50,9 +43,7 @@ export interface PublicPlayer {
 	name: string;
 	isBot: boolean;
 	alive: boolean;
-	troops: number;
 	territory: number;
-	income: number;
 	landShare: number;
 }
 
@@ -94,7 +85,6 @@ export type AttackFailure =
 	| 'own-territory'
 	| 'no-shared-border'
 	| 'too-many-attacks'
-	| 'no-troops'
 	| 'invalid';
 
 export interface AttackOrderResult {
@@ -186,26 +176,20 @@ export class TerritorySimulation {
 
 		this.players = Array.from({ length: PLAYER_COUNT }, (_, i) => ({
 			id: i + 1,
-			name: PLAYER_NAMES[i] ?? `Player ${i + 1}`,
+			name: PLAYER_NAMES[i] ?? `State ${i + 1}`,
 			isBot: i !== HUMAN_PLAYER_ID - 1,
 			alive: true,
-			troops: START_TROOPS,
 			territory: 0,
-			income: 0,
 			border: new Set<number>()
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
 
 		this.placeStartingTerritories(this.map.starts);
+		this.ensureEveryStateHasLand();
 		this.rebuildBorders();
 
-		for (const player of this.players) {
-			player.troops = START_TROOPS;
-			player.income = incomeForTerritory(player.territory) * TICK_RATE;
-		}
-
-		this.pushEvent('system', 'Operations live. Expand your borders.');
+		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
 
 	/** Queue a human attack. It is applied at the start of the next tick. */
@@ -247,9 +231,6 @@ export class TerritorySimulation {
 				`At most ${MAX_ATTACKS_PER_PLAYER} attacks can be active at once.`
 			);
 		}
-		if (player.troops < ATTACK_LAUNCH_COST + 1) {
-			return fail('no-troops', 'Not enough troops to launch an attack.');
-		}
 		if (this.findAttackSeeds(playerId, index).length === 0) {
 			return fail('no-shared-border', 'No friendly border is close enough. Move your frontier.');
 		}
@@ -270,13 +251,6 @@ export class TerritorySimulation {
 			this.tick++;
 
 			this.applyPendingCommands();
-
-			for (const player of this.players) {
-				if (!player.alive) continue;
-				const income = incomeForTerritory(player.territory);
-				player.income = income * TICK_RATE;
-				player.troops = Math.min(troopCap(player.territory), player.troops + income);
-			}
 
 			this.runBotDecisions();
 			this.processAttacks();
@@ -353,7 +327,6 @@ export class TerritorySimulation {
 		for (const player of this.players) {
 			mix(player.id);
 			mix(player.alive ? 1 : 0);
-			mix(player.troops);
 			mix(player.territory);
 		}
 
@@ -362,8 +335,8 @@ export class TerritorySimulation {
 			mix(attack.attackerId);
 			mix(attack.defenderId);
 			mix(attack.head);
-			mix(attack.queue.length);
-			for (let i = attack.head; i < attack.queue.length; i++) mix(attack.queue[i]);
+			mix(attack.queueLength);
+			for (let i = attack.head; i < attack.queueLength; i++) mix(attack.queue[i]);
 		}
 
 		return hash >>> 0;
@@ -457,30 +430,30 @@ export class TerritorySimulation {
 		const defenderId = this.owners[targetIndex];
 		if (defenderId === attackerId) return false;
 		if (!this.land[targetIndex]) return false;
-		if (attacker.troops < ATTACK_LAUNCH_COST + 1) return false;
 
-		attacker.troops -= ATTACK_LAUNCH_COST;
 		const targetX = indexToX(targetIndex, this.width);
 		const targetY = indexToY(targetIndex, this.width);
 
 		const unique: number[] = [];
-		const seen = new Set<number>();
+		const initialSeen = new Set<number>();
 		for (const seed of seeds) {
-			if (seen.has(seed)) continue;
+			if (initialSeen.has(seed)) continue;
 			if (this.owners[seed] !== defenderId) continue;
-			seen.add(seed);
+			initialSeen.add(seed);
 			unique.push(seed);
 		}
 		if (unique.length === 0) return false;
 
+		const queue = new Uint32Array(Math.max(64, unique.length * 2));
+		queue.set(unique);
 		this.attacks.push({
 			id: this.nextAttackId++,
 			attackerId,
 			defenderId,
 			targetX,
 			targetY,
-			queue: unique,
-			seen,
+			queue,
+			queueLength: unique.length,
 			head: 0,
 			createdAtTick: this.tick,
 			captures: 0,
@@ -500,16 +473,11 @@ export class TerritorySimulation {
 			}
 
 			let capturedThisTick = 0;
-			while (
-				capturedThisTick < CAPTURE_PER_TICK &&
-				attacker.troops > 0 &&
-				attack.head < attack.queue.length
-			) {
+			while (capturedThisTick < CAPTURE_PER_TICK && attack.head < attack.queueLength) {
 				const index = attack.queue[attack.head++];
 				if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
 
 				this.claim(index, attack.attackerId);
-				attacker.troops--;
 				attack.captures++;
 				capturedThisTick++;
 
@@ -521,17 +489,45 @@ export class TerritorySimulation {
 				if (y + 1 < this.height) this.enqueueAttackCell(attack, index + this.width);
 			}
 
-			if (attack.head >= attack.queue.length) attack.done = true;
+			if (attack.head >= attack.queueLength) {
+				attack.done = true;
+			} else if (attack.head > 4_096) {
+				this.compactAttackQueue(attack);
+			}
 		}
 
 		this.attacks = this.attacks.filter((attack) => !attack.done);
 	}
 
+	/**
+	 * Duplicate frontier entries are allowed: ownership is the visited check.
+	 * Dropping the per-attack Set keeps memory proportional to queue capacity
+	 * rather than paying object overhead for every enqueued pixel.
+	 */
 	private enqueueAttackCell(attack: AttackState, index: number): void {
 		if (this.owners[index] !== attack.defenderId) return;
-		if (!this.land[index] || attack.seen.has(index)) return;
-		attack.seen.add(index);
-		attack.queue.push(index);
+		if (!this.land[index]) return;
+
+		if (attack.queueLength === attack.queue.length) {
+			const grown = new Uint32Array(
+				attack.queue.length <= 0x4000 ? attack.queue.length * 2 : attack.queue.length + 0x4000
+			);
+			grown.set(attack.queue);
+			attack.queue = grown;
+		}
+		attack.queue[attack.queueLength++] = index;
+	}
+
+	private compactAttackQueue(attack: AttackState): void {
+		const remaining = attack.queueLength - attack.head;
+		attack.queue.copyWithin(0, attack.head, attack.queueLength);
+		attack.head = 0;
+		attack.queueLength = remaining;
+
+		const desiredCapacity = Math.max(1_024, remaining * 2);
+		if (attack.queue.length > desiredCapacity) {
+			attack.queue = attack.queue.slice(0, desiredCapacity);
+		}
 	}
 
 	private claim(index: number, newOwner: number): void {
@@ -603,7 +599,6 @@ export class TerritorySimulation {
 
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			if (player.troops < BOT_MIN_TROOPS) continue;
 			if (this.activeAttackCount(player.id) >= BOT_ATTACK_LIMIT) continue;
 			if (player.border.size === 0) continue;
 
@@ -648,11 +643,12 @@ export class TerritorySimulation {
 
 		if (candidates.length === 0) return null;
 
-		// Most bot offensives target neutral ground; the rest probe a neighbour.
+		// Stress-build bot policy: expand into neutral land whenever that option
+		// exists. Only fight a rival once the sampled frontier has no neutral
+		// neighbour. This keeps the 108-state experiment about attack throughput
+		// rather than immediate dogpiling, and is deliberately provisional.
 		const neutral = candidates.filter((index) => this.owners[index] === 0);
-		if (neutral.length > 0 && (candidates.length === neutral.length || this.rng.chance(68))) {
-			return this.rng.pick(neutral);
-		}
+		if (neutral.length > 0) return this.rng.pick(neutral);
 		return this.rng.pick(candidates);
 	}
 
@@ -684,12 +680,31 @@ export class TerritorySimulation {
 		}
 	}
 
+	/**
+	 * Safety net for pathological start placements. Spacing is selected so this
+	 * should never fire, but every state must begin with at least one pixel.
+	 */
+	private ensureEveryStateHasLand(): void {
+		for (let i = 0; i < this.players.length; i++) {
+			const player = this.players[i];
+			if (player.territory > 0) continue;
+
+			const start = this.map.starts[i % this.map.starts.length];
+			const offset = start.y * this.width + start.x;
+			for (let step = 0; step < this.owners.length; step++) {
+				const index = (offset + step) % this.owners.length;
+				if (!this.land[index] || this.owners[index] !== 0) continue;
+				this.owners[index] = player.id;
+				player.territory = 1;
+				break;
+			}
+		}
+	}
+
 	private updateEliminations(): void {
 		for (const player of this.players) {
 			if (!player.alive || player.territory > 0) continue;
 			player.alive = false;
-			player.troops = 0;
-			player.income = 0;
 			player.border.clear();
 			this.pushEvent('elimination', `${player.name} has been erased from the map.`, player.id);
 		}
@@ -718,9 +733,7 @@ export class TerritorySimulation {
 				name: player.name,
 				isBot: player.isBot,
 				alive: player.alive,
-				troops: player.troops,
 				territory: player.territory,
-				income: player.income,
 				landShare: this.landCount === 0 ? 0 : player.territory / this.landCount
 			};
 		});

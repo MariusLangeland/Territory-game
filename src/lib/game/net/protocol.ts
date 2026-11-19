@@ -8,7 +8,7 @@
 
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 
-export const NET_PROTOCOL_VERSION = 1;
+export const NET_PROTOCOL_VERSION = 2;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -54,9 +54,7 @@ export interface WirePlayer {
 	name: string;
 	isBot: boolean;
 	alive: boolean;
-	troops: number;
 	territory: number;
-	income: number;
 }
 
 export interface WireSnapshot {

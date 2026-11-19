@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.1. For intended rules and future online design, read [SPEC.md](SPEC.md) and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.2. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.1. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.2. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -48,7 +48,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                              | constants, helpers           |
 | `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                            | `DeterministicRng`           |
 | `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                             | `generateMap`, `hash32`      |
-| `src/lib/game/simulation.ts`                | Core      | World state, commands, economy, attacks, bots, checksums, snapshots      | `TerritorySimulation`, types |
+| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                    | `TerritorySimulation`, types |
 | `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                               | message types, guard         |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                   | `MapCamera`                  |
 | `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                      | `GameCameraBridge`           |
@@ -67,8 +67,8 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `owners: Uint16Array` — length 2,097,152; owner id per cell, `0` for unclaimed.
 - `land: Uint8Array` — static land mask.
 - `shade: Uint8Array` — static terrain brightness for the renderer.
-- `players: PlayerState[]` — economy, alive flag, derived frontier sets.
-- `attacks: AttackState[]` — BFS queues, seen sets, heads, capture counts.
+- `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
+- `attacks: AttackState[]` — growable `Uint32Array` BFS queues, heads, capture counts.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -77,7 +77,7 @@ The public arrays are exposed read-only-by-convention for the renderer and minim
 
 ### 3.2 Ownership representation and packing
 
-- Owner values are `1..8`; `Uint16Array` allows headroom for future players.
+- Owner values are `1..108`; `Uint16Array` allows headroom for future player counts.
 - The renderer only needs a byte per owner. It packs changed cells as:
 
 ```text
@@ -102,7 +102,7 @@ const index = packed & 0x1f_ffff;
 - The driver calls `renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow)` before the next tick.
 - If the buffer overflows, the renderer does a full control-texture rebuild. Game state is unaffected.
 
-The capacity is far above normal maximum captures (8 players × 3 attacks × 30 = 720 per tick, assuming every attack runs), leaving ample headroom for future capture rates or multiple capture events per cell.
+In the 108-state stress build, the technical caps allow roughly 219 active fronts (107 bots × 2 + 3 human) × 30 captures ≈ 6,570 changes per tick. That still fits comfortably in the 16,384-word buffer. Stress tests assert no overflow during sustained runs.
 
 ### 3.4 Derived frontier sets
 
@@ -127,10 +127,11 @@ step()
  ├─ tick += 1
  ├─ applyPendingCommands()
  │    └─ sort by (sequence, playerId), validate, create attacks
- ├─ economy for every living player
  ├─ runBotDecisions() every 10 ticks
  ├─ processAttacks()
- │    ├─ for each attack id: pop BFS cells, claim, drain troops, enqueue neighbours
+ │    ├─ for each attack id: pop BFS cells, claim up to 30, enqueue valid neighbours
+ │    ├─ skip stale cells without spending the capture budget
+ │    ├─ compact processed queue entries after 4,096
  │    └─ drop completed attacks
  ├─ updateEliminations()
  ├─ checkVictory()
@@ -172,7 +173,7 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
-- each player's alive/troops/territory;
+- each player's alive flag and territory;
 - active attack ids, attacker/defender, head, queue length, and remaining queue cells.
 
 It intentionally excludes renderer state, camera, UI, and border sets (derived). It is used in tests and intended for server/client verification. Cost is about 9 ms on the development machine, so it is never run per tick in production.
@@ -186,12 +187,16 @@ It intentionally excludes renderer state, camera, UI, and border sets (derived).
 1. Computes a quantised elevation (0–65535) for every cell using five octaves of hashed value noise plus a broad continental signal and edge falloff.
 2. Builds a 1024-bin elevation histogram and picks the threshold that yields the target 38% land.
 3. Writes the land mask and terrain shade.
-4. Chooses eight start points with farthest-point sampling from candidate land cells with sufficient local density.
+4. Chooses 108 start points with optimized farthest-point sampling from candidate land cells, enforcing a 34-cell preferred spacing.
 5. Returns `{ width, height, land, shade, landCount, starts }`.
 
-Start paint uses a ragged disc: a per-cell integer hash perturbs the radius, then cells outside land or already owned are ignored. The initial frontiers are rebuilt afterward by one full scan.
+Start paint uses a ragged disc of radius ~16: a per-cell integer hash perturbs the radius, then cells outside land or already owned are ignored. A fallback ensures every state receives at least one land pixel. The initial frontiers are rebuilt afterward by one full scan.
 
-Map generation is the slowest CPU operation (~200 ms) and happens once per world during the loading screen. It is not part of the tick budget.
+Map generation with 108 starts is the slowest CPU operation (~220–230 ms) and happens once per world during the loading screen. It is not part of the tick budget.
+
+### Attack queue representation
+
+Each active attack owns a growable `Uint32Array` plus `head`/`queueLength` counters. Captured cells change ownership, so a separate visited `Set` is unnecessary: duplicate queue entries fail the owner check. Queues compact after 4,096 processed cells and shrink their capacity when possible. This replaced per-attack number arrays plus Sets, reducing benchmark RSS from ~529 MiB to ~198–228 MiB with two worlds.
 
 ---
 
@@ -220,18 +225,18 @@ The renderer keeps references to the simulation so it can rebuild the shadow aft
 | B       | Terrain shade / relief            |
 | A       | Unused (`255`)                    |
 
-The palette is a 256 × 1 `rgba8unorm` texture where index 0 is unclaimed land and indices 1–8 are player colors.
+The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indices 1–108 are player colors. The first eight colors are hand-picked and the rest are generated on a golden-angle hue wheel.
 
 ### 5.3 Dirty uploads
 
 After a tick:
 
-1. For each changed pixel, update the control shadow and mark its 64 × 64 tile dirty using a generation-stamped `Uint32Array`.
+1. For each changed pixel, update the control shadow and mark its 32 × 32 tile dirty using a generation-stamped `Uint32Array`.
 2. Clear a small per-tile-row dirty flag array.
 3. For each dirty tile row, scan for contiguous dirty tiles and upload one horizontal strip via `queue.writeTexture`.
 4. Add the uploaded pixel count to the perf readout.
 
-Why tiles instead of a single dirty rectangle: bot attacks occur across the whole map at once. A single bounding box degenerates to uploading nearly the full 8 MiB texture every tick (observed ~21M px/s). Tile strips reduce this to a few local areas (observed ~0.55–1.0M px/s in normal bot combat).
+Why tiles instead of a single dirty rectangle: hundreds of attack fronts change scattered pixels across the whole map. A single bounding box degenerates to uploading nearly the full 8 MiB texture every tick. Tile strips keep uploads proportional to local fronts. In the 108-state stress run the observed upload rate is ~2.2–4.7M pixels/s with ~126–132 fps rendering.
 
 The full texture is uploaded only on initial load, overflow resync, or GPU reset.
 
@@ -301,20 +306,21 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 
 ## 7. Memory sketch
 
-| Item                                | Approx. size                         |
-| ----------------------------------- | ------------------------------------ |
-| Owners (`Uint16Array`)              | 4 MiB                                |
-| Land (`Uint8Array`)                 | 2 MiB                                |
-| Shade (`Uint8Array`)                | 2 MiB                                |
-| Renderer control shadow             | 8 MiB                                |
-| GPU map texture                     | 8 MiB                                |
-| Palette texture                     | 1 KiB                                |
-| Elevation scratch during map gen    | 4 MiB + histogram (transient)        |
-| Start candidate land indices        | not retained; temp during generation |
-| Frontier sets, attacks, queue cells | small and map-dependent              |
-| Svelte DOM/HUD                      | small                                |
+| Item                                  | Approx. size                         |
+| ------------------------------------- | ------------------------------------ |
+| Owners (`Uint16Array`)                | 4 MiB                                |
+| Land (`Uint8Array`)                   | 2 MiB                                |
+| Shade (`Uint8Array`)                  | 2 MiB                                |
+| Renderer control shadow               | 8 MiB                                |
+| GPU map texture                       | 8 MiB                                |
+| Palette texture                       | 1 KiB                                |
+| Elevation scratch during map gen      | 4 MiB + histogram (transient)        |
+| Start candidate land indices          | not retained; temp during generation |
+| Frontier sets (108 states)            | map-dependent                        |
+| Attack queues (packed `Uint32Array`)  | ~4 bytes per live queue entry        |
+| Svelte DOM/HUD (108 leaderboard rows) | small                                |
 
-The practical JS heap after a world loads is well under the 120 MiB budget. The measured Node RSS for two simulations plus benchmark tooling was ~147 MiB; that number includes Node runtime and two worlds, so it is not the browser working set.
+The measured Node RSS for two stress simulations plus benchmark tooling is ~198–228 MiB. That includes the Node runtime and two worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for the same benchmark; packed queues and ownership-based duplicate handling removed most of that overhead.
 
 ---
 
@@ -355,7 +361,7 @@ The practical JS heap after a world loads is well under the 120 MiB budget. The 
 2. Follow [NETWORKING.md](NETWORKING.md) and `protocol.ts`.
 3. Keep command ordering explicit and versioned.
 4. Add server/client checksum comparison before trusting any state.
-5. Never let a client set owner ids or troop counts.
+5. Never let a client set owner ids, territory counts, or (when restored) resource values.
 
 ### Add map types or dimensions
 
@@ -379,3 +385,6 @@ The current constructor rejects non-standard dimensions. Supporting more maps re
 - One map style and fixed dimensions.
 - The minimap samples independently and can lag the main renderer slightly.
 - Bot behavior is intentionally simple: no strategic target selection, no coordinated attacks, no defense logic.
+- The 108-state free-attack mode is an experiment. Economy and final attack semantics are intentionally absent.
+- The leaderboard puts 108 rows in a scroll container; it is not virtualized.
+- Upload volume in a fully active 108-state map is significantly above normal-play levels.
