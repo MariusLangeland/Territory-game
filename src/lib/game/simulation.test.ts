@@ -367,24 +367,24 @@ describe('attack stress mode', () => {
 
 	it('applies growth-layer switches only to new orders', () => {
 		const sim = new TerritorySimulation({ seed: 112233 });
-		expect(sim.getSnapshot().growthMode).toBe('circular');
+		expect(sim.getSnapshot().growthMode).toBe('organic');
 
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
 		if (!target) return;
 		sim.enqueueAttack(1, target.x, target.y);
 		sim.step();
-		const circularAttacks = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
-		expect(circularAttacks.length).toBeGreaterThan(0);
-		expect(circularAttacks.every((attack) => attack.growthMode === 'circular')).toBe(true);
+		const initialAttacks = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
+		expect(initialAttacks.length).toBeGreaterThan(0);
+		expect(initialAttacks.every((attack) => attack.growthMode === 'organic')).toBe(true);
 
 		sim.setGrowthMode('smooth');
-		expect(sim.getSnapshot().growthMode).toBe('circular');
+		expect(sim.getSnapshot().growthMode).toBe('organic');
 		sim.step();
 		expect(sim.getSnapshot().growthMode).toBe('smooth');
 
 		const retained = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
-		expect(retained.every((attack) => attack.growthMode === 'circular')).toBe(true);
+		expect(retained.every((attack) => attack.growthMode === 'organic')).toBe(true);
 
 		const nextTarget = findAttackablePixel(sim, 1);
 		expect(nextTarget).not.toBeNull();

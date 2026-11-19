@@ -41,6 +41,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Bot decisions            | once per second                                                                    |
 | Starting territory       | radius ~16, ragged, spaced across the map                                          |
 | Structures               | one capturable State structure per state at its capital                            |
+| Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                              |
 | State aura               | +20 defense within 12 px; overlaps do not stack                                    |
 | Human economy            | 3 starting gold; 1 gold / 10s; 3-card hand                                         |
 | Build cards              | Mine 3g, Barracks 2g, Defense Post 1g, Command Post 4g, War Academy 6g; Refresh 1g |
@@ -104,6 +105,7 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] Mine income, Barracks attack strength, and Defense Post auras affect the simulation.
 - [x] Attack orders are spent per launch, grant +1 every 10 seconds up to cap, and can be raised by War Academies or granted by Command Posts.
 - [x] The card pool now contains five types, including the 4-cost Command Post and 6-cost War Academy.
+- [x] New structures are rejected within 8 px of any existing structure; map icons use fixed screen-space sizes.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far

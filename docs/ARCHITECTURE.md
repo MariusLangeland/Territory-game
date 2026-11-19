@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.9.2. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.9.3. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.2. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.9.3. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -114,7 +114,7 @@ const index = packed & 0x1f_ffff;
 - The driver calls `renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow)` before the next tick.
 - If the buffer overflows, the renderer does a full control-texture rebuild. Game state is unaffected.
 
-In the 108-state stress build, the technical caps allow roughly 219 active fronts (107 bots × 2 + 3 human) × at most 30 captures ≈ 6,570 changes per tick. That still fits comfortably in the 16,384-word buffer. Defense spending reduces the actual capture count. Stress tests assert no overflow during sustained runs.
+Attack-order supply (3 human / 2 bots, plus Command Post grants) bounds active fronts. The 16,384-word change buffer remains comfortably above observed capture batches; defense spending reduces the actual capture count. Stress tests assert no overflow during sustained runs.
 
 ### 3.4 Derived frontier sets
 
@@ -222,7 +222,7 @@ type GameCommand =
 	| { type: 'refresh'; playerId; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold and cards again. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
+`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; build/refresh validate gold, cards, the destination cell, and the 8 px structure exclusion radius again. This separation is the model for future network intents. Order grants, Command Post pulses, and income are paid at tick boundaries before the command queue.
 
 ### 3.7 Snapshots
 

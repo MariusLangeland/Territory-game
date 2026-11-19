@@ -34,6 +34,17 @@ export class StructureRegistry {
 		return this.byIndex.get(index);
 	}
 
+	/** True when a structure centre lies inside the forbidden build radius. */
+	hasWithinRadius(x: number, y: number, radius: number): boolean {
+		const radiusSq = radius * radius;
+		for (const structure of this.items) {
+			const dx = structure.x - x;
+			const dy = structure.y - y;
+			if (dx * dx + dy * dy < radiusSq) return true;
+		}
+		return false;
+	}
+
 	forOwner(ownerId: number): readonly Structure[] {
 		return this.byOwner.get(ownerId) ?? [];
 	}

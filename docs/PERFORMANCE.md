@@ -43,7 +43,7 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 | Operation                                               | Result          |
 | ------------------------------------------------------- | --------------- |
 | Generate 2048 × 1024 map + 108 starts                   | **~296 ms/op**  |
-| Sustained all-bot attack tick (default circular)        | **~1.3 ms/op**  |
+| Sustained all-bot attack tick                           | **~1.3 ms/op**  |
 | All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.1 ms/op**  |
 | Circular layer comparison tick                          | **~1.1 ms/op**  |
 | Smooth layer comparison tick                            | **~1.3 ms/op**  |
@@ -119,7 +119,7 @@ Potential optimizations if needed:
 - Human income check and card command validation; card RNG only on starting hand/refresh.
 - Structure lookup on claims and structure metadata in checksums.
 - Integrity scan once per second: component labeling plus detached-component border counts.
-- Structure overlay: State capitals, type-specific buildable icons, and visible aura fields per rendered frame on a 2D canvas.
+- Structure overlay: 15/11 px State capitals, 10 px type-specific buildable icons, and visible aura fields per rendered frame on a 2D canvas. Icon radii are camera-independent screen pixels.
 - Card hand: at most three DOM cards, gold/income readout, refresh button; transitions/flip/hover/drag are compositor-friendly CSS/Svelte animations. Drag/drop conversion is input-only.
 
 No per-cell object allocation. Attack frontiers use flat arrays/heaps and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.

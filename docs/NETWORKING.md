@@ -249,7 +249,7 @@ Structures:
 Player economy and cards:
 
 - gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
-- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, and occupied structure cells;
+- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, occupied structure cells, and the 8 px structure exclusion radius;
 - card draws use the seeded authoritative card RNG; clients never choose the drawn type;
 - attack-order grants, Command Post pulses, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;

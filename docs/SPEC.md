@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.9.2 (attack stress experiment)  
+**Version:** 0.9.3 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.9.2, map version 3, protocol draft 14
+**Last synchronized with:** application 0.9.3, map version 3, protocol draft 15
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 14`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 15`.
 
 ### 4.2 Starting positions
 
@@ -278,7 +278,7 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - A live State structure projects a **12 px defense aura** adding **+20 defense** to every land pixel in range. The structure cell itself is inside the aura. Overlapping auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - Only State structures anchor protection. Mines, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star. Buildables are dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
@@ -309,7 +309,7 @@ The human commander has a small card economy; bots do not build cards yet.
 - Start with **3 gold** and **3 random cards**, drawn independently from the buildable pool with replacement.
 - Earn **1 gold every 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine**.
 - Income is paid at the start of the tick. A Mine built before the payment adds to that payment.
-- Playing a card requires dragging it onto **controlled land** with no existing structure.
+- Playing a card requires dragging it onto **controlled land** with no existing structure and at least **8 px from every other structure**.
 - The build command is queued, applied at the next tick, deducts its cost, removes the card, and creates the structure.
 - **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
 - Costs: Mine **3**, Barracks **2**, Defense Post **1**, Command Post **4**, War Academy **6**.
@@ -317,6 +317,7 @@ The human commander has a small card economy; bots do not build cards yet.
 - Command Posts pulse **+1 attack order every 60 seconds** at a global 60-second boundary. The grant is clamped to the cap.
 - War Academies add **+1 to the attack-order cap** while alive. Multiple academies stack.
 - Captured buildable structures are razed and their effects disappear.
+- Structure placement has an **8 px centre-to-centre exclusion radius**. The existing cell and every other structure block a drop inside that radius.
 
 | Card         | Cost | Effect                                                               |
 | ------------ | ---- | -------------------------------------------------------------------- |

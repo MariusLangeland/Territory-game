@@ -4,14 +4,18 @@ import {
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	REFRESH_COST,
-	STARTING_GOLD
+	STARTING_GOLD,
+	STRUCTURE_MIN_SPACING
 } from './constants';
 import { TerritorySimulation } from './simulation';
 import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from './Structures';
 
 function findBuildCell(sim: TerritorySimulation): number {
 	for (let i = 0; i < sim.owners.length; i++) {
-		if (sim.owners[i] === HUMAN_PLAYER_ID && sim.terrain[i] && !sim.structures.at(i)) return i;
+		if (sim.owners[i] !== HUMAN_PLAYER_ID || !sim.terrain[i] || sim.structures.at(i)) continue;
+		const x = i % sim.width;
+		const y = (i - x) / sim.width;
+		if (!sim.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING)) return i;
 	}
 	return -1;
 }
@@ -85,6 +89,31 @@ describe('player economy and cards', () => {
 		sim.step();
 		expect(sim.structures.at(index)?.type).toBe('defense-post');
 		expect(sim.getAuraDefense(x, y)).toBe(before + 1);
+	});
+
+	it('rejects structures inside the minimum spacing radius', () => {
+		const sim = new TerritorySimulation({ seed: 424242 });
+		const start = sim.map.starts[HUMAN_PLAYER_ID - 1];
+		let blocked: { x: number; y: number } | null = null;
+		for (let dy = -7; dy <= 7 && !blocked; dy++) {
+			for (let dx = -7; dx <= 7; dx++) {
+				const x = start.x + dx;
+				const y = start.y + dy;
+				const index = y * sim.width + x;
+				if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
+				if (sim.structures.at(index)) continue;
+				if (dx * dx + dy * dy >= STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) continue;
+				blocked = { x, y };
+				break;
+			}
+		}
+		expect(blocked).not.toBeNull();
+		if (!blocked) return;
+		sim.hand = [{ id: 7001, type: 'defense-post' }];
+		sim.gold = 2;
+		const result = sim.playCard(HUMAN_PLAYER_ID, 7001, blocked.x, blocked.y);
+		expect(result.ok).toBe(false);
+		expect(result.reason).toBe('too-close');
 	});
 
 	it('razes a captured Mine and drops its income', () => {

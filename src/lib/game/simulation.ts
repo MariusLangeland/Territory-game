@@ -154,7 +154,15 @@ export interface RefreshCommand {
 export type GameCommand = AttackCommand | BuildCommand | RefreshCommand;
 
 export type BuildFailure =
-	'ended' | 'eliminated' | 'no-card' | 'no-gold' | 'ocean' | 'not-owned' | 'occupied' | 'invalid';
+	| 'ended'
+	| 'eliminated'
+	| 'no-card'
+	| 'no-gold'
+	| 'ocean'
+	| 'not-owned'
+	| 'occupied'
+	| 'too-close'
+	| 'invalid';
 
 export interface BuildOrderResult {
 	ok: boolean;
