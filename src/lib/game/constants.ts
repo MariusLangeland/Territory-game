@@ -33,6 +33,10 @@ export const START_RADIUS = 16;
  * pixel's defense, so defended or elevated pixels are captured more slowly.
  */
 export const ATTACK_DAMAGE_PER_TICK = 30;
+/** Each additional embedded order: more capture points, defense pierce, range. */
+export const ATTACK_ORDER_DAMAGE_BONUS = 15;
+export const ATTACK_ORDER_DEFENSE_PIERCE = 1;
+export const ATTACK_ORDER_LIFETIME_BONUS = 10;
 
 /**
  * The attack samples this many top-priority frontier cells and takes the
@@ -93,7 +97,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 23;
+export const PROTOCOL_VERSION = 24;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

@@ -200,15 +200,15 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Server → client
 
-| Message      | Purpose                                                                                                                                  |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                 |
-| `tick`       | Owner changes, public players, live structures, active attacks (including per-attack growth mode), current growth mode, events, checksum |
-| `ack`        | Intent accepted                                                                                                                          |
-| `reject`     | Intent rejected with reason                                                                                                              |
-| `match-over` | Winner and final snapshot                                                                                                                |
-| `pong`       | RTT response                                                                                                                             |
-| `error`      | Room/protocol/rate-limit errors                                                                                                          |
+| Message      | Purpose                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                                  |
+| `tick`       | Owner changes, public players, live structures, active attacks (including embedded/current orders and growth mode), current growth mode, events, checksum |
+| `ack`        | Intent accepted                                                                                                                                           |
+| `reject`     | Intent rejected with reason                                                                                                                               |
+| `match-over` | Winner and final snapshot                                                                                                                                 |
+| `pong`       | RTT response                                                                                                                                              |
+| `error`      | Room/protocol/rate-limit errors                                                                                                                           |
 
 ### Encoding
 
@@ -234,7 +234,7 @@ Growth mode:
 
 Conflict and integrity state:
 
-- per-cell attack-claim provenance determines when mutual fronts cancel; clients must derive it identically from replayed attacks;
+- per-cell attack-claim provenance determines when mutual fronts clash; clients must derive the defender spend and incoming embedded-order reduction identically from replayed attacks;
 - detached-territory annexation is authoritative tick logic and must run on the same tick boundaries (every 10 ticks, plus the post-cancellation cooldown) on server and clients;
 - claim provenance and cleanup scheduling are included in checksums, not sent as optional client visuals.
 
@@ -258,7 +258,7 @@ Player economy and cards:
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);
-- attack costs are server-authoritative tick logic, so clients predicting a front must apply the same 30-point budget and requeue rule;
+- attack costs are server-authoritative tick logic, so clients predicting a front must apply the same embedded-order budget, piercing, lifetime, and requeue rule;
 - the handshake must reject mismatched map versions, not just protocol versions.
 
 ### Versioning
@@ -357,7 +357,7 @@ At 10 Hz with the online target of 8 human states:
 
 - Public player state ~8 × ~100 bytes = < 1 KiB/tick in JSON.
 - Owner changes are typically tens to hundreds of changed pixels/tick; binary is a few KiB.
-- Active attacks: bounded by outstanding attack orders; usually well under 24 records per client.
+- Active attacks: bounded by outstanding attack orders and per-attack lifetimes; usually well under 24 records per client.
 - Checksum: 4 bytes (hex/string overhead in JSON).
 
 Baseline join is the expensive payload (owner map). Compress it.

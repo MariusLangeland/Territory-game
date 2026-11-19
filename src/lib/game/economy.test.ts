@@ -371,11 +371,17 @@ describe('player economy and cards', () => {
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 	});
 
-	it('builds a barracks that grants attack strength inside its radius', () => {
+	it('builds a barracks that adds an extra order to attacks', () => {
 		const sim = new TerritorySimulation({ seed: 753198 });
-		const { x, y } = buildCard(sim, 'barracks');
-		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x, y)).toBe(1);
-		expect(sim.getAttackStrength(HUMAN_PLAYER_ID, x + 19, y)).toBe(0);
+		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(1);
+		const { index } = buildCard(sim, 'barracks');
+		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(2);
+		sim.gold = 10;
+		expect(
+			sim.upgradeDistrict(HUMAN_PLAYER_ID, index % sim.width, Math.floor(index / sim.width)).ok
+		).toBe(true);
+		sim.step();
+		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(3);
 	});
 
 	it('does not let a Defense Post buff enemy-owned pixels', () => {

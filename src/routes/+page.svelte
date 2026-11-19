@@ -1053,7 +1053,10 @@
 						</li>
 						<li>
 							<span>02</span>
-							<p>Each front lasts at most {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds.</p>
+							<p>
+								Each front embeds attack orders. More orders mean more speed and a longer life; the
+								base front lasts {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds.
+							</p>
 						</li>
 						<li>
 							<span>03</span>
@@ -1068,7 +1071,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.16.0 / PROTOCOL 23</span>
+				<span>BUILD 0.17.0 / PROTOCOL 24</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1229,9 +1232,10 @@
 							structure. Mine gold and Command Post orders are paid continuously over their
 							intervals. The hand sinks out of the way and rises when you hover it. Terrain matters:
 							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
-							spends 30 attack points per tick. State auras add another 20 defense. Each front
-							samples nearby frontier cells and presses the cheapest defense, so it bends around
-							strongpoints when a weaker lane exists. This is still not the final combat design.
+							spends points scaled by its embedded orders. State auras add another 20 defense. Each
+							front samples nearby frontier cells and presses the cheapest defense, so it bends
+							around strongpoints when a weaker lane exists. This is still not the final combat
+							design.
 						</p>
 					</section>
 					<section>
@@ -1239,14 +1243,15 @@
 						<h3>Click a shared frontier.</h3>
 						<p>
 							Click neutral ground or a rival's border near your territory. A free front opens there
-							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
-							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
-							front peters out immediately. If two states attack each other and their fronts touch, every
-							order between them cancels and the contact line becomes the border. Each state begins with
-							a State structure at its capital, marked by a circled star; territory connected to it cannot
-							be annexed, and its aura adds 20 defense to surrounding pixels. The HUD growth switch selects
-							the frontier layer for new orders: circular, smooth, or organic. Existing orders keep the
-							layer they started with.
+							and embeds the orders your Barracks issue. More embedded orders mean more capture
+							speed, defense piercing, and lifetime. Repeated clicks in the same area create
+							separate attacks; they never upgrade the first one. When mutually attacking fronts
+							touch, the defender spends available attack orders up to its own attack strength to
+							strip orders from the incoming front. If it runs out, the attack breaks through. Each
+							state begins with a State structure at its capital, marked by a circled star;
+							territory connected to it cannot be annexed, and its aura adds 20 defense to
+							surrounding pixels. The HUD growth switch selects the frontier layer for new orders:
+							circular, smooth, or organic. Existing orders keep the layer they started with.
 						</p>
 					</section>
 					<section>

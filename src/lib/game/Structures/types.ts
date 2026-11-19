@@ -19,12 +19,10 @@ export interface DefenseAuraEffect {
 	stacking: 'max' | 'add';
 }
 
-export interface AttackAuraEffect {
-	kind: 'attack-aura';
-	/** Radius in map pixels. */
-	radius: number;
-	/** Defense points ignored by the owner's attacks inside the aura. */
-	strength: number;
+export interface AttackOrderBonusEffect {
+	kind: 'attack-order-bonus';
+	/** Extra orders embedded in every attack the owner launches. */
+	amount: number;
 }
 
 export interface IncomeEffect {
@@ -44,7 +42,7 @@ export interface OrderCapEffect {
 }
 
 export type StructureEffect =
-	DefenseAuraEffect | AttackAuraEffect | IncomeEffect | OrderGainEffect | OrderCapEffect;
+	DefenseAuraEffect | AttackOrderBonusEffect | IncomeEffect | OrderGainEffect | OrderCapEffect;
 
 export interface StructureDefinition {
 	label: string;

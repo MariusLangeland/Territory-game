@@ -5,6 +5,7 @@ import { TerritorySimulation, type AttackState } from './simulation';
 import {
 	ATTACK_DAMAGE_PER_TICK,
 	ATTACK_LIFETIME_TICKS,
+	ATTACK_ORDER_LIFETIME_BONUS,
 	ELEVATION_LEVELS,
 	LAND_FRACTION,
 	MAP_HEIGHT,
@@ -121,6 +122,9 @@ function runDefenseCapture(elevationLevel: number): number {
 		growthMode: 'circular',
 		frontier,
 		createdAtTick: sim.tick,
+		lifetimeTicks: ATTACK_LIFETIME_TICKS,
+		orders: 1,
+		initialOrders: 1,
 		captures: 0,
 		done: false
 	};
@@ -421,6 +425,43 @@ describe('attack stress mode', () => {
 		}
 	});
 
+	it('issues extra barracks orders into each attack without merging clicks', () => {
+		const sim = new TerritorySimulation({ seed: 864212 });
+		let barracksIndex = -1;
+		for (let i = 0; i < sim.owners.length; i++) {
+			if (sim.terrain[i] && !sim.structures.at(i)) {
+				barracksIndex = i;
+				break;
+			}
+		}
+		expect(barracksIndex).toBeGreaterThan(-1);
+		if (barracksIndex < 0) return;
+		const barracksX = barracksIndex % sim.width;
+		const barracksY = (barracksIndex - barracksX) / sim.width;
+		sim.structures.create('barracks', 1, barracksX, barracksY, sim.width);
+		expect(sim.getAttackOrderStrength(1)).toBe(2);
+
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+		const internals = sim as unknown as {
+			attackOrders: number[];
+			attacks: AttackState[];
+		};
+		internals.attackOrders[0] = 3;
+		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		sim.step();
+
+		const humanAttacks = internals.attacks.filter((attack) => attack.attackerId === 1);
+		expect(humanAttacks.length).toBe(2);
+		for (const attack of humanAttacks) {
+			expect(attack.orders).toBe(2);
+			expect(attack.initialOrders).toBe(2);
+			expect(attack.lifetimeTicks).toBe(ATTACK_LIFETIME_TICKS + ATTACK_ORDER_LIFETIME_BONUS);
+		}
+	});
+
 	it('expires attack orders after their maximum lifetime', () => {
 		const sim = new TerritorySimulation({ seed: 24680 });
 		const target = findAttackablePixel(sim, 1);
@@ -434,7 +475,7 @@ describe('attack stress mode', () => {
 		expect(attack).toBeDefined();
 		if (!attack) return;
 
-		attack.createdAtTick = sim.tick - ATTACK_LIFETIME_TICKS;
+		attack.createdAtTick = sim.tick - attack.lifetimeTicks;
 		const result = sim.step();
 		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
 	});
@@ -553,6 +594,9 @@ describe('attack stress mode', () => {
 				growthMode: 'organic',
 				frontier,
 				createdAtTick: sim.tick,
+				lifetimeTicks: ATTACK_LIFETIME_TICKS,
+				orders: 1,
+				initialOrders: 1,
 				captures: 0,
 				done: false
 			}
@@ -643,7 +687,7 @@ describe('attack stress mode', () => {
 		expect(sim.owners[pocket]).toBe(1);
 	});
 
-	it('cancels mutual attacks when their claimed fronts touch', () => {
+	it('spends defender attack orders to halt a multi-order attack', () => {
 		const sim = new TerritorySimulation({ seed: 554433 });
 		let candidate = -1;
 		for (let i = 1; i < sim.owners.length - 1; i++) {
@@ -661,66 +705,70 @@ describe('attack stress mode', () => {
 
 		const targetX = candidate % sim.width;
 		const targetY = (candidate - targetX) / sim.width;
-		const makeFrontier = () => {
-			const frontier = createGrowthLayer('circular', {
+		const makeAttack = (id: number, attackerId: number, defenderId: number, orders: number) => ({
+			id,
+			attackerId,
+			defenderId,
+			targetX,
+			targetY,
+			anchorX: targetX,
+			anchorY: targetY,
+			growthMode: 'circular' as const,
+			frontier: createGrowthLayer('circular', {
 				width: sim.width,
 				height: sim.height,
 				owners: sim.owners,
-				attackerId: 1,
+				attackerId,
 				anchorX: targetX,
 				anchorY: targetY,
-				rngSeed: 1
-			});
-			frontier.push(candidate);
-			return frontier;
-		};
+				rngSeed: id
+			}),
+			createdAtTick: sim.tick,
+			lifetimeTicks: ATTACK_LIFETIME_TICKS,
+			orders,
+			initialOrders: orders,
+			captures: 0,
+			done: false
+		});
 
 		const internals = sim as unknown as {
-			attacks: AttackState[];
-			processAttacks(): void;
+			attackOrders: number[];
+			resolveOpposingClash(
+				index: number,
+				attack: AttackState,
+				attackById: Map<number, AttackState>
+			): 'halted' | 'blocked' | null;
 		};
-		internals.attacks.push(
-			{
-				id: 100,
-				attackerId: 1,
-				defenderId: 2,
-				targetX,
-				targetY,
-				anchorX: targetX,
-				anchorY: targetY,
-				growthMode: 'circular',
-				frontier: makeFrontier(),
-				createdAtTick: sim.tick,
-				captures: 0,
-				done: false
-			},
-			{
-				id: 200,
-				attackerId: 2,
-				defenderId: 1,
-				targetX,
-				targetY,
-				anchorX: targetX,
-				anchorY: targetY,
-				growthMode: 'circular',
-				frontier: createGrowthLayer('circular', {
-					width: sim.width,
-					height: sim.height,
-					owners: sim.owners,
-					attackerId: 2,
-					anchorX: targetX,
-					anchorY: targetY,
-					rngSeed: 2
-				}),
-				createdAtTick: sim.tick,
-				captures: 0,
-				done: false
-			}
-		);
+		const incoming = makeAttack(100, 1, 2, 2);
+		const opposing = makeAttack(200, 2, 1, 1);
+		const attackById = new Map<number, AttackState>([
+			[100, incoming],
+			[200, opposing]
+		]);
+		internals.attackOrders[1] = 2;
 
-		internals.processAttacks();
-		expect(internals.attacks).toEqual([]);
-		expect(sim.owners[candidate]).toBe(2);
+		expect(internals.resolveOpposingClash(candidate, incoming, attackById)).toBe('blocked');
+		expect(incoming.orders).toBe(1);
+		expect(internals.attackOrders[1]).toBe(1);
+		expect(incoming.done).toBe(false);
+
+		expect(internals.resolveOpposingClash(candidate, incoming, attackById)).toBe('halted');
+		expect(incoming.orders).toBe(0);
+		expect(incoming.done).toBe(true);
+		expect(internals.attackOrders[1]).toBe(0);
+
+		const limited = makeAttack(101, 1, 2, 2);
+		const limitedOpposing = makeAttack(201, 2, 1, 1);
+		const limitedMap = new Map<number, AttackState>([
+			[101, limited],
+			[201, limitedOpposing]
+		]);
+		sim.claimedBy[candidate - 1] = 201;
+		internals.attackOrders[1] = 1;
+		expect(internals.resolveOpposingClash(candidate, limited, limitedMap)).toBe('blocked');
+		expect(limited.orders).toBe(1);
+		expect(internals.resolveOpposingClash(candidate, limited, limitedMap)).toBeNull();
+		expect(limited.done).toBe(false);
 	});
 
 	it('anchors distance-based growth at the border contact, not the click', () => {
@@ -795,6 +843,9 @@ describe('attack stress mode', () => {
 			growthMode: 'circular',
 			frontier,
 			createdAtTick: sim.tick,
+			lifetimeTicks: ATTACK_LIFETIME_TICKS,
+			orders: 1,
+			initialOrders: 1,
 			captures: 0,
 			done: false
 		};

@@ -2,6 +2,9 @@ import {
 	ANNEX_INTERVAL_TICKS,
 	ATTACK_DAMAGE_PER_TICK,
 	ATTACK_LIFETIME_TICKS,
+	ATTACK_ORDER_DAMAGE_BONUS,
+	ATTACK_ORDER_DEFENSE_PIERCE,
+	ATTACK_ORDER_LIFETIME_BONUS,
 	ATTACK_SEARCH_RADIUS,
 	BASE_BOT_ATTACK_ORDERS,
 	BASE_DEFENSE_OFFSET,
@@ -67,6 +70,10 @@ export interface AttackState {
 	growthMode: GrowthMode;
 	frontier: GrowthLayer;
 	createdAtTick: number;
+	lifetimeTicks: number;
+	/** Orders still embedded in this attack; reaching 0 halts it. */
+	orders: number;
+	initialOrders: number;
 	captures: number;
 	done: boolean;
 }
@@ -86,6 +93,7 @@ export interface PublicAttack {
 	defenderId: number;
 	targetX: number;
 	targetY: number;
+	orders: number;
 	captures: number;
 	growthMode: GrowthMode;
 }
@@ -715,9 +723,15 @@ export class TerritorySimulation {
 		return this.auraDefense[y * this.width + x];
 	}
 
-	getAttackStrength(ownerId: number, x: number, y: number): number {
-		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
-		return this.attackStrengthAt(ownerId, y * this.width + x);
+	getAttackOrderStrength(ownerId: number): number {
+		let orders = 1;
+		for (const structure of this.structures.forOwner(ownerId)) {
+			for (const effect of structure.effects) {
+				if (effect.kind !== 'attack-order-bonus') continue;
+				orders += effect.amount * structure.stacks;
+			}
+		}
+		return orders;
 	}
 
 	get totalLand(): number {
@@ -789,6 +803,9 @@ export class TerritorySimulation {
 			mix(attack.anchorY);
 			mix(growthModeCode(attack.growthMode));
 			mix(attack.createdAtTick);
+			mix(attack.lifetimeTicks);
+			mix(attack.orders);
+			mix(attack.initialOrders);
 			mix(attack.captures);
 			attack.frontier.mixState(mix);
 		}
@@ -1095,23 +1112,6 @@ export class TerritorySimulation {
 		this.auraDefense[index] = Math.min(65_535, max + add);
 	}
 
-	private attackStrengthAt(attackerId: number, index: number): number {
-		let strength = 0;
-		const x = index % this.width;
-		const y = (index - x) / this.width;
-		for (const structure of this.structures.forOwner(attackerId)) {
-			for (const effect of structure.effects) {
-				if (effect.kind !== 'attack-aura') continue;
-				const dx = structure.x - x;
-				const dy = structure.y - y;
-				if (dx * dx + dy * dy <= effect.radius * effect.radius) {
-					strength += effect.strength * structure.stacks;
-				}
-			}
-		}
-		return strength;
-	}
-
 	private defenseAt(index: number): number {
 		return (
 			BASE_DEFENSE_OFFSET +
@@ -1194,6 +1194,7 @@ export class TerritorySimulation {
 		});
 		for (const seed of unique) frontier.push(seed);
 
+		const orders = this.getAttackOrderStrength(attackerId);
 		this.attacks.push({
 			id,
 			attackerId,
@@ -1205,6 +1206,9 @@ export class TerritorySimulation {
 			growthMode: mode,
 			frontier,
 			createdAtTick: this.tick,
+			lifetimeTicks: ATTACK_LIFETIME_TICKS + (orders - 1) * ATTACK_ORDER_LIFETIME_BONUS,
+			orders,
+			initialOrders: orders,
 			captures: 0,
 			done: false
 		});
@@ -1222,14 +1226,15 @@ export class TerritorySimulation {
 				attack.done = true;
 				continue;
 			}
-			if (this.tick - attack.createdAtTick >= ATTACK_LIFETIME_TICKS) {
+			if (this.tick - attack.createdAtTick >= attack.lifetimeTicks) {
 				attack.done = true;
 				continue;
 			}
 
 			let capturedThisTick = 0;
 			let frontierEmpty = false;
-			let attackPoints = ATTACK_DAMAGE_PER_TICK;
+			let clashHeld = false;
+			let attackPoints = ATTACK_DAMAGE_PER_TICK + (attack.orders - 1) * ATTACK_ORDER_DAMAGE_BONUS;
 			while (attackPoints > 0) {
 				// Sample a small batch of the highest-priority frontier cells.
 				// Geometry decides who is eligible; the cheapest sampled defense
@@ -1238,7 +1243,7 @@ export class TerritorySimulation {
 				const sampled: number[] = [];
 				let chosenPosition = -1;
 				let chosenCost = Number.POSITIVE_INFINITY;
-				let cancelled = false;
+				let halted = false;
 				let exhausted = false;
 
 				for (let sample = 0; sample < LEAST_RESISTANCE_SAMPLE_SIZE; sample++) {
@@ -1255,19 +1260,22 @@ export class TerritorySimulation {
 					// an enclave.
 					if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
 
-					// Two states attacking each other have reached a front line: do
-					// not let their fronts interpenetrate or wiggle around each other.
-					// Stop every order between the pair and leave the current border
-					// where it is.
-					if (this.conflictsWithOpposingClaim(index, attack, attackById)) {
-						this.cancelAttacksBetweenPair(attack);
-						cancelled = true;
+					// Mutual attacks meet at their claimed front lines. The defender
+					// spends attack orders up to its issued attack strength; every
+					// spent order removes one embedded order from the incoming front.
+					const clash = this.resolveOpposingClash(index, attack, attackById);
+					if (clash === 'halted') {
+						halted = true;
+						break;
+					}
+					if (clash === 'blocked') {
+						clashHeld = true;
 						break;
 					}
 
 					const cost = Math.max(
 						1,
-						this.defenseAt(index) - this.attackStrengthAt(attack.attackerId, index)
+						this.defenseAt(index) - (attack.orders - 1) * ATTACK_ORDER_DEFENSE_PIERCE
 					);
 					sampled.push(index);
 					if (cost < chosenCost) {
@@ -1276,7 +1284,14 @@ export class TerritorySimulation {
 					}
 				}
 
-				if (cancelled) break;
+				if (halted) break;
+
+				// A clash pauses the front for this tick, but does not discard the
+				// sampled candidates; they may still be reachable next tick.
+				if (clashHeld) {
+					for (let i = sampled.length - 1; i >= 0; i--) attack.frontier.push(sampled[i]);
+					break;
+				}
 
 				// Put the missed candidates back. The chosen one is consumed.
 				for (let i = sampled.length - 1; i >= 0; i--) {
@@ -1309,9 +1324,9 @@ export class TerritorySimulation {
 				if (y + 1 < this.height) this.enqueueAttackCell(attack, index + this.width);
 			}
 
-			// No legal captures means the front has been severed (or exhausted).
-			// Let it peter out rather than idling until territory reconnects.
-			if (frontierEmpty || capturedThisTick === 0) {
+			// A clash hold is not an exhausted or severed front; keep it alive for
+			// the next tick so it can continue once the defender runs out of orders.
+			if (!clashHeld && (frontierEmpty || capturedThisTick === 0)) {
 				attack.done = true;
 			}
 		}
@@ -1336,11 +1351,11 @@ export class TerritorySimulation {
 	 * the new border. Other orders between the same two states are cancelled as
 	 * well so the whole front freezes rather than just one lane.
 	 */
-	private conflictsWithOpposingClaim(
+	private findOpposingAttack(
 		index: number,
 		attack: AttackState,
 		attackById: Map<number, AttackState>
-	): boolean {
+	): AttackState | null {
 		const x = index % this.width;
 		const y = (index - x) / this.width;
 		const neighbours = [
@@ -1357,21 +1372,41 @@ export class TerritorySimulation {
 			const other = attackById.get(claimId);
 			if (!other || other.done) continue;
 			if (other.attackerId === attack.defenderId && other.defenderId === attack.attackerId) {
-				return true;
+				return other;
 			}
 		}
-		return false;
+		return null;
 	}
 
-	private cancelAttacksBetweenPair(attack: AttackState): void {
-		for (const other of this.attacks) {
-			if (other.done) continue;
-			const samePair =
-				(other.attackerId === attack.attackerId && other.defenderId === attack.defenderId) ||
-				(other.attackerId === attack.defenderId && other.defenderId === attack.attackerId);
-			if (samePair) other.done = true;
+	/**
+	 * A mutual front contact spends the defender's available attack orders. The
+	 * defender can spend at most its issued attack strength, and never more than
+	 * its remaining order inventory. Each spent order removes one order from the
+	 * incoming attack. Returning `null` means the defender could not spend
+	 * anything, so the incoming front breaks through.
+	 */
+	private resolveOpposingClash(
+		index: number,
+		attack: AttackState,
+		attackById: Map<number, AttackState>
+	): 'halted' | 'blocked' | null {
+		const other = this.findOpposingAttack(index, attack, attackById);
+		if (!other) return null;
+		const defenderId = attack.defenderId;
+		const worth = this.getAttackOrderStrength(defenderId);
+		const available = this.attackOrders[defenderId - 1] ?? 0;
+		const reduction = Math.min(worth, available, attack.orders);
+		if (reduction <= 0) return null;
+
+		this.attackOrders[defenderId - 1] -= reduction;
+		attack.orders -= reduction;
+		if (attack.orders <= 0) {
+			attack.orders = 0;
+			attack.done = true;
+			this.annexRequested = true;
+			return 'halted';
 		}
-		this.annexRequested = true;
+		return 'blocked';
 	}
 
 	private annexDisconnectedTerritory(): void {
@@ -1641,6 +1676,7 @@ export class TerritorySimulation {
 			defenderId: attack.defenderId,
 			targetX: attack.targetX,
 			targetY: attack.targetY,
+			orders: attack.orders,
 			captures: attack.captures,
 			growthMode: attack.growthMode
 		};

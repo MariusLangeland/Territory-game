@@ -540,7 +540,7 @@ Structures need territorial identity beyond their auras. The requested model giv
 - Multiple structures and districts per owner/type are allowed. A same-type drop inside a district increments that district structure's `stacks`; the same type dropped outside all districts creates another structure/district. A different type inside any district is rejected.
 - `districtStructureIds` records the winning structure per cell, so stacking and auras can distinguish same-type districts. State auras remain radius-based.
 - `stacks` multiply the structure's effect magnitude (income, defense, attack strength, order gain, order cap). Geometry/range stays fixed.
-- Defense auras apply to every cell whose district id matches the structure and whose owner matches; buildable defense auras are not clipped to the old effect radius. State auras use radius 16, and Barracks attack strength remains local radius 18.
+- Defense auras apply to every cell whose district id matches the structure and whose owner matches; buildable defense auras are not clipped to the old effect radius. State auras use radius 16. Barracks later becomes a global embedded-order bonus in ADR-024.
 - Full district recomputation runs on structure creation/destruction; ordinary ownership changes reassign one cell. Stacking does not change geometry.
 - Render district palettes by packing a 5-bit code (four variants per structure type) into control-texture alpha above 3 elevation bits; tint by type, vary brightness per district, and darken shared boundaries. Aura circles are removed.
 
@@ -550,7 +550,7 @@ Structures need territorial identity beyond their auras. The requested model giv
 - State capitals no longer block construction, and the first build is possible in the starting territory.
 - Large districts deliberately reduce building density: a district can cover most of a small territory, so further different-type construction waits for expansion.
 - District recomputation is occasional and bounded; per-capture updates are local, and district color needs no extra texture binding. Per-cell structure ids add 8 MiB.
-- Defense auras fill buildable district geometry; State auras remain a radius field, and Barracks attack strength stays a local offensive radius.
+- Defense auras fill buildable district geometry; State auras remain a radius field. Barracks is reworked into embedded attack orders in ADR-024.
 - Existing 8 px spacing remains a secondary placement guard, though district ranges usually dominate.
 
 ### Alternatives considered
@@ -649,7 +649,7 @@ The initial district implementation still clipped Defense Post auras to the old 
 - A buildable defensive aura applies to every owned cell whose `districtStructureIds` equals that structure's id.
 - The effect radius is ignored for buildable defense auras; Defense Post's effect radius is stored as 0 to prevent accidental radius use.
 - State has no district and keeps its 16 px capital aura.
-- Barracks attack strength remains a local 18 px offensive buff; attack targets are outside the attacker's district, so district membership cannot define its coverage.
+- Barracks remains outside the district aura model; ADR-024 later converts it to a global embedded-order bonus.
 - `updateAuraAt` and the full aura rebuild share the same district-id rule.
 
 ### Consequences
@@ -658,7 +658,7 @@ The initial district implementation still clipped Defense Post auras to the old 
 - Expanding or losing district cells immediately changes aura coverage through capture updates.
 - Multiple same-type Defense Posts each buff only their own district.
 - State defense remains a special capital-radius field, separate from districts.
-- Barracks attack strength remains intentionally local and is documented separately.
+- Barracks is not an aura; ADR-024 converts it to a global embedded-order bonus.
 
 ### Alternatives considered
 
@@ -699,6 +699,43 @@ Districts were exact circles/Voronoi cells. The requested look is organic: distr
 - **Animated noise:** changes simulation geometry every tick and would make districts unstable.
 - **Noise only in rendering:** would desynchronize tint/borders from actual aura and placement coverage.
 - **Randomize range once per structure:** produces blobs but not wavy borders.
+
+---
+
+## ADR-024 — Barracks issue embedded attack orders; mutual fronts attrit
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Barracks previously granted a local defense-piercing aura. The requested model makes Barracks raise the number of orders embedded in each attack, and lets attack strength determine speed, defense piercing, and durability. Mutual fronts also need to trade strength instead of cancelling outright.
+
+### Decision
+
+- Barracks effect becomes `attack-order-bonus`, +1 embedded order per stack.
+- A launch still costs one inventory attack order. The created attack embeds `1 + attacker Barracks stacks` orders; clicking again creates another attack and never adds to an existing one.
+- Attack points per tick = `30 + 15 × (orders − 1)`.
+- Capture cost = `max(1, defense − (orders − 1))`.
+- Lifetime = `50 + 10 × (initial orders − 1)` ticks.
+- At a mutual claim contact, the defender spends `min(its issued attack strength, remaining inventory orders, incoming orders)` from inventory. Each spent order removes one incoming embedded order. Zero halts the attack; otherwise the clash pauses the front for the tick. No spendable orders means the attack breaks through.
+- Issued attack strength is `1 + live Barracks stacks` for both launching and defensive clash strength.
+- Remove the old attack-aura radius and defense-piercing field.
+
+### Consequences
+
+- Barracks scales both offense and defensive staying power without granting inventory.
+- Repeated clicks are intentionally separate attacks; there is no click-to-reinforce path.
+- A defender without Barracks or spare orders can only chip a strong attack and eventually loses the front.
+- Strong attacks consume more points per tick but also pierce more and live longer; high defense still matters, especially against base attacks.
+- The 30-point and 5-second base values remain the baseline; embedded orders are the scaling axis.
+
+### Alternatives considered
+
+- **Merge repeated clicks into one attack:** contradicts the requested no-upgrade-by-click behavior.
+- **Spend embedded orders from inventory at launch:** would make Barracks a cap increase rather than an attack multiplier.
+- **Cancel both attacks on contact:** does not allow 2-order attacks to require two defenses.
+- **Use only the opposing front's current orders for defense:** would ignore the defender's remaining inventory, which the requested rule explicitly caps.
 
 ---
 

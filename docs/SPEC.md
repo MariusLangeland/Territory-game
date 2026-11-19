@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.16.0 (attack stress experiment)  
+**Version:** 0.17.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.16.0, map version 3, protocol draft 23
+**Last synchronized with:** application 0.17.0, map version 3, protocol draft 24
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 23`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 24`.
 
 ### 4.2 Starting positions
 
@@ -141,14 +141,15 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
 7. Launching consumes **1 attack order**. The human starts with 3 orders (cap 3) and bots with 2 (cap 2). Every **10 seconds**, each living player gains **1 order, up to the cap**; attacks do not refund an order when they end. Multiple active fronts are allowed while orders remain.
-8. Each tick, the front's selected **growth layer** nominates candidate frontier cells until **30 attack points** are spent or no candidates remain. For each capture, the simulation samples up to **10** of the highest-priority candidates and takes the one with the lowest current defense cost; ties keep growth priority. This lets a front flow around costly strongpoints into cheaper adjacent ground. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
-9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
-10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
-11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check. If the remaining budget cannot afford even the cheapest sampled candidate, all sampled cells are queued again for the following tick.
-12. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
-13. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
-14. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
-15. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
+8. Every launched attack **embeds orders**: base 1, plus 1 per live Barracks stack owned by the attacker. The launch still costs one inventory order. Repeated clicks create separate attacks; they never add orders to an existing attack.
+9. Each tick, the front's selected **growth layer** nominates candidate frontier cells until its attack-point budget is spent or no candidates remain. Budget is `30 + 15 × (embeddedOrders − 1)`. For each capture, the simulation samples up to **10** of the highest-priority candidates and takes the one with the lowest current defense cost; ties keep growth priority. Capture cost is `max(1, defense − embeddedOrders + 1)`, so stronger attacks are less slowed by defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
+10. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
+11. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack in a mutual war. If so, the defender spends `min(its attack strength, its remaining attack-order inventory, incoming embedded orders)` orders. Each spent order removes one embedded order from the incoming attack. If the incoming attack reaches 0 embedded orders it halts; otherwise the clash pauses that front for the tick. A defender with no spendable orders cannot reduce it, and the attack breaks through. See section 4.13.
+12. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check. If the remaining budget cannot afford even the cheapest sampled candidate, all sampled cells are queued again for the following tick.
+13. **Orders are finite:** a front expires after `50 + 10 × (initialEmbeddedOrders − 1)` ticks. More embedded orders therefore take more ground before petering out.
+14. The front also ends early when its frontier is empty, its embedded orders reach 0, or a non-clash tick produces **zero legal captures**. A clash pause does not end the front.
+15. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
+16. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its lifetime has not elapsed.
 
 ### 4.4 Valid attack clicks
 
@@ -177,7 +178,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - Each attack owns a growth layer with its own candidate structure (heap, direction buckets, or random pool), plus a simulation-side least-resistance sampler over the top 10 candidates.
 - There is no per-attack visited set. Once a cell is captured, its owner changes, so duplicate candidates fail the ownership check.
 - Candidate storage is per-mode; circular uses a priority heap, smooth uses squared-distance bands, organic uses a random-access array.
-- A front's candidate set can become large while consuming a large connected region. The 5-second lifetime and per-tick capture cap bound retained work.
+- A front's candidate set can become large while consuming a large connected region. Its lifetime and per-tick capture cap bound retained work.
 - If a candidate no longer touches the attacker's territory, it is skipped. If a whole tick captures nothing, the front is removed. This prevents fronts from phasing through opposing attacks and leaving enclaves.
 
 ### 4.7 Eliminations and victory
@@ -206,7 +207,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 5. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
 6. Run bot decisions (only on every 10th tick).
 7. Process active attacks in creation-id order.
-8. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
+8. Every 10 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands.
 9. Eliminate states with no territory and remove their attacks.
 10. Check victory.
 11. Build the public snapshot.
@@ -218,7 +219,7 @@ This attack model is intentionally provisional:
 - Each launch consumes one attack order; players gain one order every 10 seconds rather than refunding when a front ends.
 - The order cap is a hard cap. Command Post grants are clamped to it; War Academies raise the cap.
 - It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, radially smoothed, or organic.
-- It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
+- It ends when its frontier is exhausted, its embedded orders reach 0, its land connection is severed (zero legal captures on a non-clash tick), or its lifetime expires.
 - Bots do not coordinate or defend strategically.
 - The 108-state match may become a near-even patchwork.
 - Attack-order limits are now part of the experimental economy, not only a stress guardrail.
@@ -253,15 +254,17 @@ The HUD growth switcher selects the layer for new orders. It has no effect on or
 
 Each captured cell records the attack id that claimed it. When an attack is about to capture a cell adjacent to a cell claimed by an **opposing active attack**, and the two attacks target each other's owners, the pair is in direct conflict:
 
-- every active order between the two states is cancelled immediately;
-- the candidate is not captured;
-- the contact line is left as the border.
+- the defender's attack strength is `1 + its live Barracks stacks`;
+- it spends up to `min(attack strength, remaining attack-order inventory, incoming embedded orders)` inventory orders;
+- each spent order removes one embedded order from the incoming attack;
+- if the incoming attack reaches 0, it halts;
+- otherwise the clash pauses the incoming front for this tick.
 
-This prevents mutually attacking organic fronts from interpenetrating, wiggling around each other, or leaving a meandering no-man's-land. Third-party attacks and attacks against a common target are unaffected. New orders can be issued later, but they must reach a new contact before cancelling again.
+A defender with insufficient Barracks strength or too few remaining orders therefore only chips the incoming attack; it may require multiple clashes (multiple defensive attacks) to halt it. With no spendable orders, the incoming front breaks through. Third-party attacks and attacks against a common target are unaffected.
 
 ### 4.14 Territory integrity
 
-Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and promptly after a mutual-front cancellation, the simulation labels components and annexes unprotected ones:
+Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and promptly after a clash halts a front, the simulation labels components and annexes unprotected ones:
 
 - a component is transferred only if it touches another player's **protected mainland**;
 - the recipient is the adjacent protected-mainland owner with the greatest shared border;
@@ -291,13 +294,14 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 | Base defense                     | `1 + elevation`                                                 |
 | Occupied bonus                   | `+1` when the pixel has a nonzero owner                         |
 | State aura                       | `+20` within 16 px; overlapping auras do not stack              |
-| Attack points per front per tick | 30                                                              |
-| Capture cost                     | Target pixel defense                                            |
+| Attack points per front per tick | `30 + 15 × (embedded orders − 1)`                               |
+| Capture cost                     | `max(1, defense − embedded orders + 1)`                         |
+| Lifetime                         | `50 + 10 × (initial embedded orders − 1)` ticks                 |
 | Defense range                    | 1–6 unowned, 2–7 occupied, up to 27 in a State aura; posts add  |
 
 - Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
 - Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
-- A front cannot spend more than 30 points per tick. Cheap neutral lowland can move 30 pixels per tick; defended peaks move 4, and aura-covered occupied high ground moves 1.
+- A base front can spend 30 points per tick; each extra embedded order adds 15 points, one point of defense piercing, and 10 ticks of lifetime. Cheap neutral lowland with a base front can move 30 pixels per tick; defended peaks move 4, and aura-covered occupied high ground moves 1.
 - The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 - Aura circles are not rendered; district tint and boundaries communicate territorial structure.
@@ -322,15 +326,15 @@ The human commander has a small card economy; bots do not build cards yet.
 - **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells currently owned by the structure's owner; it never raises the cost of that owner's attacks into neutral or enemy territory.
 - Structure placement has an **8 px centre-to-centre exclusion radius**. The existing cell and every other structure block a drop inside that radius.
 
-| Card         | Cost | Effect                                                            |
-| ------------ | ---- | ----------------------------------------------------------------- |
-| Mine         | 3    | +1 gold per 10 seconds, paid continuously                         |
-| Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per stack |
-| Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks  |
-| Command Post | 4    | +1 attack order per 60 seconds, paid continuously                 |
-| War Academy  | 6    | +1 attack-order cap                                               |
+| Card         | Cost | Effect                                                           |
+| ------------ | ---- | ---------------------------------------------------------------- |
+| Mine         | 3    | +1 gold per 10 seconds, paid continuously                        |
+| Barracks     | 2    | Your attacks issue 1 extra embedded order per stack              |
+| Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
+| Command Post | 4    | +1 attack order per 60 seconds, paid continuously                |
+| War Academy  | 6    | +1 attack-order cap                                              |
 
-Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
+Each live Barracks stack adds one embedded order to every attack its owner launches. Embedded orders increase capture speed, defense piercing, and lifetime. Barracks also raises the owner's defensive clash strength because defense uses the same issued attack strength.
 
 ### 4.18 Districts and structure stacking
 
@@ -340,14 +344,14 @@ Barracks attack strength is applied per captured target: effective defense = `ma
 - District edges are perturbed by deterministic integer noise: coherent 8 px value noise plus a faint per-pixel jitter. This makes the outer edge grow or shrink by roughly 2 px and makes Voronoi split lines irregular. It is purely visual/geometric; all captures and auras still use the resulting district map.
 - Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
 - A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
-- Defensive auras apply to every owned cell in the owning structure's district; the old effect-radius clipping does not shrink a Defense Post's area. State auras use their radius around the capital. Barracks attack strength remains a local 18 px offensive radius.
-- Each stack increases the structure's effect: income, aura defense, attack strength, order gain, or order cap.
+- Defensive auras apply to every owned cell in the owning structure's district; the old effect-radius clipping does not shrink a Defense Post's area. State auras use their radius around the capital. Barracks is not an aura: its order bonus applies globally to the owner's attacks.
+- Each stack increases the structure's effect: income, aura defense, embedded attack orders, order gain, or order cap.
 - Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
 
 | Structure    | District range | Stack effect                     |
 | ------------ | -------------: | -------------------------------- |
 | Mine         |          32 px | +1 income per interval per stack |
-| Barracks     |          44 px | +1 attack strength per stack     |
+| Barracks     |          44 px | +1 embedded order per stack      |
 | Defense Post |          40 px | +5 defense per stack             |
 | Command Post |          32 px | +1 order per 60s per stack       |
 | War Academy  |          32 px | +1 cap per stack                 |
@@ -566,11 +570,11 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Circular, smooth, and organic growth layers are selectable and deterministic.
 - [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
 - [x] Distance-based growth is anchored at the border contact, never at a deep click.
-- [x] Mutual fronts cancel at contact, leaving a stable border and terminating the pair's orders.
+- [x] Mutual fronts spend defender attack orders to strip embedded orders from the incoming attack; a 2-order attack needs two 1-order defensive clashes to halt.
 - [x] Detached pockets are annexed by the adjacent protected mainland with the largest shared border.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] Six elevation tiers color the map and add base defense.
-- [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
+- [x] Occupied pixels add one defense; embedded attack orders scale points, piercing, and lifetime.
 - [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
 - [x] The human starts with all five cards and 3 gold, earns income, can drag any affordable card onto owned land repeatedly, and never loses a card from the hand.
 - [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
@@ -598,7 +602,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 4. **Match duration/pacing:** unthrottled attacks saturate the map in ~10 seconds.
 5. **Leaderboard scale:** scroll, pagination, or top-N with pinned player?
 6. **Growth layer:** should shipping play use circular, smooth, organic, or a blend? Keep the test switch?
-7. **Queue bounds:** apart from the 5-second lifetime, should a front have a lower candidate/capture bound?
+7. **Queue bounds:** apart from its embedded-order lifetime, should a front have a lower candidate/capture bound?
 8. **Server tick buffer:** how much latency to absorb in online play?
 9. **Map format:** procedural generation vs baked assets for cross-engine certainty?
 10. **Simulation worker:** when to move off the main thread?

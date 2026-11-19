@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.16.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.17.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -21,18 +21,18 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, State structures, three growth layers, 3 human / 2 bot attack orders with +1 per 10s up to cap, 30 attack points/front/tick, terrain defense |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail               |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                                  |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                       |
-| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable drag/drop builds, click-to-upgrade districts                   |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                  |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                       |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                 |
-| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout              |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                                      |
+| Area            | Implementation                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attack stress   | 108 states, State structures, three growth layers, 3 human / 2 bot attack orders with embedded-order attacks, terrain defense               |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; embedded attack orders scale points and piercing           |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                          |
+| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable drag/drop builds, click-to-upgrade districts      |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking     |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
+| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                         |
 
 ## Quick start
 
@@ -87,15 +87,16 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
 3. A launch consumes one attack order: start with 3 for the human and 2 for bots. Every 10 seconds each living player gains 1 order, up to the cap; orders do not refund when a front ends.
-4. Each tick, a front has **30 attack points**. Capturing a pixel costs its defense: `1 + elevation`, plus **1 if the pixel is occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
-5. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
-6. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
-7. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
-8. **Least resistance:** each capture samples the 10 highest-priority frontier cells and takes the cheapest local defense, so a front slides around a costly strongpoint into weaker ground while keeping its overall growth shape.
-9. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
-10. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
-11. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
-12. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
+4. Each attack embeds **1 order plus one per live Barracks stack**. More embedded orders mean more capture points, defense piercing, and lifetime. The launch still costs one inventory order; clicking again creates a separate attack, never upgrades the first.
+5. Each tick, a front has **30 + 15 per extra embedded order attack points**. Capturing a pixel costs `max(1, defense − embeddedOrders + 1)`: `1 + elevation`, plus **1 if occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
+6. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
+7. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
+8. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
+9. **Least resistance:** each capture samples the 10 highest-priority frontier cells and takes the cheapest local defense, so a front slides around a costly strongpoint into weaker ground while keeping its overall growth shape.
+10. **Orders are finite:** every front expires after `50 + 10 per extra embedded order` ticks.
+11. **Mutual fronts attrit:** if two states attack each other and their fronts touch, the defender spends available orders up to its issued attack strength, stripping one embedded order per spent order. A 2-order attack needs two 1-order defensive clashes; if the defender runs out, the attack breaks through.
+12. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
+13. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
 
 ### Terrain and defense
 
@@ -141,14 +142,14 @@ The human commander starts with **3 gold** and **all five build cards** permanen
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |
 | Mine         | 3    | +1 gold per 10 seconds, paid continuously                  |
-| Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius        |
+| Barracks     | 2    | Your attacks now issue 1 extra order per stack             |
 | Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
 | Command Post | 4    | +1 attack order per 60 seconds, paid continuously          |
 | War Academy  | 6    | +1 attack-order cap                                        |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 
-Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks. A Defense Post covers its **entire district**, not just a small radius; Barracks attack strength remains a local 18 px offensive buff.
+Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every stack adds one embedded order to all of that owner's attacks.
 
 ### Districts
 
@@ -163,13 +164,13 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - dropping the same type outside all districts creates another structure/district;
 - a different type cannot be dropped inside any existing district.
 
-| Structure    | District range | Stack effect       |
-| ------------ | -------------: | ------------------ |
-| Mine         |             32 | +1 income          |
-| Barracks     |             44 | +1 attack strength |
-| Defense Post |             40 | +5 defense         |
-| Command Post |             32 | +1 order per 60s   |
-| War Academy  |             32 | +1 order cap       |
+| Structure    | District range | Stack effect      |
+| ------------ | -------------: | ----------------- |
+| Mine         |             32 | +1 income         |
+| Barracks     |             44 | +1 embedded order |
+| Defense Post |             40 | +5 defense        |
+| Command Post |             32 | +1 order per 60s  |
+| War Academy  |             32 | +1 order cap      |
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
@@ -179,7 +180,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
 
-The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive.
+The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive. Barracks stacks increase the orders embedded in each attack, not the inventory cap.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -208,7 +209,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~259 ms, one-time on world creation                  |
+| Map generation + 108 starts               | ~292 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -216,9 +217,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~337 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~338 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.7–3.0% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.6–2.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

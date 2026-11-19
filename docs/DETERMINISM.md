@@ -56,14 +56,14 @@ All authoritative quantities are integers:
 | Structure identity         | integer id, type enum, owner, map cell, stacks |
 | District                   | per-cell structure type code (0 = none)        |
 | Attack seed distance       | squared integer distance                       |
-| Attack budget              | 30 points per front per tick                   |
+| Attack budget              | `30 + 15 × (embedded orders − 1)` per tick     |
 | Defense                    | `1 + elevation + occupied + aura`              |
 | State aura                 | 16 px radius, +20, max once, friendly          |
 | Elevation tier             | uint8, 0–5                                     |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
-In this experiment there are no troop or production-cap values. Gold, fixed card ids, attack orders, and attack-order caps are integer authoritative state; attacks spend 30 integer points per tick.
+In this experiment there are no troop or production-cap values. Gold, fixed card ids, attack orders, embedded attack orders, and attack-order caps are integer authoritative state. Attack points per tick scale with the attack's current embedded orders.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -152,8 +152,9 @@ For each attack:
 - requeue the sample and stop the tick if even the cheapest candidate is unaffordable,
 - claim valid cells with a deterministic `claim()` operation,
 - push still-target-owned neighbours onto the growth layer in the fixed order west, east, north, south,
-- expire the front when `tick - createdAtTick >= ATTACK_LIFETIME_TICKS` (50 ticks / 5 seconds),
-- stop when the budget reaches zero or the frontier is empty,
+- expire the front when `tick - createdAtTick >= attack.lifetimeTicks`,
+- reduce the front's embedded orders through defender clashes,
+- stop when the budget reaches zero, embedded orders reach 0, or the frontier is empty,
 - drop the front if a tick captures zero cells.
 
 Attack seeds are derived deterministically:
@@ -164,7 +165,7 @@ Attack seeds are derived deterministically:
 - cap at 96;
 - set the growth anchor to the rounded centroid of the surviving seed cells. The click is not used as the growth origin.
 
-Mutual front contact is deterministic: each capture records `claimedBy[index] = attack.id`; before a capture, neighbouring claims are checked against active mutual attacks. On contact all orders between the pair are marked done. The candidate is left uncaptured, so the border is the ownership state at contact.
+Mutual front contact is deterministic: each capture records `claimedBy[index] = attack.id`; before a capture, neighbouring claims are checked against active mutual attacks. On contact the defender spends `min(issued attack strength, attack-order inventory, incoming embedded orders)` inventory orders; each spent order strips one embedded order from the incoming attack. At 0 the attack halts; otherwise the front pauses for the tick. The candidate is not captured during a clash.
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
@@ -215,7 +216,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
 9. human gold and gold accrual, every player's attack orders, the base order grant timer, and command-post accrual;
-10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
+10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, lifetime, current/initial embedded orders, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 
@@ -292,12 +293,12 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 7. Frontier sets match a brute-force scan after combat under 108-bot load.
 8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
 9. A fabricated attack frontier candidate that is not edge-connected to the attacker is neither captured nor kept as an active front.
-10. An attack whose creation tick is at or beyond its 50-tick lifetime is removed before it can capture.
+10. An attack whose creation tick is at or beyond its embedded-order lifetime is removed before it can capture.
 11. Circular, smooth, and organic simulations are each deterministic across two identical runs.
 12. A growth-mode switch applies at the next tick and is reflected in snapshots.
 13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
 14. A deep click produces an attack anchor at the border contact, not at the click.
-15. Mutual attacks cancel when a front touches opposing claim provenance; the candidate is not captured and all pair orders disappear.
+15. Mutual attacks attrit when a front touches opposing claim provenance: a 1-order defender strips one embedded order per clash, so a 2-order attack needs two clashes unless Barracks strength lets one clash strip both. No defender orders means the attack breaks through.
 16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left.
 17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, and deterministic tie-breaks.
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
@@ -306,8 +307,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 21. A live State structure adds 20 defense within 16 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
 22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever gold and placement rules allow.
 23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
-24. Attack orders are spent only when an attack command or bot decision creates a front; the +1 base grant is a fixed 100-tick boundary event, while Command Post orders accrue every tick.
-25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap.
+24. Inventory attack orders are spent on launch and defensive clashes; embedded attack orders are a separate per-front count and are never added by repeated clicks.
+25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap. Barracks stacks increase embedded orders, not inventory.
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
 28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.
