@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Resource-free attack stress test
 
-**Status:** active in application `0.6.x`  
+**Status:** active in application `0.7.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states attacking simultaneously and no economy throttling?
 
@@ -39,6 +39,7 @@ The normal economy (troops, income, caps, attack costs) limits how many attacks 
 | Bot decisions          | once per second                                          |
 | Starting territory     | radius ~16, ragged, spaced across the map                |
 | Structures             | one capturable State structure per state at its capital  |
+| State aura             | +20 defense within 12 px; overlaps do not stack          |
 
 The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
@@ -58,6 +59,7 @@ Two cleanup rules plus the first structure are always active:
 
 - **Mutual front cancellation:** if two states are attacking each other and a front touches land claimed by the opposing attack, every order between the pair ends and the contact line becomes the border.
 - **State structure anchoring:** each state starts with one State structure at its capital. Every territory component connected to a live State structure is protected from annexation. Capturing the structure destroys it and removes protection.
+- **State aura:** a live State projects +20 defense over a 12 px radius; overlapping auras take the maximum. Capturing the structure removes the aura immediately.
 - **Detached-land annexation:** once per second, and immediately after a cancellation, components without a live State structure are transferred to the owner of the adjacent protected mainland with the largest shared border.
 
 This is the current attack-shape test surface, not a final gameplay choice.
@@ -91,6 +93,7 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] State structures anchor protection, are capturable, and disappear with their anchors.
 - [x] Elevation tiers drive visible terrain color and base defense.
 - [x] Occupied territory adds one defense, and high-defense fronts capture fewer pixels per tick.
+- [x] State auras add +20 within 12 px and disappear with their structure.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -100,9 +103,9 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
-- Full-state checksum is ~18 ms (claim provenance doubles the owner-map pass) and is not run per tick.
-- Growth-layer tick cost at 108 states: circular ~1.9 ms, smooth ~2.8 ms, organic ~1.9 ms (Node benchmark; includes throttled integrity scans, structure checks, and defense spending).
-- Defense costs reduce capture volume; the benchmark ended around 92–111 fronts.
+- Full-state checksum is ~18.2 ms (claim provenance doubles the owner-map pass) and is not run per tick.
+- Growth-layer tick cost at 108 states: circular ~1.9 ms, smooth ~2.6 ms, organic ~2.1 ms (Node benchmark; includes throttled integrity scans, structure effects, and defense spending).
+- Capital auras and defense costs reduce capture volume; the benchmark ended around 145–160 fronts.
 - One-second integrity scans cost ~8.5 ms and are capped by a cooldown.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 

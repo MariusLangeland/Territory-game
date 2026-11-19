@@ -11,6 +11,35 @@ export const STRUCTURE_TYPES = ['state'] as const;
 
 export type StructureType = (typeof STRUCTURE_TYPES)[number];
 
+/** State capitals project a defensive field over nearby land. */
+export const STATE_AURA_RADIUS = 12;
+export const STATE_AURA_DEFENSE = 20;
+
+export interface DefenseAuraEffect {
+	kind: 'defense-aura';
+	/** Radius in map pixels. */
+	radius: number;
+	/** Flat defense added to every land pixel in range; overlapping auras do not stack. */
+	defense: number;
+}
+
+export type StructureEffect = DefenseAuraEffect;
+
+const STATE_EFFECTS: readonly StructureEffect[] = Object.freeze([
+	{
+		kind: 'defense-aura',
+		radius: STATE_AURA_RADIUS,
+		defense: STATE_AURA_DEFENSE
+	}
+]);
+
+export function effectsForType(type: StructureType): readonly StructureEffect[] {
+	switch (type) {
+		case 'state':
+			return STATE_EFFECTS;
+	}
+}
+
 export interface Structure {
 	id: number;
 	type: StructureType;
@@ -19,6 +48,7 @@ export interface Structure {
 	index: number;
 	x: number;
 	y: number;
+	effects: readonly StructureEffect[];
 }
 
 /** Immutable structure payload delivered to the HUD, minimap, and protocol. */
@@ -28,6 +58,7 @@ export interface PublicStructure {
 	ownerId: number;
 	x: number;
 	y: number;
+	effects: readonly StructureEffect[];
 }
 
 export class StructureRegistry {
@@ -43,7 +74,8 @@ export class StructureRegistry {
 			ownerId,
 			index,
 			x,
-			y
+			y,
+			effects: effectsForType(type)
 		};
 		this.items.push(structure);
 		this.byIndex.set(index, structure);

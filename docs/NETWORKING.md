@@ -240,9 +240,10 @@ Conflict and integrity state:
 
 Structures:
 
-- live structure ids, types, owners, and map cells are part of the authoritative snapshot (`structures`);
-- capturing a structure cell destroys it at the same tick and changes annexation protection immediately;
-- clients may draw structures from the snapshot, but the server owns placement, destruction, and protection;
+- live structure ids, types, owners, map cells, and effect descriptors are part of the authoritative snapshot (`structures`);
+- capturing a structure cell destroys it at the same tick, removes its aura, and changes annexation protection immediately;
+- clients may draw structures and auras from the snapshot, but the server owns placement, destruction, effects, and protection;
+- aura defense is derived from live structure effects and is not sent as per-pixel state;
 - future build/transfer commands must be tick-stamped and authorized.
 
 Elevation and defense:

@@ -32,6 +32,7 @@
 		land: boolean;
 		elevation: number;
 		baseDefense: number;
+		auraDefense: number;
 		defense: number;
 	}
 
@@ -645,7 +646,11 @@
 				<span class="status-label">DEFENSE</span>
 				<strong>{hover?.land ? hover.defense : '—'}</strong>
 				<small>
-					{hover?.land ? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}` : '—'}
+					{hover?.land
+						? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}${
+								hover.auraDefense > 0 ? ` / AURA +${hover.auraDefense}` : ''
+							}`
+						: '—'}
 				</small>
 			</div>
 		</div>
@@ -800,7 +805,7 @@
 						</li>
 						<li>
 							<span>03</span>
-							<p>Every state attacks at once. This stress build has no economy.</p>
+							<p>Every state attacks at once. This stress build has no resource economy.</p>
 						</li>
 					</ol>
 					<div class="brief-footer">
@@ -811,7 +816,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.6.1 / PROTOCOL 10</span>
+				<span>BUILD 0.7.0 / PROTOCOL 11</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -968,8 +973,9 @@
 						<p>
 							Troops, income, caps, and launch costs are intentionally removed. Terrain now matters:
 							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
-							spends 30 attack points per tick. Higher ground and defended territory therefore fall
-							more slowly. This is still not the final combat design.
+							spends 30 attack points per tick. State auras add another 20 defense to nearby land.
+							Higher ground, defended territory, and capital auras therefore fall more slowly. This
+							is still not the final combat design.
 						</p>
 					</section>
 					<section>
@@ -982,8 +988,9 @@
 							front peters out immediately. If two states attack each other and their fronts touch, every
 							order between them cancels and the contact line becomes the border. Each state begins with
 							a State structure at its capital, marked by a circled star; territory connected to it cannot
-							be annexed. The HUD growth switch selects the frontier layer for new orders: circular, smooth,
-							or organic. Existing orders keep the layer they started with.
+							be annexed, and its aura adds 20 defense to surrounding pixels. The HUD growth switch selects
+							the frontier layer for new orders: circular, smooth, or organic. Existing orders keep the
+							layer they started with.
 						</p>
 					</section>
 					<section>

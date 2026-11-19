@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.6.1).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.7.0).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -25,7 +25,8 @@
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Attack stress   | 108 states, State structures, three growth layers, 3 active fronts (human) / 2 (bots), 30 attack points/front/tick, terrain defense         |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied`; fronts spend 30 attack points per tick                            |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                     |
+| State auras     | Live capitals project a 12 px field of +20 defense, rendered as dashed rings at combat zoom                                                 |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
@@ -94,12 +95,13 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 
 The map has six discrete elevation tiers: **lowland, plains, hills, highlands, mountains, peaks**. Elevation is part of the generated map, rendered as a green-to-ochre-to-grey-to-snow palette and marked with subtle contour boundaries.
 
-| Property                         | Value                      |
-| -------------------------------- | -------------------------- |
-| Base defense                     | `1 + elevation tier` (1–6) |
-| Occupied bonus                   | `+1`                       |
-| Attack points per front per tick | 30                         |
-| Capture cost                     | Target pixel defense       |
+| Property                         | Value                        |
+| -------------------------------- | ---------------------------- |
+| Base defense                     | `1 + elevation tier` (1–6)   |
+| Occupied bonus                   | `+1`                         |
+| State aura                       | `+20` within 12 px, max once |
+| Attack points per front per tick | 30                           |
+| Capture cost                     | Target pixel defense         |
 
 Hovering a land cell shows its elevation, base defense, and total defense in the status console.
 
@@ -119,7 +121,9 @@ Circular and smooth both grow radially from the border and can look similar by d
 
 Each state starts with one **State structure** at its capital. It is the anchor for that state's protected mainland: every territory component connected to a live State structure cannot be annexed. The structure is visible as a large owner-colored circle with a cream capital star on the map, and a ringed dot on the minimap.
 
-State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
+The State also projects a **12 px defensive aura** that adds **+20 defense** to every land pixel inside it. Overlapping auras use the strongest bonus, not a sum. At tactical zoom the aura draws as a faint owner-colored field with a dashed boundary; at atlas zoom it is hidden under the capital marker.
+
+State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner; its aura disappears immediately, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -146,19 +150,19 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities an
 
 Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
 
-| Measurement                                  | Result                                               |
-| -------------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts                  | ~270 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick       | ~1.9 ms                                              |
-| Smooth-layer all-bot attack tick             | ~2.8 ms                                              |
-| Organic-layer all-bot attack tick            | ~1.9 ms                                              |
-| Full-state checksum                          | ~18 ms (on-demand; includes claim provenance)        |
-| Browser render loop with elevation + markers | 144 fps; p99 7.1 ms; isolated cleanup spikes         |
-| Upload strategy under stress                 | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
-| Full control texture                         | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds)    | ~300–340 MiB                                         |
+| Measurement                               | Result                                               |
+| ----------------------------------------- | ---------------------------------------------------- |
+| Map generation + 108 starts               | ~279 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick    | ~2.0 ms                                              |
+| Smooth-layer all-bot attack tick          | ~2.6 ms                                              |
+| Organic-layer all-bot attack tick         | ~2.1 ms                                              |
+| Full-state checksum                       | ~18.2 ms (on-demand; includes claim provenance)      |
+| Browser render loop with auras + markers  | 143 fps; p99 7.1 ms; isolated cleanup spikes         |
+| Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
+| Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
+| Node benchmark RSS (all benchmark worlds) | ~290–340 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.9–2.8% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 2.0–2.6% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

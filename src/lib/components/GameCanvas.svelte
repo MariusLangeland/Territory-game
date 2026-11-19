@@ -12,6 +12,7 @@
 		land: boolean;
 		elevation: number;
 		baseDefense: number;
+		auraDefense: number;
 		defense: number;
 	}
 
@@ -101,6 +102,37 @@
 			context.setTransform(1, 0, 0, 1, 0, 0);
 			context.clearRect(0, 0, structureCanvas.width, structureCanvas.height);
 			context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+			// Auras render beneath every capital so markers stay crisp. At atlas
+			// zoom the aura is smaller than the marker and is intentionally hidden.
+			for (const structure of simulation.structures.all) {
+				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
+				for (const effect of structure.effects) {
+					if (effect.kind !== 'defense-aura') continue;
+					const auraRadius = effect.radius * camera.scale;
+					if (auraRadius < 16) continue;
+					if (
+						point.x < -auraRadius ||
+						point.y < -auraRadius ||
+						point.x > width + auraRadius ||
+						point.y > height + auraRadius
+					) {
+						continue;
+					}
+
+					const human = structure.ownerId === HUMAN_PLAYER_ID;
+					const color = colorForPlayer(structure.ownerId).rgb;
+					context.beginPath();
+					context.arc(point.x, point.y, auraRadius, 0, Math.PI * 2);
+					context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.16 : 0.085})`;
+					context.fill();
+					context.setLineDash([5, 5]);
+					context.lineWidth = human ? 1.6 : 1.2;
+					context.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.68 : 0.45})`;
+					context.stroke();
+					context.setLineDash([]);
+				}
+			}
 
 			for (const structure of simulation.structures.all) {
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
@@ -271,12 +303,13 @@
 			const land = simulation.isLand(x, y);
 			const elevation = simulation.getElevation(x, y);
 			const baseDefense = simulation.getBaseDefense(x, y);
+			const auraDefense = simulation.getAuraDefense(x, y);
 			const defense = simulation.getDefense(x, y);
-			const key = `${x}:${y}:${owner}:${land}:${defense}`;
+			const key = `${x}:${y}:${owner}:${land}:${auraDefense}:${defense}`;
 			if (now - lastHoverAt > 85 && key !== lastHoverKey) {
 				lastHoverAt = now;
 				lastHoverKey = key;
-				onHover?.({ x, y, owner, land, elevation, baseDefense, defense });
+				onHover?.({ x, y, owner, land, elevation, baseDefense, auraDefense, defense });
 			}
 		}
 

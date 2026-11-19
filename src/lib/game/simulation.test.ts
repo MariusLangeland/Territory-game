@@ -63,6 +63,8 @@ function findDeepAttackablePixel(
  */
 function runDefenseCapture(elevationLevel: number): number {
 	const sim = new TerritorySimulation({ seed: 424242 });
+	// Isolate the defense-budget curve from capital auras.
+	(sim as unknown as { auraDefense: Uint8Array }).auraDefense.fill(0);
 	const width = sim.width;
 	let startX = -1;
 	let rowY = -1;
@@ -433,7 +435,9 @@ describe('attack stress mode', () => {
 
 		const start = sim.map.starts[0];
 		expect(sim.getBaseDefense(start.x, start.y)).toBe(1 + sim.getElevation(start.x, start.y));
-		expect(sim.getDefense(start.x, start.y)).toBe(sim.getBaseDefense(start.x, start.y) + 1);
+		expect(sim.getDefense(start.x, start.y)).toBe(
+			sim.getBaseDefense(start.x, start.y) + 1 + sim.getAuraDefense(start.x, start.y)
+		);
 	});
 
 	it('slows attacks by the target pixel defense', () => {
@@ -442,6 +446,25 @@ describe('attack stress mode', () => {
 		expect(lowlandCaptures).toBe(15);
 		expect(peakCaptures).toBe(4);
 		expect(lowlandCaptures).toBeGreaterThan(peakCaptures);
+	});
+
+	it('projects a +20 State aura that disappears with the structure', () => {
+		const sim = new TerritorySimulation({ seed: 135790 });
+		const structure = sim.structures.all.find((entry) => entry.ownerId === 1);
+		expect(structure).toBeDefined();
+		if (!structure) return;
+
+		expect(sim.getAuraDefense(structure.x, structure.y)).toBe(20);
+		expect(sim.getDefense(structure.x, structure.y)).toBe(
+			sim.getBaseDefense(structure.x, structure.y) + 1 + 20
+		);
+
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		internals.claim(structure.index, 2, 777);
+		expect(sim.structures.at(structure.index)).toBeUndefined();
+		expect(sim.getAuraDefense(structure.x, structure.y)).toBe(0);
 	});
 
 	it('places one State structure at every state start', () => {

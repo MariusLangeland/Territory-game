@@ -409,3 +409,38 @@ Attacks were a flat 30 pixels per tick regardless of terrain or whether the targ
 - A per-cell mutable defense array: more state and checksum cost; current defense is fully derived.
 - Pixel-level attack progress: more realistic but adds per-front state and partial-capture UI with little first-pass value.
 - Encode elevation in the B channel: would lose continuous relief shading; alpha was unused.
+
+---
+
+## ADR-014 — Structure effects and the State defense aura
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Structures were static anchors with no gameplay effect. The next step is effects, starting with the State projecting a defensive aura. Effects must integrate with the existing defense/attack-point economy, remain deterministic, and be readable on the map.
+
+### Decision
+
+- Add an effect descriptor list to each structure type. The State carries one `defense-aura` effect: radius 12 map pixels, +20 defense.
+- Apply the aura to all land pixels in radius, including the structure cell, regardless of owner. Overlapping auras take the maximum rather than summing.
+- Derive a `Uint8Array` aura-defense overlay by stamping live structures. Rebuild the overlay when a structure is destroyed. Defense becomes `1 + elevation + occupied + aura`.
+- Include effect descriptors in public structure snapshots/protocol so clients can draw and predict auras.
+- Render auras as faint owner-colored fields with dashed boundaries at tactical zoom; hide them when their screen radius is smaller than the capital marker. Keep capital markers on top.
+- Show the aura bonus in the hover defense readout.
+
+### Consequences
+
+- Capitals strongly protect their immediate surroundings: max defense rises from 7 to 27, so one aura pixel costs at least 21 points and usually captures one pixel per tick.
+- The aura is a zone effect, so captured ground inside it remains defensively strong for either side.
+- Rebuild cost is ~48k writes for all 108 capitals and only occurs at creation or destruction.
+- Effects are derived from type definitions; if effect numbers change, protocol/version and docs must change.
+- Future structures can reuse the effect list for healing, production, or other area effects.
+
+### Alternatives considered
+
+- Aura only on friendly territory: more intuitive ownership-wise, but requires ownership-dependent recomputation and lets attackers bypass the structure's protective field.
+- Stacking overlapping auras: can push defense above the 30-point attack budget and stall fronts permanently.
+- Per-cell mutable defense: unnecessary; aura defense is already derived from live structures.
+- A separate aura map texture: unnecessary; the overlay is small and only 108 circles.

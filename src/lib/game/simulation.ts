@@ -158,6 +158,8 @@ export class TerritorySimulation {
 	readonly owners: Uint16Array;
 	/** Attack id that most recently captured each cell; 0 for starting land. */
 	readonly claimedBy: Uint32Array;
+	/** Structure aura defense bonus per cell. Derived from live structures. */
+	private readonly auraDefense: Uint8Array;
 	readonly players: PlayerState[];
 
 	tick = 0;
@@ -209,6 +211,7 @@ export class TerritorySimulation {
 		this.landCount = this.map.landCount;
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
+		this.auraDefense = new Uint8Array(this.width * this.height);
 		this.integrity = new TerritoryIntegrity(this.width, this.height, PLAYER_COUNT);
 
 		if (this.landCount <= 0) throw new Error('Generated map has no land.');
@@ -233,6 +236,7 @@ export class TerritorySimulation {
 			const start = this.map.starts[i];
 			this.structures.create('state', i + 1, start.x, start.y, this.width);
 		}
+		this.rebuildAuraDefense();
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
@@ -382,6 +386,11 @@ export class TerritorySimulation {
 		return this.defenseAt(index);
 	}
 
+	getAuraDefense(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.auraDefense[y * this.width + x];
+	}
+
 	get totalLand(): number {
 		return this.landCount;
 	}
@@ -517,11 +526,42 @@ export class TerritorySimulation {
 		return found.slice(0, 96).map((entry) => entry.index);
 	}
 
+	private rebuildAuraDefense(): void {
+		this.auraDefense.fill(0);
+		const width = this.width;
+		const height = this.height;
+
+		for (const structure of this.structures.all) {
+			for (const effect of structure.effects) {
+				if (effect.kind !== 'defense-aura') continue;
+				const radius = Math.max(0, Math.floor(effect.radius));
+				const minX = Math.max(0, structure.x - radius);
+				const maxX = Math.min(width - 1, structure.x + radius);
+				const minY = Math.max(0, structure.y - radius);
+				const maxY = Math.min(height - 1, structure.y + radius);
+				const radiusSq = radius * radius;
+
+				for (let y = minY; y <= maxY; y++) {
+					const dy = y - structure.y;
+					for (let x = minX; x <= maxX; x++) {
+						const dx = x - structure.x;
+						if (dx * dx + dy * dy > radiusSq) continue;
+						const index = y * width + x;
+						if (effect.defense > this.auraDefense[index]) {
+							this.auraDefense[index] = Math.min(255, effect.defense);
+						}
+					}
+				}
+			}
+		}
+	}
+
 	private defenseAt(index: number): number {
 		return (
 			BASE_DEFENSE_OFFSET +
 			this.elevation[index] +
-			(this.owners[index] > 0 ? OCCUPIED_DEFENSE_BONUS : 0)
+			(this.owners[index] > 0 ? OCCUPIED_DEFENSE_BONUS : 0) +
+			this.auraDefense[index]
 		);
 	}
 
@@ -765,6 +805,7 @@ export class TerritorySimulation {
 
 		const structure = this.structures.destroyAt(index);
 		if (structure) {
+			this.rebuildAuraDefense();
 			const owner = this.players[structure.ownerId - 1];
 			this.pushEvent(
 				'structure',
@@ -1003,7 +1044,8 @@ export class TerritorySimulation {
 			type: structure.type,
 			ownerId: structure.ownerId,
 			x: structure.x,
-			y: structure.y
+			y: structure.y,
+			effects: structure.effects
 		};
 	}
 

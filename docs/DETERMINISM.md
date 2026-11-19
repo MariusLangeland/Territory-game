@@ -56,7 +56,8 @@ All authoritative quantities are integers:
 | Structure identity         | integer id, type enum, owner, map cell |
 | Attack seed distance       | squared integer distance               |
 | Attack budget              | 30 points per front per tick           |
-| Defense                    | `1 + elevation + occupied` (integers)  |
+| Defense                    | `1 + elevation + occupied + aura`      |
+| State aura                 | 12 px radius, +20, max once            |
 | Elevation tier             | uint8, 0–5                             |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
@@ -164,7 +165,9 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
-Capturing a structure cell destroys that registry entry inside `claim`, before later attacks and the integrity pass see the state. This is deterministic and part of the authoritative state.
+Structure effects are derived from the live registry. A State aura is stamped into a `Uint8Array` by iterating structures in registry order and taking the maximum defense. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds auras before later attacks see defense.
+
+This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -290,6 +293,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
+21. A live State structure adds 20 defense within 12 px (including its own cell); destroying it removes the aura.
 
 Commands to run:
 

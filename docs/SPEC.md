@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.6.1 (attack stress experiment)  
+**Version:** 0.7.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.6.1, map version 3, protocol draft 10
+**Last synchronized with:** application 0.7.0, map version 3, protocol draft 11
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -68,7 +68,7 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
 | WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
 | Circular / smooth / organic selectable growth layers      | ✅                       |
-| State structures anchoring protected territory            | ✅                       |
+| State structures anchoring territory and projecting auras | ✅                       |
 | Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
@@ -118,7 +118,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 10`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 11`.
 
 ### 4.2 Starting positions
 
@@ -192,7 +192,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - It attacks neutral neighbours whenever its sampled frontier has one, and only attacks a rival when no neutral option exists. This is a provisional stress-build policy, not final AI.
 - Bots use the same attack API and limits as the human.
 - Bots share one seeded PRNG, processed in ascending player-id order, so behavior is replayable.
-- With no economy, bots attack from the first decision tick and saturate the map quickly.
+- With no resource economy, bots attack from the first decision tick; terrain defense and capital auras slow, but do not stop, expansion.
 
 ### 4.9 Tick order
 
@@ -270,7 +270,8 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Each state starts with one State structure on its start cell.
 - The structure is part of the owning state's territory and can be captured by an attack.
 - Every land component connected to a live State structure is protected from annexation.
-- Capturing the structure destroys it immediately. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
+- A live State structure projects a **12 px defense aura** adding **+20 defense** to every land pixel in range. The structure cell itself is inside the aura. Overlapping auras do not stack; the strongest applies.
+- Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - If a component contains multiple structures (future structure types), it remains protected.
 - Structures are rendered as large owner-colored circles with a cream capital star on the map, and ringed dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
@@ -284,15 +285,17 @@ This is the first structure type; structure construction, multiple structure typ
 | Elevation tiers                  | 0 lowland, 1 plains, 2 hills, 3 highlands, 4 mountains, 5 peaks |
 | Base defense                     | `1 + elevation`                                                 |
 | Occupied bonus                   | `+1` when the pixel has a nonzero owner                         |
+| State aura                       | `+20` within 12 px; overlapping auras do not stack              |
 | Attack points per front per tick | 30                                                              |
 | Capture cost                     | Target pixel defense                                            |
-| Defense range                    | 1–6 unowned, 2–7 occupied                                       |
+| Defense range                    | 1–6 unowned, 2–7 occupied, up to 27 in a State aura             |
 
 - Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
 - Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
-- A front cannot spend more than 30 points per tick. Cheap neutral lowland can move 30 pixels per tick; defended peaks move 4.
-- The HUD hover readout exposes elevation tier, base defense, and total defense.
+- A front cannot spend more than 30 points per tick. Cheap neutral lowland can move 30 pixels per tick; defended peaks move 4, and aura-covered occupied high ground moves 1.
+- The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
+- State auras are rendered as faint owner-colored fields with dashed boundaries at tactical zoom.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -504,6 +507,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
+- [x] A live State structure adds 20 defense within 12 px; the bonus disappears when the structure is destroyed.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.
