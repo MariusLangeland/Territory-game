@@ -11,6 +11,14 @@ const MAX_DEVICE_PIXEL_RATIO = 2;
  * 4× more unchanged pixels per local front.
  */
 const UPLOAD_TILE_SIZE = 32;
+/**
+ * Above this many dirty tiles, hundreds of tiny texture writes cost more than
+ * a full-texture resync. The resync is split across frames so no single frame
+ * pays for the whole 8 MiB transfer.
+ */
+const FULL_UPLOAD_TILE_THRESHOLD = 96;
+const FULL_UPLOAD_CHUNKS = 8;
+const FULL_UPLOAD_CHUNKS_PER_FRAME = 2;
 
 export class WebGPUUnavailableError extends Error {
 	constructor(message: string) {
@@ -22,6 +30,8 @@ export class WebGPUUnavailableError extends Error {
 export interface RendererFrameStats {
 	fps: number;
 	uploadedPixels: number;
+	/** Number of queue.writeTexture calls in the last stats window. */
+	uploadCalls: number;
 	frames: number;
 }
 
@@ -34,7 +44,12 @@ export interface RendererFrameStats {
  */
 export class TerritoryRenderer {
 	readonly camera: MapCamera;
-	readonly stats: RendererFrameStats = { fps: 0, uploadedPixels: 0, frames: 0 };
+	readonly stats: RendererFrameStats = {
+		fps: 0,
+		uploadedPixels: 0,
+		uploadCalls: 0,
+		frames: 0
+	};
 	hover: { x: number; y: number } | null = null;
 	onDeviceLost?: (message: string) => void;
 
@@ -55,11 +70,15 @@ export class TerritoryRenderer {
 	private readonly dirtyRows: Uint8Array;
 
 	private tileGeneration = 0;
-	private fullUploadNeeded = false;
+	private dirtyTileCount = 0;
+	private fullUploadQueued = false;
+	private fullUploadInProgress = false;
+	private fullUploadRow = 0;
 	private lastFrameTime = performance.now();
 	private frameAccumulator = 0;
 	private frameCounter = 0;
 	private uploadedPixelsThisSecond = 0;
+	private uploadCallsThisSecond = 0;
 	private destroyed = false;
 
 	private constructor(
@@ -235,8 +254,7 @@ export class TerritoryRenderer {
 	applyChanges(changes: Uint32Array, count: number, overflow = false): void {
 		if (overflow) {
 			this.rebuildFromSimulation();
-			this.fullUploadNeeded = true;
-			this.uploadDirty();
+			this.queueFullUpload();
 			return;
 		}
 
@@ -246,6 +264,7 @@ export class TerritoryRenderer {
 
 		this.tileGeneration = (this.tileGeneration + 1) >>> 0 || 1;
 		this.dirtyRows.fill(0);
+		this.dirtyTileCount = 0;
 
 		for (let i = 0; i < count; i++) {
 			const packed = changes[i];
@@ -263,10 +282,20 @@ export class TerritoryRenderer {
 			if (this.tileMarks[tileIndex] !== this.tileGeneration) {
 				this.tileMarks[tileIndex] = this.tileGeneration;
 				this.dirtyRows[tileY] = 1;
+				this.dirtyTileCount++;
 			}
 		}
 
-		this.uploadDirty();
+		if (this.dirtyTileCount > FULL_UPLOAD_TILE_THRESHOLD) {
+			this.queueFullUpload();
+		} else if (!this.fullUploadQueued && !this.fullUploadInProgress) {
+			this.uploadDirty();
+		} else {
+			// A full-texture cycle is in flight. Its later chunks may already
+			// include part of this tick, but ensure another complete pass follows
+			// so no changed region is missed.
+			this.fullUploadQueued = true;
+		}
 	}
 
 	/** Full resync, for reconnects, GPU reset, or a dropped change batch. */
@@ -279,12 +308,12 @@ export class TerritoryRenderer {
 			this.controlPixels[offset + 2] = terrainShade[i];
 			this.controlPixels[offset + 3] = 255;
 		}
-		this.fullUploadNeeded = true;
 	}
 
 	render(now = performance.now()): void {
 		if (this.destroyed) return;
 		this.resize();
+		this.processPendingUploads();
 
 		const dpr = this.currentDpr();
 		const width = this.canvas.width;
@@ -329,10 +358,12 @@ export class TerritoryRenderer {
 		if (this.frameAccumulator >= 1000) {
 			this.stats.fps = Math.round((this.frameCounter * 1000) / this.frameAccumulator);
 			this.stats.uploadedPixels = this.uploadedPixelsThisSecond;
+			this.stats.uploadCalls = this.uploadCallsThisSecond;
 			this.stats.frames += this.frameCounter;
 			this.frameCounter = 0;
 			this.frameAccumulator = 0;
 			this.uploadedPixelsThisSecond = 0;
+			this.uploadCallsThisSecond = 0;
 		}
 	}
 
@@ -371,6 +402,7 @@ export class TerritoryRenderer {
 		}
 	}
 
+	/** Initial one-shot upload, before the first frame. */
 	private uploadFullTexture(): void {
 		const { width, height } = this.simulation;
 		this.device.queue.writeTexture(
@@ -379,21 +411,65 @@ export class TerritoryRenderer {
 			{ bytesPerRow: width * 4, rowsPerImage: height },
 			{ width, height }
 		);
-		this.fullUploadNeeded = false;
 		this.uploadedPixelsThisSecond += width * height;
+		this.uploadCallsThisSecond++;
+	}
+
+	private queueFullUpload(): void {
+		this.fullUploadQueued = true;
+	}
+
+	/**
+	 * Full-texture updates are split into horizontal chunks and spread across
+	 * frames. This keeps tick-boundary work off the input path during heavy
+	 * multi-front combat while the CPU shadow always holds the latest state.
+	 */
+	private processPendingUploads(): void {
+		if (!this.fullUploadInProgress) {
+			if (!this.fullUploadQueued) return;
+			this.fullUploadQueued = false;
+			this.fullUploadInProgress = true;
+			this.fullUploadRow = 0;
+		}
+
+		const { width, height } = this.simulation;
+		const chunkHeight = Math.ceil(height / FULL_UPLOAD_CHUNKS);
+		const bytesPerRow = width * 4;
+
+		for (let chunk = 0; chunk < FULL_UPLOAD_CHUNKS_PER_FRAME; chunk++) {
+			if (this.fullUploadRow >= height) break;
+			const y = this.fullUploadRow;
+			const h = Math.min(chunkHeight, height - y);
+
+			this.device.queue.writeTexture(
+				{ texture: this.mapTexture, origin: { x: 0, y } },
+				this.controlPixels,
+				{
+					offset: y * bytesPerRow,
+					bytesPerRow,
+					rowsPerImage: h
+				},
+				{ width, height: h }
+			);
+
+			this.uploadedPixelsThisSecond += width * h;
+			this.uploadCallsThisSecond++;
+			this.fullUploadRow += h;
+		}
+
+		if (this.fullUploadRow >= height) {
+			this.fullUploadInProgress = false;
+			// Changes arriving during the cycle schedule one more pass.
+			if (!this.fullUploadQueued) this.fullUploadRow = 0;
+		}
 	}
 
 	/**
 	 * Changes from one tick are collected into 32×32 upload tiles. Adjacent
 	 * dirty tiles on the same row become a single strip upload. This keeps
-	 * hundreds of dispersed attack fronts from inflating a global rectangle.
+	 * dispersed attack fronts from inflating a global rectangle.
 	 */
 	private uploadDirty(): void {
-		if (this.fullUploadNeeded) {
-			this.uploadFullTexture();
-			return;
-		}
-
 		const width = this.simulation.width;
 		const height = this.simulation.height;
 		const bytesPerRow = width * 4;
@@ -430,6 +506,7 @@ export class TerritoryRenderer {
 				);
 
 				this.uploadedPixelsThisSecond += w * h;
+				this.uploadCallsThisSecond++;
 				tileX = runEnd - 1;
 			}
 		}

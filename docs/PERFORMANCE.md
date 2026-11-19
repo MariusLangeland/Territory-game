@@ -10,17 +10,18 @@ All numbers are from the development machine unless stated otherwise. They are d
 
 ## 1. Targets
 
-| Area                                          | Target                               | Hard fail          |
-| --------------------------------------------- | ------------------------------------ | ------------------ |
-| Simulation tick, 108 states under attack load | < 2 ms p95                           | > 8 ms p95         |
-| Time to interactive                           | < 1.5 s after assets on desktop      | > 3 s              |
-| Map generation + 108 starts                   | < 500 ms                             | > 1 s              |
-| Render loop                                   | 60 fps at 1600 × 1000 integrated GPU | < 45 fps           |
-| Full-frame GPU time                           | < 4 ms at 1440p mid-range            | > 8 ms             |
-| Per-tick map upload                           | < 1M pixels under 108-state stress   | full 2.1M per tick |
-| Checksum                                      | < 20 ms on demand                    | run per tick       |
-| Browser JS/GPU memory                         | < 300 MiB for stress build           | > 500 MiB          |
-| Click-to-visible update                       | ≤ 2 ticks                            | > 4 ticks          |
+| Area                                          | Target                                  | Hard fail                     |
+| --------------------------------------------- | --------------------------------------- | ----------------------------- |
+| Simulation tick, 108 states under attack load | < 2 ms p95                              | > 8 ms p95                    |
+| Time to interactive                           | < 1.5 s after assets on desktop         | > 3 s                         |
+| Map generation + 108 starts                   | < 500 ms                                | > 1 s                         |
+| Render loop                                   | 60 fps at 1600 × 1000 integrated GPU    | < 45 fps                      |
+| Full-frame GPU time                           | < 4 ms at 1440p mid-range               | > 8 ms                        |
+| Tick-boundary upload work                     | < 2 ms main-thread; full resync chunked | one synchronous full-map call |
+| Panning under 200+ fronts                     | no frame >10 ms above the rAF baseline  | periodic 10 Hz hitches        |
+| Checksum                                      | < 20 ms on demand                       | run per tick                  |
+| Browser JS/GPU memory                         | < 300 MiB for stress build              | > 500 MiB                     |
+| Click-to-visible update                       | ≤ 2 ticks                               | > 4 ticks                     |
 
 The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.4% under stress; rendering and GPU uploads are the limiting factors.
 
@@ -53,15 +54,18 @@ At 10 Hz, 1.3–1.4 ms per tick is roughly **1.3–1.4% of a 100 ms tick budget*
 
 Measured in headless Chrome with hardware acceleration, 1600 × 1000, devicePixelRatio 1, seed `1234`:
 
-| Metric                                   | Result                                           |
-| ---------------------------------------- | ------------------------------------------------ |
-| HUD perf readout under full stress       | 126–132 fps                                      |
-| Map uploads during 108-state combat      | ~2.2–4.7M pixels/s (~220K–470K/tick)             |
-| Leaderboard                              | 108 rows, scrollable; all states active at start |
-| Failed WebGPU initialization             | 0 in supported test browser                      |
-| Console/page errors during sustained run | 0                                                |
+| Metric                                   | Result                                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| Panning at 144 fps under ~209 fronts     | median 6.9 ms, p99 7.1 ms, max 7.2 ms, **0 frames >10 ms**             |
+| Map uploads under full stress            | ~21M pixels/s, ~80 writeTexture calls/s (adaptive chunked full resync) |
+| HUD snapshots                            | 5 Hz (territory still renders at 10 Hz)                                |
+| Leaderboard                              | 108 logical rows; only ~19 visible DOM rows are mounted (virtualized)  |
+| Failed WebGPU initialization             | 0 in supported test browser                                            |
+| Console/page errors during sustained run | 0                                                                      |
 
-The upload number depends on how many fronts are active and how dispersed their captured pixels are. This is the worst case for the current renderer, not a normal-play target.
+The upload strategy intentionally trades bandwidth for input smoothness under extreme load: once dirty tiles exceed 96, the renderer schedules a full-texture resync split into 8 horizontal chunks, at most 2 chunks per frame. Uploading one contiguous 8 MiB texture is far cheaper for the main thread than hundreds of tiny texture writes. At lower action, the normal 32 × 32 dirty-tile path is used.
+
+The leaderboard virtualization is just as important: updating 108 Svelte rows at 5 Hz produced ~14 ms tick-boundary frames; mounting only the visible slice removed those. The HUD clock/values update at 5 Hz while map rendering remains per-tick.
 
 ### 2.3 What these numbers do not cover
 
@@ -114,17 +118,25 @@ Potential hot spots if attack density rises:
 ### Rendering
 
 - One full-screen fragment shader with ~5 texture samples.
-- CPU updates proportional to changed pixels.
-- GPU uploads proportional to dirty 32 × 32 tiles, not map size.
-- Continuous rAF for ocean animation and camera smoothness.
+- CPU control-texture writes proportional to changed pixels.
+- Normal uploads use 32 × 32 dirty tiles merged into strips.
+- Dense, dispersed updates switch to a chunked full-texture resync (8 chunks, max 2 per frame).
+- Continuous rAF for ocean animation and smooth camera input.
 - Minimap sampling is throttled and independent.
-- 108 leaderboard rows update at 10 Hz.
+- HUD snapshots update at 5 Hz; the leaderboard mounts only the visible window.
 
-### GPU uploads
+### GPU uploads / input latency
 
-The stress build changes thousands of pixels per tick across hundreds of local fronts. Marking 32 × 32 tiles and merging horizontal runs keeps uploads local. The observed full-stress rate ranges from ~2.2M pixels/s at 157 active fronts to ~4.7M pixels/s near saturation.
+The stress build changes thousands of pixels per tick across hundreds of local fronts. The first tile-only uploader produced ~2,169 `writeTexture` calls/s and ~28 ms max panning frames. A single full upload reduced calls to ~10/s but still produced 12–14 ms tick-boundary stalls. The final strategy splits a full upload across frames:
 
-An earlier naive implementation used a single dirty rectangle for all attackers and uploaded ~21M pixels/s because attacks were spread across continents. Tile strips fixed that. Replacing per-attack Set bookkeeping with packed queues also cut memory drastically.
+1. Collect tick changes into the CPU shadow.
+2. If >96 dirty tiles, queue a full-texture resync.
+3. Upload at most two horizontal chunks (1 MiB each) per rendered frame.
+4. Keep drawing frames while chunks arrive; visuals catch up within a few frames.
+
+Combined with HUD throttling and leaderboard virtualization, this yielded 144 fps panning with zero frames over 10 ms under ~209 fronts. The cost is higher upload bandwidth (~21M pixels/s) during saturation. That trade is intentional because input smoothness is the requirement.
+
+Replacing per-attack Set bookkeeping with packed queues also cut memory drastically.
 
 ---
 
@@ -141,7 +153,7 @@ An earlier naive implementation used a single dirty rectangle for all attackers 
 | Canvas backing buffer                   | width × height × 4, capped by DPR 2 |
 | Frontier sets (108 states)              | map-dependent                       |
 | Attack queues                           | ~4 bytes per live queue entry       |
-| Svelte DOM/HUD                          | 108 leaderboard rows, small         |
+| Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
 | Node benchmark RSS (two worlds)         | ~198–228 MiB                        |
 
 Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed queues and ownership-based dedup brought that down to ~198–228 MiB depending on the run. Browser memory should be measured separately before shipping.
@@ -182,7 +194,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 1. **Do not add per-cell object allocation.** Use typed arrays/flat numeric arrays.
 2. **Do not iterate the full 2M-cell map per tick.**
 3. **Do not create a new GPU texture per update.**
-4. **Do not upload a global bounding rectangle for distributed changes.**
+4. **Do not synchronously upload the full map on the input path.** If dense changes need a resync, chunk it across frames.
 5. **Do not add per-attack Sets if typed queues can avoid them.**
 6. **Do not perform a checksum every tick.**
 7. **Do not add `Math.random` or frame-dependent simulation logic.**
@@ -190,6 +202,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 9. **Keep rendering and simulation decoupled.**
 10. **Do not mistake this stress baseline for the shipping performance target.**
 11. **Measure the browser, not only Node.** Upload/GPU cost dominates here.
+12. **Keep leaderboard DOM small.** Virtualize long lists; do not mount all 108 rows if only ~19 are visible.
 
 ---
 
@@ -235,12 +248,13 @@ Before merging a performance-sensitive change:
 - [ ] `pnpm check` passes.
 - [ ] `pnpm test` passes.
 - [ ] `pnpm bench` recorded; no unexplained regression.
-- [ ] Browser perf readout shows local tile uploads, not a full texture per tick.
+- [ ] Browser perf readout shows modest write-call rates; dense full-resync chunks are spread across frames.
 - [ ] At 1600 × 1000, gameplay is smooth while panning/zooming under attack load.
 - [ ] Pausing does not leave a busy simulation loop.
 - [ ] Memory does not grow per tick (queues, marks, frontier sets).
 - [ ] 108 leaderboard rows remain usable.
 - [ ] The build still clearly identifies itself as an attack experiment.
+- [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
 
 ---
 

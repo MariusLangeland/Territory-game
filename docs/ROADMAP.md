@@ -47,7 +47,7 @@ Work completed:
 - Implemented spaced start placement for every state, with fallback.
 - Replaced per-attack Sets/arrays with packed `Uint32Array` queues and ownership-based dedup.
 - Reduced dirty tiles to 32 × 32 for dispersed fronts.
-- Made the leaderboard scrollable for 108 rows.
+- Made the leaderboard virtualized and scrollable for 108 logical states.
 - Added attack stress tests, an all-bot benchmark, and honest experiment documentation.
 
 Acceptance criteria:
@@ -56,7 +56,7 @@ Acceptance criteria:
 - [x] Deterministic with all bots attacking.
 - [x] No ownership/border invariant failures under sustained load.
 - [x] Browser stays interactive under sustained attack load.
-- [x] No per-tick full-map upload.
+- [x] No synchronous per-frame full-map upload; dense resyncs are chunked across frames.
 - [ ] Final attack semantics approved.
 - [ ] Stress-only UI/guards removed or promoted to real rules.
 

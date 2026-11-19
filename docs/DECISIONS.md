@@ -130,15 +130,16 @@ A single dirty bounding box across bot attacks spanning different continents upl
 
 ### Decision
 
-Divide the control texture into 32 × 32 tiles. Mark dirty tiles with a generation-stamped buffer, merge adjacent dirty tiles into horizontal strips, and upload each strip. Keep full uploads for initialization and resync only.
+Divide the control texture into 32 × 32 tiles. Mark dirty tiles with a generation-stamped buffer, merge adjacent dirty tiles into horizontal strips, and upload each strip. When dirty tiles exceed a threshold, switch to a full-texture resync split across frames, because hundreds of tiny writes stall the input path.
 
 ### Consequences
 
-- Under the 108-state attack stress test, uploads range from ~2.2–4.7M pixels/s with active-front count while rendering stays ~126–132 fps in the test browser.
-- More `writeTexture` calls than one rectangle, but far fewer pixels.
+- Under ~209 fronts, tile-only uploads produced ~2,169 `writeTexture` calls/s and panning frames up to ~28 ms.
+- Above a 96-dirty-tile threshold, the renderer now queues an adaptive full-texture resync in eight horizontal chunks, max two chunks per frame. Upload traffic rises to ~21M pixels/s and ~80 calls/s, but panning reached 144 fps with zero frames >10 ms in the verification run.
+- HUD snapshots are throttled to 5 Hz and the 108-row leaderboard is virtualized; otherwise DOM updates still produced ~14 ms tick-boundary frames.
 - Tile bookkeeping memory is negligible (2,048 marks + 32 row flags).
 - Tile size is a tuning knob; 32 favors precision for dispersed fronts. Larger tiles reduce API calls for compact normal-play changes.
-- Renderer needs a full-resync path for overflow/device issues.
+- Renderer needs a chunked full-resync path for dense changes, overflow, and device recovery.
 
 ### Alternatives considered
 
@@ -250,7 +251,7 @@ Temporarily remove all economy and resource gating, add 100 AI states (108 total
 
 - The attack flood-fill and renderer are exercised far beyond normal intended load.
 - AI states saturate the map quickly; balance and match pacing are not meaningful in this build.
-- The UI must handle 108 leaderboard rows and generated colors/names.
+- The UI must handle 108 logical leaderboard states (virtualized to the visible window) and generated colors/names.
 - Attack limits are a technical safety valve, not a design rule.
 - The economy must be redesigned/restored after the final attack model is chosen.
 - Do not build progression or balance on this build.

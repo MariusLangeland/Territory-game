@@ -15,7 +15,7 @@ Orientation for coding agents working on Territory. Read this before changing si
 ## Current status
 
 - **Active experiment EXP-001:** 108 states (1 human + 107 AI), free resource-free attacks, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. This is not the final combat model.
-- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, WebGPU rendering, scrollable 108-state HUD, tests, benchmark.
+- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
 - Not implemented: final attack design, economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.
 
@@ -39,7 +39,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 2. **Fixed tick:** gameplay changes happen inside `step()` at 10 Hz. Input callbacks only validate/queue.
 3. **Integer outcomes:** new gameplay quantities must be integer/deterministic. If float distance or trigonometry is unavoidable, justify it and version it.
 4. **Stable ordering:** commands, attacks, RNG draws, and collection iteration that affect outcomes must have explicitly defined order.
-5. **No full-map uploads per tick:** use the dirty-tile path. A full upload is only for init/resync/overflow.
+5. **Protect input latency:** use the dirty-tile path for normal updates. Heavy/dispersed updates may switch to adaptive full-texture resync, but it must be chunked across frames; never block a single frame with a full-map upload. Keep HUD snapshots throttled and the leaderboard virtualized.
 6. **Renderer never mutates simulation state.**
 7. **Version intentional changes:** map generation → `MAP_VERSION`; wire changes → `NET_PROTOCOL_VERSION`; simulation changes → determinism review + tests.
 8. **Do not claim online support.** It is a documented target, not current behavior.
@@ -65,7 +65,7 @@ For any meaningful change:
 - `pnpm test` passes.
 - `pnpm build` passes for user-facing changes.
 - New gameplay behavior has a determinism or invariant test.
-- Renderer changes were checked in a WebGPU browser (no error overlay, no full-map upload regression).
+- Renderer changes were checked in a WebGPU browser (no error overlay, no synchronous full-map upload regression).
 - Docs updated if rules, architecture, protocol, or performance changed.
 - No generated output (`.svelte-kit/`, `build/`, `node_modules/`) edited directly.
 
@@ -76,11 +76,12 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 1. Start `pnpm dev`.
 2. Open a seeded URL such as `/?seed=1234` in current Chrome/Edge.
 3. Confirm the intro appears, WebGPU error modal is absent, and DEPLOY is enabled.
-4. Deploy, confirm 108 leaderboard rows and the active-front count.
+4. Deploy, confirm the 108-state virtualized leaderboard and active-front count; scroll it to the last rank.
 5. Click a frontier, confirm a success toast and territory growth.
 6. Pause with Space and confirm the tick freezes.
-7. Check the HUD perf readout: uploads should be local, not a full-map-per-tick value.
-8. Test a narrow viewport.
+7. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+8. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
+9. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

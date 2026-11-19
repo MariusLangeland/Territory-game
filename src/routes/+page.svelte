@@ -42,11 +42,22 @@
 	let defeatHandled = $state(false);
 	let hover = $state<HoverState | null>(null);
 	let cameraView = $state<CameraView | null>(null);
-	let perf = $state<RendererFrameStats>({ fps: 0, uploadedPixels: 0, frames: 0 });
+	let perf = $state<RendererFrameStats>({
+		fps: 0,
+		uploadedPixels: 0,
+		uploadCalls: 0,
+		frames: 0
+	});
 	let eventFeed = $state<SimEvent[]>([]);
 	let toast = $state<Toast | null>(null);
 	let currentSeed = $state(0);
 	let seedInput = $state('');
+	let rankScrollEl = $state<HTMLDivElement | null>(null);
+	let rankScrollTop = $state(0);
+	let rankViewportHeight = $state(360);
+
+	const RANK_ROW_HEIGHT = 28;
+	const RANK_OVERSCAN = 3;
 
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	let worldTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,6 +81,15 @@
 			: []
 	);
 	let humanRank = $derived(human ? ranked.findIndex((p) => p.id === human.id) + 1 : 0);
+	let rankWindow = $derived.by(() => {
+		const start = Math.max(0, Math.floor(rankScrollTop / RANK_ROW_HEIGHT) - RANK_OVERSCAN);
+		const visibleRows = Math.ceil(rankViewportHeight / RANK_ROW_HEIGHT) + RANK_OVERSCAN * 2;
+		return {
+			start,
+			end: Math.min(ranked.length, start + visibleRows)
+		};
+	});
+	let visibleRanked = $derived(ranked.slice(rankWindow.start, rankWindow.end));
 	let aliveCount = $derived(snapshot ? snapshot.players.filter((p) => p.alive).length : 0);
 	let worldClaim = $derived(
 		snapshot && snapshot.landCount > 0 ? (snapshot.claimedLand / snapshot.landCount) * 100 : 0
@@ -174,6 +194,7 @@
 		paused = true;
 		hover = null;
 		cameraView = null;
+		rankScrollTop = 0;
 		eventFeed = [];
 		toast = null;
 		currentSeed = seed >>> 0;
@@ -295,6 +316,22 @@
 	function navigateFromMinimap(x: number, y: number): void {
 		cameraBridge.centerOn(x, y, Math.max(2.2, cameraView?.zoom ?? 2.2));
 	}
+
+	function handleRankScroll(event: Event): void {
+		rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
+	}
+
+	$effect(() => {
+		const element = rankScrollEl;
+		if (!element) return;
+
+		rankViewportHeight = element.clientHeight;
+		const observer = new ResizeObserver(() => {
+			rankViewportHeight = element.clientHeight;
+		});
+		observer.observe(element);
+		return () => observer.disconnect();
+	});
 
 	function spectate(): void {
 		defeatOpen = false;
@@ -475,15 +512,24 @@
 					</div>
 				</div>
 
-				<div class="rank-scroll">
+				<div class="rank-scroll" bind:this={rankScrollEl} onscroll={handleRankScroll}>
+					{#if rankWindow.start > 0}
+						<div
+							class="rank-spacer"
+							style={`height:${rankWindow.start * RANK_ROW_HEIGHT}px`}
+							aria-hidden="true"
+						></div>
+					{/if}
 					<ol class="rank-list">
-						{#each ranked as player, index (player.id)}
+						{#each visibleRanked as player, index (player.id)}
 							<li
 								class:is-human={player.id === human.id}
 								class:is-dead={!player.alive}
 								style={`--player-color:${colorForPlayer(player.id).hex};--share:${Math.min(100, player.landShare * 100)}%`}
 							>
-								<span class="rank-index">{String(index + 1).padStart(3, '0')}</span>
+								<span class="rank-index">
+									{String(rankWindow.start + index + 1).padStart(3, '0')}
+								</span>
 								<span class="rank-swatch" aria-hidden="true"></span>
 								<span class="rank-name">
 									{player.name}
@@ -495,6 +541,13 @@
 							</li>
 						{/each}
 					</ol>
+					{#if rankWindow.end < ranked.length}
+						<div
+							class="rank-spacer"
+							style={`height:${(ranked.length - rankWindow.end) * RANK_ROW_HEIGHT}px`}
+							aria-hidden="true"
+						></div>
+					{/if}
 				</div>
 
 				<div class="panel-foot">
@@ -575,6 +628,7 @@
 			<div class="perf-readout">
 				<span>{perf.fps} FPS</span>
 				<span>{formatCompact(perf.uploadedPixels)} PX/S</span>
+				<span>{perf.uploadCalls} CALLS/S</span>
 			</div>
 		</div>
 
@@ -1302,7 +1356,7 @@
 
 	.rank-list {
 		margin: 0;
-		padding: 5px 0;
+		padding: 0;
 		list-style: none;
 	}
 

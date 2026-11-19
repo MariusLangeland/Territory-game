@@ -13,7 +13,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 │ Svelte route: src/routes/+page.svelte                                │
 │  - screen state, HUD values, overlays, toasts, seed flow             │
 │  - calls camera bridge and simulation.enqueueAttack                  │
-│  - receives snapshots 10×/second                                     │
+│  - receives HUD snapshots at 5 Hz; territory renders at 10 Hz        │
 └───────────────▲───────────────────────────────┬──────────────────────┘
                 │ GameSnapshot                   │ props / callbacks
                 │                                ▼
@@ -39,22 +39,22 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 
 ## 2. Module map
 
-| Module                                      | Layer     | Responsibility                                                           | Key exports                  |
-| ------------------------------------------- | --------- | ------------------------------------------------------------------------ | ---------------------------- |
-| `src/routes/+page.svelte`                   | UI        | Layout, HUD, intro/result/help/error overlays, input commands, seed flow | Svelte component             |
-| `src/routes/+page.ts`                       | UI        | Disables SSR; the game is browser-only                                   | `ssr = false`                |
-| `src/lib/components/GameCanvas.svelte`      | Driver    | Canvas lifecycle, fixed timestep, pointer handling, camera bridge        | Svelte component             |
-| `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                   | Svelte component             |
-| `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                              | constants, helpers           |
-| `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                            | `DeterministicRng`           |
-| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                             | `generateMap`, `hash32`      |
-| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                    | `TerritorySimulation`, types |
-| `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                               | message types, guard         |
-| `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                   | `MapCamera`                  |
-| `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                      | `GameCameraBridge`           |
-| `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                        | `TERRITORY_SHADER`           |
-| `src/lib/game/render/territory-renderer.ts` | Render    | WebGPU device, textures, pipeline, dirty uploads, frame submission       | `TerritoryRenderer`          |
-| `scripts/benchmark.ts`                      | Tooling   | Map/tick/checksum benchmark                                              | CLI                          |
+| Module                                      | Layer     | Responsibility                                                                | Key exports                  |
+| ------------------------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------- |
+| `src/routes/+page.svelte`                   | UI        | Layout, HUD, intro/result/help/error overlays, input commands, seed flow      | Svelte component             |
+| `src/routes/+page.ts`                       | UI        | Disables SSR; the game is browser-only                                        | `ssr = false`                |
+| `src/lib/components/GameCanvas.svelte`      | Driver    | Canvas lifecycle, fixed timestep, pointer handling, camera bridge             | Svelte component             |
+| `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                        | Svelte component             |
+| `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                                   | constants, helpers           |
+| `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                                 | `DeterministicRng`           |
+| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                                  | `generateMap`, `hash32`      |
+| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                         | `TerritorySimulation`, types |
+| `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                    | message types, guard         |
+| `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                        | `MapCamera`                  |
+| `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                           | `GameCameraBridge`           |
+| `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                             | `TERRITORY_SHADER`           |
+| `src/lib/game/render/territory-renderer.ts` | Render    | WebGPU device, textures, pipeline, adaptive chunked uploads, frame submission | `TerritoryRenderer`          |
+| `scripts/benchmark.ts`                      | Tooling   | Map/tick/checksum benchmark                                                   | CLI                          |
 
 ---
 
@@ -232,13 +232,16 @@ The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indic
 After a tick:
 
 1. For each changed pixel, update the control shadow and mark its 32 × 32 tile dirty using a generation-stamped `Uint32Array`.
-2. Clear a small per-tile-row dirty flag array.
-3. For each dirty tile row, scan for contiguous dirty tiles and upload one horizontal strip via `queue.writeTexture`.
-4. Add the uploaded pixel count to the perf readout.
+2. Clear a small per-tile-row dirty flag array and count unique dirty tiles.
+3. If the dirty tile count is ≤ 96, merge contiguous dirty tiles per row and upload strips immediately.
+4. If > 96 tiles are dirty, queue an adaptive full-texture resync instead.
+5. During `render()`, advance at most two 1 MiB horizontal chunks of that resync per frame.
+6. If more ticks arrive during a resync, schedule another pass; the CPU shadow always holds the latest state.
+7. Add uploaded pixels and `writeTexture` calls to the perf readout.
 
-Why tiles instead of a single dirty rectangle: hundreds of attack fronts change scattered pixels across the whole map. A single bounding box degenerates to uploading nearly the full 8 MiB texture every tick. Tile strips keep uploads proportional to local fronts. In the 108-state stress run the observed upload rate is ~2.2–4.7M pixels/s with ~126–132 fps rendering.
+Why not only one dirty rectangle: hundreds of attack fronts change scattered pixels across the whole map, so a single bounding box degenerates to a full texture upload every tick. Why not only fine tiles: at ~200 fronts, tile uploads generated ~2,169 texture writes/second and produced ~28 ms panning frames. The adaptive strategy keeps normal updates cheap and spreads dense resyncs across frames. Combined with 5 Hz HUD snapshots and a virtualized leaderboard, panning under ~209 fronts measured 144 fps with zero frames over 10 ms.
 
-The full texture is uploaded only on initial load, overflow resync, or GPU reset.
+The initial full texture upload happens once before the first frame.
 
 ### 5.4 Frame loop
 
@@ -246,7 +249,7 @@ The full texture is uploaded only on initial load, overflow resync, or GPU reset
 
 - fixed simulation steps from an accumulator (max 4 per frame, 250 ms catch-up cap);
 - consume change batches immediately;
-- send snapshots to Svelte;
+- send HUD snapshots to Svelte at 5 Hz (or immediately on elimination/victory);
 - render every frame with animated ocean and camera updates;
 - report camera view to the bridge every ~140 ms;
 - report renderer stats once per second.
@@ -297,7 +300,8 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 
 ### Reactivity boundary
 
-- Svelte state receives immutable snapshots after each tick.
+- Svelte state receives immutable snapshots at a throttled 5 Hz; the actual map updates at 10 Hz.
+- The leaderboard is virtualized to the visible row window (~19 rows), so 108 logical states do not become 108 live DOM rows.
 - The simulation object is not deeply reactive.
 - The renderer mutates its own control texture/GPU resources outside Svelte reactivity.
 - This avoids proxy overhead on multi-megabyte typed arrays.
@@ -306,19 +310,19 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 
 ## 7. Memory sketch
 
-| Item                                  | Approx. size                         |
-| ------------------------------------- | ------------------------------------ |
-| Owners (`Uint16Array`)                | 4 MiB                                |
-| Land (`Uint8Array`)                   | 2 MiB                                |
-| Shade (`Uint8Array`)                  | 2 MiB                                |
-| Renderer control shadow               | 8 MiB                                |
-| GPU map texture                       | 8 MiB                                |
-| Palette texture                       | 1 KiB                                |
-| Elevation scratch during map gen      | 4 MiB + histogram (transient)        |
-| Start candidate land indices          | not retained; temp during generation |
-| Frontier sets (108 states)            | map-dependent                        |
-| Attack queues (packed `Uint32Array`)  | ~4 bytes per live queue entry        |
-| Svelte DOM/HUD (108 leaderboard rows) | small                                |
+| Item                                     | Approx. size                         |
+| ---------------------------------------- | ------------------------------------ |
+| Owners (`Uint16Array`)                   | 4 MiB                                |
+| Land (`Uint8Array`)                      | 2 MiB                                |
+| Shade (`Uint8Array`)                     | 2 MiB                                |
+| Renderer control shadow                  | 8 MiB                                |
+| GPU map texture                          | 8 MiB                                |
+| Palette texture                          | 1 KiB                                |
+| Elevation scratch during map gen         | 4 MiB + histogram (transient)        |
+| Start candidate land indices             | not retained; temp during generation |
+| Frontier sets (108 states)               | map-dependent                        |
+| Attack queues (packed `Uint32Array`)     | ~4 bytes per live queue entry        |
+| Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
 The measured Node RSS for two stress simulations plus benchmark tooling is ~198–228 MiB. That includes the Node runtime and two worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for the same benchmark; packed queues and ownership-based duplicate handling removed most of that overhead.
 
@@ -386,5 +390,5 @@ The current constructor rejects non-standard dimensions. Supporting more maps re
 - The minimap samples independently and can lag the main renderer slightly.
 - Bot behavior is intentionally simple: no strategic target selection, no coordinated attacks, no defense logic.
 - The 108-state free-attack mode is an experiment. Economy and final attack semantics are intentionally absent.
-- The leaderboard puts 108 rows in a scroll container; it is not virtualized.
-- Upload volume in a fully active 108-state map is significantly above normal-play levels.
+- The virtualized leaderboard mounts only the visible window plus overscan; rank numbers remain absolute.
+- Upload volume in a fully active 108-state map is intentionally higher in exchange for smooth input under saturation.

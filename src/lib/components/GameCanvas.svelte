@@ -54,6 +54,7 @@
 		let lastPerfReport = 0;
 		let lastHoverKey = '';
 		let lastHoverAt = 0;
+		let lastUiUpdate = 0;
 
 		function frame(now: number): void {
 			if (disposed || !renderer) return;
@@ -65,14 +66,29 @@
 			} else {
 				accumulator += delta;
 				let steps = 0;
+				let latestSnapshot: GameSnapshot | null = null;
+				const pendingEvents: SimEvent[] = [];
+
 				while (accumulator >= TICK_MS && steps < 4 && !simulation.ended) {
 					const result = simulation.step();
 					renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow);
-					onTick?.(result.snapshot, result.events);
+					latestSnapshot = result.snapshot;
+					pendingEvents.push(...result.events);
 					accumulator -= TICK_MS;
 					steps++;
 				}
 				if (steps >= 4) accumulator = 0;
+
+				// Territory rendering updates every tick, but rebuilding 108 HUD
+				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
+				// to Svelte at 5 Hz, or immediately on elimination/victory events.
+				if (
+					latestSnapshot &&
+					(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
+				) {
+					lastUiUpdate = now;
+					onTick?.(latestSnapshot, pendingEvents);
+				}
 			}
 
 			renderer.render(now);

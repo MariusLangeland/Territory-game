@@ -18,7 +18,7 @@ The renderer is WebGPU-only and designed around one large raster map with small,
 
 ```text
 CPU control shadow (RGBA8, 2048 × 1024)
-        │ dirty tiles, 32 × 32
+        │ 32 × 32 dirty tiles / adaptive full resync chunks
         ▼
 queue.writeTexture (partial updates)
         │
@@ -66,23 +66,28 @@ The palette texture is 256 × 1. Unused indices remain black. The shader looks u
 
 ---
 
-## 4. Dirty-tile uploads
+## 4. Adaptive texture uploads
 
 ### The problem
 
-A naive dirty rectangle is wrong for this game. With 108 states attacking simultaneously, the union of all changed pixels becomes almost the whole map, and the renderer would upload ~2.1M pixels per tick (21M px/s at 10 Hz).
+A single dirty rectangle is wrong for this game. With 108 states attacking simultaneously, the union of all changed pixels becomes almost the whole map, and the renderer would upload ~2.1M pixels per tick (21M px/s at 10 Hz).
 
-### The solution
+A pure 32 × 32 tile strategy fixes the upload volume, but not the input latency: ~200 dispersed fronts produced **~2,169 `writeTexture` calls/s**, and panning stuttered with frames up to ~28 ms.
+
+A single full-texture upload per tick reduced calls to ~10/s but occasionally stalled a frame for 12–14 ms. One big synchronous `writeTexture` is still work on the input path.
+
+### The solution: tiles for light updates, chunked resync for dense updates
 
 - Divide the map into 32 × 32 tiles (`64 × 32 = 2,048` tiles).
 - Use a generation-stamped `Uint32Array` to mark dirty tiles cheaply.
-- Track dirty tile rows in a small `Uint8Array`.
-- After each tick, scan each dirty row and merge contiguous dirty tiles into one horizontal strip.
-- Upload each strip from the CPU shadow using its full row stride and an offset.
+- Track dirty tile rows and a dirty tile count.
+- If ≤ 96 tiles are dirty, merge contiguous dirty tiles per row into strips and upload them immediately.
+- If > 96 tiles are dirty, queue a **full-texture resync** and upload it in eight horizontal chunks, at most two chunks per rendered frame.
+- While a resync is in progress, incoming ticks continue updating the CPU shadow; the current cycle uses the latest data, and another cycle is scheduled if further changes arrived.
 
-Smaller 32 × 32 tiles reduce wasted upload area when hundreds of fronts change isolated pixels. Adjacent tiles still merge into strips, so call count stays manageable. Observed under the 108-state stress run: **~2.2–4.7M pixels/s** depending on active fronts (~220K–470K/tick) at ~126–132 fps. A lower-load match with fewer active fronts was far below that; this experiment is deliberately harsher.
+This means no single frame has to copy the entire 8 MiB texture. The visual map may trail the CPU state by a few frames during extreme action, which is imperceptible for territory changes but keeps panning stable.
 
-### Upload call
+### Light upload call
 
 ```ts
 device.queue.writeTexture(
@@ -95,15 +100,12 @@ device.queue.writeTexture(
 
 A tile is uploaded in full even if only one pixel inside it changed. At 32 × 32, this is cheaper than many per-pixel uploads and much cheaper than a global rectangle. The tile size is a tuning knob: smaller means less overdraw, larger means fewer API calls.
 
-### Full uploads
+### Results
 
-Allowed only:
-
-- initial renderer creation,
-- full renderer resync after a change-buffer overflow,
-- future GPU/device recovery.
-
-Never per normal tick.
+- Frame pacing while panning under ~209 fronts: **144 fps**, p99 **7.1 ms**, max **7.2 ms**, zero frames >10 ms.
+- Upload traffic: **~21M pixels/s**, **~80 calls/s** during saturation.
+- HUD snapshots are limited to 5 Hz; the leaderboard is virtualized so only ~19 rows live in the DOM. Without those two changes, 5 Hz HUD updates still produced ~14 ms frames.
+- Initial creation still performs one direct full upload before the first frame.
 
 ---
 
@@ -214,30 +216,31 @@ Ocean shimmer and pointer-driven zoom/pan need smooth frames. A full-screen frag
 
 ### Baseline measured in headless Chrome
 
-| Measurement                        | Value                                             |
-| ---------------------------------- | ------------------------------------------------- |
-| Render loop                        | 126–132 fps under 108-state stress at 1600 × 1000 |
-| Map uploads under 108-state stress | ~2.2–4.7M pixels/s                                |
-| Initial upload                     | 2.1M pixels (8 MiB)                               |
-| Draw calls                         | 1                                                 |
-| Control texture                    | 8 MiB CPU + 8 MiB GPU                             |
-| Compute per fragment               | 5 texture samples + arithmetic                    |
+| Measurement                 | Value                                        |
+| --------------------------- | -------------------------------------------- |
+| Panning under ~209 fronts   | 144 fps; p99 7.1 ms; zero frames >10 ms      |
+| Upload traffic under stress | ~21M pixels/s, ~80 calls/s (adaptive resync) |
+| Initial upload              | 2.1M pixels (8 MiB), before first frame      |
+| Draw calls                  | 1                                            |
+| Control texture             | 8 MiB CPU + 8 MiB GPU                        |
+| Compute per fragment        | 5 texture samples + arithmetic               |
 
 These are not guarantees. GPU fill rate, display size, DPR, browser compositor, and background throttling all affect results.
 
 ### Budgets
 
-| Metric                         | Budget                          |
-| ------------------------------ | ------------------------------- |
-| Map uploads per tick (stress)  | < 1M pixels; avoid full texture |
-| Full-frame GPU time at 1440p   | < 4 ms on mid-range hardware    |
-| JS renderer overhead per frame | < 1 ms                          |
-| CPU texture updates per tick   | < 2 ms for ≤ 8,000 changes      |
-| Frame pacing                   | Stable 60 fps on integrated GPU |
+| Metric                         | Budget                             |
+| ------------------------------ | ---------------------------------- |
+| Tick-boundary upload work      | < 2 ms main-thread                 |
+| Full-frame GPU time at 1440p   | < 4 ms on mid-range hardware       |
+| JS renderer overhead per frame | < 1 ms                             |
+| CPU texture updates per tick   | < 2 ms for ≤ 8,000 changes         |
+| Frame pacing under stress      | 0 frames >10 ms above rAF baseline |
+| Frame pacing                   | Stable 60 fps on integrated GPU    |
 
 ### Profiling
 
-- HUD shows `fps` and `uploadedPixels` from the renderer.
+- HUD shows `fps`, `uploadedPixels`, and `uploadCalls` from the renderer. Calls/s is the quickest signal that the dense-resync path is active.
 - Use Chrome DevTools Performance for JS and GPU traces.
 - For WebGPU timings, use `timestamp-query` with a separate profiling build if needed.
 - Always compare before/after with the same camera position, zoom, and map state.

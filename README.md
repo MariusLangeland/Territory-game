@@ -21,14 +21,14 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Attack stress   | 108 states, up to 3 active fronts per player, 30 captured pixels per front per tick, ownership-checked flood fill                          |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                         |
-| Rendering speed | Full-screen WebGPU pass; only changed 32 × 32 tiles are uploaded, adjacent tiles merged into strips                                        |
-| UI scale        | Scrollable 108-state leaderboard, per-player generated palette, minimap, attack counters, perf readout                                     |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                        |
+| Area            | Implementation                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attack stress   | 108 states, up to 3 active fronts per player, 30 captured pixels per front per tick, ownership-checked flood fill                           |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
+| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                         |
 
 ## Quick start
 
@@ -93,7 +93,7 @@ Svelte UI (+page.svelte)
         │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
         │     ├── TerritoryRng ... mulberry32
         │     └── attack queues .. packed Uint32Array flood fronts
-        ├── TerritoryRenderer .... WebGPU device, textures, shader, dirty-tile uploads
+        ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
         └── MapCamera ............ CSS-pixel camera, zoom, clamping
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
 ```
@@ -104,18 +104,18 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities an
 
 Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
 
-| Measurement                            | Result                                                   |
-| -------------------------------------- | -------------------------------------------------------- |
-| Map generation + 108 starts            | ~225–230 ms, one-time on world creation                  |
-| Sustained all-bot attack tick          | ~1.4 ms                                                  |
-| All-bot attack tick (collision-heavy)  | ~1.4 ms                                                  |
-| Full-state checksum                    | ~8.2 ms (on-demand only)                                 |
-| Browser render loop                    | 126–132 fps at 1600 × 1000 in headless Chrome under load |
-| Map upload rate under 108-state stress | ~2.2–4.7M pixels/s (~220K–470K per tick)                 |
-| Full control texture                   | 8 MiB VRAM + 8 MiB CPU shadow                            |
-| Node benchmark RSS (two worlds)        | ~198–228 MiB                                             |
+| Measurement                                   | Result                                               |
+| --------------------------------------------- | ---------------------------------------------------- |
+| Map generation + 108 starts                   | ~225–230 ms, one-time on world creation              |
+| Sustained all-bot attack tick                 | ~1.4 ms                                              |
+| All-bot attack tick (collision-heavy)         | ~1.4 ms                                              |
+| Full-state checksum                           | ~8.2 ms (on-demand only)                             |
+| Browser render loop while panning, 209 fronts | 144 fps; p99 frame 7.1 ms; zero frames >10 ms        |
+| Upload strategy under stress                  | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
+| Full control texture                          | 8 MiB VRAM + 8 MiB CPU shadow                        |
+| Node benchmark RSS (two worlds)               | ~198–228 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses about 1.4% of a 100 ms tick budget. Rendering and texture upload volume are the limiting factors in this experiment. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses about 1.4% of a 100 ms tick budget. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

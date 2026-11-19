@@ -54,7 +54,7 @@ The attack still requires a shared land border with the clicked target's owner. 
 - [x] Same seed + commands ⇒ same checksum with all 108 bots active.
 - [x] Hundreds of simultaneous fronts run without corrupting borders.
 - [x] Change buffer does not overflow during normal stress runs.
-- [x] Browser stays interactive with ~126–132 fps at 1600 × 1000 in the test environment.
+- [x] Browser stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
 - [x] No console/page errors during sustained run.
 - [x] Tests and production build pass.
 - [ ] Decide the real attack model and retire this experiment.
@@ -63,7 +63,8 @@ The attack still requires a shared land border with the clicked target's owner. 
 
 - 108 starts are feasible on the fixed atlas with a 16 px start radius and spacing enforcement.
 - Bot fronts saturate the map in roughly 10 seconds when unthrottled; the resulting leaderboard is nearly tied and visually becomes a patchwork.
-- A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are used instead. Observed upload rate: ~2.2–4.7M pixels/s depending on active fronts (~157 to near-saturation).
+- A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
+- 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~198–228 MiB for two simulated worlds.
 - Full-state checksum remains ~8.2 ms and is not run per tick.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.

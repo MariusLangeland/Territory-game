@@ -24,7 +24,7 @@ OpenFront is the closest genre reference: a browser strategy game with a huge pi
 
 1. **The map is the game.** Ownership is pixel-resolution. Growth must be satisfying at combat zoom and readable at world zoom.
 2. **Determinism is a feature.** A seed plus ordered commands must reproduce a match. Networked clients and the server must agree bit-for-bit.
-3. **Speed is a feature.** A tick must not stall rendering; a territory change must not upload the whole map.
+3. **Speed is a feature.** A tick must not stall rendering, and no single frame may synchronously upload the whole map. Heavy map resyncs are chunked across frames.
 4. **Readable conflict.** A player should understand within a second who owns a region, where their frontier is, and what a click will do.
 5. **Online-ready boundaries.** Simulation, rendering, and UI communicate through contracts a server can adopt without a rewrite.
 
@@ -66,8 +66,8 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | Bot expansion/attacks                                     | ✅                       |
 | Elimination and last-state-standing victory               | ✅                       |
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
-| WebGPU renderer with 32 × 32 dirty-tile uploads           | ✅                       |
-| Minimap, 108-state scrollable leaderboard, perf readout   | ✅                       |
+| WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
+| Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
 | Deterministic tests + attack stress tests + benchmark     | ✅                       |
@@ -222,7 +222,7 @@ Combat has no dice, crits, spread, or morale. Given the same state and accepted 
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
 2. **Intro:** seed load, deploy. Simulation paused. Copy identifies the attack stress build.
-3. **Live match:** 108-state HUD, scrollable leaderboard, map, minimap, status console, perf readout.
+3. **Live match:** 108-state HUD, virtualized scrollable leaderboard, map, minimap, status console, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
 6. **Result:** last state wins; final standings.
@@ -235,13 +235,15 @@ Combat has no dice, crits, spread, or morale. Given the same state and accepted 
 - Human name/color, land share, rank, living-state count.
 - War clock.
 - Pause/resume, field manual, new world.
-- World-control leaderboard: 108 rows in a scroll container, sorted by alive, then territory, then id.
+- World-control leaderboard: 108 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.
 - War feed for eliminations/victory.
 - World claimed meter.
 - Minimap with camera rectangle and start positions.
 - Status console: hover coordinate/ownership and human active orders.
-- Zoom/fit/focus tools; FPS and uploaded pixels/second.
+- Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
+- HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
+- Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
 ### 5.3 Controls
 
@@ -272,7 +274,7 @@ Combat has no dice, crits, spread, or morale. Given the same state and accepted 
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
 - Active human attack count in status console.
-- 108-state leaderboard scrolls; human row is highlighted when visible.
+- 108-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
 - Paused clicks do not issue orders.
 
 ### 5.6 Accessibility/responsive
@@ -344,7 +346,7 @@ Full detail: [RENDERING.md](RENDERING.md).
 
 1. One 2048 × 1024 `rgba8unorm` control texture and a 256 × 1 palette texture.
 2. R = owner id, G = land, B = terrain shade, A unused.
-3. Per-tick changes upload 32 × 32 dirty tiles, merging adjacent tiles into strips. Full uploads only at init/resync.
+3. Per-tick changes normally upload 32 × 32 dirty tiles merged into strips. Above 96 dirty tiles, an adaptive full-texture resync is queued and uploaded in eight horizontal chunks, at most two per frame. No frame does a synchronous full-map upload.
 4. One full-screen triangle and one fragment shader.
 5. Renderer never mutates simulation state.
 6. WebGPU failure is explicit; no silent blank map.
@@ -368,15 +370,16 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 
 ## 10. Performance requirements
 
-| Area                                          | Target                                      |
-| --------------------------------------------- | ------------------------------------------- |
-| Simulation tick, 108 states under attack load | < 2 ms p95 (10 Hz budget = 100 ms)          |
-| Render loop                                   | 60 fps at 1600 × 1000 under stress          |
-| Dirty uploads                                 | < 1M pixels per tick under 108-state stress |
-| Map generation + 108 starts                   | < 500 ms                                    |
-| Checksum                                      | On demand, < 20 ms                          |
-| Browser JS/GPU memory                         | < 300 MiB total for the stress build        |
-| Input latency                                 | Click-to-frontier update ≤ 2 ticks          |
+| Area                                          | Target                                               |
+| --------------------------------------------- | ---------------------------------------------------- |
+| Simulation tick, 108 states under attack load | < 2 ms p95 (10 Hz budget = 100 ms)                   |
+| Render loop                                   | 60 fps at 1600 × 1000 under stress                   |
+| Input smoothness under full attack load       | no recurring 10 Hz hitch; 0 frames >10 ms at 144 fps |
+| Tick-boundary upload work                     | < 2 ms; full resync must be chunked                  |
+| Map generation + 108 starts                   | < 500 ms                                             |
+| Checksum                                      | On demand, < 20 ms                                   |
+| Browser JS/GPU memory                         | < 300 MiB total for the stress build                 |
+| Input latency                                 | Click-to-frontier update ≤ 2 ticks                   |
 
 See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 
@@ -405,8 +408,9 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Fronts resolve without corrupting frontier sets.
 - [x] Change buffer does not overflow in stress runs.
 - [x] Clicking a valid frontier creates a free attack with no economy check.
-- [x] HUD and leaderboard scale to 108 rows and active counts.
-- [x] 108-state browser run stays interactive at 1600 × 1000 (~126–132 fps observed).
+- [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
+- [x] Panning stays smooth under full stress (0 frames >10 ms in the verification run).
+- [x] 108-state browser run stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
 - [x] `pnpm check`, `pnpm test`, `pnpm build` pass.
 - [x] Docs clearly state that current attack semantics are experimental.
 - [ ] Final attack model decided and implemented.
