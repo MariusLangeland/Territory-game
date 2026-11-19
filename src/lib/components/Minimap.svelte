@@ -86,10 +86,17 @@
 			const color = MAP_PIXELS[structure.ownerId] ?? [247, 238, 208];
 			const x = (structure.x / simulation.width) * width;
 			const y = (structure.y / simulation.height) * height;
-			context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.95)`;
-			context.fillRect(x - 1.5, y - 1.5, 3, 3);
-			context.fillStyle = 'rgba(252, 246, 225, 0.95)';
-			context.fillRect(x - 0.5, y - 0.5, 1, 1);
+			context.beginPath();
+			context.arc(x, y, 2.1, 0, Math.PI * 2);
+			context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.98)`;
+			context.fill();
+			context.lineWidth = 0.8;
+			context.strokeStyle = 'rgba(252, 246, 225, 0.95)';
+			context.stroke();
+			context.beginPath();
+			context.arc(x, y, 0.7, 0, Math.PI * 2);
+			context.fillStyle = 'rgba(252, 246, 225, 0.98)';
+			context.fill();
 		}
 
 		for (const attack of snapshot.attacks) {

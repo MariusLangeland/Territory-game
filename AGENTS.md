@@ -95,7 +95,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 6. Pause with Space and confirm the tick freezes.
 7. Switch the growth layer through CIRCULAR / SMOOTH / ORGANIC and confirm new attacks use it while in-flight orders keep theirs.
 8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and high-defense captures are visibly slower.
-9. Confirm State structure diamonds are drawn at capitals, minimap dots track them, and the commander readout says ANCHORED.
+9. Confirm State structure capital-star circles are drawn at capitals, minimap ringed dots track them, and the commander readout says ANCHORED.
 10. Capture a structure (or fabricate a capture in a test) and confirm it disappears, the owner shows NO ANCHOR, and a war-feed event appears.
 11. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
 12. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.

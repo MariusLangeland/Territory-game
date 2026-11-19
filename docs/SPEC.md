@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.6.0 (attack stress experiment)  
+**Version:** 0.6.1 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.6.0, map version 3, protocol draft 10
+**Last synchronized with:** application 0.6.1, map version 3, protocol draft 10
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -272,7 +272,7 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Every land component connected to a live State structure is protected from annexation.
 - Capturing the structure destroys it immediately. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - If a component contains multiple structures (future structure types), it remains protected.
-- Structures are rendered as diamonds on the map and dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- Structures are rendered as large owner-colored circles with a cream capital star on the map, and ringed dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 This is the first structure type; structure construction, multiple structure types, and ownership transfer are future work.

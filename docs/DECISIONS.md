@@ -356,7 +356,7 @@ Annexation previously treated each player's largest connected component as their
 - Create one `state` structure at each player's start cell when the world is built.
 - A connected territory component is protected from annexation when it contains a live State structure owned by that player. Components without a structure are eligible for annexation to a foreign protected component.
 - Capturing the structure's cell destroys it. The owner keeps remaining territory but loses annexation protection.
-- Render live structures as owner-colored diamonds on a transparent 2D canvas above WebGPU territory, and as dots on the minimap. Include the human anchored state in the commander readout and emit a war-feed event on destruction.
+- Render live structures as large owner-colored circles with a cream capital star on a transparent 2D canvas above WebGPU territory, and as ringed dots on the minimap. Include the human anchored state in the commander readout and emit a war-feed event on destruction.
 - Include structure identity/cell in snapshots, protocol state, and checksums.
 
 ### Consequences

@@ -811,7 +811,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.6.0 / PROTOCOL 10</span>
+				<span>BUILD 0.6.1 / PROTOCOL 10</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -981,9 +981,9 @@
 							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
 							front peters out immediately. If two states attack each other and their fronts touch, every
 							order between them cancels and the contact line becomes the border. Each state begins with
-							a State structure at its capital; territory connected to it cannot be annexed. The HUD growth
-							switch selects the frontier layer for new orders: circular, smooth, or organic. Existing
-							orders keep the layer they started with.
+							a State structure at its capital, marked by a circled star; territory connected to it cannot
+							be annexed. The HUD growth switch selects the frontier layer for new orders: circular, smooth,
+							or organic. Existing orders keep the layer they started with.
 						</p>
 					</section>
 					<section>

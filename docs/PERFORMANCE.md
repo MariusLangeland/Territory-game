@@ -116,7 +116,7 @@ Potential optimizations if needed:
 - Per-capture defense lookup from elevation + occupancy; defense slows total captures.
 - Structure lookup on claims and structure metadata in checksums.
 - Integrity scan once per second: component labeling plus detached-component border counts.
-- Structure overlay: up to 108 small diamonds per rendered frame on a 2D canvas (negligible).
+- Structure overlay: up to 108 capital-star circles per rendered frame on a 2D canvas (negligible).
 
 No per-cell object allocation. Attack frontiers use flat arrays/heaps and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.
 

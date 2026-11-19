@@ -61,6 +61,25 @@
 		let lastUiUpdate = 0;
 		let structureContext: CanvasRenderingContext2D | null = null;
 
+		function drawStar(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			outer: number,
+			inner: number
+		): void {
+			context.beginPath();
+			for (let i = 0; i < 10; i++) {
+				const radius = i % 2 === 0 ? outer : inner;
+				const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+				const px = x + Math.cos(angle) * radius;
+				const py = y + Math.sin(angle) * radius;
+				if (i === 0) context.moveTo(px, py);
+				else context.lineTo(px, py);
+			}
+			context.closePath();
+		}
+
 		function drawStructures(): void {
 			if (!renderer || !structureCanvas) return;
 			const camera = renderer.camera;
@@ -85,30 +104,49 @@
 
 			for (const structure of simulation.structures.all) {
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
-				if (point.x < -12 || point.y < -12 || point.x > width + 12 || point.y > height + 12) {
+				if (point.x < -18 || point.y < -18 || point.x > width + 18 || point.y > height + 18) {
 					continue;
 				}
 
 				const human = structure.ownerId === HUMAN_PLAYER_ID;
-				const radius = human ? 5 : 3.4;
+				const radius = human ? 10 : 7.5;
+				const x = point.x;
+				const y = point.y;
+
+				// A dark halo keeps the capital readable over bright terrain and
+				// territory colors; the owner disc carries ownership.
 				context.beginPath();
-				context.moveTo(point.x, point.y - radius);
-				context.lineTo(point.x + radius, point.y);
-				context.lineTo(point.x, point.y + radius);
-				context.lineTo(point.x - radius, point.y);
-				context.closePath();
-				context.globalAlpha = 0.94;
-				context.fillStyle = colorForPlayer(structure.ownerId).hex;
+				context.arc(x, y, radius + 2.8, 0, Math.PI * 2);
+				context.fillStyle = 'rgba(2, 8, 12, 0.38)';
 				context.fill();
-				context.globalAlpha = 1;
-				context.lineWidth = human ? 1.5 : 1;
-				context.strokeStyle = 'rgba(252, 246, 225, 0.94)';
-				context.stroke();
+				context.beginPath();
+				context.arc(x, y, radius + 1.3, 0, Math.PI * 2);
+				context.fillStyle = 'rgba(4, 12, 16, 0.9)';
+				context.fill();
 
 				context.beginPath();
-				context.arc(point.x, point.y, human ? 1.7 : 1.1, 0, Math.PI * 2);
-				context.fillStyle = 'rgba(5, 14, 18, 0.92)';
+				context.arc(x, y, radius, 0, Math.PI * 2);
+				context.fillStyle = colorForPlayer(structure.ownerId).hex;
 				context.fill();
+				context.lineWidth = human ? 2 : 1.5;
+				context.strokeStyle = 'rgba(252, 246, 225, 0.96)';
+				context.stroke();
+
+				if (human) {
+					context.beginPath();
+					context.arc(x, y, radius + 4, 0, Math.PI * 2);
+					context.lineWidth = 1.2;
+					context.strokeStyle = 'rgba(252, 246, 225, 0.34)';
+					context.stroke();
+				}
+
+				// Capital star. Cream on the owner disc stays legible at every zoom.
+				drawStar(context, x, y, radius * 0.58, radius * 0.24);
+				context.fillStyle = 'rgba(255, 248, 225, 0.98)';
+				context.fill();
+				context.lineWidth = 1;
+				context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
+				context.stroke();
 			}
 		}
 

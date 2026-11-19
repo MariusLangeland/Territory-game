@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.6).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.6.1).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -117,7 +117,7 @@ Circular and smooth both grow radially from the border and can look similar by d
 
 ### Structures
 
-Each state starts with one **State structure** at its capital. It is the anchor for that state's protected mainland: every territory component connected to a live State structure cannot be annexed. The structure is visible as a diamond on the map and a dot on the minimap.
+Each state starts with one **State structure** at its capital. It is the anchor for that state's protected mainland: every territory component connected to a live State structure cannot be annexed. The structure is visible as a large owner-colored circle with a cream capital star on the map, and a ringed dot on the minimap.
 
 State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
 
