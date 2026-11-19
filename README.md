@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.11.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.12.0).** Troops, production caps, and launch costs remain removed, but attack orders now refresh on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -90,10 +90,11 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 5. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
 6. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
 7. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
-8. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
-9. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
-10. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
-11. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
+8. **Least resistance:** each capture samples the 10 highest-priority frontier cells and takes the cheapest local defense, so a front slides around a costly strongpoint into weaker ground while keeping its overall growth shape.
+9. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
+10. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
+11. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
+12. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
 
 ### Terrain and defense
 
@@ -204,7 +205,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~296 ms, one-time on world creation                  |
+| Map generation + 108 starts               | ~272 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -212,9 +213,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~240–280 MiB                                         |
+| Node benchmark RSS (all benchmark worlds) | ~338 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.1–1.3% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.6–2.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

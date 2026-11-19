@@ -143,11 +143,13 @@ Attacks have monotonically increasing ids. Each `step()` iterates active attacks
 
 For each attack:
 
-- ask its growth layer for the next candidate,
+- sample up to 10 candidates from its growth layer in deterministic priority order,
 - skip candidates that are no longer owned by the expected target owner (without spending attack points),
-- pay `1 + elevation + occupied bonus` attack points for each valid capture,
-- requeue the next candidate and stop the tick if the remaining budget cannot afford it,
 - skip candidates that no longer share a land edge with the attacker's territory,
+- compare integer effective costs and take the cheapest sampled candidate; ties keep sample order,
+- requeue every unchosen sampled candidate in reverse sample order,
+- pay `1 + elevation + occupied bonus` attack points for each valid capture,
+- requeue the sample and stop the tick if even the cheapest candidate is unaffordable,
 - claim valid cells with a deterministic `claim()` operation,
 - push still-target-owned neighbours onto the growth layer in the fixed order west, east, north, south,
 - expire the front when `tick - createdAtTick >= ATTACK_LIFETIME_TICKS` (50 ticks / 5 seconds),
@@ -308,6 +310,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and Command Post grants apply in registry order on the 60-second boundary.
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
+28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.
 
 Commands to run:
 

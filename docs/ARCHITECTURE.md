@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.11.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.12.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.11.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.12.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -151,10 +151,11 @@ step()
  ├─ runBotDecisions() every 10 ticks (requires an attack order)
  ├─ processAttacks()
  │    ├─ drop fronts older than ATTACK_LIFETIME_TICKS (50 ticks / 5 s)
- │    ├─ for each attack id: ask its growth layer for the next candidate
+ │    ├─ for each attack id: sample up to 10 top growth-layer candidates
  │    ├─ validate target ownership + attacker border at capture time
  │    ├─ detect opposing claimed-cell contact; cancel the mutual pair
- │    ├─ claim up to 30, write claim provenance, push valid neighbours
+ │    ├─ take the cheapest sampled defense and requeue the rest
+ │    ├─ claim until 30 points, write provenance, push valid neighbours
  │    ├─ destroy any structure if its cell is captured and rebuild auras
  │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
@@ -177,7 +178,7 @@ Each attack capture writes its id into `claimedBy[index]`. Before claiming a can
 
 This is a front-line collision, not a global truce: attacks against other states and third-party attacks continue.
 
-Each capture first spends the target's defense from the front's 30-point budget: `1 + elevation`, plus one when the target is owned. If the budget cannot afford the next candidate, the candidate is pushed back onto the frontier and the tick ends. This is the attack economy. Defense is derived from elevation and live ownership; it is not allocated per attack.
+For each capture, the simulation pops up to `LEAST_RESISTANCE_SAMPLE_SIZE` (10) candidates from the attack's growth layer, validates them, and picks the one with the lowest effective defense cost. The unchosen candidates are pushed back, so geometry still bounds the choice, but a costly strongpoint does not consume the whole budget while a cheaper adjacent lane exists. If even the cheapest sampled candidate costs more than the remaining budget, all are requeued and the tick ends. The capture spends `1 + elevation`, plus one when the target is owned. Defense is derived from elevation and live ownership; it is not allocated per attack.
 
 Attack frontier processing also enforces border connectivity at capture time: the candidate cell must share a land edge with the attacker. If opposing fronts sever that path, the candidate is skipped; a front with zero legal captures in a tick is removed rather than continuing into disconnected territory. All fronts also expire after 50 ticks (5 seconds), so no order can continue indefinitely even while connected. This is what prevents enclaves, phase-through attacks, and unbounded orders.
 
@@ -187,6 +188,9 @@ Each `AttackState` owns a `GrowthLayer` selected from `growthMode` at creation:
 
 - **Circular** — integer min-heap keyed by squared distance from the border-contact anchor; approximates a disc.
 - **Smooth** — squared-distance bands served nearest-first, preferring candidates with more attacker-owned neighbours inside the active band. This prevents a straight frontier's tangent direction from growing far ahead of the radial front.
+
+The least-resistance sampler is deliberately outside the growth layers: layers nominate candidates, while the simulation compares defense costs. It samples only the top candidates, so the layer's overall shape remains dominant.
+
 - **Organic** — uniformly random candidate selection via a per-attack deterministic PRNG.
 
 The simulation validates every candidate identically. The layer never claims ownership or bypasses connectivity. See [SPEC.md](SPEC.md) section 4.12 for selection semantics.
@@ -289,7 +293,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~240–280 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 4 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~338 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
 
 ---
 
@@ -421,7 +425,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~240–280 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~338 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

@@ -13,6 +13,7 @@ import {
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	ATTACK_ORDER_GAIN_TICKS,
+	LEAST_RESISTANCE_SAMPLE_SIZE,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
@@ -1160,42 +1161,73 @@ export class TerritorySimulation {
 			let frontierEmpty = false;
 			let attackPoints = ATTACK_DAMAGE_PER_TICK;
 			while (attackPoints > 0) {
-				const index = attack.frontier.pop();
-				if (index === undefined) {
-					frontierEmpty = true;
-					break;
+				// Sample a small batch of the highest-priority frontier cells.
+				// Geometry decides who is eligible; the cheapest sampled defense
+				// decides which lane advances. This lets a front slide around a
+				// costly strongpoint instead of spending its whole tick there.
+				const sampled: number[] = [];
+				let chosenPosition = -1;
+				let chosenCost = Number.POSITIVE_INFINITY;
+				let cancelled = false;
+				let exhausted = false;
+
+				for (let sample = 0; sample < LEAST_RESISTANCE_SAMPLE_SIZE; sample++) {
+					const index = attack.frontier.pop();
+					if (index === undefined) {
+						exhausted = true;
+						break;
+					}
+					if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
+
+					// Connectivity is re-checked at the moment of capture, not just
+					// when the cell was enqueued. If another front cuts the path back
+					// to the attacker, the candidate is discarded instead of becoming
+					// an enclave.
+					if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
+
+					// Two states attacking each other have reached a front line: do
+					// not let their fronts interpenetrate or wiggle around each other.
+					// Stop every order between the pair and leave the current border
+					// where it is.
+					if (this.conflictsWithOpposingClaim(index, attack, attackById)) {
+						this.cancelAttacksBetweenPair(attack);
+						cancelled = true;
+						break;
+					}
+
+					const cost = Math.max(
+						1,
+						this.defenseAt(index) - this.attackStrengthAt(attack.attackerId, index)
+					);
+					sampled.push(index);
+					if (cost < chosenCost) {
+						chosenCost = cost;
+						chosenPosition = sampled.length - 1;
+					}
 				}
-				if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
 
-				// Connectivity is re-checked at the moment of capture, not just
-				// when the cell was enqueued. If another front cuts the path back
-				// to the attacker, the candidate is discarded instead of becoming
-				// an enclave.
-				if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
+				if (cancelled) break;
 
-				// Two states attacking each other have reached a front line: do
-				// not let their fronts interpenetrate or wiggle around each other.
-				// Stop every order between the pair and leave the current border
-				// where it is.
-				if (this.conflictsWithOpposingClaim(index, attack, attackById)) {
-					this.cancelAttacksBetweenPair(attack);
-					break;
+				// Put the missed candidates back. The chosen one is consumed.
+				for (let i = sampled.length - 1; i >= 0; i--) {
+					if (i !== chosenPosition) attack.frontier.push(sampled[i]);
 				}
 
-				// Defense is paid in attack points, reduced by friendly barracks
-				// attack auras over this target. A front keeps an unaffordable
-				// pixel queued for a future tick.
-				const cost = Math.max(
-					1,
-					this.defenseAt(index) - this.attackStrengthAt(attack.attackerId, index)
-				);
-				if (cost > attackPoints) {
-					attack.frontier.push(index);
-					break;
+				if (chosenPosition < 0) {
+					if (exhausted) {
+						frontierEmpty = true;
+						break;
+					}
+					continue;
 				}
 
+				// The cheapest sampled cell is still too expensive for this tick.
+				// Keep it (and the rest) queued for a future tick.
+				if (chosenCost > attackPoints) break;
+
+				const index = sampled[chosenPosition];
 				this.claim(index, attack.attackerId, attack.id);
-				attackPoints -= cost;
+				attackPoints -= chosenCost;
 				attack.captures++;
 				capturedThisTick++;
 

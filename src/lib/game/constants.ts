@@ -34,6 +34,13 @@ export const START_RADIUS = 16;
  */
 export const ATTACK_DAMAGE_PER_TICK = 30;
 
+/**
+ * The attack samples this many top-priority frontier cells and takes the
+ * cheapest one that still fits the remaining budget. Geometry still decides
+ * which cells are candidates; defense decides which sampled lane advances.
+ */
+export const LEAST_RESISTANCE_SAMPLE_SIZE = 10;
+
 /** Six visual/gameplay tiers, from lowland (0) to peak (5). */
 export const ELEVATION_LEVELS = 6;
 
@@ -84,7 +91,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

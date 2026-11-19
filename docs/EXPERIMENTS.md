@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.11.x`  
+**Status:** active in application `0.12.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -32,6 +32,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Attack launch cost       | 1 attack order                                                                     |
 | Capture cost             | target pixel defense                                                               |
 | Attack budget            | 30 points per attack per tick                                                      |
+| Least resistance         | Sample top 10 frontier candidates; take the cheapest defense                       |
 | Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)            |
 | Elevation                | six tiers, lowland through peaks                                                   |
 | Attack lifetime          | 50 ticks / 5 seconds (`ATTACK_LIFETIME_TICKS`)                                     |
@@ -48,7 +49,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Human economy            | 3 starting gold; 1 gold / 10s; 3-card hand                                         |
 | Build cards              | Mine 3g, Barracks 2g, Defense Post 2g, Command Post 4g, War Academy 6g; Refresh 1g |
 
-Each launch consumes one attack order. Players gain +1 order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
+Each launch consumes one attack order. Players gain +1 order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, spends 30 attack points per tick, and continues only while every captured pixel remains edge-connected to the attacker's territory. A capture costs `1 + elevation` and one more if the pixel is occupied, so high ground and defended pixels fall more slowly. Each capture samples the 10 highest-priority frontier cells and takes the cheapest defense, so the front diverts around a costly strongpoint when a cheaper local lane exists. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
 ### Growth layers and territorial cleanup
 

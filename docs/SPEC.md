@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.11.0 (attack stress experiment)  
+**Version:** 0.12.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.11.0, map version 3, protocol draft 18
+**Last synchronized with:** application 0.12.0, map version 3, protocol draft 19
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 18`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 19`.
 
 ### 4.2 Starting positions
 
@@ -141,10 +141,10 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
 7. Launching consumes **1 attack order**. The human starts with 3 orders (cap 3) and bots with 2 (cap 2). Every **10 seconds**, each living player gains **1 order, up to the cap**; attacks do not refund an order when they end. Multiple active fronts are allowed while orders remain.
-8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until **30 attack points** are spent or no candidates remain. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
+8. Each tick, the front's selected **growth layer** nominates candidate frontier cells until **30 attack points** are spent or no candidates remain. For each capture, the simulation samples up to **10** of the highest-priority candidates and takes the one with the lowest current defense cost; ties keep growth priority. This lets a front flow around costly strongpoints into cheaper adjacent ground. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
 9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
 10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
-11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check. If the remaining budget cannot afford the next candidate, it is queued again for the following tick.
+11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check. If the remaining budget cannot afford even the cheapest sampled candidate, all sampled cells are queued again for the following tick.
 12. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
 13. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
 14. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
@@ -174,7 +174,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 ### 4.6 Attack frontier storage
 
-- Each attack owns a growth layer with its own candidate structure (heap, direction buckets, or random pool).
+- Each attack owns a growth layer with its own candidate structure (heap, direction buckets, or random pool), plus a simulation-side least-resistance sampler over the top 10 candidates.
 - There is no per-attack visited set. Once a cell is captured, its owner changes, so duplicate candidates fail the ownership check.
 - Candidate storage is per-mode; circular uses a priority heap, smooth uses squared-distance bands, organic uses a random-access array.
 - A front's candidate set can become large while consuming a large connected region. The 5-second lifetime and per-tick capture cap bound retained work.
@@ -228,7 +228,7 @@ The final design may introduce costs, supply, attack duration, cancellation, tar
 
 ### 4.11 Combat randomness
 
-Combat has no combat-roll randomness, crits, spread, or morale. The organic growth layer uses a deterministic per-attack PRNG solely to choose frontier candidates; the sequence is reproducible. Given the same state, growth mode, and accepted commands, every pixel outcome is deterministic.
+Combat has no combat-roll randomness, crits, spread, or morale. The organic growth layer uses a deterministic per-attack PRNG solely to choose frontier candidates; the sequence is reproducible. The least-resistance sampler is deterministic: it samples a fixed number of candidates in growth order, compares integer effective costs, and breaks ties by sample order. Given the same state, growth mode, and accepted commands, every pixel outcome is deterministic.
 
 ### 4.12 Growth layers
 
@@ -241,6 +241,7 @@ Every attack captures a `growthMode` at creation time and keeps it for its lifet
 | `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                 | Irregular organic lobes, fully replayable                        |
 
 - The growth anchor is the rounded centroid of the initial border-contact seeds. The click is not the origin. This prevents a distance-based layer from sending a narrow tendril toward a click deep inside hostile territory before blooming.
+- Defense only chooses among the candidates the growth layer already prioritizes; it does not scan the whole frontier. The front therefore keeps its overall shape while preferring cheaper local lanes.
 - The shape is still clipped by coastlines, other states, and the attacker's own border.
 - The **smooth** layer groups candidates into integer squared-distance bands around the anchor. It always serves the nearest non-empty band before farther bands, then uses attacker-neighbour count and distance/index tie-breaks inside the band. This radial bound is what prevents tangent wings along the initial border.
 - The **organic** layer seeds its PRNG from the world seed, attack id, attacker id, and defender id.
@@ -573,6 +574,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
 - [x] Attack orders start full, are spent per launch, and grant +1 every 10 seconds up to the cap; bot orders use the same rules.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
+- [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts grant orders on 60-second pulses, and War Academies raise the cap.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.

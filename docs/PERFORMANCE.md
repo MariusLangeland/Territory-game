@@ -24,7 +24,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 | Browser JS/GPU memory                         | < 300 MiB for stress build              | > 500 MiB                     |
 | Click-to-visible update                       | ≤ 2 ticks                               | > 4 ticks                     |
 
-The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.1–1.3% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second.
+The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.6–2.9% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second.
 
 ---
 
@@ -42,17 +42,17 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 
 | Operation                                               | Result          |
 | ------------------------------------------------------- | --------------- |
-| Generate 2048 × 1024 map + 108 starts                   | **~296 ms/op**  |
-| Sustained all-bot attack tick                           | **~1.3 ms/op**  |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.1 ms/op**  |
-| Circular layer comparison tick                          | **~1.1 ms/op**  |
-| Smooth layer comparison tick                            | **~1.3 ms/op**  |
-| Organic layer comparison tick                           | **~1.1 ms/op**  |
-| Full-state checksum                                     | **~18.1 ms/op** |
-| Active attacks after sustained run                      | ~73–95 fronts   |
-| Node RSS (all benchmark simulations)                    | ~240–280 MiB    |
+| Generate 2048 × 1024 map + 108 starts                   | **~272 ms/op**  |
+| Sustained all-bot attack tick                           | **~1.8 ms/op**  |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.6 ms/op**  |
+| Circular layer comparison tick                          | **~1.8 ms/op**  |
+| Smooth layer comparison tick                            | **~2.9 ms/op**  |
+| Organic layer comparison tick                           | **~1.8 ms/op**  |
+| Full-state checksum                                     | **~17.7 ms/op** |
+| Active attacks after sustained run                      | ~71–73 fronts   |
+| Node RSS (all benchmark simulations)                    | ~338 MiB        |
 
-At 10 Hz, 1.1–1.3 ms per tick is roughly **1.1–1.3% of a 100 ms tick budget**. The exact number varies with active fronts, mode, how much of the map is contested, and how many states still hold a State structure. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count. Attack orders reduce active fronts relative to the old free-front model; defense, capital auras, conflict cancellation, and structure loss further reduce capture volume.
+At 10 Hz, 1.6–2.9 ms per tick is roughly **1.6–2.9% of a 100 ms tick budget**. The least-resistance sampler adds 10 frontier operations per capture; smooth remains the most expensive layer. The exact number varies with active fronts, mode, how much of the map is contested, and how many states still hold a State structure. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count. Attack orders reduce active fronts relative to the old free-front model; defense, capital auras, conflict cancellation, and structure loss further reduce capture volume.
 
 ### 2.2 Browser baseline
 
@@ -104,16 +104,17 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~1.1–1.3 ms)
+### Simulation tick (~1.6–2.9 ms)
 
 - Bots: up to 107 decisions every 10 ticks; frontier sampling.
-- Attacks: ~73–95 active fronts × up to 30 attack points of captures, with stale-cell skipping.
+- Attacks: ~73–95 active fronts × up to 30 attack points of captures, least-resistance sampling, and stale-cell skipping.
 - Growth-layer selection: heap operations for circular, radial-band scanning and neighbour scoring for smooth, RNG array swaps for organic.
 - Border maintenance: constant work per captured cell.
 - Change packing: one `Uint32Array` write per change.
 - No attack queue compaction; frontiers are lifetime-bounded.
 - Claim-provenance writes on every capture and mutual-front checks.
 - Per-capture defense lookup from elevation + occupancy + aura, plus attacker Barracks strength.
+- Least-resistance sampling: up to 10 frontier pops, cost comparisons, and push-backs per capture. This is bounded and adds no allocation beyond the small sampled array.
 - Aura overlay (friendly-owned State/Defense Post fields) built at start, rebuilt on structure changes, and locally recomputed for captured cells.
 - District Voronoi pass over owner-local structure ranges; full recompute on structure creation/destruction, single-cell update on ordinary captures. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 8 MiB and palette codes add 2 MiB per simulation.
 - Attack-order grants and cap scans; Command Post pulses every 60 seconds.
@@ -172,9 +173,9 @@ Replacing per-attack Set bookkeeping with flat frontier structures also cut memo
 | Frontier sets (108 states)              | map-dependent                       |
 | Growth frontier candidates              | layer-dependent, lifetime-bounded   |
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (five worlds)        | ~240–280 MiB                        |
+| Node benchmark RSS (five worlds)        | ~338 MiB                            |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~240–280 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~338 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
 
 ---
 

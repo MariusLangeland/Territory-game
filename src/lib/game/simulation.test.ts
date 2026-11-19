@@ -466,6 +466,102 @@ describe('attack stress mode', () => {
 		);
 	});
 
+	it('routes attacks toward a cheaper frontier cell', () => {
+		const sim = new TerritorySimulation({ seed: 424242 });
+		const internals = sim as unknown as {
+			attacks: AttackState[];
+			processAttacks(): void;
+			auraDefense: Uint16Array;
+		};
+		internals.auraDefense.fill(0);
+
+		const findCell = (minimumDistanceFrom = -1): number => {
+			for (let i = 0; i < sim.owners.length; i++) {
+				if (!sim.terrain[i] || sim.structures.at(i)) continue;
+				if (minimumDistanceFrom >= 0) {
+					const ax = i % sim.width;
+					const ay = (i - ax) / sim.width;
+					const bx = minimumDistanceFrom % sim.width;
+					const by = (minimumDistanceFrom - bx) / sim.width;
+					if ((ax - bx) ** 2 + (ay - by) ** 2 < 30 * 30) continue;
+				}
+				const x = i % sim.width;
+				const y = (i - x) / sim.width;
+				const neighbours = [
+					x > 0 ? i - 1 : -1,
+					x + 1 < sim.width ? i + 1 : -1,
+					y > 0 ? i - sim.width : -1,
+					y + 1 < sim.height ? i + sim.width : -1
+				];
+				if (neighbours.some((n) => n >= 0 && sim.terrain[n] && !sim.structures.at(n))) {
+					return i;
+				}
+			}
+			return -1;
+		};
+
+		const high = findCell();
+		const low = findCell(high);
+		expect(high).toBeGreaterThan(-1);
+		expect(low).toBeGreaterThan(-1);
+		if (high < 0 || low < 0) return;
+
+		const attach = (index: number): void => {
+			const x = index % sim.width;
+			const y = (index - x) / sim.width;
+			const neighbours = [
+				x > 0 ? index - 1 : -1,
+				x + 1 < sim.width ? index + 1 : -1,
+				y > 0 ? index - sim.width : -1,
+				y + 1 < sim.height ? index + sim.width : -1
+			];
+			const friendly = neighbours.find((n) => n >= 0 && sim.terrain[n] && !sim.structures.at(n));
+			expect(friendly).toBeDefined();
+			if (friendly === undefined) return;
+			sim.owners[index] = 2;
+			sim.owners[friendly] = 1;
+		};
+		attach(high);
+		attach(low);
+		internals.auraDefense[high] = 100;
+
+		const entries: number[] = [];
+		const frontier = {
+			mode: 'organic' as const,
+			get size() {
+				return entries.length;
+			},
+			push(index: number) {
+				entries.push(index);
+			},
+			pop() {
+				return entries.pop();
+			},
+			mixState() {}
+		};
+		frontier.push(low);
+		frontier.push(high);
+		internals.attacks = [
+			{
+				id: 1,
+				attackerId: 1,
+				defenderId: 2,
+				targetX: low % sim.width,
+				targetY: Math.floor(low / sim.width),
+				anchorX: low % sim.width,
+				anchorY: Math.floor(low / sim.width),
+				growthMode: 'organic',
+				frontier,
+				createdAtTick: sim.tick,
+				captures: 0,
+				done: false
+			}
+		];
+		internals.processAttacks();
+		expect(sim.getOwner(low % sim.width, Math.floor(low / sim.width))).toBe(1);
+		expect(sim.getOwner(high % sim.width, Math.floor(high / sim.width))).toBe(2);
+	});
+
 	it('slows attacks by the target pixel defense', () => {
 		const lowlandCaptures = runDefenseCapture(0);
 		const peakCaptures = runDefenseCapture(5);

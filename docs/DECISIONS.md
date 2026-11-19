@@ -561,3 +561,38 @@ Structures need territorial identity beyond their auras. The requested model giv
 - **BFS flood fill instead of Euclidean Voronoi:** would follow terrain connectivity but not the requested nearest-pixel split.
 - **Extra district texture:** more bindings and uploads; packing into alpha is sufficient for five palette groups with four variants.
 - **Stack increases district radius:** would make geometry churn and make placement rules unstable; stack effects scale instead.
+
+---
+
+## ADR-019 — Defense-aware least-resistance sampling
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Attack movement is chosen by geometry-only growth layers. A high-defense cell can consume the front's 30-point budget while cheaper adjacent frontier cells wait, making the attack appear stuck on a mountain or aura even when a weak lane exists.
+
+### Decision
+
+- Each capture samples up to `LEAST_RESISTANCE_SAMPLE_SIZE` (10) candidates in growth priority order.
+- Valid candidates are compared by integer effective cost (`defenseAt - barracksStrength`, floor 1). The cheapest is captured; ties keep sample order.
+- Unchosen sampled candidates are pushed back in reverse sample order. Stale/disconnected candidates are discarded.
+- If even the cheapest sampled candidate is unaffordable, all are requeued and the tick ends.
+- Connectivity, ownership, mutual-contact cancellation, and budget checks are unchanged and happen before selection.
+- The sample is simulation-side; growth layers still own geometry and checksum state.
+
+### Consequences
+
+- Attacks naturally flow around strongpoints while preserving their overall circular/smooth/organic shape.
+- A costly candidate can still be chosen when it is the cheapest nearby option; defense slows rather than blocks.
+- Cost is paid after selection, so the full 30-point budget is used more efficiently.
+- Up to 10 extra frontier operations per capture; bounded and allocation-light.
+- Sampling only the top candidates is intentionally local. A very cheap cell buried deep in the frontier is not found until it reaches the sample window.
+
+### Alternatives considered
+
+- **Global cheapest frontier scan:** ignores growth shape and costs O(frontier) per capture.
+- **Defense in the growth-layer priority key:** couples rendering-style layers to combat and can overwhelm distance with aura values.
+- **Only fallback when the top candidate is unaffordable:** misses proactive flow around expensive but affordable strongpoints.
+- **Randomized cost sampling:** harms determinism and replay clarity.

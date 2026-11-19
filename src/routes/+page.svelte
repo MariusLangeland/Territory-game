@@ -1051,7 +1051,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.11.0 / PROTOCOL 18</span>
+				<span>BUILD 0.12.0 / PROTOCOL 19</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1211,7 +1211,9 @@
 							Mine, Barracks, Defense Post, Command Post, or War Academy. Attack orders refresh
 							every 10 seconds. Terrain matters: base defense is 1 plus the elevation tier, occupied
 							pixels add 1 more, and each front spends 30 attack points per tick. State auras add
-							another 20 defense. This is still not the final combat design.
+							another 20 defense. Each front samples nearby frontier cells and presses the cheapest
+							defense, so it bends around strongpoints when a weaker lane exists. This is still not
+							the final combat design.
 						</p>
 					</section>
 					<section>
