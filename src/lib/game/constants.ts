@@ -13,7 +13,7 @@
 
 export const MAP_WIDTH = 2048;
 export const MAP_HEIGHT = 1024;
-export const MAP_VERSION = 2;
+export const MAP_VERSION = 3;
 
 export const TICK_RATE = 10;
 export const TICK_MS = 1000 / TICK_RATE;
@@ -28,8 +28,29 @@ export const LAND_FRACTION = 0.38;
 /** Radius, in map pixels, of every player's initial territory. */
 export const START_RADIUS = 16;
 
-/** Pixels captured by one attack in a single tick. */
-export const CAPTURE_PER_TICK = 30;
+/**
+ * Attack points spent by one front per tick. A capture costs the target
+ * pixel's defense, so defended or elevated pixels are captured more slowly.
+ */
+export const ATTACK_DAMAGE_PER_TICK = 30;
+
+/** Six visual/gameplay tiers, from lowland (0) to peak (5). */
+export const ELEVATION_LEVELS = 6;
+
+export const ELEVATION_NAMES = [
+	'LOWLAND',
+	'PLAINS',
+	'HILLS',
+	'HIGHLANDS',
+	'MOUNTAINS',
+	'PEAKS'
+] as const;
+
+/** Base defense = 1 + elevation level. */
+export const BASE_DEFENSE_OFFSET = 1;
+
+/** An owned pixel adds this much defense on top of its base. */
+export const OCCUPIED_DEFENSE_BONUS = 1;
 
 /**
  * Orders are finite. An attack front expires after this many simulation ticks
@@ -51,7 +72,7 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

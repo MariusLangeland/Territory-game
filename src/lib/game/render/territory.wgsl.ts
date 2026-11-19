@@ -44,6 +44,25 @@ fn paletteAt(owner: u32) -> vec3<f32> {
   return textureSampleLevel(paletteTexture, mapSampler, vec2<f32>(index, 0.5), 0.0).rgb;
 }
 
+fn elevationColor(level: f32) -> vec3<f32> {
+  if (level >= 4.5) {
+    return vec3<f32>(0.78, 0.82, 0.80);
+  }
+  if (level >= 3.5) {
+    return vec3<f32>(0.54, 0.54, 0.51);
+  }
+  if (level >= 2.5) {
+    return vec3<f32>(0.50, 0.44, 0.34);
+  }
+  if (level >= 1.5) {
+    return vec3<f32>(0.53, 0.47, 0.28);
+  }
+  if (level >= 0.5) {
+    return vec3<f32>(0.38, 0.43, 0.23);
+  }
+  return vec3<f32>(0.21, 0.32, 0.18);
+}
+
 fn screenGrid(mapPos: vec2<f32>, spacing: f32, width: f32) -> f32 {
   let cell = fract(mapPos / spacing);
   let distanceToLine = abs(cell - vec2<f32>(0.5)) * 2.0;
@@ -81,6 +100,7 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let owner = u32(round(control.r * 255.0));
   let isLand = control.g > 0.5;
   let shade = control.b;
+  let elevation = control.a;
 
   let west = controlAt(uv - vec2<f32>(texel.x, 0.0));
   let east = controlAt(uv + vec2<f32>(texel.x, 0.0));
@@ -102,7 +122,14 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   if (isLand) {
     let base = paletteAt(owner);
     let tint = 0.64 + shade * 0.52;
-    color = base * tint;
+    let level = round(elevation * 5.0);
+    let terrainColor = elevationColor(level);
+    let terrainMix = select(0.52, 0.18, owner > 0u);
+    color = mix(base * tint, terrainColor * (0.58 + shade * 0.52), terrainMix);
+
+    // High ground reads as bright rock/snow even inside an owner's color.
+    let snow = smoothstep(4.1, 5.0, level);
+    color = mix(color, vec3<f32>(0.83, 0.87, 0.85), snow * 0.42);
 
     // A one-pixel territory frontier. A player border and an unclaimed-land
     // border use the same deterministic comparison, which keeps the map legible.
@@ -124,11 +151,15 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     let grain = fract(sin(dot(mapPixel, vec2<f32>(12.9898, 78.233))) * 43758.5453);
     color += (grain - 0.5) * 0.034;
 
-    // Elevation contours are derived from the stored terrain shade. They stay
-    // cheap, deterministic, and unchanged by ownership changes.
-    let contourDistance = abs(fract(control.b * 22.0 + 0.5) - 0.5);
-    let contour = 1.0 - smoothstep(0.0, 0.055, contourDistance);
-    color = mix(color, color * 0.82, contour * 0.42);
+    // A subtle contour line at elevation-tier boundaries. Ownership changes do
+    // not affect this channel.
+    let elevationEdge = max(
+      max(abs(elevation - west.a), abs(elevation - east.a)),
+      max(abs(elevation - north.a), abs(elevation - south.a))
+    );
+    if (elevationEdge > 0.04) {
+      color = mix(color, color * 0.80, 0.45);
+    }
 
     // At combat zoom, expose the pixel grid so the raster nature of the world
     // reads clearly without turning the zoomed-out atlas into moiré.

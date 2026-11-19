@@ -50,7 +50,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - reads the live `simulation.structures` registry, so a destroyed structure disappears immediately;
 - the minimap separately draws live structures as colored dots with a white center.
 
-The overlay is intentionally separate from the territory shader: structures need icons and future labels, while territory upload cost and sampling stay unchanged. Panning with all 108 markers measured 143 fps, p99 7.1 ms.
+The overlay is intentionally separate from the territory shader: structures need icons and future labels, while territory upload cost and sampling stay unchanged. A combined elevation + structure + organic run measured 144 fps, p99 7.1 ms.
 
 ---
 
@@ -58,12 +58,24 @@ The overlay is intentionally separate from the territory shader: structures need
 
 The control texture is created as `rgba8unorm`, with usage `TEXTURE_BINDING | COPY_DST`.
 
-| Channel | Value                  | Used by                             |
-| ------- | ---------------------- | ----------------------------------- |
-| R       | Owner id 0–8           | Player color, border comparison     |
-| G       | `0` ocean / `255` land | Ocean styling, coastlines           |
-| B       | Terrain shade 0–255    | Relief brightness and contour bands |
-| A       | `255` (unused)         | Available for future biome data     |
+| Channel | Value                  | Used by                                  |
+| ------- | ---------------------- | ---------------------------------------- |
+| R       | Owner id 0–108         | Player color, border comparison          |
+| G       | `0` ocean / `255` land | Ocean styling, coastlines                |
+| B       | Terrain shade 0–255    | Relief brightness and grain              |
+| A       | Elevation tier 0–255   | Six-tier terrain color and contour edges |
+
+### Elevation rendering
+
+The alpha channel stores `elevation / (ELEVATION_LEVELS - 1)`. The fragment shader decodes it back to a tier and:
+
+- mixes an elevation palette into land color — green lowland, olive plains, ochre hills, brown highlands, grey mountains, pale peaks;
+- keeps owner colors dominant (18% terrain mix) while unclaimed land shows the terrain palette more strongly (52%);
+- brightens the top tier toward snow;
+- darkens pixels where a neighbour has a different tier, producing subtle contour boundaries;
+- leaves the continuous shade channel for relief grain.
+
+This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation.
 
 Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer only writes R for ownership changes; G/B are written at initialization/resync.
 

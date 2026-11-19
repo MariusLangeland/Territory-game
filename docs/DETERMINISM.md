@@ -55,7 +55,9 @@ All authoritative quantities are integers:
 | Attack claim provenance    | attack id (uint32) per cell            |
 | Structure identity         | integer id, type enum, owner, map cell |
 | Attack seed distance       | squared integer distance               |
-| Capture rate               | 30 pixels per front per tick           |
+| Attack budget              | 30 points per front per tick           |
+| Defense                    | `1 + elevation + occupied` (integers)  |
+| Elevation tier             | uint8, 0–5                             |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
@@ -140,12 +142,14 @@ Attacks have monotonically increasing ids. Each `step()` iterates active attacks
 For each attack:
 
 - ask its growth layer for the next candidate,
-- skip candidates that are no longer owned by the expected target owner (without spending the capture budget),
+- skip candidates that are no longer owned by the expected target owner (without spending attack points),
+- pay `1 + elevation + occupied bonus` attack points for each valid capture,
+- requeue the next candidate and stop the tick if the remaining budget cannot afford it,
 - skip candidates that no longer share a land edge with the attacker's territory,
 - claim valid cells with a deterministic `claim()` operation,
 - push still-target-owned neighbours onto the growth layer in the fixed order west, east, north, south,
 - expire the front when `tick - createdAtTick >= ATTACK_LIFETIME_TICKS` (50 ticks / 5 seconds),
-- stop after 30 captures or when the frontier is empty,
+- stop when the budget reaches zero or the frontier is empty,
 - drop the front if a tick captures zero cells.
 
 Attack seeds are derived deterministically:
@@ -256,7 +260,7 @@ It is deterministic on conforming JS engines for a fixed build. Because floating
 - 108 starts are selected by deterministic farthest-point sampling from a seeded candidate pool.
 - A preferred 34-cell spacing keeps initial beachheads from overlapping.
 - Start boundaries use an integer hash of `(x, y, seed ^ playerOffset)` and integer squared distance.
-- The start count, candidate count, spacing, and selection order are part of map version 2.
+- The start count, candidate count, spacing, selection order, land threshold, shade, and elevation-tier quantiles are part of map version 3.
 
 These do not add non-determinism to gameplay; they shape the initial territory. Changing any of them requires a `MAP_VERSION` bump.
 
@@ -284,6 +288,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left.
 17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, and deterministic tie-breaks.
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
+19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
+20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
 
 Commands to run:
 

@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.5.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.6.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.5.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.6.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -28,6 +28,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 ┌──────────────────────────────┐              ┌─────────────────────────┐
 │ TerritorySimulation          │              │ TerritoryRenderer       │
 │  - owners / land / shade     │              │  - control texture      │
+│  - elevation / defense       │              │  - elevation channel    │
 │  - players, attacks, RNG     │              │  - palette / uniforms   │
 │  - no DOM, no clock          │              │  - WGSL pass            │
 └──────────────────────────────┘              └─────────────────────────┘
@@ -47,7 +48,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                                | Svelte component             |
 | `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                                           | constants, helpers           |
 | `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                                         | `DeterministicRng`           |
-| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, starts                                          | `generateMap`, `hash32`      |
+| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, elevation tiers, starts                         | `generateMap`, `hash32`      |
 | `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
 | `src/lib/game/integrity.ts`                 | Core      | Connected-component labeling and detached-territory annexation                        | `TerritoryIntegrity`         |
@@ -70,6 +71,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `owners: Uint16Array` — length 2,097,152; owner id per cell, `0` for unclaimed.
 - `land: Uint8Array` — static land mask.
 - `shade: Uint8Array` — static terrain brightness for the renderer.
+- `elevation: Uint8Array` — six discrete terrain tiers; base defense = `1 + elevation`.
 - `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
 - `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, capture counts, and lifetime.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
@@ -107,7 +109,7 @@ const index = packed & 0x1f_ffff;
 - The driver calls `renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow)` before the next tick.
 - If the buffer overflows, the renderer does a full control-texture rebuild. Game state is unaffected.
 
-In the 108-state stress build, the technical caps allow roughly 219 active fronts (107 bots × 2 + 3 human) × 30 captures ≈ 6,570 changes per tick. That still fits comfortably in the 16,384-word buffer. Stress tests assert no overflow during sustained runs.
+In the 108-state stress build, the technical caps allow roughly 219 active fronts (107 bots × 2 + 3 human) × at most 30 captures ≈ 6,570 changes per tick. That still fits comfortably in the 16,384-word buffer. Defense spending reduces the actual capture count. Stress tests assert no overflow during sustained runs.
 
 ### 3.4 Derived frontier sets
 
@@ -141,7 +143,7 @@ step()
  │    ├─ detect opposing claimed-cell contact; cancel the mutual pair
  │    ├─ claim up to 30, write claim provenance, push valid neighbours
  │    ├─ destroy a State structure if its cell is captured
- │    ├─ skip stale/disconnected candidates without spending the capture budget
+ │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
  ├─ every 10 ticks or after a cancellation: annex detached components
@@ -161,6 +163,8 @@ Each attack capture writes its id into `claimedBy[index]`. Before claiming a can
 - the current ownership contact line becomes the border.
 
 This is a front-line collision, not a global truce: attacks against other states and third-party attacks continue.
+
+Each capture first spends the target's defense from the front's 30-point budget: `1 + elevation`, plus one when the target is owned. If the budget cannot afford the next candidate, the candidate is pushed back onto the frontier and the tick ends. This is the attack economy. Defense is derived from elevation and live ownership; it is not allocated per attack.
 
 Attack frontier processing also enforces border connectivity at capture time: the candidate cell must share a land edge with the attacker. If opposing fronts sever that path, the candidate is skipped; a front with zero legal captures in a tick is removed rather than continuing into disconnected territory. All fronts also expire after 50 ticks (5 seconds), so no order can continue indefinitely even while connected. This is what prevents enclaves, phase-through attacks, and unbounded orders.
 
@@ -236,9 +240,10 @@ It intentionally excludes renderer state, camera, UI, and border sets (derived).
 
 1. Computes a quantised elevation (0–65535) for every cell using five octaves of hashed value noise plus a broad continental signal and edge falloff.
 2. Builds a 1024-bin elevation histogram and picks the threshold that yields the target 38% land.
-3. Writes the land mask and terrain shade.
-4. Chooses 108 start points with optimized farthest-point sampling from candidate land cells, enforcing a 34-cell preferred spacing.
-5. Returns `{ width, height, land, shade, landCount, starts }`.
+3. Quantises land height into six tiers at fixed land-quantiles (45/65/80/92/98%), keeping most land lowland and peaks rare.
+4. Writes the land mask, terrain shade, elevation tiers, and starts.
+5. Chooses 108 start points with optimized farthest-point sampling from candidate land cells, enforcing a 34-cell preferred spacing.
+6. Returns `{ width, height, land, shade, elevation, landCount, starts }`.
 
 Start paint uses a ragged disc of radius ~16: a per-cell integer hash perturbs the radius, then cells outside land or already owned are ignored. A fallback ensures every state receives at least one land pixel. The initial frontiers are rebuilt afterward by one full scan.
 
@@ -254,7 +259,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~275–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~300–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) per simulation.
 
 ---
 
@@ -281,6 +286,7 @@ The renderer keeps references to the simulation so it can rebuild the shadow aft
 | R       | Owner id (`0` neutral)            |
 | G       | Land mask (`0` ocean, `255` land) |
 | B       | Terrain shade / relief            |
+| A       | Normalized elevation tier 0–255   |
 | A       | Unused (`255`)                    |
 
 The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indices 1–108 are player colors. The first eight colors are hand-picked and the rest are generated on a golden-angle hue wheel.
@@ -384,7 +390,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~275–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~300–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

@@ -1,4 +1,11 @@
-import { LAND_FRACTION, MAP_HEIGHT, MAP_WIDTH, PLAYER_COUNT, START_RADIUS } from './constants';
+import {
+	ELEVATION_LEVELS,
+	LAND_FRACTION,
+	MAP_HEIGHT,
+	MAP_WIDTH,
+	PLAYER_COUNT,
+	START_RADIUS
+} from './constants';
 import { DeterministicRng } from './rng';
 
 export interface StartPoint {
@@ -14,6 +21,8 @@ export interface GeneratedMap {
 	land: Uint8Array;
 	/** 0-255 terrain brightness used by the renderer. Ocean is 0. */
 	shade: Uint8Array;
+	/** Discrete elevation tier per pixel, 0..ELEVATION_LEVELS-1. Ocean is 0. */
+	elevation: Uint8Array;
 	landCount: number;
 	starts: StartPoint[];
 }
@@ -266,6 +275,17 @@ export function generateMap(seed: number): GeneratedMap {
 	}
 
 	const span = Math.max(1, max - threshold);
+	const elevation = new Uint8Array(pixelCount);
+	const heightHistogram = new Uint32Array(1024);
+	for (let i = 0; i < pixelCount; i++) {
+		if (!land[i]) continue;
+		const heightRatio = Math.min(1, (elevations[i] - threshold) / span);
+		heightHistogram[Math.min(1023, Math.floor(heightRatio * 1023))]++;
+	}
+
+	// Land quantiles keep every tier visible: most land is lowland, while peaks
+	// remain rare. Thresholds are deterministic and independent of ownership.
+	const elevationThresholds = landQuantileThresholds(heightHistogram, landCount);
 	let detailSeed = (seed ^ 0x7f4a7c15) >>> 0;
 	for (let y = 0; y < height; y++) {
 		const row = y * width;
@@ -273,6 +293,13 @@ export function generateMap(seed: number): GeneratedMap {
 			const i = row + x;
 			if (!land[i]) continue;
 			const heightRatio = Math.min(1, (elevations[i] - threshold) / span);
+			const bin = Math.min(1023, Math.floor(heightRatio * 1023));
+			let level = 0;
+			for (const cutoff of elevationThresholds) {
+				if (bin >= cutoff) level++;
+			}
+			elevation[i] = Math.min(ELEVATION_LEVELS - 1, level);
+
 			const grain = (hash32(x, y, detailSeed) & 0xff) / 255;
 			shade[i] = Math.max(0, Math.min(255, Math.round(118 + heightRatio * 105 + grain * 22)));
 		}
@@ -281,5 +308,22 @@ export function generateMap(seed: number): GeneratedMap {
 
 	const starts = chooseStarts(land, seed);
 
-	return { width, height, land, shade, landCount, starts };
+	return { width, height, land, shade, elevation, landCount, starts };
+}
+
+/** Quantile cutoffs for the five boundaries between the six elevation tiers. */
+function landQuantileThresholds(histogram: Uint32Array, landCount: number): Uint16Array {
+	const fractions = [0.45, 0.65, 0.8, 0.92, 0.98];
+	const thresholds = new Uint16Array(fractions.length);
+	let cumulative = 0;
+	let target = 0;
+
+	for (let bin = 0; bin < histogram.length && target < fractions.length; bin++) {
+		cumulative += histogram[bin];
+		while (target < fractions.length && cumulative >= landCount * fractions[target]) {
+			thresholds[target++] = bin;
+		}
+	}
+	while (target < fractions.length) thresholds[target++] = 1023;
+	return thresholds;
 }

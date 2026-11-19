@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.5.0 (attack stress experiment)  
+**Version:** 0.6.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.5.0, map version 2, protocol draft 9
+**Last synchronized with:** application 0.6.0, map version 3, protocol draft 10
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -114,10 +114,11 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 
 - 2048 × 1024 cells (2,097,152 total).
 - Generator targets 38% land.
-- Static binary land mask and 8-bit terrain shade.
+- Static binary land mask, 8-bit terrain shade, and a discrete elevation tier (0–5).
+- Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 2`; `PROTOCOL_VERSION = 2`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 10`.
 
 ### 4.2 Starting positions
 
@@ -137,10 +138,10 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
 7. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
-8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until the front has captured **30** valid target-owned cells or no candidates remain. Invalid/stale cells are skipped without consuming the capture budget. See section 4.12.
+8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until **30 attack points** are spent or no candidates remain. A capture costs the target pixel's defense. Invalid/stale cells are skipped without consuming the budget. See sections 4.12 and 4.16.
 9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
 10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
-11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
+11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check. If the remaining budget cannot afford the next candidate, it is queued again for the following tick.
 12. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
 13. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
 14. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
@@ -275,6 +276,23 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 This is the first structure type; structure construction, multiple structure types, and ownership transfer are future work.
+
+### 4.16 Elevation and defense
+
+| Property                         | Value                                                           |
+| -------------------------------- | --------------------------------------------------------------- |
+| Elevation tiers                  | 0 lowland, 1 plains, 2 hills, 3 highlands, 4 mountains, 5 peaks |
+| Base defense                     | `1 + elevation`                                                 |
+| Occupied bonus                   | `+1` when the pixel has a nonzero owner                         |
+| Attack points per front per tick | 30                                                              |
+| Capture cost                     | Target pixel defense                                            |
+| Defense range                    | 1–6 unowned, 2–7 occupied                                       |
+
+- Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
+- Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
+- A front cannot spend more than 30 points per tick. Cheap neutral lowland can move 30 pixels per tick; defended peaks move 4.
+- The HUD hover readout exposes elevation tier, base defense, and total defense.
+- Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -413,7 +431,7 @@ Full detail: [DETERMINISM.md](DETERMINISM.md).
 Full detail: [RENDERING.md](RENDERING.md).
 
 1. One 2048 × 1024 `rgba8unorm` control texture and a 256 × 1 palette texture.
-2. R = owner id, G = land, B = terrain shade, A unused.
+2. R = owner id, G = land, B = terrain shade, A = normalized elevation tier.
 3. Per-tick changes normally upload 32 × 32 dirty tiles merged into strips. Above 96 dirty tiles, an adaptive full-texture resync is queued and uploaded in eight horizontal chunks, at most two per frame. No frame does a synchronous full-map upload.
 4. One full-screen triangle and one fragment shader.
 5. Renderer never mutates simulation state.
@@ -484,6 +502,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Mutual fronts cancel at contact, leaving a stable border and terminating the pair's orders.
 - [x] Detached pockets are annexed by the adjacent protected mainland with the largest shared border.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
+- [x] Six elevation tiers color the map and add base defense.
+- [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

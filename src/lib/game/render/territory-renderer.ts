@@ -1,4 +1,4 @@
-import { PALETTE } from '../constants';
+import { ELEVATION_LEVELS, PALETTE } from '../constants';
 import type { TerritorySimulation } from '../simulation';
 import { MapCamera } from './camera';
 import { TERRITORY_SHADER } from './territory.wgsl';
@@ -300,13 +300,15 @@ export class TerritoryRenderer {
 
 	/** Full resync, for reconnects, GPU reset, or a dropped change batch. */
 	rebuildFromSimulation(): void {
-		const { owners, terrain, terrainShade } = this.simulation;
+		const { owners, terrain, terrainShade, terrainElevation } = this.simulation;
 		for (let i = 0; i < owners.length; i++) {
 			const offset = i * 4;
 			this.controlPixels[offset] = owners[i];
 			this.controlPixels[offset + 1] = terrain[i] ? 255 : 0;
 			this.controlPixels[offset + 2] = terrainShade[i];
-			this.controlPixels[offset + 3] = 255;
+			this.controlPixels[offset + 3] = Math.round(
+				(terrainElevation[i] / (ELEVATION_LEVELS - 1)) * 255
+			);
 		}
 	}
 
@@ -392,13 +394,15 @@ export class TerritoryRenderer {
 	}
 
 	private buildControlTexture(): void {
-		const { owners, terrain, terrainShade } = this.simulation;
+		const { owners, terrain, terrainShade, terrainElevation } = this.simulation;
 		for (let i = 0; i < owners.length; i++) {
 			const offset = i * 4;
 			this.controlPixels[offset] = owners[i];
 			this.controlPixels[offset + 1] = terrain[i] ? 255 : 0;
 			this.controlPixels[offset + 2] = terrainShade[i];
-			this.controlPixels[offset + 3] = 255;
+			this.controlPixels[offset + 3] = Math.round(
+				(terrainElevation[i] / (ELEVATION_LEVELS - 1)) * 255
+			);
 		}
 	}
 

@@ -373,3 +373,39 @@ Annexation previously treated each player's largest connected component as their
 - Make structures invulnerable: prevents conquest of the anchor and creates unkillable territory.
 - Destroy the entire state when the structure falls: stronger than requested; current rule leaves surviving territory but removes protection.
 - Render structures in the WebGPU shader: more invasive for the first structure pass; a 2D overlay is cheaper and can evolve into icons/labels.
+
+---
+
+## ADR-013 — Elevation-based defense and attack points
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Attacks were a flat 30 pixels per tick regardless of terrain or whether the target was occupied. We want a minimal attack economy where terrain and ownership matter, while keeping the simulation integer and deterministic and preserving the fast WebGPU map path.
+
+### Decision
+
+- Quantise land height into six discrete elevation tiers using fixed land quantiles (45/65/80/92/98%).
+- Store elevation in a `Uint8Array`; derive **base defense = 1 + elevation**. Add **+1** when the pixel has a nonzero owner.
+- Give each attack **30 attack points per tick**. A capture subtracts the target's defense. If the next candidate costs more than the remaining budget, requeue it and end the tick.
+- Render elevation by storing the normalized tier in the control texture's previously unused alpha channel. The shader maps tiers to lowland/plains/hills/highlands/mountains/peaks colors, tints owner colors, brightens snow, and draws tier-boundary contours.
+- Expose elevation, base defense, and total defense in the hover status console.
+- Bump `MAP_VERSION` to 3 and protocol version to 10.
+
+### Consequences
+
+- Terrain and occupation affect attack speed without new per-attack resources.
+- Defense is derived from static elevation plus live ownership, so no extra mutable defense array is needed.
+- Capturing a defended pixel changes defense for future captures at that cell but not the map.
+- Bots do not yet evaluate defense when choosing targets; they simply take longer on high ground.
+- Attack capture volume drops, which reduces tick cost; the renderer texture layout is unchanged in size.
+- Elevation is part of map version and must match across clients. The shader's elevation palette is presentation-only and versioned with the app.
+
+### Alternatives considered
+
+- Continuous elevation defense: more granular, but harder to read in the HUD and to balance.
+- A per-cell mutable defense array: more state and checksum cost; current defense is fully derived.
+- Pixel-level attack progress: more realistic but adds per-front state and partial-capture UI with little first-pass value.
+- Encode elevation in the B channel: would lose continuous relief shading; alpha was unused.

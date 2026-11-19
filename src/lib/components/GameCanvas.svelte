@@ -10,6 +10,9 @@
 		y: number;
 		owner: number;
 		land: boolean;
+		elevation: number;
+		baseDefense: number;
+		defense: number;
 	}
 
 	interface Props {
@@ -228,11 +231,14 @@
 			const now = performance.now();
 			const owner = simulation.getOwner(x, y);
 			const land = simulation.isLand(x, y);
-			const key = `${x}:${y}:${owner}:${land}`;
+			const elevation = simulation.getElevation(x, y);
+			const baseDefense = simulation.getBaseDefense(x, y);
+			const defense = simulation.getDefense(x, y);
+			const key = `${x}:${y}:${owner}:${land}:${defense}`;
 			if (now - lastHoverAt > 85 && key !== lastHoverKey) {
 				lastHoverAt = now;
 				lastHoverKey = key;
-				onHover?.({ x, y, owner, land });
+				onHover?.({ x, y, owner, land, elevation, baseDefense, defense });
 			}
 		}
 

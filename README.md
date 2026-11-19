@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.5).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.6).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -23,8 +23,9 @@
 
 | Area            | Implementation                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, State structures, three growth layers, 3 active fronts (human) / 2 (bots), 30 px/front/tick, front cancellation and cleanup     |
+| Attack stress   | 108 states, State structures, three growth layers, 3 active fronts (human) / 2 (bots), 30 attack points/front/tick, terrain defense         |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied`; fronts spend 30 attack points per tick                            |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
@@ -80,13 +81,27 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
 3. A free attack front opens, with a technical cap of 3 active fronts (2 for bots).
-4. Each tick, a front captures up to 30 connected target-owned pixels, traversing through the target's territory.
-5. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
-6. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
-7. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
-8. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
-9. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
-10. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
+4. Each tick, a front has **30 attack points**. Capturing a pixel costs its defense: `1 + elevation`, plus **1 if the pixel is occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
+5. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
+6. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
+7. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
+8. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
+9. **Mutual fronts cancel:** if two states are attacking each other and their captured fronts touch, every order between that pair stops. The contact line becomes the border.
+10. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
+11. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
+
+### Terrain and defense
+
+The map has six discrete elevation tiers: **lowland, plains, hills, highlands, mountains, peaks**. Elevation is part of the generated map, rendered as a green-to-ochre-to-grey-to-snow palette and marked with subtle contour boundaries.
+
+| Property                         | Value                      |
+| -------------------------------- | -------------------------- |
+| Base defense                     | `1 + elevation tier` (1–6) |
+| Occupied bonus                   | `+1`                       |
+| Attack points per front per tick | 30                         |
+| Capture cost                     | Target pixel defense       |
+
+Hovering a land cell shows its elevation, base defense, and total defense in the status console.
 
 ### Growth layers
 
@@ -131,19 +146,19 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities an
 
 Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
 
-| Measurement                                    | Result                                               |
-| ---------------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts                    | ~270 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick         | ~3.0 ms                                              |
-| Smooth-layer all-bot attack tick               | ~4.0 ms                                              |
-| Organic-layer all-bot attack tick              | ~3.0 ms                                              |
-| Full-state checksum                            | ~18.5 ms (on-demand; includes claim provenance)      |
-| Browser render loop with 108 structure markers | 143 fps; p99 7.1 ms; isolated cleanup spikes         |
-| Upload strategy under stress                   | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
-| Full control texture                           | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds)      | ~275–340 MiB                                         |
+| Measurement                                  | Result                                               |
+| -------------------------------------------- | ---------------------------------------------------- |
+| Map generation + 108 starts                  | ~270 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick       | ~1.9 ms                                              |
+| Smooth-layer all-bot attack tick             | ~2.8 ms                                              |
+| Organic-layer all-bot attack tick            | ~1.9 ms                                              |
+| Full-state checksum                          | ~18 ms (on-demand; includes claim provenance)        |
+| Browser render loop with elevation + markers | 144 fps; p99 7.1 ms; isolated cleanup spikes         |
+| Upload strategy under stress                 | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
+| Full control texture                         | 8 MiB VRAM + 8 MiB CPU shadow                        |
+| Node benchmark RSS (all benchmark worlds)    | ~300–340 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 3.0–4.0% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.9–2.8% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

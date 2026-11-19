@@ -245,6 +245,13 @@ Structures:
 - clients may draw structures from the snapshot, but the server owns placement, destruction, and protection;
 - future build/transfer commands must be tick-stamped and authorized.
 
+Elevation and defense:
+
+- elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
+- defense is derived identically from elevation and current owner (`1 + elevation + occupied`);
+- attack costs are server-authoritative tick logic, so clients predicting a front must apply the same 30-point budget and requeue rule;
+- the handshake must reject mismatched map versions, not just protocol versions.
+
 ### Versioning
 
 The welcome/handshake must include:

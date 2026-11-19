@@ -63,7 +63,8 @@
 						data[offset + 3] = 255;
 					} else {
 						const color = MAP_PIXELS[owner] ?? MAP_PIXELS[0];
-						const shade = 0.76 + (simulation.terrainShade[index] / 255) * 0.28;
+						const elevationLight = 0.82 + simulation.terrainElevation[index] * 0.045;
+						const shade = (0.76 + (simulation.terrainShade[index] / 255) * 0.28) * elevationLight;
 						data[offset] = Math.min(255, Math.round(color[0] * shade));
 						data[offset + 1] = Math.min(255, Math.round(color[1] * shade));
 						data[offset + 2] = Math.min(255, Math.round(color[2] * shade));

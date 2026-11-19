@@ -1,13 +1,15 @@
 import {
 	ANNEX_INTERVAL_TICKS,
+	ATTACK_DAMAGE_PER_TICK,
 	ATTACK_LIFETIME_TICKS,
 	ATTACK_SEARCH_RADIUS,
+	BASE_DEFENSE_OFFSET,
 	BOT_ATTACK_LIMIT,
 	BOT_DECISION_INTERVAL,
 	BOT_SEARCH_TRIES,
-	CAPTURE_PER_TICK,
 	HUMAN_PLAYER_ID,
 	MAX_ATTACKS_PER_PLAYER,
+	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
 	START_RADIUS
@@ -167,6 +169,7 @@ export class TerritorySimulation {
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
+	private readonly elevation: Uint8Array;
 	private readonly landCount: number;
 	private attacks: AttackState[] = [];
 	private nextAttackId = 1;
@@ -202,6 +205,7 @@ export class TerritorySimulation {
 		this.height = this.map.height;
 		this.land = this.map.land;
 		this.shade = this.map.shade;
+		this.elevation = this.map.elevation;
 		this.landCount = this.map.landCount;
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
@@ -355,6 +359,29 @@ export class TerritorySimulation {
 		return this.shade;
 	}
 
+	get terrainElevation(): Uint8Array {
+		return this.elevation;
+	}
+
+	getElevation(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.elevation[y * this.width + x];
+	}
+
+	getBaseDefense(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		const index = y * this.width + x;
+		if (!this.land[index]) return 0;
+		return BASE_DEFENSE_OFFSET + this.elevation[index];
+	}
+
+	getDefense(x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		const index = y * this.width + x;
+		if (!this.land[index]) return 0;
+		return this.defenseAt(index);
+	}
+
 	get totalLand(): number {
 		return this.landCount;
 	}
@@ -490,6 +517,14 @@ export class TerritorySimulation {
 		return found.slice(0, 96).map((entry) => entry.index);
 	}
 
+	private defenseAt(index: number): number {
+		return (
+			BASE_DEFENSE_OFFSET +
+			this.elevation[index] +
+			(this.owners[index] > 0 ? OCCUPIED_DEFENSE_BONUS : 0)
+		);
+	}
+
 	private hasNeighbourOwner(index: number, ownerId: number): boolean {
 		const width = this.width;
 		const height = this.height;
@@ -599,7 +634,8 @@ export class TerritorySimulation {
 
 			let capturedThisTick = 0;
 			let frontierEmpty = false;
-			while (capturedThisTick < CAPTURE_PER_TICK) {
+			let attackPoints = ATTACK_DAMAGE_PER_TICK;
+			while (attackPoints > 0) {
 				const index = attack.frontier.pop();
 				if (index === undefined) {
 					frontierEmpty = true;
@@ -622,7 +658,16 @@ export class TerritorySimulation {
 					break;
 				}
 
+				// Defense is paid in attack points. Once the front cannot afford
+				// the next pixel, it keeps that pixel queued for a future tick.
+				const cost = this.defenseAt(index);
+				if (cost > attackPoints) {
+					attack.frontier.push(index);
+					break;
+				}
+
 				this.claim(index, attack.attackerId, attack.id);
+				attackPoints -= cost;
 				attack.captures++;
 				capturedThisTick++;
 

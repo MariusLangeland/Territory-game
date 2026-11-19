@@ -5,6 +5,7 @@
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
 		ATTACK_LIFETIME_TICKS,
+		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
 		MAX_ATTACKS_PER_PLAYER,
 		MAP_HEIGHT,
@@ -29,6 +30,9 @@
 		y: number;
 		owner: number;
 		land: boolean;
+		elevation: number;
+		baseDefense: number;
+		defense: number;
 	}
 
 	interface Toast {
@@ -133,7 +137,7 @@
 	let hoverSub = $derived.by(() => {
 		if (!hover) return 'Move the cursor over the atlas.';
 		if (!hover.land) return 'Ocean cannot be claimed.';
-		if (hover.owner === 0) return 'Undefended — a valid expansion target.';
+		if (hover.owner === 0) return 'Unclaimed terrain — base defense still applies.';
 		if (hover.owner === snapshot?.humanId) return 'Friendly territory.';
 		return 'Hostile frontier. Click to order an assault.';
 	});
@@ -637,6 +641,13 @@
 				<span class="status-label">ORDERS</span>
 				<strong>{activeHumanAttacks}<em>/{MAX_ATTACKS_PER_PLAYER}</em></strong>
 			</div>
+			<div class="defense-block">
+				<span class="status-label">DEFENSE</span>
+				<strong>{hover?.land ? hover.defense : '—'}</strong>
+				<small>
+					{hover?.land ? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}` : '—'}
+				</small>
+			</div>
 		</div>
 
 		<div class="map-tools hud" aria-label="Map controls">
@@ -800,7 +811,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.5.0 / PROTOCOL 9</span>
+				<span>BUILD 0.6.0 / PROTOCOL 10</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -955,9 +966,10 @@
 						<span class="manual-index">01 / THE EXPERIMENT</span>
 						<h3>No economy. Just fronts.</h3>
 						<p>
-							Troops, income, caps, and attack costs are intentionally removed. This build exists to
-							stress-test clicking, flood-fill conquest, many simultaneous attackers, and the map
-							update path. It is not the final combat design.
+							Troops, income, caps, and launch costs are intentionally removed. Terrain now matters:
+							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
+							spends 30 attack points per tick. Higher ground and defended territory therefore fall
+							more slowly. This is still not the final combat design.
 						</p>
 					</section>
 					<section>
@@ -1611,7 +1623,8 @@
 	}
 
 	.coords-block,
-	.orders-block {
+	.orders-block,
+	.defense-block {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -1623,6 +1636,27 @@
 	.orders-block {
 		min-width: 70px;
 		border-left: 1px solid var(--line-soft);
+	}
+
+	.defense-block {
+		min-width: 82px;
+		padding: 0 13px;
+		border-left: 1px solid var(--line-soft);
+	}
+
+	.defense-block strong {
+		font-family: var(--font-mono);
+		font-size: 13px;
+		font-weight: 600;
+		color: #ffd690;
+	}
+
+	.defense-block small {
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.04em;
+		color: var(--ink-faint);
+		white-space: nowrap;
 	}
 
 	.target-block {
@@ -2757,6 +2791,11 @@
 			padding: 0 10px;
 		}
 
+		.defense-block {
+			min-width: 62px;
+			padding: 0 9px;
+		}
+
 		.map-tools {
 			right: 14px;
 			bottom: 14px;
@@ -2895,6 +2934,15 @@
 		}
 
 		.orders-block {
+			display: none;
+		}
+
+		.defense-block {
+			min-width: 54px;
+			padding: 0 7px;
+		}
+
+		.defense-block small {
 			display: none;
 		}
 

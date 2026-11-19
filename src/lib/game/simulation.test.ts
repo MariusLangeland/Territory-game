@@ -3,7 +3,9 @@ import { createGrowthLayer, GROWTH_MODES } from './growth';
 import { generateMap } from './map';
 import { TerritorySimulation, type AttackState } from './simulation';
 import {
+	ATTACK_DAMAGE_PER_TICK,
 	ATTACK_LIFETIME_TICKS,
+	ELEVATION_LEVELS,
 	LAND_FRACTION,
 	MAP_HEIGHT,
 	MAP_WIDTH,
@@ -53,6 +55,80 @@ function findDeepAttackablePixel(
 		}
 	}
 	return best;
+}
+
+/**
+ * Synthetic front against a 20-cell border row. Each captured owned target
+ * costs 1 + elevation + occupied bonus attack points.
+ */
+function runDefenseCapture(elevationLevel: number): number {
+	const sim = new TerritorySimulation({ seed: 424242 });
+	const width = sim.width;
+	let startX = -1;
+	let rowY = -1;
+	for (let y = 1; y < sim.height - 1 && startX < 0; y++) {
+		let run = 0;
+		for (let x = 0; x < width; x++) {
+			const index = y * width + x;
+			if (sim.terrain[index] && sim.terrain[index + width]) {
+				run++;
+				if (run >= 20) {
+					startX = x - 19;
+					rowY = y;
+					break;
+				}
+			} else {
+				run = 0;
+			}
+		}
+	}
+	expect(startX).toBeGreaterThan(-1);
+	if (startX < 0) return 0;
+
+	const elevation = (sim as unknown as { elevation: Uint8Array }).elevation;
+	const seeds: number[] = [];
+	for (let x = startX; x < startX + 20; x++) {
+		const target = rowY * width + x;
+		const attacker = (rowY + 1) * width + x;
+		sim.owners[target] = 2;
+		sim.owners[attacker] = 1;
+		sim.claimedBy[target] = 0;
+		sim.claimedBy[attacker] = 0;
+		elevation[target] = elevationLevel;
+		seeds.push(target);
+	}
+
+	const frontier = createGrowthLayer('circular', {
+		width,
+		height: sim.height,
+		owners: sim.owners,
+		attackerId: 1,
+		anchorX: startX + 10,
+		anchorY: rowY,
+		rngSeed: 1
+	});
+	for (const seed of seeds) frontier.push(seed);
+	const attack: AttackState = {
+		id: 500,
+		attackerId: 1,
+		defenderId: 2,
+		targetX: startX + 10,
+		targetY: rowY,
+		anchorX: startX + 10,
+		anchorY: rowY,
+		growthMode: 'circular',
+		frontier,
+		createdAtTick: sim.tick,
+		captures: 0,
+		done: false
+	};
+	const internals = sim as unknown as {
+		attacks: AttackState[];
+		processAttacks(): void;
+	};
+	internals.attacks.push(attack);
+	internals.processAttacks();
+	return attack.captures;
 }
 
 function bruteForceBorders(sim: TerritorySimulation): Map<number, Set<number>> {
@@ -333,6 +409,39 @@ describe('attack stress mode', () => {
 		attack.createdAtTick = sim.tick - ATTACK_LIFETIME_TICKS;
 		const result = sim.step();
 		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
+	});
+
+	it('assigns discrete elevation and base defense to every land pixel', () => {
+		const sim = new TerritorySimulation({ seed: 123321 });
+		const counts = new Array(ELEVATION_LEVELS).fill(0) as number[];
+		let neutral = -1;
+		for (let i = 0; i < sim.terrain.length; i++) {
+			if (!sim.terrain[i]) continue;
+			counts[sim.terrainElevation[i]]++;
+			if (neutral < 0 && sim.owners[i] === 0) neutral = i;
+		}
+		expect(counts.every((count) => count > 0)).toBe(true);
+		expect(neutral).toBeGreaterThan(-1);
+		if (neutral < 0) return;
+
+		const x = neutral % sim.width;
+		const y = (neutral - x) / sim.width;
+		const elevation = sim.getElevation(x, y);
+		const base = sim.getBaseDefense(x, y);
+		expect(base).toBe(1 + elevation);
+		expect(sim.getDefense(x, y)).toBe(base);
+
+		const start = sim.map.starts[0];
+		expect(sim.getBaseDefense(start.x, start.y)).toBe(1 + sim.getElevation(start.x, start.y));
+		expect(sim.getDefense(start.x, start.y)).toBe(sim.getBaseDefense(start.x, start.y) + 1);
+	});
+
+	it('slows attacks by the target pixel defense', () => {
+		const lowlandCaptures = runDefenseCapture(0);
+		const peakCaptures = runDefenseCapture(5);
+		expect(lowlandCaptures).toBe(15);
+		expect(peakCaptures).toBe(4);
+		expect(lowlandCaptures).toBeGreaterThan(peakCaptures);
 	});
 
 	it('places one State structure at every state start', () => {
