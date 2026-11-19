@@ -52,7 +52,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
 | `src/lib/game/integrity.ts`                 | Core      | Connected-component labeling and detached-territory annexation                        | `TerritoryIntegrity`         |
-| `src/lib/game/structures.ts`                | Core      | Structure registry, definitions, cards, and effects                                   | `StructureRegistry`, cards   |
+| `src/lib/game/Structures/`                  | Core      | Per-type structure definitions, shared types, registry, and effects                   | `StructureRegistry`, cards   |
 | `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
 | `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
@@ -194,7 +194,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 ### Structure effects and State auras
 
-`structures.ts` defines effect descriptors per structure type:
+`Structures/` keeps each structure definition in its own file: `state.ts`, `mine.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
 
 - State: `defense-aura` radius 12, +20, max stacking.
 - Defense Post: `defense-aura` radius 8, +1, additive stacking.

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
-	import { STRUCTURE_ACCENTS } from '#lib/game/structures';
+	import { STRUCTURE_ACCENTS } from '#lib/game/Structures';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import { TerritoryRenderer, type RendererFrameStats } from '#lib/game/render/territory-renderer';
 

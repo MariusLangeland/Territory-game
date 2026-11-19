@@ -7,7 +7,7 @@ import {
 	STARTING_GOLD
 } from './constants';
 import { TerritorySimulation } from './simulation';
-import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from './structures';
+import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from './Structures';
 
 function findBuildCell(sim: TerritorySimulation): number {
 	for (let i = 0; i < sim.owners.length; i++) {

@@ -8,7 +8,7 @@
 
 import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
-import type { PublicCard, PublicStructure } from '../structures';
+import type { PublicCard, PublicStructure } from '../Structures';
 
 export const NET_PROTOCOL_VERSION = 13;
 

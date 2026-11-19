@@ -40,7 +40,7 @@ import {
 	type PublicStructure,
 	type Structure,
 	type StructureType
-} from './structures';
+} from './Structures';
 import { DeterministicRng } from './rng';
 
 export interface PlayerState {

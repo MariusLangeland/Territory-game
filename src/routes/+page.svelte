@@ -29,7 +29,7 @@
 		STRUCTURE_DEFINITIONS,
 		type BuildableStructureType,
 		type PublicCard
-	} from '#lib/game/structures';
+	} from '#lib/game/Structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 

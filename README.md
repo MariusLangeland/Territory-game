@@ -160,7 +160,7 @@ Svelte UI (+page.svelte)
         │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
         │     ├── TerritoryRng ... mulberry32
         │     ├── growth/ ........ circular / smooth / organic frontier layers
-        │     ├── structures.ts ... State structures and future structure types
+        │     ├── Structures/ .... one file per structure type + registry
         │     ├── integrity.ts ... detached-territory annexation
         │     └── attacks ........ contiguous flood fronts with finite orders
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads

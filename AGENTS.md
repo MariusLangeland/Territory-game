@@ -65,7 +65,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
 - `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
-- `src/lib/game/structures.ts` — structure registry, definitions, buildable cards, and effect descriptors.
+- `src/lib/game/Structures/` — one definition file per structure type (`state.ts`, `mine.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, `war-academy.ts`), plus shared `types.ts`, `definitions.ts`, `registry.ts`, and `index.ts`.
 - `src/lib/game/economy.test.ts` — starting hand/income/build/refresh/effect invariants.
 - `src/lib/game/integrity.ts` — connected-component planning and detached-territory annexation.
 - `src/lib/game/integrity.test.ts` — anchored-mainland, island, and tie-break invariants.
