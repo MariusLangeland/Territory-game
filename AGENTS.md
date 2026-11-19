@@ -14,8 +14,8 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free resource-free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. This is not the final combat model.
-- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
+- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. Three selectable growth layers: circular, smooth, organic. This is not the final combat model.
+- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, pluggable growth layers, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
 - Not implemented: final attack design, economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.
 
@@ -44,7 +44,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 7. **Version intentional changes:** map generation → `MAP_VERSION`; wire changes → `NET_PROTOCOL_VERSION`; simulation changes → determinism review + tests.
 8. **Do not claim online support.** It is a documented target, not current behavior.
 9. **Do not treat EXP-001 as final design.** Free attacks, 108 states, and active-front caps are stress-test choices; read [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) before building on them.
-10. **Attack queues stay typed and deterministic.** Favor `Uint32Array`/flat stores; do not reintroduce per-attack Sets without measurements.
+10. **Growth layers only select frontier candidates.** Ownership, edge connectivity, capture budget, order lifetime, and checksums stay in `simulation.ts`. Never let a layer bypass those checks.
+11. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
+12. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, sector arrays, or an array + RNG.
 
 ## Where things live
 
@@ -52,10 +54,12 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/GameCanvas.svelte` — canvas/fixed loop/pointer; do not add simulation logic here.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
+- `src/lib/game/growth/` — growth-layer interface, factory, and circular/smooth/organic implementations. Keep simulation invariants out of these modules.
+- `src/lib/game/growth/growth.test.ts` — layer selection invariants.
 - `src/lib/game/render/territory-renderer.ts` — GPU resource lifecycle and uploads.
 - `src/lib/game/render/territory.wgsl.ts` — shader source as a TypeScript string.
 - `src/lib/game/net/protocol.ts` — protocol draft; keep docs synchronized.
-- `scripts/benchmark.ts` — performance baseline.
+- `scripts/benchmark.ts` — performance baseline, including all growth layers.
 
 ## Definition of done
 
@@ -79,9 +83,10 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 4. Deploy, confirm the 108-state virtualized leaderboard and active-front count; scroll it to the last rank.
 5. Click a frontier, confirm a success toast and territory growth.
 6. Pause with Space and confirm the tick freezes.
-7. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-8. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
-9. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
+7. Switch the growth layer through CIRCULAR / SMOOTH / ORGANIC and confirm new attacks use it while in-flight orders keep theirs.
+8. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+9. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
+10. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

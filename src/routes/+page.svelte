@@ -13,6 +13,13 @@
 		TICK_RATE,
 		colorForPlayer
 	} from '#lib/game/constants';
+	import {
+		DEFAULT_GROWTH_MODE,
+		GROWTH_DESCRIPTIONS,
+		GROWTH_LABELS,
+		GROWTH_MODES,
+		type GrowthMode
+	} from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
@@ -56,6 +63,7 @@
 	let rankScrollEl = $state<HTMLDivElement | null>(null);
 	let rankScrollTop = $state(0);
 	let rankViewportHeight = $state(360);
+	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
 
 	const RANK_ROW_HEIGHT = 28;
 	const RANK_OVERSCAN = 3;
@@ -196,6 +204,7 @@
 		hover = null;
 		cameraView = null;
 		rankScrollTop = 0;
+		growthMode = DEFAULT_GROWTH_MODE;
 		eventFeed = [];
 		toast = null;
 		currentSeed = seed >>> 0;
@@ -266,6 +275,7 @@
 
 	function handleTick(next: GameSnapshot, events: SimEvent[]): void {
 		snapshot = next;
+		growthMode = next.growthMode;
 
 		const important = events.filter((event) => event.kind !== 'system');
 		if (important.length > 0) {
@@ -320,6 +330,13 @@
 
 	function handleRankScroll(event: Event): void {
 		rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
+	}
+
+	function selectGrowthMode(mode: GrowthMode): void {
+		if (!sim) return;
+		growthMode = mode;
+		sim.setGrowthMode(mode);
+		showToast(`${GROWTH_LABELS[mode]} growth selected for new orders.`, 'success');
 	}
 
 	$effect(() => {
@@ -633,6 +650,23 @@
 			</div>
 		</div>
 
+		<div class="growth-switcher hud" aria-label="Growth layer for new attack orders">
+			<span class="growth-label">GROWTH / NEW ORDERS</span>
+			<div class="growth-options">
+				{#each GROWTH_MODES as mode (mode)}
+					<button
+						type="button"
+						class:active={growthMode === mode}
+						onclick={() => selectGrowthMode(mode)}
+						title={GROWTH_DESCRIPTIONS[mode]}
+						aria-pressed={growthMode === mode}
+					>
+						{GROWTH_LABELS[mode]}
+					</button>
+				{/each}
+			</div>
+		</div>
+
 		<div class="key-hints hud">
 			<span><kbd>DRAG</kbd> PAN</span>
 			<span><kbd>SCROLL</kbd> ZOOM</span>
@@ -747,7 +781,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.2.2 / PROTOCOL 4</span>
+				<span>BUILD 0.3.0 / PROTOCOL 5</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -914,7 +948,8 @@
 							Click neutral ground or a rival's border near your territory. A free front opens there
 							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
 							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
-							front peters out immediately.
+							front peters out immediately. The HUD growth switch selects the frontier layer for new orders:
+							circular, smooth, or organic. Existing orders keep the layer they started with.
 						</p>
 					</section>
 					<section>
@@ -1668,6 +1703,61 @@
 		font-size: 6.5px;
 		letter-spacing: 0.05em;
 		color: var(--ink-faint);
+	}
+
+	.growth-switcher {
+		left: 50%;
+		bottom: 112px;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		height: 32px;
+		padding: 0 7px 0 12px;
+		border: 1px solid var(--line-strong);
+		background: rgba(5, 13, 18, 0.82);
+		backdrop-filter: blur(14px);
+		box-shadow: 0 10px 32px rgba(0, 0, 0, 0.24);
+		animation: hud-in 600ms 240ms ease-out both;
+	}
+
+	.growth-label {
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.12em;
+		color: var(--ink-faint);
+	}
+
+	.growth-options {
+		display: flex;
+		gap: 3px;
+	}
+
+	.growth-options button {
+		height: 22px;
+		padding: 0 8px;
+		border: 1px solid transparent;
+		background: transparent;
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.06em;
+		color: var(--ink-dim);
+		cursor: pointer;
+		transition:
+			color 140ms ease,
+			background 140ms ease,
+			border-color 140ms ease;
+	}
+
+	.growth-options button:hover {
+		color: var(--ink);
+		border-color: var(--line-strong);
+	}
+
+	.growth-options button.active {
+		border-color: var(--signal);
+		background: var(--signal);
+		color: #0a1310;
 	}
 
 	.key-hints {
@@ -2605,6 +2695,7 @@
 
 		.right-rail,
 		.key-hints,
+		.growth-switcher,
 		.clock-block {
 			display: none;
 		}

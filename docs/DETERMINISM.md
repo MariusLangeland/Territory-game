@@ -44,16 +44,16 @@ Design consequence: a slow frame can cause two simulation steps in one frame, bu
 
 All authoritative quantities are integers:
 
-| Quantity                   | Representation                        |
-| -------------------------- | ------------------------------------- |
-| Territory count            | JS number, integer                    |
-| Owner id                   | uint16 (`1..108` in the stress build) |
-| Tick                       | integer                               |
-| PRNG state                 | uint32                                |
-| Attack head / queue length | integer                               |
-| Attack queue storage       | `Uint32Array` of pixel indices        |
-| Attack seed distance       | squared integer distance              |
-| Capture rate               | 30 pixels per front per tick          |
+| Quantity                   | Representation                         |
+| -------------------------- | -------------------------------------- |
+| Territory count            | JS number, integer                     |
+| Owner id                   | uint16 (`1..108` in the stress build)  |
+| Tick                       | integer                                |
+| PRNG state                 | uint32                                 |
+| Growth layer               | one of `circular`, `smooth`, `organic` |
+| Frontier candidate storage | layer-specific deterministic structure |
+| Attack seed distance       | squared integer distance               |
+| Capture rate               | 30 pixels per front per tick           |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
@@ -85,6 +85,7 @@ return (t ^ (t >>> 14)) >>> 0
 
 - Integer-only; no `Math.random`.
 - One PRNG owned by the simulation, seeded `seed ^ 0x6a09e667`.
+- Organic growth layers own a second deterministic PRNG seeded from the world seed, attack id, attacker id, and defender id.
 - Draw order is part of the protocol.
 - `nextInt(bound)` uses rejection sampling to avoid modulo bias. Rejection loops consume draws; the sequence remains deterministic.
 - The PRNG state is included in every checksum.
@@ -136,15 +137,14 @@ Attacks have monotonically increasing ids. Each `step()` iterates active attacks
 
 For each attack:
 
-- pop cells from the head of its queue,
-- skip cells that are no longer owned by the expected target owner (without spending the capture budget),
-- skip cells that no longer share a land edge with the attacker's territory,
+- ask its growth layer for the next candidate,
+- skip candidates that are no longer owned by the expected target owner (without spending the capture budget),
+- skip candidates that no longer share a land edge with the attacker's territory,
 - claim valid cells with a deterministic `claim()` operation,
-- enqueue still-target-owned neighbours in the fixed order west, east, north, south,
+- push still-target-owned neighbours onto the growth layer in the fixed order west, east, north, south,
 - expire the front when `tick - createdAtTick >= ATTACK_LIFETIME_TICKS` (50 ticks / 5 seconds),
-- stop after 30 captures or when the queue is exhausted,
-- drop the front if a tick captures zero cells,
-- compact processed queue entries after 4,096 to bound retained memory.
+- stop after 30 captures or when the frontier is empty,
+- drop the front if a tick captures zero cells.
 
 Attack seeds are derived deterministically:
 
@@ -153,7 +153,11 @@ Attack seeds are derived deterministically:
 - sort by `(distance, index)`;
 - cap at 96.
 
-Each attack uses a growable `Uint32Array` FIFO queue. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate queue entries fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S enqueue order and are harmless to outcomes. Queue compaction rewrites the same remaining entries in order, so it cannot change behavior.
+Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
+
+- **Circular:** a binary min-heap of packed `(distanceSq, index)` keys. The heap order is deterministic; no randomness.
+- **Smooth:** eight fixed angular buckets with a deterministic cursor; within a bucket selection uses integer neighbour counts, squared distance, and index as tie-breakers.
+- **Organic:** uniform random removal from an array using the attack's own seeded `DeterministicRng`. Its state and remaining entries are part of the checksum.
 
 ### Caution
 
@@ -183,7 +187,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 4. ended flag and winner,
 5. every owner cell,
 6. each player's id, alive flag, and territory,
-7. each active attack's id, attacker, defender, head, queue length, and remaining queue cells.
+7. current and pending growth mode, plus each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 
@@ -211,6 +215,7 @@ A canonical replay should contain:
 	"mapVersion": 1,
 	"seed": 1234,
 	"tickRate": 10,
+	"growthMode": "circular",
 	"commands": [{ "tick": 12, "playerId": 1, "sequence": 1, "type": "attack", "x": 100, "y": 200 }],
 	"finalTick": 3000,
 	"checksum": "8b3f21d0"
@@ -258,8 +263,11 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 6. No ocean cell receives an owner after combat; ownership counts remain valid.
 7. Frontier sets match a brute-force scan after combat under 108-bot load.
 8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
-9. A fabricated attack queue cell that is not edge-connected to the attacker is neither captured nor kept as an active front.
+9. A fabricated attack frontier candidate that is not edge-connected to the attacker is neither captured nor kept as an active front.
 10. An attack whose creation tick is at or beyond its 50-tick lifetime is removed before it can capture.
+11. Circular, smooth, and organic simulations are each deterministic across two identical runs.
+12. A growth-mode switch applies at the next tick and is reflected in snapshots.
+13. Growth-layer tests verify circular priority ordering, smooth eight-sector coverage, and organic seed reproducibility.
 
 Commands to run:
 
@@ -298,6 +306,8 @@ For a new determinism-sensitive feature, add at minimum:
 - Treat the experimental free-attack model as final design; see [EXPERIMENTS.md](EXPERIMENTS.md).
 - Change PRNG draw order as a "refactor".
 - Run a checksum every tick without a performance update.
+- Change a growth layer's ordering rules without a protocol bump and mode-specific replay tests.
+- Add randomness to growth without a per-attack deterministic seed.
 
 ---
 

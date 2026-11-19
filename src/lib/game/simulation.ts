@@ -11,6 +11,13 @@ import {
 	PLAYER_NAMES,
 	START_RADIUS
 } from './constants';
+import {
+	createGrowthLayer,
+	DEFAULT_GROWTH_MODE,
+	isGrowthMode,
+	type GrowthLayer,
+	type GrowthMode
+} from './growth';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import { DeterministicRng } from './rng';
 
@@ -30,10 +37,10 @@ export interface AttackState {
 	defenderId: number;
 	targetX: number;
 	targetY: number;
-	/** Growable packed index queue. `queueLength` is the live count. */
-	queue: Uint32Array;
-	queueLength: number;
-	head: number;
+	anchorX: number;
+	anchorY: number;
+	growthMode: GrowthMode;
+	frontier: GrowthLayer;
 	createdAtTick: number;
 	captures: number;
 	done: boolean;
@@ -55,6 +62,7 @@ export interface PublicAttack {
 	targetX: number;
 	targetY: number;
 	captures: number;
+	growthMode: GrowthMode;
 }
 
 export interface GameSnapshot {
@@ -67,6 +75,8 @@ export interface GameSnapshot {
 	winnerId: number | null;
 	ended: boolean;
 	humanId: number;
+	/** Growth layer used by attacks created from now on. */
+	growthMode: GrowthMode;
 }
 
 export type SimEventKind = 'elimination' | 'victory' | 'system';
@@ -116,6 +126,7 @@ export interface SimulationOptions {
 	seed: number;
 	width?: number;
 	height?: number;
+	growthMode?: GrowthMode;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -139,7 +150,9 @@ export class TerritorySimulation {
 	tick = 0;
 	winnerId: number | null = null;
 	ended = false;
+	growthMode: GrowthMode;
 
+	private pendingGrowthMode: GrowthMode | null = null;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -165,6 +178,10 @@ export class TerritorySimulation {
 		}
 
 		this.seed = options.seed >>> 0;
+		this.growthMode =
+			options.growthMode && isGrowthMode(options.growthMode)
+				? options.growthMode
+				: DEFAULT_GROWTH_MODE;
 		this.map = generateMap(this.seed);
 		this.width = this.map.width;
 		this.height = this.map.height;
@@ -191,6 +208,16 @@ export class TerritorySimulation {
 		this.rebuildBorders();
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
+	}
+
+	/**
+	 * Select the growth layer for attacks created from the next tick onward.
+	 * Existing orders retain the layer they were created with. This is a test
+	 * control; a networked build must carry this as authoritative match config
+	 * or a tick-stamped command.
+	 */
+	setGrowthMode(mode: GrowthMode): void {
+		if (isGrowthMode(mode)) this.pendingGrowthMode = mode;
 	}
 
 	/** Queue a human attack. It is applied at the start of the next tick. */
@@ -250,6 +277,11 @@ export class TerritorySimulation {
 
 		if (!this.ended) {
 			this.tick++;
+
+			if (this.pendingGrowthMode) {
+				this.growthMode = this.pendingGrowthMode;
+				this.pendingGrowthMode = null;
+			}
 
 			this.applyPendingCommands();
 
@@ -322,6 +354,8 @@ export class TerritorySimulation {
 		mix(this.nextAttackId);
 		mix(this.ended ? 1 : 0);
 		mix(this.winnerId ?? 0);
+		mix(growthModeCode(this.growthMode));
+		mix(this.pendingGrowthMode ? growthModeCode(this.pendingGrowthMode) : 0);
 
 		for (let i = 0; i < this.owners.length; i++) mix(this.owners[i]);
 
@@ -335,9 +369,14 @@ export class TerritorySimulation {
 			mix(attack.id);
 			mix(attack.attackerId);
 			mix(attack.defenderId);
-			mix(attack.head);
-			mix(attack.queueLength);
-			for (let i = attack.head; i < attack.queueLength; i++) mix(attack.queue[i]);
+			mix(attack.targetX);
+			mix(attack.targetY);
+			mix(attack.anchorX);
+			mix(attack.anchorY);
+			mix(growthModeCode(attack.growthMode));
+			mix(attack.createdAtTick);
+			mix(attack.captures);
+			attack.frontier.mixState(mix);
 		}
 
 		return hash >>> 0;
@@ -449,17 +488,34 @@ export class TerritorySimulation {
 		}
 		if (unique.length === 0) return false;
 
-		const queue = new Uint32Array(Math.max(64, unique.length * 2));
-		queue.set(unique);
+		const id = this.nextAttackId++;
+		const mode = this.growthMode;
+		const frontier = createGrowthLayer(mode, {
+			width: this.width,
+			height: this.height,
+			owners: this.owners,
+			attackerId,
+			anchorX: targetX,
+			anchorY: targetY,
+			rngSeed:
+				(this.seed ^
+					Math.imul(id, 0x9e3779b1) ^
+					Math.imul(attackerId, 0x85ebca6b) ^
+					Math.imul(defenderId + 1, 0xc2b2ae35)) >>>
+				0
+		});
+		for (const seed of unique) frontier.push(seed);
+
 		this.attacks.push({
-			id: this.nextAttackId++,
+			id,
 			attackerId,
 			defenderId,
 			targetX,
 			targetY,
-			queue,
-			queueLength: unique.length,
-			head: 0,
+			anchorX: targetX,
+			anchorY: targetY,
+			growthMode: mode,
+			frontier,
 			createdAtTick: this.tick,
 			captures: 0,
 			done: false
@@ -482,13 +538,18 @@ export class TerritorySimulation {
 			}
 
 			let capturedThisTick = 0;
-			while (capturedThisTick < CAPTURE_PER_TICK && attack.head < attack.queueLength) {
-				const index = attack.queue[attack.head++];
+			let frontierEmpty = false;
+			while (capturedThisTick < CAPTURE_PER_TICK) {
+				const index = attack.frontier.pop();
+				if (index === undefined) {
+					frontierEmpty = true;
+					break;
+				}
 				if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
 
 				// Connectivity is re-checked at the moment of capture, not just
 				// when the cell was enqueued. If another front cuts the path back
-				// to the attacker, the queued cell is discarded instead of becoming
+				// to the attacker, the candidate is discarded instead of becoming
 				// an enclave.
 				if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
 
@@ -506,10 +567,8 @@ export class TerritorySimulation {
 
 			// No legal captures means the front has been severed (or exhausted).
 			// Let it peter out rather than idling until territory reconnects.
-			if (attack.head >= attack.queueLength || capturedThisTick === 0) {
+			if (frontierEmpty || capturedThisTick === 0) {
 				attack.done = true;
-			} else if (attack.head > 4_096) {
-				this.compactAttackQueue(attack);
 			}
 		}
 
@@ -524,27 +583,7 @@ export class TerritorySimulation {
 	private enqueueAttackCell(attack: AttackState, index: number): void {
 		if (this.owners[index] !== attack.defenderId) return;
 		if (!this.land[index]) return;
-
-		if (attack.queueLength === attack.queue.length) {
-			const grown = new Uint32Array(
-				attack.queue.length <= 0x4000 ? attack.queue.length * 2 : attack.queue.length + 0x4000
-			);
-			grown.set(attack.queue);
-			attack.queue = grown;
-		}
-		attack.queue[attack.queueLength++] = index;
-	}
-
-	private compactAttackQueue(attack: AttackState): void {
-		const remaining = attack.queueLength - attack.head;
-		attack.queue.copyWithin(0, attack.head, attack.queueLength);
-		attack.head = 0;
-		attack.queueLength = remaining;
-
-		const desiredCapacity = Math.max(1_024, remaining * 2);
-		if (attack.queue.length > desiredCapacity) {
-			attack.queue = attack.queue.slice(0, desiredCapacity);
-		}
+		attack.frontier.push(index);
 	}
 
 	private claim(index: number, newOwner: number): void {
@@ -764,7 +803,8 @@ export class TerritorySimulation {
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
 			winnerId: this.winnerId,
 			ended: this.ended,
-			humanId: HUMAN_PLAYER_ID
+			humanId: HUMAN_PLAYER_ID,
+			growthMode: this.growthMode
 		};
 	}
 
@@ -775,7 +815,8 @@ export class TerritorySimulation {
 			defenderId: attack.defenderId,
 			targetX: attack.targetX,
 			targetY: attack.targetY,
-			captures: attack.captures
+			captures: attack.captures,
+			growthMode: attack.growthMode
 		};
 	}
 
@@ -792,4 +833,15 @@ export class TerritorySimulation {
 
 function fail(reason: AttackFailure, message: string): AttackOrderResult {
 	return { ok: false, reason, message };
+}
+
+function growthModeCode(mode: GrowthMode): number {
+	switch (mode) {
+		case 'circular':
+			return 1;
+		case 'smooth':
+			return 2;
+		case 'organic':
+			return 3;
+	}
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createGrowthLayer, GROWTH_MODES } from './growth';
 import { generateMap } from './map';
 import { TerritorySimulation, type AttackState } from './simulation';
 import {
@@ -237,6 +238,62 @@ describe('attack stress mode', () => {
 		expect(disconnectedCaptures).toBe(0);
 	});
 
+	it('applies growth-layer switches only to new orders', () => {
+		const sim = new TerritorySimulation({ seed: 112233 });
+		expect(sim.getSnapshot().growthMode).toBe('circular');
+
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+		sim.enqueueAttack(1, target.x, target.y);
+		sim.step();
+		const circularAttacks = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
+		expect(circularAttacks.length).toBeGreaterThan(0);
+		expect(circularAttacks.every((attack) => attack.growthMode === 'circular')).toBe(true);
+
+		sim.setGrowthMode('smooth');
+		expect(sim.getSnapshot().growthMode).toBe('circular');
+		sim.step();
+		expect(sim.getSnapshot().growthMode).toBe('smooth');
+
+		const retained = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
+		expect(retained.every((attack) => attack.growthMode === 'circular')).toBe(true);
+
+		const nextTarget = findAttackablePixel(sim, 1);
+		expect(nextTarget).not.toBeNull();
+		if (!nextTarget) return;
+		expect(sim.enqueueAttack(1, nextTarget.x, nextTarget.y).ok).toBe(true);
+		sim.step();
+		const humanAttacks = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
+		expect(humanAttacks.some((attack) => attack.growthMode === 'smooth')).toBe(true);
+
+		sim.setGrowthMode('organic');
+		sim.step();
+		expect(sim.getSnapshot().growthMode).toBe('organic');
+	});
+
+	it('is deterministic for every growth layer', () => {
+		for (const mode of GROWTH_MODES) {
+			const left = new TerritorySimulation({ seed: 54321, growthMode: mode });
+			const right = new TerritorySimulation({ seed: 54321, growthMode: mode });
+			const target = findAttackablePixel(left, 1);
+			expect(target).not.toBeNull();
+			if (!target) continue;
+
+			left.enqueueAttack(1, target.x, target.y);
+			right.enqueueAttack(1, target.x, target.y);
+			for (let tick = 0; tick < 25; tick++) {
+				left.step();
+				right.step();
+			}
+
+			expect(left.checksum()).toBe(right.checksum());
+			for (const attack of left.getSnapshot().attacks) {
+				expect(attack.growthMode).toBe(mode);
+			}
+		}
+	});
+
 	it('expires attack orders after their maximum lifetime', () => {
 		const sim = new TerritorySimulation({ seed: 24680 });
 		const target = findAttackablePixel(sim, 1);
@@ -280,15 +337,26 @@ describe('attack stress mode', () => {
 
 		const targetX = isolatedIndex % sim.width;
 		const targetY = (isolatedIndex - targetX) / sim.width;
+		const frontier = createGrowthLayer('circular', {
+			width: sim.width,
+			height: sim.height,
+			owners: sim.owners,
+			attackerId: 1,
+			anchorX: targetX,
+			anchorY: targetY,
+			rngSeed: 1
+		});
+		frontier.push(isolatedIndex);
 		const attack: AttackState = {
 			id: 999_999,
 			attackerId: 1,
 			defenderId: isolatedOwner,
 			targetX,
 			targetY,
-			queue: new Uint32Array([isolatedIndex]),
-			queueLength: 1,
-			head: 0,
+			anchorX: targetX,
+			anchorY: targetY,
+			growthMode: 'circular',
+			frontier,
 			createdAtTick: sim.tick,
 			captures: 0,
 			done: false

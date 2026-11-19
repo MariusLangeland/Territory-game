@@ -13,9 +13,9 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.2).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.3).** The economy, troops, income, caps, and attack costs are intentionally removed so the attack pipeline can be developed in isolation. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
-> The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. Online multiplayer remains specified but **not wired up**.
+> The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
 ---
 
@@ -23,7 +23,7 @@
 
 | Area            | Implementation                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, 3 active fronts (human) / 2 (bots), 30 pixels per front per tick, ownership and border-connectivity checked flood fill          |
+| Attack stress   | 108 states, three switchable growth layers, 3 active fronts (human) / 2 (bots), 30 px/front/tick, connectivity-checked flood fill           |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
@@ -60,17 +60,18 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                      |
-| --------------------------- | ----------------------------------------------------------- |
-| Click / tap a shared border | Open a free attack front into neutral land or a rival state |
-| Drag                        | Pan the map                                                 |
-| Scroll                      | Zoom at the pointer                                         |
-| `Space`                     | Pause / resume the simulation                               |
-| `F`                         | Fit the whole atlas                                         |
-| `C`                         | Return to your beachhead                                    |
-| `+` / `−`                   | Zoom                                                        |
-| `H`                         | Open the field manual                                       |
-| Minimap click               | Jump the camera                                             |
+| Input                       | Action                                                       |
+| --------------------------- | ------------------------------------------------------------ |
+| Click / tap a shared border | Open a free attack front into neutral land or a rival state  |
+| Drag                        | Pan the map                                                  |
+| Scroll                      | Zoom at the pointer                                          |
+| `Space`                     | Pause / resume the simulation                                |
+| `F`                         | Fit the whole atlas                                          |
+| `C`                         | Return to your beachhead                                     |
+| `+` / `−`                   | Zoom                                                         |
+| `H`                         | Open the field manual                                        |
+| Minimap click               | Jump the camera                                              |
+| Growth switcher             | Select circular / smooth / organic for **new** attack orders |
 
 A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and active attack-limit failures. No resources are consumed.
 
@@ -84,6 +85,16 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 6. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
 7. **Orders are finite:** every front expires after 5 seconds (50 ticks), even if it still has reachable frontier.
 
+### Growth layers
+
+The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing orders keep the layer they started with, so you can compare layers in the same match.
+
+| Layer        | Behavior                                                                              |
+| ------------ | ------------------------------------------------------------------------------------- |
+| **Circular** | Euclidean-priority frontier; expands as a digital disc instead of a Manhattan diamond |
+| **Smooth**   | Eight-direction round-robin with concavity filling; suppresses thin spikes            |
+| **Organic**  | Deterministic random frontier selection; irregular, organic lobes                     |
+
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
 ## Architecture at a glance
@@ -94,7 +105,8 @@ Svelte UI (+page.svelte)
         ├── TerritorySimulation .. pure deterministic game core
         │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
         │     ├── TerritoryRng ... mulberry32
-        │     └── attack queues .. packed Uint32Array flood fronts
+        │     ├── growth/ ........ circular / smooth / organic frontier layers
+        │     └── attacks ........ contiguous flood fronts with finite orders
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
         └── MapCamera ............ CSS-pixel camera, zoom, clamping
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
@@ -108,16 +120,17 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                                   | Result                                               |
 | --------------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts                   | ~225–230 ms, one-time on world creation              |
-| Sustained all-bot attack tick                 | ~1.0 ms                                              |
-| All-bot attack tick (collision-heavy)         | ~1.0 ms                                              |
-| Full-state checksum                           | ~7.9 ms (on-demand only)                             |
+| Map generation + 108 starts                   | ~225 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick        | ~1.7 ms                                              |
+| Smooth-layer all-bot attack tick              | ~2.6 ms                                              |
+| Organic-layer all-bot attack tick             | ~1.7 ms                                              |
+| Full-state checksum                           | ~8.7 ms (on-demand only)                             |
 | Browser render loop while panning, 209 fronts | 144 fps; p99 frame 7.1 ms; zero frames >10 ms        |
 | Upload strategy under stress                  | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                          | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (two worlds)               | ~189 MiB                                             |
+| Node benchmark RSS (all benchmark worlds)     | ~312 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses about 1% of a 100 ms tick budget. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.7–2.6% of a 100 ms tick budget depending on growth layer. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 
@@ -148,6 +161,7 @@ src/
       map.ts                     map generation and 108 start placement
       simulation.ts              world state, free attacks, bots, checksums
       simulation.test.ts         determinism, ownership, frontier, stress tests
+      growth/                    switchable circular/smooth/organic frontier layers
       net/protocol.ts            multiplayer wire protocol draft
       render/
         camera.ts                pan / zoom / clamp logic

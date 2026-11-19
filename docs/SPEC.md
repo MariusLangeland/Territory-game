@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.2.2 (attack stress experiment)  
+**Version:** 0.3.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.2.2, map version 2, protocol draft 4
+**Last synchronized with:** application 0.3.0, map version 2, protocol draft 5
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -67,6 +67,7 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | Elimination and last-state-standing victory               | ✅                       |
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
 | WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
+| Circular / smooth / organic selectable growth layers      | ✅                       |
 | Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
@@ -133,11 +134,11 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
-7. Each tick, each front processes its FIFO queue until it has captured **30** valid target-owned cells or the queue is exhausted. Stale cells (no longer target-owned) are skipped without consuming the capture budget.
+7. Each tick, the front's selected **growth layer** chooses candidate frontier cells until the front has captured **30** valid target-owned cells or no candidates remain. Invalid/stale cells are skipped without consuming the capture budget. See section 4.12.
 8. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
-9. Capturing a cell claims it for the attacker and enqueues its four neighbours if they are still owned by the target and are land. Duplicates are tolerated; ownership is the visited check.
+9. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
 10. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
-11. The front also ends early when its queue is exhausted or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
+11. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
 12. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
 13. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
 
@@ -161,16 +162,15 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - Each state's frontier is stored as a `Set<number>` derived cache.
 - It is maintained incrementally on claim and rebuilt at spawn.
 - Coastal-only owned pixels with no land neighbours are not frontier cells.
-- The attack queue does not use this set to expand; it uses ownership plus attacker-adjacency checks on neighbours. Border connectivity is revalidated at capture time, not just at enqueue time.
+- The growth layer does not use this state frontier directly; it uses ownership plus attacker-adjacency checks when candidates are consumed. Border connectivity is revalidated at capture time, not just when a candidate is pushed.
 
-### 4.6 Attack queues
+### 4.6 Attack frontier storage
 
-- Queue storage is a growable `Uint32Array` per active front.
-- `queueLength` is the live count and `head` is the next unprocessed entry.
-- There is no per-attack visited set. Once a cell is captured, its owner changes, so re-enqueued copies fail the ownership check.
-- Queues compact processed entries after 4,096 cells to limit retained memory.
-- A front's queue can become large while consuming a large connected region. This is a known stress characteristic and part of the reason the attack model is experimental.
-- If a queued cell no longer touches the attacker's territory, it is skipped. If a whole tick captures nothing, the front is removed. This prevents fronts from phasing through opposing attacks and leaving enclaves.
+- Each attack owns a growth layer with its own candidate structure (heap, direction buckets, or random pool).
+- There is no per-attack visited set. Once a cell is captured, its owner changes, so duplicate candidates fail the ownership check.
+- Candidate storage is per-mode; circular uses a priority heap, smooth uses eight direction buckets, organic uses a random-access array.
+- A front's candidate set can become large while consuming a large connected region. The 5-second lifetime and per-tick capture cap bound retained work.
+- If a candidate no longer touches the attacker's territory, it is skipped. If a whole tick captures nothing, the front is removed. This prevents fronts from phasing through opposing attacks and leaving enclaves.
 
 ### 4.7 Eliminations and victory
 
@@ -192,12 +192,13 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 ### 4.9 Tick order
 
 1. Increment `tick`.
-2. Apply queued attack commands sorted by `(sequence, playerId)`.
-3. Run bot decisions (only on every 10th tick).
-4. Process active attacks in creation-id order.
-5. Eliminate states with no territory and remove their attacks.
-6. Check victory.
-7. Build the public snapshot.
+2. If a growth-mode switch is pending, apply it before any new attacks are created.
+3. Apply queued attack commands sorted by `(sequence, playerId)`.
+4. Run bot decisions (only on every 10th tick).
+5. Process active attacks in creation-id order.
+6. Eliminate states with no territory and remove their attacks.
+7. Check victory.
+8. Build the public snapshot.
 
 No economy phase exists in this experiment.
 
@@ -206,7 +207,7 @@ No economy phase exists in this experiment.
 This attack model is intentionally provisional:
 
 - It has no resource cost, cooldown, supply, or strategy limit beyond a technical active-front cap.
-- It flood-fills through an arbitrarily large connected region, producing geometric (often diamond-like) territory growth.
+- It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, sector-balanced, or organic.
 - It ends when its frontier is exhausted, its land connection to the attacker is severed (zero legal captures in a tick), or its 5-second lifetime expires.
 - Bots do not coordinate or defend strategically.
 - The 108-state match may become a near-even patchwork.
@@ -216,7 +217,25 @@ The final design may introduce costs, supply, attack duration, cancellation, tar
 
 ### 4.11 Combat randomness
 
-Combat has no dice, crits, spread, or morale. Given the same state and accepted commands, every pixel outcome is deterministic.
+Combat has no combat-roll randomness, crits, spread, or morale. The organic growth layer uses a deterministic per-attack PRNG solely to choose frontier candidates; the sequence is reproducible. Given the same state, growth mode, and accepted commands, every pixel outcome is deterministic.
+
+### 4.12 Growth layers
+
+Every attack captures a `growthMode` at creation time and keeps it for its lifetime. The selected mode applies to all **new** attack orders (human and bots); existing orders are unchanged.
+
+| Mode       | Frontier selection                                                                                                              | Result                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `circular` | Min-heap keyed by squared Euclidean distance from the attack anchor; ties by pixel index                                        | Approximates a digital disc instead of a Manhattan diamond    |
+| `smooth`   | Eight angular sectors visited round-robin; within a sector prefer more attacker-owned neighbours, then nearer/lower-index cells | Direction-balanced, fills concavities, suppresses thin spikes |
+| `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                                 | Irregular organic lobes, fully replayable                     |
+
+- The **circular** anchor is the clicked target cell. The shape is still clipped by coastlines, other states, and the attacker's own border.
+- The **smooth** layer uses integer sector boundaries and deterministic tie-breaks.
+- The **organic** layer seeds its PRNG from the world seed, attack id, attacker id, and defender id.
+- A growth-mode switch is applied at the next tick, before commands and bot decisions. It is currently a local test control; an online server must make it authoritative match configuration or a tick-stamped command.
+- Candidate queues and per-attack PRNG state are part of checksums.
+
+The HUD growth switcher selects the layer for new orders. It has no effect on orders already in flight.
 
 ---
 
@@ -246,22 +265,24 @@ Combat has no dice, crits, spread, or morale. Given the same state and accepted 
 - Minimap with camera rectangle and start positions.
 - Status console: hover coordinate/ownership and human active orders.
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
+- Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
 ### 5.3 Controls
 
-| Input          | Action                              |
-| -------------- | ----------------------------------- |
-| Left click/tap | Issue a free attack if valid        |
-| Left drag      | Pan; a drag does not fire an attack |
-| Wheel          | Zoom at pointer                     |
-| Space          | Pause/resume                        |
-| `F`            | Fit map                             |
-| `C`            | Focus human beachhead               |
-| `+` / `−`      | Zoom                                |
-| `H`            | Field manual                        |
-| Minimap click  | Center camera                       |
+| Input           | Action                                   |
+| --------------- | ---------------------------------------- |
+| Left click/tap  | Issue a free attack if valid             |
+| Left drag       | Pan; a drag does not fire an attack      |
+| Wheel           | Zoom at pointer                          |
+| Space           | Pause/resume                             |
+| `F`             | Fit map                                  |
+| `C`             | Focus human beachhead                    |
+| `+` / `−`       | Zoom                                     |
+| `H`             | Field manual                             |
+| Minimap click   | Center camera                            |
+| Growth switcher | Choose the frontier layer for new orders |
 
 ### 5.4 Camera
 
@@ -311,6 +332,7 @@ Combat has no dice, crits, spread, or morale. Given the same state and accepted 
 ### 6.3 Snapshot and change batch
 
 - Snapshot after each tick; no direct simulation arrays in UI.
+- Snapshot includes the current growth mode used for new orders; public attacks include the layer they were created with.
 - Change batch: `(owner << 21) | pixelIndex`, `Uint32Array(16_384)`.
 - Consumed before the next tick.
 - Overflow triggers renderer full resync and never changes game state.
@@ -367,6 +389,7 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 - Clients may run local prediction.
 - Server stamps commands with authoritative ticks; deterministic ordering.
 - Owner deltas/checksums/baseline resync.
+- Growth mode must be authoritative (match config or a tick-stamped command), and per-attack layers part of the public state.
 - No server exists yet.
 - Wire types are in `src/lib/game/net/protocol.ts`; current player payload has no economy fields.
 
@@ -376,7 +399,8 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 
 | Area                                          | Target                                               |
 | --------------------------------------------- | ---------------------------------------------------- |
-| Simulation tick, 108 states under attack load | < 2 ms p95 (10 Hz budget = 100 ms)                   |
+| Simulation tick, circular/organic, 108 states | < 2 ms p95 (10 Hz budget = 100 ms)                   |
+| Simulation tick, smooth, 108 states           | < 3 ms p95                                           |
 | Render loop                                   | 60 fps at 1600 × 1000 under stress                   |
 | Input smoothness under full attack load       | no recurring 10 Hz hitch; 0 frames >10 ms at 144 fps |
 | Tick-boundary upload work                     | < 2 ms; full resync must be chunked                  |
@@ -412,6 +436,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Fronts resolve without corrupting frontier sets.
 - [x] Change buffer does not overflow in stress runs.
 - [x] Clicking a valid frontier creates a free attack with no economy check.
+- [x] Circular, smooth, and organic growth layers are selectable and deterministic.
+- [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (0 frames >10 ms in the verification run).
 - [x] 108-state browser run stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
@@ -429,8 +455,9 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 3. **Match size:** 108 is a stress mode. What is the shipping player/state count?
 4. **Match duration/pacing:** unthrottled attacks saturate the map in ~10 seconds.
 5. **Leaderboard scale:** scroll, pagination, or top-N with pinned player?
-6. **Queue bounds:** is an attack allowed to flood an arbitrarily large connected region?
-7. **Server tick buffer:** how much latency to absorb in online play?
-8. **Map format:** procedural generation vs baked assets for cross-engine certainty?
-9. **Simulation worker:** when to move off the main thread?
-10. **WebGL fallback:** worth the maintenance cost?
+6. **Growth layer:** should shipping play use circular, smooth, organic, or a blend? Keep the test switch?
+7. **Queue bounds:** apart from the 5-second lifetime, should a front have a lower candidate/capture bound?
+8. **Server tick buffer:** how much latency to absorb in online play?
+9. **Map format:** procedural generation vs baked assets for cross-engine certainty?
+10. **Simulation worker:** when to move off the main thread?
+11. **WebGL fallback:** worth the maintenance cost?

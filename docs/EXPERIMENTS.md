@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Resource-free attack stress test
 
-**Status:** active in application `0.2.x`  
+**Status:** active in application `0.3.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states attacking simultaneously and no economy throttling?
 
@@ -37,7 +37,21 @@ The normal economy (troops, income, caps, attack costs) limits how many attacks 
 | Bot decisions          | once per second                                          |
 | Starting territory     | radius ~16, ragged, spaced across the map                |
 
-The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, costs nothing, and continues only while every captured pixel remains edge-connected to the attacker's territory. If opposing fronts sever that connection, queued pixels are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
+The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, costs nothing, and continues only while every captured pixel remains edge-connected to the attacker's territory. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
+
+### Growth layers
+
+Three modular frontier selectors are implemented and switchable from the HUD for **new orders**:
+
+| Mode     | Expansion shape | Selection                                                |
+| -------- | --------------- | -------------------------------------------------------- |
+| Circular | digital disc    | Euclidean-distance priority heap                         |
+| Smooth   | balanced lobes  | eight-direction round-robin + attacker-neighbour scoring |
+| Organic  | irregular lobes | deterministic random frontier pick                       |
+
+Existing orders retain their original layer; bots and the human pick up the currently selected mode for newly created attacks on the next tick. Growth mode and per-frontier state are included in checksums.
+
+This is the current attack-shape test surface, not a final gameplay choice.
 
 ### Intentional deviations
 
@@ -60,6 +74,8 @@ The attack still requires a shared land border with the clicked target's owner. 
 - [x] Tests and production build pass, including a live-run assertion that every captured pixel is edge-connected to its attacker.
 - [x] A front with no legal captures in a tick is dropped and cannot leave an enclave.
 - [x] Every attack order expires after 50 ticks / 5 seconds.
+- [x] Circular, smooth, and organic layers can be switched live and are deterministic.
+- [x] Each layer has focused tests and a benchmark comparison.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -69,7 +85,8 @@ The attack still requires a shared land border with the clicked target's owner. 
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
-- Full-state checksum remains ~8.2 ms and is not run per tick.
+- Full-state checksum remains ~8.7 ms and is not run per tick.
+- Growth-layer tick cost at 108 states: circular ~1.7 ms, smooth ~2.6 ms, organic ~1.7 ms (Node benchmark; directional scoring is the extra smooth-layer cost).
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 
 ### Exit plan
@@ -77,13 +94,14 @@ The attack still requires a shared land border with the clicked target's owner. 
 When the attack design is ready:
 
 1. Decide the final attack semantics (cost, duration, targeting, cancellation, visibility).
-2. Restore or replace the economy with the intended resource model.
-3. Remove stress-only guards or make them part of the real rules.
-4. Restore a normal player count / matchmaking model.
-5. Remove or repurpose the 108-state HUD and instrumentation.
-6. Add regression tests for the new attack rules.
-7. Update [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DETERMINISM.md](DETERMINISM.md), [PERFORMANCE.md](PERFORMANCE.md), and this document.
-8. Keep or archive the stress benchmark as a load-test harness.
+2. Decide whether circular, smooth, organic, or another growth model ships (and whether the switch remains as a mod/test option).
+3. Restore or replace the economy with the intended resource model.
+4. Remove stress-only guards or make them part of the real rules.
+5. Restore a normal player count / matchmaking model.
+6. Remove or repurpose the 108-state HUD and instrumentation.
+7. Add regression tests for the new attack rules.
+8. Update [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DETERMINISM.md](DETERMINISM.md), [PERFORMANCE.md](PERFORMANCE.md), and this document.
+9. Keep or archive the stress benchmark as a load-test harness.
 
 ### Do not
 

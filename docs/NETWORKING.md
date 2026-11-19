@@ -189,25 +189,26 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Client → server
 
-| Message  | Purpose                                         |
-| -------- | ----------------------------------------------- |
-| `hello`  | Protocol version, display name                  |
-| `join`   | Enter a room/match                              |
-| `intent` | One attack intent with target tick and sequence |
-| `ping`   | RTT probe                                       |
-| `leave`  | Voluntary departure                             |
+| Message       | Purpose                                                   |
+| ------------- | --------------------------------------------------------- |
+| `hello`       | Protocol version, display name                            |
+| `join`        | Enter a room/match                                        |
+| `intent`      | One attack intent with target tick and sequence           |
+| `growth-mode` | Select the growth layer for new orders (host/test policy) |
+| `ping`        | RTT probe                                                 |
+| `leave`       | Voluntary departure                                       |
 
 ### Server → client
 
-| Message      | Purpose                                                         |
-| ------------ | --------------------------------------------------------------- |
-| `welcome`    | Identity, baseline snapshot, seed, map version, checksum        |
-| `tick`       | Owner changes, public players, active attacks, events, checksum |
-| `ack`        | Intent accepted                                                 |
-| `reject`     | Intent rejected with reason                                     |
-| `match-over` | Winner and final snapshot                                       |
-| `pong`       | RTT response                                                    |
-| `error`      | Room/protocol/rate-limit errors                                 |
+| Message      | Purpose                                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                      |
+| `tick`       | Owner changes, public players, active attacks (including their per-attack growth mode), current growth mode, events, checksum |
+| `ack`        | Intent accepted                                                                                                               |
+| `reject`     | Intent rejected with reason                                                                                                   |
+| `match-over` | Winner and final snapshot                                                                                                     |
+| `pong`       | RTT response                                                                                                                  |
+| `error`      | Room/protocol/rate-limit errors                                                                                               |
 
 ### Encoding
 
@@ -223,6 +224,13 @@ Owner changes:
 - packed `(owner << 21) | index` numbers (already the internal format);
 - binary as `Uint32Array` little-endian is ideal;
 - include `changesOverflow` so clients know to request a baseline.
+
+Growth mode:
+
+- the current mode used for new orders must be server-authoritative, either fixed at match creation or changed by an accepted, tick-stamped command;
+- each active attack carries the layer it was created with;
+- client prediction must use the same per-attack layer and deterministic frontier ordering;
+- mode changes must be replayed and checksummed like other commands.
 
 ### Versioning
 

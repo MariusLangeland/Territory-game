@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { generateMap } from '../src/lib/game/map';
+import { GROWTH_MODES } from '../src/lib/game/growth';
 import { TerritorySimulation } from '../src/lib/game/simulation';
 import { MAP_HEIGHT, MAP_WIDTH, PLAYER_COUNT } from '../src/lib/game/constants';
 
@@ -33,6 +34,14 @@ const busy = new TerritorySimulation({ seed: 0x87654321 });
 for (let i = 0; i < 100; i++) busy.step();
 const busyStep = measure('all-bot attack tick (collision-heavy)', 500, () => busy.step());
 const busySnapshot = busy.getSnapshot();
+
+console.log('');
+for (const mode of GROWTH_MODES) {
+	const sim = new TerritorySimulation({ seed: 0x13572468, growthMode: mode });
+	for (let i = 0; i < 100; i++) sim.step();
+	measure(`growth=${mode.padEnd(9)} tick`, 300, () => sim.step());
+	console.log(`  active fronts: ${sim.getSnapshot().attacks.length}`);
+}
 
 const checksum = measure('full-state checksum', 5, () => {
 	busy.checksum();

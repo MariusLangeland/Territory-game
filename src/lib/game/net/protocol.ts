@@ -6,9 +6,10 @@
  * See docs/NETWORKING.md for the full authority and reconciliation model.
  */
 
+import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 
-export const NET_PROTOCOL_VERSION = 4;
+export const NET_PROTOCOL_VERSION = 5;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -40,6 +41,11 @@ export type ClientMessage =
 			intent: AttackIntent;
 	  }
 	| {
+			/** Host-controlled test mode; server must accept and broadcast it. */
+			t: 'growth-mode';
+			mode: GrowthMode;
+	  }
+	| {
 			t: 'ping';
 			nonce: number;
 			clientTime: number;
@@ -64,6 +70,8 @@ export interface WireSnapshot {
 	winnerId: PlayerId | null;
 	claimedLand: number;
 	landCount: number;
+	/** Growth layer used for new attack orders. Must be server-authoritative. */
+	growthMode: GrowthMode;
 }
 
 export interface BaselineSnapshot {
@@ -106,6 +114,11 @@ export type ServerMessage =
 			events: WireEvent[];
 			/** FNV-1a state hash; clients compare it and request a resync on mismatch. */
 			checksum: string;
+	  }
+	| {
+			t: 'growth-mode';
+			mode: GrowthMode;
+			tick: Tick;
 	  }
 	| {
 			t: 'ack';

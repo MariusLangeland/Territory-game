@@ -265,3 +265,39 @@ Temporarily remove all economy and resource gating, add 100 AI states (108 total
 ### Exit plan
 
 Documented in [EXPERIMENTS.md](EXPERIMENTS.md): decide the real attack semantics, restore/replace the economy, remove stress-only guards and UI, and update tests/specs/benchmarks.
+
+---
+
+## ADR-010 — Pluggable growth layers for attack frontiers
+
+**Status:** accepted for EXP-001; growth-layer choice provisional  
+**Date:** 2026-11-19
+
+### Context
+
+The FIFO 4-neighbour frontier produced very uniform Manhattan-diamond shapes. We need to compare a circular heuristic, a smoothing strategy, and an organic strategy without duplicating attack validation/budget/connectivity logic or locking in an unproven shape.
+
+### Decision
+
+Introduce a `GrowthLayer` interface that only selects the next candidate from a frontier. Each attack captures its layer at creation. Implement three modules:
+
+- circular: Euclidean-distance priority heap;
+- smooth: eight sector buckets with round-robin and attacker-neighbour scoring;
+- organic: deterministic random candidate selection with a per-attack seeded PRNG.
+
+The simulation remains responsible for ownership, edge connectivity, capture limits, lifetime, and checksums. A HUD switch changes the mode used for new attacks; existing attacks keep their original mode. The mode is applied at the next tick.
+
+### Consequences
+
+- Attack shapes can be compared live under the same 108-state load.
+- Validation, connectivity, and order termination are shared and cannot silently diverge by mode.
+- Per-attack growth state and RNG are included in checksums.
+- Smooth costs more CPU (~2.6 ms/tick vs ~1.7 ms for circular/organic).
+- Growth mode is currently a local test control; online play must make it server-authoritative.
+- A final growth design still must be chosen before economy/balance work.
+
+### Alternatives considered
+
+- Hard-code one shape: faster to ship, but loses the requested comparison harness.
+- Custom code path per mode in `processAttacks`: risks inconsistent connectivity/budget behavior.
+- Randomize candidates without per-attack seeds: non-deterministic and untestable.

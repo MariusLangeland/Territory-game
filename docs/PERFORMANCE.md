@@ -12,7 +12,8 @@ All numbers are from the development machine unless stated otherwise. They are d
 
 | Area                                          | Target                                  | Hard fail                     |
 | --------------------------------------------- | --------------------------------------- | ----------------------------- |
-| Simulation tick, 108 states under attack load | < 2 ms p95                              | > 8 ms p95                    |
+| Simulation tick, circular/organic, 108 states | < 2 ms p95                              | > 8 ms p95                    |
+| Simulation tick, smooth, 108 states           | < 3 ms p95                              | > 8 ms p95                    |
 | Time to interactive                           | < 1.5 s after assets on desktop         | > 3 s                         |
 | Map generation + 108 starts                   | < 500 ms                                | > 1 s                         |
 | Render loop                                   | 60 fps at 1600 × 1000 integrated GPU    | < 45 fps                      |
@@ -23,7 +24,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 | Browser JS/GPU memory                         | < 300 MiB for stress build              | > 500 MiB                     |
 | Click-to-visible update                       | ≤ 2 ticks                               | > 4 ticks                     |
 
-The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.4% under stress; rendering and GPU uploads are the limiting factors.
+The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.7–2.6% under stress depending on growth layer; rendering and GPU uploads are the limiting factors.
 
 ---
 
@@ -37,18 +38,21 @@ Run:
 pnpm bench
 ```
 
-Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xbeefcafe` (map), `0x12345678` (sustained all-bot run), `0x87654321` (collision-heavy run). Five map generations, 1,000 sustained stress ticks, 500 collision-heavy ticks, five checksums.
+Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xbeefcafe` (map), `0x12345678` (sustained all-bot run), `0x87654321` (collision-heavy run), `0x13572468` (growth-layer comparison). Five map generations, 1,000 sustained stress ticks, 500 collision-heavy ticks, 300 ticks per growth layer, five checksums.
 
-| Operation                                               | Result             |
-| ------------------------------------------------------- | ------------------ |
-| Generate 2048 × 1024 map + 108 starts                   | **~225–230 ms/op** |
-| Sustained all-bot attack tick                           | **~1.0 ms/op**     |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.0 ms/op**     |
-| Full-state checksum                                     | **~7.9 ms/op**     |
-| Active attacks after 1,000 / 600 ticks                  | ~165–200 fronts    |
-| Node RSS (benchmark process, two stress worlds)         | ~189 MiB           |
+| Operation                                               | Result          |
+| ------------------------------------------------------- | --------------- |
+| Generate 2048 × 1024 map + 108 starts                   | **~226 ms/op**  |
+| Sustained all-bot attack tick (default circular)        | **~1.7 ms/op**  |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.8 ms/op**  |
+| Circular layer comparison tick                          | **~1.7 ms/op**  |
+| Smooth layer comparison tick                            | **~2.6 ms/op**  |
+| Organic layer comparison tick                           | **~1.7 ms/op**  |
+| Full-state checksum                                     | **~8.7 ms/op**  |
+| Active attacks after sustained run                      | ~150–200 fronts |
+| Node RSS (all benchmark simulations)                    | ~312 MiB        |
 
-At 10 Hz, ~1.0 ms per tick is roughly **1% of a 100 ms tick budget**. The exact number varies with active fronts and how much of the map is contested.
+At 10 Hz, 1.7–2.6 ms per tick is roughly **1.7–2.6% of a 100 ms tick budget**. The exact number varies with active fronts, mode, and how much of the map is contested. Smooth is the most expensive layer because it scores nearby candidates for attacker-neighbour count.
 
 ### 2.2 Browser baseline
 
@@ -98,20 +102,22 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~1.0 ms)
+### Simulation tick (~1.7–2.6 ms)
 
 - Bots: up to 107 decisions every 10 ticks; frontier sampling.
-- Attacks: ~200 active fronts × up to 30 captures, with stale-cell skipping.
+- Attacks: ~150–200 active fronts × up to 30 captures, with stale-cell skipping.
+- Growth-layer selection: heap operations for circular, sector and neighbour scoring for smooth, RNG array swaps for organic.
 - Border maintenance: constant work per captured cell.
 - Change packing: one `Uint32Array` write per change.
-- Attack queue compaction after 4,096 processed cells.
+- No attack queue compaction; frontiers are lifetime-bounded.
 
-No per-cell object allocation. Attack queues are `Uint32Array` and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.
+No per-cell object allocation. Attack frontiers use flat arrays/heaps and rely on ownership changes for duplicate suppression instead of per-attack Sets. The frontier sets are the main derived structure.
 
 Potential hot spots if attack density rises:
 
 - Set operations per claimed cell (remove/add border entries);
-- queue growth and duplicates;
+- frontier growth and duplicates;
+- smooth-layer neighbour scoring across many candidates;
 - frontier iteration for bot target selection;
 - snapshot construction for 108 players.
 
@@ -136,7 +142,7 @@ The stress build changes thousands of pixels per tick across hundreds of local f
 
 Combined with HUD throttling and leaderboard virtualization, this yielded 144 fps panning with zero frames over 10 ms under ~209 fronts. The cost is higher upload bandwidth (~21M pixels/s) during saturation. That trade is intentional because input smoothness is the requirement.
 
-Replacing per-attack Set bookkeeping with packed queues also cut memory drastically.
+Replacing per-attack Set bookkeeping with flat frontier structures also cut memory drastically.
 
 ---
 
@@ -152,11 +158,11 @@ Replacing per-attack Set bookkeeping with packed queues also cut memory drastica
 | GPU map texture                         | 8 MiB                               |
 | Canvas backing buffer                   | width × height × 4, capped by DPR 2 |
 | Frontier sets (108 states)              | map-dependent                       |
-| Attack queues                           | ~4 bytes per live queue entry       |
+| Growth frontier candidates              | layer-dependent, lifetime-bounded   |
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (two worlds)         | ~189 MiB                            |
+| Node benchmark RSS (five worlds)        | ~312 MiB                            |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed queues and ownership-based dedup brought that down substantially; the connectivity- and lifetime-checked build measures ~189 MiB with two worlds. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~312 MiB. Browser memory should be measured separately before shipping.
 
 ---
 
@@ -166,8 +172,8 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 
 1. Run `pnpm bench` for a quick regression check.
 2. Use a CPU profile around `TerritorySimulation.step()`.
-3. Record active attacks, changes per tick, queue cells, and frontier size.
-4. Watch allocation/GC when changing attack queue logic.
+3. Record active attacks, changes per tick, and frontier size per layer.
+4. Watch allocation/GC when changing attack frontier logic.
 5. Do not include rendering when measuring simulation cost.
 
 ### Rendering
@@ -195,7 +201,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 2. **Do not iterate the full 2M-cell map per tick.**
 3. **Do not create a new GPU texture per update.**
 4. **Do not synchronously upload the full map on the input path.** If dense changes need a resync, chunk it across frames.
-5. **Do not add per-attack Sets if typed queues can avoid them.**
+5. **Do not add per-attack Sets if flat frontier storage can avoid them.**
 6. **Do not perform a checksum every tick.**
 7. **Do not add `Math.random` or frame-dependent simulation logic.**
 8. **Benchmark before/after.** Record hardware and test conditions.
@@ -251,10 +257,11 @@ Before merging a performance-sensitive change:
 - [ ] Browser perf readout shows modest write-call rates; dense full-resync chunks are spread across frames.
 - [ ] At 1600 × 1000, gameplay is smooth while panning/zooming under attack load.
 - [ ] Pausing does not leave a busy simulation loop.
-- [ ] Memory does not grow per tick (queues, marks, frontier sets).
+- [ ] Memory does not grow per tick (frontiers, marks, frontier sets).
 - [ ] 108 leaderboard rows remain usable.
 - [ ] The build still clearly identifies itself as an attack experiment.
 - [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
+- [ ] All three growth layers were sampled in `pnpm bench`; smooth remains within its 3 ms budget.
 
 ---
 
