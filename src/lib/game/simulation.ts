@@ -8,6 +8,8 @@ import {
 	BASE_GOLD_INCOME,
 	BASE_HUMAN_ATTACK_ORDERS,
 	BOT_DECISION_INTERVAL,
+	DISTRICT_NOISE_CELL,
+	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
 	COMMAND_POST_ORDER_TICKS,
 	HUMAN_PLAYER_ID,
@@ -921,10 +923,11 @@ export class TerritorySimulation {
 		for (const structure of this.structures.all) {
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 			if (range <= 0) continue;
-			const minX = Math.max(0, structure.x - range);
-			const maxX = Math.min(this.width - 1, structure.x + range);
-			const minY = Math.max(0, structure.y - range);
-			const maxY = Math.min(this.height - 1, structure.y + range);
+			const scanRange = range + DISTRICT_NOISE_MARGIN;
+			const minX = Math.max(0, structure.x - scanRange);
+			const maxX = Math.min(this.width - 1, structure.x + scanRange);
+			const minY = Math.max(0, structure.y - scanRange);
+			const maxY = Math.min(this.height - 1, structure.y + scanRange);
 			for (let y = minY; y <= maxY; y++) {
 				for (let x = minX; x <= maxX; x++) {
 					const index = y * this.width + x;
@@ -944,9 +947,7 @@ export class TerritorySimulation {
 		let best: Structure | null = null;
 		for (const structure of this.structures.forOwner(ownerId)) {
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
-			const dx = x - structure.x;
-			const dy = y - structure.y;
-			const distance = dx * dx + dy * dy;
+			const distance = this.districtDistance(structure, x, y, range);
 			if (distance > range * range) continue;
 			const code = STRUCTURE_TYPE_CODES[structure.type];
 			const bestCode = best ? STRUCTURE_TYPE_CODES[best.type] : 0;
@@ -960,6 +961,20 @@ export class TerritorySimulation {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * Squared distance plus a small, continuous integer noise offset. The
+	 * offset both wiggles Voronoi split lines and lets the outer edge grow or
+	 * shrink by roughly two pixels. It is deterministic and structure-specific.
+	 */
+	private districtDistance(structure: Structure, x: number, y: number, range: number): number {
+		const dx = x - structure.x;
+		const dy = y - structure.y;
+		const distance = dx * dx + dy * dy;
+		const seed = (this.seed ^ Math.imul(structure.id, 0x9e3779b9)) >>> 0;
+		const noise = districtNoise(x, y, seed);
+		return distance + (((noise - 128) * range) >> 5);
 	}
 
 	private districtColorCode(structure: Structure): number {
@@ -1010,10 +1025,11 @@ export class TerritorySimulation {
 					const districtRange = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 					const hasDistrict = districtRange > 0;
 					const radius = Math.max(0, Math.floor(hasDistrict ? districtRange : effect.radius));
-					const minX = Math.max(0, structure.x - radius);
-					const maxX = Math.min(width - 1, structure.x + radius);
-					const minY = Math.max(0, structure.y - radius);
-					const maxY = Math.min(height - 1, structure.y + radius);
+					const scanRadius = hasDistrict ? radius + DISTRICT_NOISE_MARGIN : radius;
+					const minX = Math.max(0, structure.x - scanRadius);
+					const maxX = Math.min(width - 1, structure.x + scanRadius);
+					const minY = Math.max(0, structure.y - scanRadius);
+					const maxY = Math.min(height - 1, structure.y + scanRadius);
 					const radiusSq = radius * radius;
 
 					for (let y = minY; y <= maxY; y++) {
@@ -1666,4 +1682,22 @@ function growthModeCode(mode: GrowthMode): number {
 		case 'organic':
 			return 3;
 	}
+}
+
+/** Bilinear coarse value noise plus a faint per-pixel jitter, both integer. */
+function districtNoise(x: number, y: number, seed: number): number {
+	const cell = DISTRICT_NOISE_CELL;
+	const ix = Math.floor(x / cell);
+	const iy = Math.floor(y / cell);
+	const fx = x - ix * cell;
+	const fy = y - iy * cell;
+	const a = hash32(ix, iy, seed) & 0xff;
+	const b = hash32(ix + 1, iy, seed) & 0xff;
+	const c = hash32(ix, iy + 1, seed) & 0xff;
+	const d = hash32(ix + 1, iy + 1, seed) & 0xff;
+	const coarse =
+		(a * (cell - fx) * (cell - fy) + b * fx * (cell - fy) + c * (cell - fx) * fy + d * fx * fy) /
+		(cell * cell);
+	const fine = hash32(x, y, seed ^ 0x85ebca6b) & 0xff;
+	return (Math.floor(coarse) * 3 + fine) >> 2;
 }

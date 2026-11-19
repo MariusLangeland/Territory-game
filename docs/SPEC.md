@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.15.0 (attack stress experiment)  
+**Version:** 0.16.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.15.0, map version 3, protocol draft 22
+**Last synchronized with:** application 0.16.0, map version 3, protocol draft 23
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 22`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 23`.
 
 ### 4.2 Starting positions
 
@@ -336,7 +336,8 @@ Barracks attack strength is applied per captured target: effective defense = `ma
 
 - Every **buildable** structure seeds a **district** for its owner. State capitals are special aura anchors and do not claim districts, so the starting territory remains buildable.
 - Districts are computed as a constrained Voronoi map: an owned cell joins the nearest eligible structure of its owner, with ties broken by structure type code then structure id.
-- A district cannot exceed its structure's `districtRange`, cannot leave the owner's borders, and cannot overlap another district. Cells outside every structure's range remain unassigned.
+- A district cannot exceed its structure's nominal `districtRange` by more than a small noise margin, cannot leave the owner's borders, and cannot overlap another district. Cells outside every structure's range remain unassigned.
+- District edges are perturbed by deterministic integer noise: coherent 8 px value noise plus a faint per-pixel jitter. This makes the outer edge grow or shrink by roughly 2 px and makes Voronoi split lines irregular. It is purely visual/geometric; all captures and auras still use the resulting district map.
 - Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
 - A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
 - Defensive auras apply to every owned cell in the owning structure's district; the old effect-radius clipping does not shrink a Defense Post's area. State auras use their radius around the capital. Barracks attack strength remains a local 18 px offensive radius.

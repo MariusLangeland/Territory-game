@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	BASE_GOLD_INCOME,
 	COMMAND_POST_ORDER_TICKS,
+	DISTRICT_NOISE_MARGIN,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	STARTING_GOLD,
@@ -86,6 +87,35 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBe(31);
 	});
 
+	it('perturbs district edges with deterministic noise', () => {
+		const sim = new TerritorySimulation({ seed: 864211 });
+		const { index } = buildCard(sim, 'mine');
+		const structure = sim.structures.at(index);
+		expect(structure).toBeDefined();
+		if (!structure) return;
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, attackId?: number): void;
+		};
+		let inside = 0;
+		let outside = 0;
+		for (let dy = -34; dy <= 34; dy++) {
+			for (let dx = -34; dx <= 34; dx++) {
+				const distanceSq = dx * dx + dy * dy;
+				if (distanceSq <= 32 * 32 || distanceSq >= 34 * 34) continue;
+				const x = structure.x + dx;
+				const y = structure.y + dy;
+				if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) continue;
+				const target = y * sim.width + x;
+				if (!sim.terrain[target] || sim.structures.at(target)) continue;
+				internals.claim(target, HUMAN_PLAYER_ID, 999);
+				if (sim.getDistrictStructureId(x, y) === structure.id) inside++;
+				else outside++;
+			}
+		}
+		expect(inside).toBeGreaterThan(0);
+		expect(outside).toBeGreaterThan(0);
+	});
+
 	it('upgrades a district by clicking anywhere inside it', () => {
 		const sim = new TerritorySimulation({ seed: 246813 });
 		const { index } = buildCard(sim, 'mine');
@@ -136,7 +166,7 @@ describe('player economy and cards', () => {
 			const y = (i - x) / sim.width;
 			const dx = x - structure.x;
 			const dy = y - structure.y;
-			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange + DISTRICT_NOISE_MARGIN;
 			expect(dx * dx + dy * dy).toBeLessThanOrEqual(range * range);
 		}
 	});
@@ -240,7 +270,7 @@ describe('player economy and cards', () => {
 		let outside = -1;
 		for (let dy = -50; dy <= 50 && outside < 0; dy++) {
 			for (let dx = -50; dx <= 50; dx++) {
-				if (dx * dx + dy * dy < 42 * 42) continue;
+				if (dx * dx + dy * dy < 48 * 48) continue;
 				const ox = postX + dx;
 				const oy = postY + dy;
 				if (ox < 0 || oy < 0 || ox >= sim.width || oy >= sim.height) continue;

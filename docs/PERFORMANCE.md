@@ -116,7 +116,7 @@ Potential optimizations if needed:
 - Per-capture defense lookup from elevation + occupancy + aura, plus attacker Barracks strength.
 - Least-resistance sampling: up to 10 frontier pops, cost comparisons, and push-backs per capture. This is bounded and adds no allocation beyond the small sampled array.
 - Aura overlay (friendly-owned State/Defense Post fields) built at start, rebuilt on structure changes, and locally recomputed for captured cells.
-- District Voronoi pass over owner-local structure ranges; full recompute on structure creation/destruction, single-cell update on ordinary captures. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 8 MiB and palette codes add 2 MiB per simulation.
+- District Voronoi pass over owner-local structure ranges; full recompute on structure creation/destruction, single-cell update on ordinary captures. Each comparison adds a few integer hash samples for coherent edge noise. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 8 MiB and palette codes add 2 MiB per simulation.
 - Base attack-order grants and cap scans; per-tick Command Post order-rate accrual.
 - Per-tick continuous resource accrual: human income lookup and Command Post order-rate scan. Build/upgrade command validation; the card hand is static, with no draw or reroll RNG.
 - Structure lookup on claims and structure metadata in checksums.

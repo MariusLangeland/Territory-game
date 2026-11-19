@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.15.x`  
+**Status:** active in application `0.16.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 

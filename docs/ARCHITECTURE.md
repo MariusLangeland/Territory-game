@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.15.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.16.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.15.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.16.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -215,7 +215,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 ### Districts
 
-`simulation.rebuildDistricts` clears the district arrays, then for each buildable structure scans its `districtRange` bounding box. Every owned cell in range is assigned the nearest eligible structure of that owner; distance ties break on structure type code then id. The result is a Voronoi partition constrained to current ownership and each structure's range, with no overlaps. `districtStructureIds` records the winning structure so same-type districts remain distinct; `districtColorCodes` gives each a render palette variant. `updateDistrictAt` handles an ordinary ownership change by reassigning just that cell.
+`simulation.rebuildDistricts` clears the district arrays, then for each buildable structure scans its `districtRange` bounding box expanded by `DISTRICT_NOISE_MARGIN`. Every owned cell is assigned the nearest eligible structure of that owner; the comparison distance is `actual distance + integerNoiseOffset`, with ties breaking on structure type code then id. The offset comes from coherent 8 px value noise plus per-pixel jitter (`districtNoise`), so outer edges grow/shrink by roughly two pixels and split lines wiggle. The result is a constrained, non-overlapping Voronoi partition. `districtStructureIds` records the winning structure so same-type districts remain distinct; `districtColorCodes` gives each a render palette variant. `updateDistrictAt` handles an ordinary ownership change by reassigning just that cell.
 
 Placing a new type requires an unassigned owned cell outside all districts. If the target is inside a same-type district, that district's structure's `stacks` is incremented. If the same type lands outside all districts, a new structure and district are created. Different types inside any district are rejected. Full district recomputation runs on structure creation/destruction; stacking leaves the district map unchanged.
 

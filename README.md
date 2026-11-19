@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.15.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.16.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -28,7 +28,7 @@
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                                  |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                       |
 | Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable drag/drop builds, click-to-upgrade districts                   |
-| Districts       | Bounded owner-local Voronoi districts, type tint/boundaries, district-wide defense auras, same-type stacking                                             |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                  |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                       |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                 |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout              |
@@ -170,6 +170,8 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 | Defense Post |             40 | +5 defense         |
 | Command Post |             32 | +1 order per 60s   |
 | War Academy  |             32 | +1 order cap       |
+
+District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
 District pixels receive a subtle structure-type tint, a per-district brightness variant, and darkened boundaries in the WebGPU territory shader. This keeps even adjacent same-type districts distinguishable.
 

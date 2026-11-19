@@ -669,6 +669,39 @@ The initial district implementation still clipped Defense Post auras to the old 
 
 ---
 
+## ADR-023 — Noisy district extents and borders
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Districts were exact circles/Voronoi cells. The requested look is organic: districts should subtly grow and shrink, and borders should not be mathematically smooth.
+
+### Decision
+
+- Add an integer noise offset to the squared-distance comparison used by district selection.
+- Noise combines bilinear 8 px value noise with a faint per-pixel hash jitter; no simulation RNG draw is involved.
+- The offset is scaled by structure range so the outer boundary moves by roughly two pixels in either direction.
+- Expand district and aura scan boxes by `DISTRICT_NOISE_MARGIN` (4 px) so outward noise is not clipped by the nominal radius.
+- The resulting district map remains the single source of truth for tint, auras, stacking, and placement.
+
+### Consequences
+
+- Outer edges and same-owner split lines are irregular but stable for a given seed and structure.
+- Aura coverage follows the noisy geometry exactly.
+- District rebuild does a few extra hashes per candidate cell; this is infrequent, not per-tick.
+- Nominal district range remains the design value; displayed tint may extend a couple of pixels beyond it.
+
+### Alternatives considered
+
+- **Per-pixel white noise only:** too jagged and speckled.
+- **Animated noise:** changes simulation geometry every tick and would make districts unstable.
+- **Noise only in rendering:** would desynchronize tint/borders from actual aura and placement coverage.
+- **Randomize range once per structure:** produces blobs but not wavy borders.
+
+---
+
 ## ADR-022 — Click-to-upgrade districts and continuous resource accrual
 
 **Status:** accepted for EXP-001  

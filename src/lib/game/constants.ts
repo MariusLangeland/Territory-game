@@ -71,6 +71,10 @@ export const ANNEX_INTERVAL_TICKS = 10;
 /** Minimum centre-to-centre distance, in map cells, between any two structures. */
 export const STRUCTURE_MIN_SPACING = 8;
 
+/** District edge fuzz: coherent cell size and worst-case outward growth. */
+export const DISTRICT_NOISE_CELL = 8;
+export const DISTRICT_NOISE_MARGIN = 4;
+
 /** Player economy. */
 export const STARTING_GOLD = 3;
 export const BASE_GOLD_INCOME = 1;
@@ -89,7 +93,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 22;
+export const PROTOCOL_VERSION = 23;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',
