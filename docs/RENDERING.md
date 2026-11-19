@@ -43,9 +43,10 @@ There is exactly one WebGPU draw call per frame for territory.
 Structures are not encoded in the ownership texture. A transparent 2D canvas sits above the WebGPU canvas and draws up to 108 owner-colored capital-star circles at structure cells each frame:
 
 - uses the same `MapCamera.mapToScreen` transform as the map;
-- draws State auras first as faint owner-colored fields with dashed boundaries, scaled by `effect.radius * camera.scale`; auras smaller than 16 px are hidden under the capital marker;
-- draws a dark halo, a cream outer ring, an owner-colored disc, and a cream five-point capital star;
-- uses a 7.5 px radius for AI capitals and 10 px for the human capital, plus an extra human halo;
+- draws defense auras as faint owner-colored fields and attack auras as amber dashed fields, scaled by `effect.radius * camera.scale`; auras smaller than 16 px are hidden under the marker;
+- draws a dark halo, cream ring, and owner-colored disc for every structure;
+- uses a cream five-point capital star for State structures, a pickaxe for Mines, crossed swords for Barracks, and a shield for Defense Posts;
+- uses 10/7.5 px radii for human/AI State capitals, 6 px for buildables, plus an extra human capital halo;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);
 - `pointer-events: none`, so attacks/drags still target the WebGPU canvas;

@@ -81,6 +81,51 @@
 			context.closePath();
 		}
 
+		function drawPickaxe(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.moveTo(x - radius * 0.5, y + radius * 0.55);
+			context.lineTo(x + radius * 0.35, y - radius * 0.45);
+			context.stroke();
+			context.beginPath();
+			context.arc(x + radius * 0.2, y - radius * 0.3, radius * 0.5, -Math.PI * 0.8, Math.PI * 0.1);
+			context.stroke();
+		}
+
+		function drawCrossedSwords(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.moveTo(x - radius * 0.55, y + radius * 0.55);
+			context.lineTo(x + radius * 0.55, y - radius * 0.55);
+			context.moveTo(x - radius * 0.55, y - radius * 0.55);
+			context.lineTo(x + radius * 0.55, y + radius * 0.55);
+			context.stroke();
+		}
+
+		function drawShield(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.moveTo(x, y - radius * 0.72);
+			context.lineTo(x + radius * 0.58, y - radius * 0.32);
+			context.lineTo(x + radius * 0.42, y + radius * 0.36);
+			context.quadraticCurveTo(x, y + radius * 0.78, x - radius * 0.42, y + radius * 0.36);
+			context.lineTo(x - radius * 0.58, y - radius * 0.32);
+			context.closePath();
+			context.stroke();
+		}
+
 		function drawStructures(): void {
 			if (!renderer || !structureCanvas) return;
 			const camera = renderer.camera;
@@ -108,7 +153,7 @@
 			for (const structure of simulation.structures.all) {
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
 				for (const effect of structure.effects) {
-					if (effect.kind !== 'defense-aura') continue;
+					if (effect.kind !== 'defense-aura' && effect.kind !== 'attack-aura') continue;
 					const auraRadius = effect.radius * camera.scale;
 					if (auraRadius < 16) continue;
 					if (
@@ -121,14 +166,21 @@
 					}
 
 					const human = structure.ownerId === HUMAN_PLAYER_ID;
-					const color = colorForPlayer(structure.ownerId).rgb;
+					const attackAura = effect.kind === 'attack-aura';
+					const color = attackAura
+						? ([255, 184, 94] as const)
+						: colorForPlayer(structure.ownerId).rgb;
 					context.beginPath();
 					context.arc(point.x, point.y, auraRadius, 0, Math.PI * 2);
-					context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.16 : 0.085})`;
+					context.fillStyle = attackAura
+						? 'rgba(255, 184, 94, 0.045)'
+						: `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.16 : 0.085})`;
 					context.fill();
-					context.setLineDash([5, 5]);
+					context.setLineDash(attackAura ? [2, 7] : [5, 5]);
 					context.lineWidth = human ? 1.6 : 1.2;
-					context.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.68 : 0.45})`;
+					context.strokeStyle = attackAura
+						? 'rgba(255, 184, 94, 0.42)'
+						: `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${human ? 0.68 : 0.45})`;
 					context.stroke();
 					context.setLineDash([]);
 				}
@@ -141,18 +193,19 @@
 				}
 
 				const human = structure.ownerId === HUMAN_PLAYER_ID;
-				const radius = human ? 10 : 7.5;
+				const isState = structure.type === 'state';
+				const radius = isState ? (human ? 10 : 7.5) : 6;
 				const x = point.x;
 				const y = point.y;
 
-				// A dark halo keeps the capital readable over bright terrain and
-				// territory colors; the owner disc carries ownership.
+				// A dark halo keeps every structure readable over bright terrain
+				// and territory colors; the owner disc carries ownership.
 				context.beginPath();
-				context.arc(x, y, radius + 2.8, 0, Math.PI * 2);
+				context.arc(x, y, radius + (isState ? 2.8 : 2), 0, Math.PI * 2);
 				context.fillStyle = 'rgba(2, 8, 12, 0.38)';
 				context.fill();
 				context.beginPath();
-				context.arc(x, y, radius + 1.3, 0, Math.PI * 2);
+				context.arc(x, y, radius + (isState ? 1.3 : 1), 0, Math.PI * 2);
 				context.fillStyle = 'rgba(4, 12, 16, 0.9)';
 				context.fill();
 
@@ -160,11 +213,11 @@
 				context.arc(x, y, radius, 0, Math.PI * 2);
 				context.fillStyle = colorForPlayer(structure.ownerId).hex;
 				context.fill();
-				context.lineWidth = human ? 2 : 1.5;
+				context.lineWidth = isState ? (human ? 2 : 1.5) : 1.2;
 				context.strokeStyle = 'rgba(252, 246, 225, 0.96)';
 				context.stroke();
 
-				if (human) {
+				if (human && isState) {
 					context.beginPath();
 					context.arc(x, y, radius + 4, 0, Math.PI * 2);
 					context.lineWidth = 1.2;
@@ -172,13 +225,24 @@
 					context.stroke();
 				}
 
-				// Capital star. Cream on the owner disc stays legible at every zoom.
-				drawStar(context, x, y, radius * 0.58, radius * 0.24);
-				context.fillStyle = 'rgba(255, 248, 225, 0.98)';
-				context.fill();
-				context.lineWidth = 1;
-				context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
-				context.stroke();
+				context.strokeStyle = 'rgba(255, 248, 225, 0.98)';
+				context.lineWidth = 1.4;
+				context.lineCap = 'round';
+				context.lineJoin = 'round';
+				if (structure.type === 'state') {
+					drawStar(context, x, y, radius * 0.58, radius * 0.24);
+					context.fillStyle = 'rgba(255, 248, 225, 0.98)';
+					context.fill();
+					context.lineWidth = 1;
+					context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
+					context.stroke();
+				} else if (structure.type === 'mine') {
+					drawPickaxe(context, x, y, radius);
+				} else if (structure.type === 'barracks') {
+					drawCrossedSwords(context, x, y, radius);
+				} else {
+					drawShield(context, x, y, radius);
+				}
 			}
 		}
 

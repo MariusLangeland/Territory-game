@@ -4,14 +4,19 @@ import {
 	ATTACK_LIFETIME_TICKS,
 	ATTACK_SEARCH_RADIUS,
 	BASE_DEFENSE_OFFSET,
+	BASE_GOLD_INCOME,
 	BOT_ATTACK_LIMIT,
 	BOT_DECISION_INTERVAL,
 	BOT_SEARCH_TRIES,
 	HUMAN_PLAYER_ID,
+	INCOME_INTERVAL_TICKS,
 	MAX_ATTACKS_PER_PLAYER,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
+	REFRESH_COST,
+	STARTING_GOLD,
+	STARTING_HAND_SIZE,
 	START_RADIUS
 } from './constants';
 import {
@@ -24,7 +29,12 @@ import {
 import { TerritoryIntegrity } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import {
+	BUILDABLE_STRUCTURE_TYPES,
 	StructureRegistry,
+	STRUCTURE_DEFINITIONS,
+	type BuildableStructureType,
+	type Card,
+	type PublicCard,
 	type PublicStructure,
 	type Structure,
 	type StructureType
@@ -83,6 +93,10 @@ export interface GameSnapshot {
 	players: PublicPlayer[];
 	attacks: PublicAttack[];
 	structures: PublicStructure[];
+	/** Human state's economy. Bots do not build cards yet. */
+	gold: number;
+	income: number;
+	hand: PublicCard[];
 	winnerId: number | null;
 	ended: boolean;
 	humanId: number;
@@ -90,7 +104,7 @@ export interface GameSnapshot {
 	growthMode: GrowthMode;
 }
 
-export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'system';
+export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'build' | 'system';
 
 export interface SimEvent {
 	id: number;
@@ -121,6 +135,32 @@ export interface AttackCommand {
 	x: number;
 	y: number;
 	sequence: number;
+}
+
+export interface BuildCommand {
+	type: 'build';
+	playerId: number;
+	cardId: number;
+	x: number;
+	y: number;
+	sequence: number;
+}
+
+export interface RefreshCommand {
+	type: 'refresh';
+	playerId: number;
+	sequence: number;
+}
+
+export type GameCommand = AttackCommand | BuildCommand | RefreshCommand;
+
+export type BuildFailure =
+	'ended' | 'eliminated' | 'no-card' | 'no-gold' | 'ocean' | 'not-owned' | 'occupied' | 'invalid';
+
+export interface BuildOrderResult {
+	ok: boolean;
+	reason?: BuildFailure;
+	message: string;
 }
 
 export interface StepResult {
@@ -159,15 +199,20 @@ export class TerritorySimulation {
 	/** Attack id that most recently captured each cell; 0 for starting land. */
 	readonly claimedBy: Uint32Array;
 	/** Structure aura defense bonus per cell. Derived from live structures. */
-	private readonly auraDefense: Uint8Array;
+	private readonly auraDefense: Uint16Array;
 	readonly players: PlayerState[];
 
 	tick = 0;
 	winnerId: number | null = null;
 	ended = false;
 	growthMode: GrowthMode;
+	gold = STARTING_GOLD;
+	hand: Card[] = [];
 
 	private pendingGrowthMode: GrowthMode | null = null;
+	private nextIncomeTick = INCOME_INTERVAL_TICKS;
+	private nextCardId = 1;
+	private readonly cardRng: DeterministicRng;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -175,7 +220,7 @@ export class TerritorySimulation {
 	private readonly landCount: number;
 	private attacks: AttackState[] = [];
 	private nextAttackId = 1;
-	private pendingCommands: AttackCommand[] = [];
+	private pendingCommands: GameCommand[] = [];
 	private nextCommandSequence = 1;
 	private events: SimEvent[] = [];
 	private nextEventId = 1;
@@ -211,7 +256,7 @@ export class TerritorySimulation {
 		this.landCount = this.map.landCount;
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
-		this.auraDefense = new Uint8Array(this.width * this.height);
+		this.auraDefense = new Uint16Array(this.width * this.height);
 		this.integrity = new TerritoryIntegrity(this.width, this.height, PLAYER_COUNT);
 
 		if (this.landCount <= 0) throw new Error('Generated map has no land.');
@@ -226,6 +271,7 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
+		this.cardRng = new DeterministicRng((this.seed ^ 0x9e3779b9) >>> 0);
 
 		this.placeStartingTerritories(this.map.starts);
 		this.ensureEveryStateHasLand();
@@ -237,6 +283,7 @@ export class TerritorySimulation {
 			this.structures.create('state', i + 1, start.x, start.y, this.width);
 		}
 		this.rebuildAuraDefense();
+		this.hand = this.drawHand();
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
@@ -249,6 +296,16 @@ export class TerritorySimulation {
 	 */
 	setGrowthMode(mode: GrowthMode): void {
 		if (isGrowthMode(mode)) this.pendingGrowthMode = mode;
+	}
+
+	get income(): number {
+		let income = BASE_GOLD_INCOME;
+		for (const structure of this.structures.forOwner(HUMAN_PLAYER_ID)) {
+			for (const effect of structure.effects) {
+				if (effect.kind === 'income') income += effect.goldPerInterval;
+			}
+		}
+		return income;
 	}
 
 	/** Queue a human attack. It is applied at the start of the next tick. */
@@ -301,6 +358,93 @@ export class TerritorySimulation {
 		};
 	}
 
+	/** Validate a card drop for immediate UI feedback. */
+	validateBuild(playerId: number, cardId: number, x: number, y: number): BuildOrderResult {
+		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
+		const player = this.players[playerId - 1];
+		if (!player?.alive) {
+			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
+		}
+		if (playerId !== HUMAN_PLAYER_ID) {
+			return { ok: false, reason: 'invalid', message: 'Only the human commander builds cards.' };
+		}
+		const card = this.hand.find((entry) => entry.id === cardId);
+		if (!card) return { ok: false, reason: 'no-card', message: 'That card is no longer in hand.' };
+		const cost = STRUCTURE_DEFINITIONS[card.type].cost;
+		if (this.gold < cost) {
+			return {
+				ok: false,
+				reason: 'no-gold',
+				message: `Need ${cost} gold to build ${STRUCTURE_DEFINITIONS[card.type].label}.`
+			};
+		}
+
+		const roundedX = Math.floor(x);
+		const roundedY = Math.floor(y);
+		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
+			return { ok: false, reason: 'invalid', message: 'Drop the card inside the map.' };
+		}
+		const index = roundedY * this.width + roundedX;
+		if (!this.land[index]) {
+			return { ok: false, reason: 'ocean', message: 'Structures need land.' };
+		}
+		if (this.owners[index] !== playerId) {
+			return {
+				ok: false,
+				reason: 'not-owned',
+				message: 'Drop the card inside your controlled territory.'
+			};
+		}
+		if (this.structures.at(index)) {
+			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
+		}
+
+		return {
+			ok: true,
+			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${cost} gold.`
+		};
+	}
+
+	/** Queue a card build. Applied at the next tick. */
+	playCard(playerId: number, cardId: number, x: number, y: number): BuildOrderResult {
+		const validation = this.validateBuild(playerId, cardId, x, y);
+		if (!validation.ok) return validation;
+		this.pendingCommands.push({
+			type: 'build',
+			playerId,
+			cardId,
+			x: Math.floor(x),
+			y: Math.floor(y),
+			sequence: this.nextCommandSequence++
+		});
+		return validation;
+	}
+
+	/** Queue a refresh. Applied at the next tick; replaces the hand with three cards. */
+	refreshCards(playerId: number): BuildOrderResult {
+		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
+		const player = this.players[playerId - 1];
+		if (!player?.alive) {
+			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
+		}
+		if (playerId !== HUMAN_PLAYER_ID) {
+			return { ok: false, reason: 'invalid', message: 'Only the human commander draws cards.' };
+		}
+		if (this.gold < REFRESH_COST) {
+			return {
+				ok: false,
+				reason: 'no-gold',
+				message: `Refresh costs ${REFRESH_COST} gold.`
+			};
+		}
+		this.pendingCommands.push({
+			type: 'refresh',
+			playerId,
+			sequence: this.nextCommandSequence++
+		});
+		return { ok: true, message: `Refresh ordered for ${REFRESH_COST} gold.` };
+	}
+
 	step(): StepResult {
 		this.changeCount = 0;
 		this.changesOverflow = false;
@@ -312,6 +456,11 @@ export class TerritorySimulation {
 			if (this.pendingGrowthMode) {
 				this.growthMode = this.pendingGrowthMode;
 				this.pendingGrowthMode = null;
+			}
+
+			if (this.tick >= this.nextIncomeTick) {
+				this.gold += this.income;
+				this.nextIncomeTick += INCOME_INTERVAL_TICKS;
 			}
 
 			this.applyPendingCommands();
@@ -391,6 +540,11 @@ export class TerritorySimulation {
 		return this.auraDefense[y * this.width + x];
 	}
 
+	getAttackStrength(ownerId: number, x: number, y: number): number {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+		return this.attackStrengthAt(ownerId, y * this.width + x);
+	}
+
 	get totalLand(): number {
 		return this.landCount;
 	}
@@ -425,6 +579,14 @@ export class TerritorySimulation {
 		mix(this.pendingGrowthMode ? growthModeCode(this.pendingGrowthMode) : 0);
 		mix(this.annexRequested ? 1 : 0);
 		mix(this.lastAnnexTick);
+		mix(this.gold);
+		mix(this.nextIncomeTick);
+		mix(this.nextCardId);
+		mix(this.cardRng.getState());
+		for (const card of this.hand) {
+			mix(card.id);
+			mix(structureTypeCode(card.type));
+		}
 
 		for (let i = 0; i < this.owners.length; i++) {
 			mix(this.owners[i]);
@@ -474,6 +636,44 @@ export class TerritorySimulation {
 			if (this.ended) return;
 			const player = this.players[command.playerId - 1];
 			if (!player?.alive) continue;
+
+			if (command.type === 'refresh') {
+				if (command.playerId !== HUMAN_PLAYER_ID || this.gold < REFRESH_COST) continue;
+				this.gold -= REFRESH_COST;
+				this.hand = this.drawHand();
+				this.pushEvent('build', 'Hand refreshed with three cards.', command.playerId);
+				continue;
+			}
+
+			if (command.type === 'build') {
+				const validation = this.validateBuild(
+					command.playerId,
+					command.cardId,
+					command.x,
+					command.y
+				);
+				if (!validation.ok) continue;
+				const card = this.hand.find((entry) => entry.id === command.cardId);
+				if (!card) continue;
+				const cost = STRUCTURE_DEFINITIONS[card.type].cost;
+				this.gold -= cost;
+				this.hand = this.hand.filter((entry) => entry.id !== command.cardId);
+				const structure = this.structures.create(
+					card.type,
+					command.playerId,
+					command.x,
+					command.y,
+					this.width
+				);
+				this.rebuildAuraDefense();
+				this.pushEvent(
+					'build',
+					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${cost} gold.`,
+					command.playerId
+				);
+				continue;
+			}
+
 			const index = command.y * this.width + command.x;
 			if (index < 0 || index >= this.owners.length) continue;
 			const seeds = this.findAttackSeeds(command.playerId, index);
@@ -482,13 +682,22 @@ export class TerritorySimulation {
 		}
 	}
 
+	private drawCard(): Card {
+		const type = BUILDABLE_STRUCTURE_TYPES[this.cardRng.nextInt(BUILDABLE_STRUCTURE_TYPES.length)];
+		return { id: this.nextCardId++, type };
+	}
+
+	private drawHand(): Card[] {
+		return Array.from({ length: STARTING_HAND_SIZE }, () => this.drawCard());
+	}
+
 	private activeAttackCount(playerId: number): number {
 		let count = 0;
 		for (const attack of this.attacks) {
 			if (attack.attackerId === playerId && !attack.done) count++;
 		}
 		for (const command of this.pendingCommands) {
-			if (command.playerId === playerId) count++;
+			if (command.type === 'attack' && command.playerId === playerId) count++;
 		}
 		return count;
 	}
@@ -531,29 +740,56 @@ export class TerritorySimulation {
 		const width = this.width;
 		const height = this.height;
 
-		for (const structure of this.structures.all) {
-			for (const effect of structure.effects) {
-				if (effect.kind !== 'defense-aura') continue;
-				const radius = Math.max(0, Math.floor(effect.radius));
-				const minX = Math.max(0, structure.x - radius);
-				const maxX = Math.min(width - 1, structure.x + radius);
-				const minY = Math.max(0, structure.y - radius);
-				const maxY = Math.min(height - 1, structure.y + radius);
-				const radiusSq = radius * radius;
+		const stamp = (stacking: 'max' | 'add') => {
+			for (const structure of this.structures.all) {
+				for (const effect of structure.effects) {
+					if (effect.kind !== 'defense-aura' || effect.stacking !== stacking) continue;
+					const radius = Math.max(0, Math.floor(effect.radius));
+					const minX = Math.max(0, structure.x - radius);
+					const maxX = Math.min(width - 1, structure.x + radius);
+					const minY = Math.max(0, structure.y - radius);
+					const maxY = Math.min(height - 1, structure.y + radius);
+					const radiusSq = radius * radius;
 
-				for (let y = minY; y <= maxY; y++) {
-					const dy = y - structure.y;
-					for (let x = minX; x <= maxX; x++) {
-						const dx = x - structure.x;
-						if (dx * dx + dy * dy > radiusSq) continue;
-						const index = y * width + x;
-						if (effect.defense > this.auraDefense[index]) {
-							this.auraDefense[index] = Math.min(255, effect.defense);
+					for (let y = minY; y <= maxY; y++) {
+						const dy = y - structure.y;
+						for (let x = minX; x <= maxX; x++) {
+							const dx = x - structure.x;
+							if (dx * dx + dy * dy > radiusSq) continue;
+							const index = y * width + x;
+							if (stacking === 'max') {
+								this.auraDefense[index] = Math.max(this.auraDefense[index], effect.defense);
+							} else {
+								this.auraDefense[index] = Math.min(
+									65_535,
+									this.auraDefense[index] + effect.defense
+								);
+							}
 						}
 					}
 				}
 			}
+		};
+
+		stamp('max');
+		stamp('add');
+	}
+
+	private attackStrengthAt(attackerId: number, index: number): number {
+		let strength = 0;
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		for (const structure of this.structures.forOwner(attackerId)) {
+			for (const effect of structure.effects) {
+				if (effect.kind !== 'attack-aura') continue;
+				const dx = structure.x - x;
+				const dy = structure.y - y;
+				if (dx * dx + dy * dy <= effect.radius * effect.radius) {
+					strength += effect.strength;
+				}
+			}
 		}
+		return strength;
 	}
 
 	private defenseAt(index: number): number {
@@ -698,9 +934,13 @@ export class TerritorySimulation {
 					break;
 				}
 
-				// Defense is paid in attack points. Once the front cannot afford
-				// the next pixel, it keeps that pixel queued for a future tick.
-				const cost = this.defenseAt(index);
+				// Defense is paid in attack points, reduced by friendly barracks
+				// attack auras over this target. A front keeps an unaffordable
+				// pixel queued for a future tick.
+				const cost = Math.max(
+					1,
+					this.defenseAt(index) - this.attackStrengthAt(attack.attackerId, index)
+				);
 				if (cost > attackPoints) {
 					attack.frontier.push(index);
 					break;
@@ -785,7 +1025,8 @@ export class TerritorySimulation {
 	}
 
 	private annexDisconnectedTerritory(): void {
-		this.integrity.run(this.owners, this.land, this.structures.all, (index, newOwner) => {
+		const stateAnchors = this.structures.all.filter((structure) => structure.type === 'state');
+		this.integrity.run(this.owners, this.land, stateAnchors, (index, newOwner) => {
 			this.claim(index, newOwner, 0);
 		});
 	}
@@ -807,9 +1048,12 @@ export class TerritorySimulation {
 		if (structure) {
 			this.rebuildAuraDefense();
 			const owner = this.players[structure.ownerId - 1];
+			const label = STRUCTURE_DEFINITIONS[structure.type].label;
 			this.pushEvent(
 				'structure',
-				`${owner.name}'s State structure was destroyed. Its territory is no longer protected from annexation.`,
+				structure.type === 'state'
+					? `${owner.name}'s State structure was razed. Its territory is no longer protected from annexation.`
+					: `${owner.name}'s ${label} was razed.`,
 				structure.ownerId
 			);
 		}
@@ -1019,6 +1263,9 @@ export class TerritorySimulation {
 			players,
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
+			gold: this.gold,
+			income: this.income,
+			hand: this.hand.map((card) => ({ id: card.id, type: card.type })),
 			winnerId: this.winnerId,
 			ended: this.ended,
 			humanId: HUMAN_PLAYER_ID,
@@ -1068,6 +1315,12 @@ function structureTypeCode(type: StructureType): number {
 	switch (type) {
 		case 'state':
 			return 1;
+		case 'mine':
+			return 2;
+		case 'barracks':
+			return 3;
+		case 'defense-post':
+			return 4;
 	}
 }
 

@@ -444,3 +444,42 @@ Structures were static anchors with no gameplay effect. The next step is effects
 - Stacking overlapping auras: can push defense above the 30-point attack budget and stall fronts permanently.
 - Per-cell mutable defense: unnecessary; aura defense is already derived from live structures.
 - A separate aura map texture: unnecessary; the overlay is small and only 108 circles.
+
+---
+
+## ADR-015 — Human gold economy and drag-and-drop build cards
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+State structures are anchors, but the player needs buildable structures and a reason to choose between them. The requested loop is a small gold income, a three-card hand, and dragging a card into controlled territory to buy/build it. Captured structures are razed.
+
+### Decision
+
+- Give the human commander **3 starting gold** and **3 random cards** from a pool of Mine, Barracks, and Defense Post. Every draw is independent (with replacement); there is no deck.
+- Pay **1 gold per 10 seconds** plus 1 per live Mine. Income is paid at tick boundaries.
+- Cards cost Mine 3, Barracks 2, Defense Post 1. **Refresh** costs 1 and replaces the hand with three new draws.
+- Build/refresh are queued commands applied at the next tick. A build validates card, gold, own land, and empty structure slot, then removes the card and creates the structure.
+- Drag-and-drop is the only placement gesture. The drop point is converted through the camera to a map cell; invalid drops produce a toast and no cost.
+- Card draws use a dedicated deterministic RNG seeded from the world seed. Gold, hand, card RNG, and income tick are checksummed.
+- Mine adds income; Defense Post adds a stacking +1 defense aura; Barracks adds stacking attack strength in a large radius. Barracks strength reduces target defense cost, floor 1, for that owner's attacks.
+- Any structure whose cell is captured is razed, including buildables; effects disappear immediately.
+
+### Consequences
+
+- The human has a meaningful build/economy loop while bots remain attack-only stress actors.
+- Starting at 3 gold is a provisional choice so the first hand can be played immediately.
+- Refresh replaces rather than refills the hand; this is the chosen interpretation of “draw three back into hand.”
+- Pending commands can race: the first build removes a card, later duplicates fail validation.
+- The card tray is a bottom overlay; drag/drop must work at any camera zoom and must only succeed inside controlled territory.
+- Card economy is human-only until bot production/build AI exists.
+
+### Alternatives considered
+
+- Start at 0 gold: delays the first build and makes the opening hand inert for 10 seconds.
+- Draw from a shuffled deck: contrary to the requested independent pool draws.
+- Click-to-select then click-to-place: rejected in favor of direct drag-and-drop.
+- Global Barracks attack bonus: ignores the requested radius.
+- Additive State auras: can push defense above the attack budget permanently; keep max for State, additive for Defense Posts.

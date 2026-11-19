@@ -8,9 +8,9 @@
 
 import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
-import type { PublicStructure } from '../structures';
+import type { PublicCard, PublicStructure } from '../structures';
 
-export const NET_PROTOCOL_VERSION = 11;
+export const NET_PROTOCOL_VERSION = 12;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -69,6 +69,9 @@ export interface WireSnapshot {
 	players: WirePlayer[];
 	attacks: PublicAttack[];
 	structures: PublicStructure[];
+	gold: number;
+	income: number;
+	hand: PublicCard[];
 	winnerId: PlayerId | null;
 	claimedLand: number;
 	landCount: number;

@@ -1,12 +1,12 @@
 # TERRITORY — Specification
 
-**Version:** 0.7.0 (attack stress experiment)  
+**Version:** 0.8.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.7.0, map version 3, protocol draft 11
+**Last synchronized with:** application 0.8.0, map version 3, protocol draft 12
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
-> **Important:** The economy has been temporarily removed to focus on the attack feature. Resource-free, unthrottled-by-troops attacks are **not the intended final combat model**. See section 4.10 and [EXPERIMENTS.md](EXPERIMENTS.md).
+> **Important:** The troop economy has been temporarily removed, but a light human gold/card economy and terrain defense are now active. This is **not the intended final combat model**. See section 4.10 and [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ---
 
@@ -51,7 +51,7 @@ Exercise the attack pipeline in isolation:
 - Many dispersed texture upload regions.
 - Large frontier-set and attack-queue workloads.
 
-The user explicitly requested removing troops/income and adding 100 AI opponents. This build is an engineering experiment, not a balance proposal.
+The user explicitly requested removing troops and adding 100 AI opponents, then iteratively added terrain defense, structures, and a light human gold/card economy. This build is an engineering experiment, not a balance proposal.
 
 ### 2.2 Implemented
 
@@ -69,18 +69,21 @@ The user explicitly requested removing troops/income and adding 100 AI opponents
 | WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
 | Circular / smooth / organic selectable growth layers      | ✅                       |
 | State structures anchoring territory and projecting auras | ✅                       |
+| Human gold income and drag-and-drop build cards           | ✅                       |
 | Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
 | Deterministic tests + attack stress tests + benchmark     | ✅                       |
-| Economy, troops, income, caps, costs                      | ❌ intentionally removed |
+| Troops, caps, launch costs                                | ❌ intentionally removed |
+| Light human gold/card economy                             | ✅ experimental          |
 
 ### 2.3 Not implemented
 
 | Area                                                    | Target                                         |
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
-| Structure construction, other types, ownership transfer | First State structure only; design pending     |
+| Bot card economy/build AI                               | Human-only card loop for now                   |
+| Structure construction beyond cards, ownership transfer | State + three buildables; design pending       |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
 | Accounts, progression, persistence                      | [ROADMAP.md](ROADMAP.md)                       |
@@ -118,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 11`.
+- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 12`.
 
 ### 4.2 Starting positions
 
@@ -192,21 +195,20 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 - It attacks neutral neighbours whenever its sampled frontier has one, and only attacks a rival when no neutral option exists. This is a provisional stress-build policy, not final AI.
 - Bots use the same attack API and limits as the human.
 - Bots share one seeded PRNG, processed in ascending player-id order, so behavior is replayable.
-- With no resource economy, bots attack from the first decision tick; terrain defense and capital auras slow, but do not stop, expansion.
+- With no troop economy, bots attack from the first decision tick; terrain defense, capital auras, and human build cards slow, but do not stop, expansion.
 
 ### 4.9 Tick order
 
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
-3. Apply queued attack commands sorted by `(sequence, playerId)`.
-4. Run bot decisions (only on every 10th tick).
-5. Process active attacks in creation-id order.
-6. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
-7. Eliminate states with no territory and remove their attacks.
-8. Check victory.
-9. Build the public snapshot.
-
-No economy phase exists in this experiment.
+3. Pay human income if the tick is an income boundary.
+4. Apply queued attack/build/refresh commands sorted by `(sequence, playerId)`.
+5. Run bot decisions (only on every 10th tick).
+6. Process active attacks in creation-id order.
+7. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
+8. Eliminate states with no territory and remove their attacks.
+9. Check victory.
+10. Build the public snapshot.
 
 ### 4.10 Experimental attack caveats
 
@@ -272,11 +274,11 @@ This restores dead pixels and severed pockets to the surrounding claim while gua
 - Every land component connected to a live State structure is protected from annexation.
 - A live State structure projects a **12 px defense aura** adding **+20 defense** to every land pixel in range. The structure cell itself is inside the aura. Overlapping auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
-- If a component contains multiple structures (future structure types), it remains protected.
+- Only State structures anchor protection. Mines, Barracks, and Defense Posts do not prevent annexation.
 - Structures are rendered as large owner-colored circles with a cream capital star on the map, and ringed dots on the minimap. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
-This is the first structure type; structure construction, multiple structure types, and ownership transfer are future work.
+State is the permanent anchor structure. Mines, Barracks, and Defense Posts are the first player-built structures; construction beyond cards, more types, and ownership transfer are future work.
 
 ### 4.16 Elevation and defense
 
@@ -296,6 +298,28 @@ This is the first structure type; structure construction, multiple structure typ
 - The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 - State auras are rendered as faint owner-colored fields with dashed boundaries at tactical zoom.
+
+### 4.17 Player economy and build cards
+
+The human commander has a small card economy; bots do not build cards yet.
+
+- Start with **3 gold** and **3 random cards**, drawn independently from the buildable pool with replacement.
+- Earn **1 gold every 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine**.
+- Income is paid at the start of the tick. A Mine built before the payment adds to that payment.
+- Playing a card requires dragging it onto **controlled land** with no existing structure.
+- The build command is queued, applied at the next tick, deducts its cost, removes the card, and creates the structure.
+- **Refresh** costs 1 gold, discards the current hand, and draws three new cards from the pool. It is queued like a build.
+- Costs: Mine **3**, Barracks **2**, Defense Post **1**.
+- Cards are not a deck: every draw is an independent uniform choice among the three printed card types, so duplicates are possible.
+- Captured buildable structures are razed and their effects disappear.
+
+| Card         | Cost | Effect                                                               |
+| ------------ | ---- | -------------------------------------------------------------------- |
+| Mine         | 3    | +1 income every 10 seconds                                           |
+| Barracks     | 2    | Friendly attacks inside a 18 px radius ignore 1 defense per Barracks |
+| Defense Post | 1    | +1 defense in an 8 px radius; multiple posts stack                   |
+
+Barracks attack strength is applied per captured target: effective defense = `max(1, defense - barracksStrength)`. It affects only attacks owned by the Barracks owner.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -328,7 +352,8 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Status console: hover coordinate/ownership and human active orders.
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
-- State structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
+- State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
+- Bottom card tray with gold, income, three cards, and Refresh; drag a card into controlled territory to build.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
 - Leaderboard virtualization: only visible rows plus overscan exist in the DOM.
 
@@ -410,7 +435,7 @@ Current public player fields:
 }
 ```
 
-No troops, income, or other economy fields exist.
+No troop or production-cap economy exists. The human snapshot carries gold, income, and hand cards; bots have no economy yet.
 
 ---
 
@@ -508,6 +533,8 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense, and fronts spend 30 attack points per tick.
 - [x] A live State structure adds 20 defense within 12 px; the bonus disappears when the structure is destroyed.
+- [x] The human starts with three cards and 3 gold, earns income, can drag cards onto owned land, and can refresh the hand.
+- [x] Mine, Barracks, and Defense Post apply their income, attack-strength, and defense effects.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

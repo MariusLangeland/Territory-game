@@ -11,6 +11,7 @@
 		MAP_HEIGHT,
 		MAP_WIDTH,
 		PLAYER_COUNT,
+		REFRESH_COST,
 		TICK_RATE,
 		colorForPlayer
 	} from '#lib/game/constants';
@@ -22,6 +23,7 @@
 		type GrowthMode
 	} from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
+	import { STRUCTURE_DEFINITIONS, type PublicCard } from '#lib/game/structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 
@@ -69,6 +71,7 @@
 	let rankScrollTop = $state(0);
 	let rankViewportHeight = $state(360);
 	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
+	let draggingCardId = $state<number | null>(null);
 
 	const RANK_ROW_HEIGHT = 28;
 	const RANK_OVERSCAN = 3;
@@ -215,6 +218,7 @@
 		cameraView = null;
 		rankScrollTop = 0;
 		growthMode = DEFAULT_GROWTH_MODE;
+		draggingCardId = null;
 		eventFeed = [];
 		toast = null;
 		currentSeed = seed >>> 0;
@@ -358,6 +362,64 @@
 		showToast(`${GROWTH_LABELS[mode]} growth selected for new orders.`, 'success');
 	}
 
+	function cardDefinition(card: PublicCard) {
+		return STRUCTURE_DEFINITIONS[card.type];
+	}
+
+	function startCardDrag(event: DragEvent, card: PublicCard): void {
+		draggingCardId = card.id;
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData('text/plain', String(card.id));
+		}
+	}
+
+	function endCardDrag(): void {
+		draggingCardId = null;
+	}
+
+	function handleDragOver(event: DragEvent): void {
+		if (draggingCardId === null) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	}
+
+	function handleCardDrop(event: DragEvent): void {
+		event.preventDefault();
+		const rawCardId = event.dataTransfer?.getData('text/plain');
+		const cardId = rawCardId ? Number(rawCardId) : draggingCardId;
+		draggingCardId = null;
+		if (!sim || !snapshot || !gameStarted || !cameraView || cardId === null) return;
+		if (paused || defeatOpen || snapshot.ended) {
+			showToast('Resume the simulation before building.', 'warn');
+			return;
+		}
+
+		if ((event.target as HTMLElement).closest('.card-tray')) return;
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const screenX = event.clientX - rect.left;
+		const screenY = event.clientY - rect.top;
+		const mapX =
+			cameraView.centerX +
+			(screenX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
+		const mapY =
+			cameraView.centerY +
+			(screenY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
+
+		const result = sim.playCard(HUMAN_PLAYER_ID, cardId, Math.floor(mapX), Math.floor(mapY));
+		showToast(result.message, result.ok ? 'success' : 'error');
+	}
+
+	function refreshHand(): void {
+		if (!sim) return;
+		if (paused || defeatOpen || snapshot?.ended) {
+			showToast('Resume the simulation before refreshing.', 'warn');
+			return;
+		}
+		const result = sim.refreshCards(HUMAN_PLAYER_ID);
+		showToast(result.message, result.ok ? 'success' : 'error');
+	}
+
 	$effect(() => {
 		const element = rankScrollEl;
 		if (!element) return;
@@ -444,7 +506,7 @@
 	<title>TERRITORY — Attack stress test</title>
 </svelte:head>
 
-<main class="game-shell">
+<main class="game-shell" ondragover={handleDragOver} ondrop={handleCardDrop}>
 	{#if sim}
 		{#key sim}
 			<GameCanvas
@@ -604,6 +666,7 @@
 							<li
 								class:elimination={event.kind === 'elimination'}
 								class:structure={event.kind === 'structure'}
+								class:build={event.kind === 'build'}
 							>
 								<span>{event.message}</span>
 								<time>{formatClock(event.tick / TICK_RATE)}</time>
@@ -702,6 +765,74 @@
 			</div>
 		</div>
 
+		<div class="card-tray hud" aria-label="Build cards">
+			<div class="economy-readout">
+				<span>GOLD</span>
+				<strong>{snapshot.gold}</strong>
+				<small>+{snapshot.income} / 10s</small>
+			</div>
+
+			<div class="hand-row">
+				{#each [0, 1, 2] as slot (`slot-${slot}`)}
+					{@const card = snapshot.hand[slot]}
+					{#if card}
+						{@const definition = cardDefinition(card)}
+						<article
+							class="build-card"
+							class:unaffordable={snapshot.gold < definition.cost}
+							class:dragging={draggingCardId === card.id}
+							draggable="true"
+							ondragstart={(event) => startCardDrag(event, card)}
+							ondragend={endCardDrag}
+							title={`Drag ${definition.label} into your territory`}
+						>
+							<div class="build-card-head">
+								<span>{definition.label}</span>
+								<b>{definition.cost}g</b>
+							</div>
+							<div class="build-card-body">
+								<span class="build-card-icon" aria-hidden="true">
+									{#if card.type === 'mine'}
+										<svg viewBox="0 0 24 24">
+											<path d="M4 20 16 8M12 4c3 0 6 1 8 4M8 8c2-2 6-3 9-2" />
+										</svg>
+									{:else if card.type === 'barracks'}
+										<svg viewBox="0 0 24 24">
+											<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
+										</svg>
+									{:else}
+										<svg viewBox="0 0 24 24">
+											<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+										</svg>
+									{/if}
+								</span>
+								<p>{definition.description}</p>
+							</div>
+						</article>
+					{:else}
+						<div class="build-card empty">
+							<span>EMPTY</span>
+						</div>
+					{/if}
+				{/each}
+			</div>
+
+			<button
+				type="button"
+				class="refresh-button"
+				onclick={refreshHand}
+				disabled={snapshot.gold < REFRESH_COST}
+				title="Replace your hand with three new cards"
+			>
+				<span>REFRESH</span>
+				<small>{REFRESH_COST}g</small>
+			</button>
+		</div>
+
+		{#if draggingCardId !== null}
+			<div class="build-drop-hint hud">DROP CARD INSIDE CONTROLLED TERRITORY</div>
+		{/if}
+
 		<div class="key-hints hud">
 			<span><kbd>DRAG</kbd> PAN</span>
 			<span><kbd>SCROLL</kbd> ZOOM</span>
@@ -783,8 +914,9 @@
 					</div>
 
 					<p class="intro-footnote">
-						Attack stress prototype: {PLAYER_COUNT - 1} AI states attack automatically, no economy. This
-						is not the intended final combat model. Share a seed to replay the same test.
+						Attack stress prototype: {PLAYER_COUNT - 1} AI states attack automatically while you build
+						from a small gold/card economy. This is not the intended final combat model. Share a seed
+						to replay the same test.
 					</p>
 				</div>
 
@@ -805,7 +937,7 @@
 						</li>
 						<li>
 							<span>03</span>
-							<p>Every state attacks at once. This stress build has no resource economy.</p>
+							<p>Every state attacks at once. Build cards and terrain defense shape the front.</p>
 						</li>
 					</ol>
 					<div class="brief-footer">
@@ -816,7 +948,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.7.0 / PROTOCOL 11</span>
+				<span>BUILD 0.8.0 / PROTOCOL 12</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -969,13 +1101,13 @@
 				<div class="manual-grid">
 					<section>
 						<span class="manual-index">01 / THE EXPERIMENT</span>
-						<h3>No economy. Just fronts.</h3>
+						<h3>Cards, gold, and fronts.</h3>
 						<p>
-							Troops, income, caps, and launch costs are intentionally removed. Terrain now matters:
-							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
-							spends 30 attack points per tick. State auras add another 20 defense to nearby land.
-							Higher ground, defended territory, and capital auras therefore fall more slowly. This
-							is still not the final combat design.
+							Troops and production caps are removed. The human commander earns 1 gold every 10
+							seconds and draws three build cards; drag a card into controlled territory to build a
+							Mine, Barracks, or Defense Post. Terrain matters: base defense is 1 plus the elevation
+							tier, occupied pixels add 1 more, and each front spends 30 attack points per tick.
+							State auras add another 20 defense. This is still not the final combat design.
 						</p>
 					</section>
 					<section>
@@ -1590,6 +1722,10 @@
 		color: #ffd690;
 	}
 
+	.feed li.build span {
+		color: #b7e0c6;
+	}
+
 	.feed time {
 		flex: none;
 		font-family: var(--font-mono);
@@ -1776,6 +1912,192 @@
 		font-size: 6.5px;
 		letter-spacing: 0.05em;
 		color: var(--ink-faint);
+	}
+
+	.card-tray {
+		left: 50%;
+		bottom: 150px;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: stretch;
+		gap: 10px;
+		padding: 7px;
+		border: 1px solid var(--line-strong);
+		background: rgba(5, 13, 18, 0.88);
+		backdrop-filter: blur(16px);
+		box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+		animation: hud-in 600ms 200ms ease-out both;
+	}
+
+	.economy-readout {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 2px;
+		width: 64px;
+		padding: 0 8px;
+		border-right: 1px solid var(--line-soft);
+	}
+
+	.economy-readout span,
+	.build-card-head span,
+	.refresh-button span {
+		font-family: var(--font-mono);
+		font-size: 6.5px;
+		letter-spacing: 0.12em;
+		color: var(--ink-faint);
+	}
+
+	.economy-readout strong {
+		font-family: var(--font-display);
+		font-size: 20px;
+		line-height: 0.9;
+		color: #ffd690;
+	}
+
+	.economy-readout small {
+		font-family: var(--font-mono);
+		font-size: 7px;
+		color: var(--ink-dim);
+	}
+
+	.hand-row {
+		display: flex;
+		gap: 6px;
+	}
+
+	.build-card {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		width: 136px;
+		height: 76px;
+		padding: 6px 8px;
+		border: 1px solid var(--line-strong);
+		background: rgba(255, 255, 255, 0.035);
+		cursor: grab;
+		user-select: none;
+		transition:
+			border-color 140ms ease,
+			background 140ms ease,
+			opacity 140ms ease;
+	}
+
+	.build-card:hover {
+		border-color: var(--signal);
+		background: rgba(255, 255, 255, 0.06);
+	}
+
+	.build-card.dragging {
+		opacity: 0.35;
+	}
+
+	.build-card.unaffordable {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.build-card-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 6px;
+	}
+
+	.build-card-head b {
+		font-family: var(--font-mono);
+		font-size: 9px;
+		color: #ffd690;
+	}
+
+	.build-card-body {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		min-height: 0;
+	}
+
+	.build-card-icon {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 25px;
+		height: 25px;
+		border: 1px solid var(--line-soft);
+		color: #f7eed0;
+	}
+
+	.build-card-icon svg {
+		width: 17px;
+		height: 17px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.5;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.build-card p {
+		margin: 0;
+		overflow: hidden;
+		font-size: 8px;
+		line-height: 1.3;
+		color: var(--ink-dim);
+	}
+
+	.build-card.empty {
+		align-items: center;
+		justify-content: center;
+		border-style: dashed;
+		color: var(--ink-faint);
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.12em;
+		cursor: default;
+	}
+
+	.refresh-button {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 3px;
+		width: 62px;
+		border: 1px solid var(--line-soft);
+		background: transparent;
+		cursor: pointer;
+		transition:
+			border-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.refresh-button small {
+		font-family: var(--font-mono);
+		font-size: 8px;
+		color: #ffd690;
+	}
+
+	.refresh-button:hover:not(:disabled) {
+		border-color: var(--signal);
+	}
+
+	.refresh-button:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	.build-drop-hint {
+		left: 50%;
+		bottom: 246px;
+		transform: translateX(-50%);
+		padding: 8px 12px;
+		border: 1px dashed rgba(255, 214, 144, 0.6);
+		background: rgba(5, 13, 18, 0.86);
+		font-family: var(--font-mono);
+		font-size: 8px;
+		letter-spacing: 0.1em;
+		color: #ffd690;
+		pointer-events: none;
 	}
 
 	.growth-switcher {
@@ -2605,7 +2927,7 @@
 		position: fixed;
 		z-index: 120;
 		left: 50%;
-		bottom: 145px;
+		bottom: 258px;
 		transform: translateX(-50%);
 		display: flex;
 		align-items: center;
@@ -2742,6 +3064,18 @@
 		.intro-copy h2 {
 			font-size: clamp(64px, 9.4vw, 120px);
 		}
+
+		.build-card {
+			width: 116px;
+		}
+
+		.build-card p {
+			font-size: 7.5px;
+		}
+
+		.economy-readout {
+			width: 56px;
+		}
 	}
 
 	@media (max-width: 900px) {
@@ -2875,6 +3209,35 @@
 			border-bottom: 1px solid var(--line-soft);
 		}
 
+		.card-tray {
+			bottom: 74px;
+			max-width: calc(100vw - 24px);
+			gap: 6px;
+			padding: 5px;
+		}
+
+		.build-card {
+			width: 108px;
+			height: 70px;
+		}
+
+		.build-card p {
+			font-size: 7px;
+		}
+
+		.economy-readout {
+			width: 54px;
+			padding: 0 6px;
+		}
+
+		.refresh-button {
+			width: 56px;
+		}
+
+		.build-drop-hint {
+			bottom: 170px;
+		}
+
 		.status-console {
 			left: auto;
 			right: 72px;
@@ -2917,6 +3280,38 @@
 
 		.readout-stat strong {
 			font-size: 12px;
+		}
+
+		.card-tray {
+			bottom: 68px;
+			justify-content: flex-start;
+			overflow-x: auto;
+		}
+
+		.build-card {
+			width: 96px;
+			height: 68px;
+		}
+
+		.build-card p {
+			display: none;
+		}
+
+		.economy-readout {
+			width: 48px;
+			padding: 0 4px;
+		}
+
+		.refresh-button {
+			width: 50px;
+		}
+
+		.build-drop-hint {
+			bottom: 158px;
+		}
+
+		.toast {
+			bottom: 160px;
 		}
 
 		.status-console {

@@ -14,9 +14,9 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. Attacks spend 30 points per tick against pixel defense (`1 + elevation + occupied + aura`). State structures project a +20 defense aura over 12 px. Three selectable growth layers: circular, smooth, organic. Mutual fronts cancel at contact. Each state has a capturable State structure anchoring protected territory; disconnected unprotected territory is annexed into surrounding protected mainlands. Elevation tiers color the map. This is not the final combat model.
-- Implemented: seeded 2048 × 1024 world with six elevation tiers, 108 starts, State structures with effect descriptors and defense auras, terrain defense/attack points, free attack flood fill, pluggable growth layers, claim provenance, territory-integrity cleanup, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
-- Not implemented: final attack design, economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
+- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/production caps, technical active-front caps of 3 human / 2 bot. Attacks spend 30 points per tick against pixel defense (`1 + elevation + occupied + aura`). State structures project a +20 defense aura over 12 px. The human has a gold/card economy (3 starting gold, +1/10s, three-card hand, Refresh). Three selectable growth layers: circular, smooth, organic. Mutual fronts cancel at contact. Each state has a capturable State structure anchoring protected territory; disconnected unprotected territory is annexed into surrounding protected mainlands. Elevation tiers color the map. This is not the final combat model.
+- Implemented: seeded 2048 × 1024 world with six elevation tiers, 108 starts, State and buildable structures, gold/card economy, terrain defense/attack points, free attack flood fill, pluggable growth layers, claim provenance, territory-integrity cleanup, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
+- Not implemented: final attack design, bot card economy/build AI, full resource economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.
 
 ## Commands
@@ -52,8 +52,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 15. **State structures are authoritative objects.** Place one at each start, destroy it when its cell changes owner, include it in snapshots/checksums, and render it from registry/snapshot state. Do not infer protection from component size.
 16. **Defense is derived and integer.** `1 + elevation + occupied + aura`; do not add a mutable defense array or float modifier. Attacks spend 30 points/tick; requeue an unaffordable candidate rather than losing it.
 17. **Elevation is versioned map data.** Changing tier thresholds, level count, or defense meaning requires `MAP_VERSION`/protocol review and updated tests.
-18. **Structure effects are defined by type and derived into overlays.** State auras stamp +20 within 12 px with max-overlap semantics. Rebuild derived auras when a structure is destroyed; include effect descriptors in public structure payloads. Do not serialize a mutable per-cell aura array.
-19. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
+18. **Structure effects are defined by type and derived into overlays.** State auras stamp +20 within 12 px with max-overlap semantics; Defense Posts add. Rebuild derived auras when a structure is destroyed; include effect descriptors in public structure payloads. Do not serialize a mutable per-cell aura array.
+19. **Card economy is command-driven.** Build/refresh must queue and apply inside `step()`, validate gold/card/owned land/empty structure slot, and use the dedicated card RNG. Cards draw independently from the buildable pool with replacement. Captured structures are razed.
+20. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
 
 ## Where things live
 
@@ -63,7 +64,8 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
 - `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
-- `src/lib/game/structures.ts` — structure registry and State structure metadata.
+- `src/lib/game/structures.ts` — structure registry, definitions, buildable cards, and effect descriptors.
+- `src/lib/game/economy.test.ts` — starting hand/income/build/refresh/effect invariants.
 - `src/lib/game/integrity.ts` — connected-component planning and detached-territory annexation.
 - `src/lib/game/integrity.test.ts` — anchored-mainland, island, and tie-break invariants.
 - `src/lib/components/GameCanvas.svelte` — structure markers use the same camera on a transparent 2D overlay.
@@ -98,11 +100,13 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and high-defense captures are visibly slower.
 9. Confirm State structure capital-star circles are drawn at capitals, their aura fields appear at tactical zoom, minimap ringed dots track them, and the commander readout says ANCHORED.
 10. Hover an aura pixel and confirm the defense readout includes `AURA +20` and the total is raised accordingly.
-11. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its aura, the owner shows NO ANCHOR, and a war-feed event appears.
-12. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
-13. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-14. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
-15. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
+11. Deploy, drag a card into controlled territory, and confirm gold/card removal/structure placement; try an invalid drop and confirm no cost.
+12. Click Refresh and confirm 1 gold is spent and three fresh cards replace the hand.
+13. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its aura, the owner shows NO ANCHOR, and a war-feed event appears.
+14. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
+15. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+16. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
+17. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

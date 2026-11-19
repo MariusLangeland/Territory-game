@@ -61,6 +61,13 @@ export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
 /** How often disconnected territory is reattached to a surrounding mainland. */
 export const ANNEX_INTERVAL_TICKS = 10;
 
+/** Player economy. */
+export const STARTING_GOLD = 3;
+export const BASE_GOLD_INCOME = 1;
+export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
+export const STARTING_HAND_SIZE = 3;
+export const REFRESH_COST = 1;
+
 /** Technical guardrail only: prevents unbounded simultaneous orders while stress testing. */
 export const MAX_ATTACKS_PER_PLAYER = 3;
 
@@ -72,7 +79,7 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

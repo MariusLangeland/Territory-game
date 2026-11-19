@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.7.0).** The resource economy, troops, income, caps, and launch costs are intentionally removed so the attack pipeline can be developed in isolation. Terrain defense and attack points are the first combat-economy layer. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.8.0).** Troops, production caps, and launch costs remain removed, but a light human gold/card economy now drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
 > The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -27,6 +27,7 @@
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; fronts spend 30 attack points per tick                     |
 | State auras     | Live capitals project a 12 px field of +20 defense, rendered as dashed rings at combat zoom                                                 |
+| Build economy   | 3 starting gold, +1 per 10s (+1 per Mine), three random cards, drag/drop build, paid hand refresh                                           |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
 | UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
@@ -74,8 +75,10 @@ pnpm format     # Prettier write
 | `H`                         | Open the field manual                                        |
 | Minimap click               | Jump the camera                                              |
 | Growth switcher             | Select circular / smooth / organic for **new** attack orders |
+| Drag a build card           | Drop on controlled land to buy/build that structure          |
+| Refresh button              | Spend 1 gold to replace the hand with three new cards        |
 
-A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and active attack-limit failures. No resources are consumed.
+A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and active attack-limit failures. Attacks consume no resources; build cards cost gold.
 
 ## How the attack works right now
 
@@ -125,6 +128,18 @@ The State also projects a **12 px defensive aura** that adds **+20 defense** to 
 
 State structures can be captured like any other land cell. The structure is destroyed when its cell changes owner; its aura disappears immediately, and the state keeps its territory but loses annexation protection. The top bar shows the human state's anchored status.
 
+### Build cards
+
+The human commander starts with **3 gold** and three random cards. Income is **1 gold per 10 seconds**, plus 1 per live Mine. Drag a card into your territory to buy and build it:
+
+| Card         | Cost | Effect                                              |
+| ------------ | ---- | --------------------------------------------------- |
+| Mine         | 3    | +1 income every 10 seconds                          |
+| Barracks     | 2    | Friendly attacks ignore 1 defense in a large radius |
+| Defense Post | 1    | +1 pixel defense in a medium radius; stacks         |
+
+The hand is filled by independent random draws from the printed pool, so duplicates are possible. **Refresh** costs 1 gold and replaces the hand with three new cards. Built structures are razed when captured.
+
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
 ## Architecture at a glance
@@ -152,17 +167,17 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~279 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick    | ~2.0 ms                                              |
-| Smooth-layer all-bot attack tick          | ~2.6 ms                                              |
-| Organic-layer all-bot attack tick         | ~2.1 ms                                              |
-| Full-state checksum                       | ~18.2 ms (on-demand; includes claim provenance)      |
-| Browser render loop with auras + markers  | 143 fps; p99 7.1 ms; isolated cleanup spikes         |
+| Map generation + 108 starts               | ~298 ms, one-time on world creation                  |
+| Default (circular) all-bot attack tick    | ~2.1 ms                                              |
+| Smooth-layer all-bot attack tick          | ~2.7 ms                                              |
+| Organic-layer all-bot attack tick         | ~2.0 ms                                              |
+| Full-state checksum                       | ~18.3 ms (on-demand; includes claim provenance)      |
+| Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~290–340 MiB                                         |
+| Node benchmark RSS (all benchmark worlds) | ~310–340 MiB                                         |
 
-At 10 Hz, the attack-heavy simulation uses roughly 2.0–2.6% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 2.0–2.7% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

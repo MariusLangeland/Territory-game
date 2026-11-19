@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.7.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.8.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.7.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.8.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -52,7 +52,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
 | `src/lib/game/integrity.ts`                 | Core      | Connected-component labeling and detached-territory annexation                        | `TerritoryIntegrity`         |
-| `src/lib/game/structures.ts`                | Core      | Structure registry, State metadata, and structure effects                             | `StructureRegistry`, effects |
+| `src/lib/game/structures.ts`                | Core      | Structure registry, definitions, cards, and effects                                   | `StructureRegistry`, cards   |
 | `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
 | `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
@@ -75,9 +75,11 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
 - `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, capture counts, and lifetime.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
-- `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup.
-- `auraDefense: Uint8Array` — derived per-cell defense bonus from live structure effects. State auras stamp a 12 px circle with +20; overlaps take the maximum.
-- `attack.defenseAt` = `1 + elevation + occupied + aura`. Aura defense is rebuilt when a structure is destroyed.
+- `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks attack strength.
+- `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts). Rebuilt on structure destruction.
+- `attack.defenseAt` = `1 + elevation + occupied + aura`. Barracks attack strength reduces the cost at the target, floor 1.
+- Human economy: `gold`, `hand`, dedicated `cardRng`, and `nextIncomeTick`. Income is `1 + mine count` paid every 100 ticks.
+- Start hand: three independent draws from the buildable pool (with replacement). Bots do not build cards yet.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -144,7 +146,7 @@ step()
  │    ├─ validate target ownership + attacker border at capture time
  │    ├─ detect opposing claimed-cell contact; cancel the mutual pair
  │    ├─ claim up to 30, write claim provenance, push valid neighbours
- │    ├─ destroy a State structure if its cell is captured and rebuild auras
+ │    ├─ destroy any structure if its cell is captured and rebuild auras
  │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
@@ -182,13 +184,20 @@ The simulation validates every candidate identically. The layer never claims own
 
 ### Territory integrity
 
-`TerritoryIntegrity` labels every owned land component in scan order. A component is **protected** if it contains a live State structure owned by the same player; every other component is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Mines, Barracks, or Defense Posts — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
 
 Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`. The structure disappears from the map, minimap, snapshot, and checksums, its aura is removed, and the owner loses protection for all remaining components. A dead state's territory is therefore not a valid annexation target, though it can still be attacked.
 
 ### Structure effects and State auras
 
-`structures.ts` defines effect descriptors per structure type. The State type carries a `defense-aura` effect with radius 12 and defense 20. `simulation.rebuildAuraDefense` clears and stamps every live structure effect into a `Uint8Array` overlay, taking the maximum where circles overlap. `defenseAt` reads the overlay, so effects feed the same attack-point economy as elevation and occupation. Rebuilding is ~48k cell writes for all 108 capitals and only happens at world creation or structure destruction.
+`structures.ts` defines effect descriptors per structure type:
+
+- State: `defense-aura` radius 12, +20, max stacking.
+- Defense Post: `defense-aura` radius 8, +1, additive stacking.
+- Barracks: `attack-aura` radius 18, attack strength 1.
+- Mine: `income`, +1 per interval.
+
+`simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras. `defenseAt` reads it, so effects share the attack-point economy. Rebuilding is ~48k cells for the 108 State capitals plus any posts and only happens at world creation or structure destruction. `attackStrengthAt` checks only the attacking player's Barracks and subtracts strength from capture cost, floor 1.
 
 The scan is preallocated and runs at most once per second (or immediately after a mutual cancellation with a cooldown). Labeling is single-threaded and deterministic.
 
@@ -198,19 +207,16 @@ The scan is preallocated and runs at most once per second (or immediately after 
 
 ### 3.6 Commands
 
-Current command type:
+Command union:
 
 ```ts
-interface AttackCommand {
-	type: 'attack';
-	playerId: number;
-	x: number;
-	y: number;
-	sequence: number;
-}
+type GameCommand =
+	| { type: 'attack'; playerId; x; y; sequence }
+	| { type: 'build'; playerId; cardId; x; y; sequence }
+	| { type: 'refresh'; playerId; sequence };
 ```
 
-`enqueueAttack` performs cheap validation and queues. The authoritative creation still happens inside the next `step()`, where state may have changed. This separation is the model for future network intents.
+`enqueueAttack`, `playCard`, and `refreshCards` validate immediately and queue. Authoritative creation/spending/drawing still happens inside the next `step()`, where state may have changed. This separation is the model for future network intents. Income is paid at the tick boundary before the command queue.
 
 ### 3.7 Snapshots
 
@@ -218,8 +224,9 @@ interface AttackCommand {
 
 - tick, seed, land counts, claimed land;
 - public player records;
-- active attacks;
-- winner/ended/human id.
+- active attacks and live structures with effect descriptors;
+- human gold, income, and hand cards;
+- winner/ended/human id and growth mode.
 
 The UI never receives frontier sets, queue internals, or the PRNG.
 
@@ -230,13 +237,12 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
 - each player's alive flag and territory;
-- current/pending growth mode;
+- current/pending growth mode, annex scheduling, gold, next income tick, card RNG, and hand;
+- live structures and per-cell claim provenance;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;
-- each attack's growth-layer frontier state (heap, buckets, organic RNG/entries);
-- per-cell attack claim provenance and annexation scheduling state;
-- live structure ids, types, owners, and cell indices.
+- each attack's growth-layer frontier state (heap, buckets, organic RNG/entries).
 
-It intentionally excludes renderer state, camera, UI, and border sets (derived). It is used in tests and intended for server/client verification. Cost is about 9 ms on the development machine, so it is never run per tick in production.
+It intentionally excludes renderer state, camera, UI, and border sets (derived). It is used in tests and intended for server/client verification. Cost is about 18 ms on the development machine, so it is never run per tick in production.
 
 ---
 
@@ -265,7 +271,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~290–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 2 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~310–340 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB) and the aura overlay adds 4 MiB per simulation.
 
 ---
 
@@ -352,7 +358,8 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - Creating a world from URL seed or random seed.
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
-- Structure auras and capital markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
+- Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
+- The bottom card tray reads gold/income/hand from snapshots; HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Refresh queues a hand replacement.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.
@@ -396,7 +403,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~290–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~310–340 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

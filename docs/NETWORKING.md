@@ -246,7 +246,13 @@ Structures:
 - aura defense is derived from live structure effects and is not sent as per-pixel state;
 - future build/transfer commands must be tick-stamped and authorized.
 
-Elevation and defense:
+Player economy and cards:
+
+- gold, income, and the hand are authoritative snapshot fields (`gold`, `income`, `hand`);
+- build and refresh are tick-stamped commands, validated server-side against card ownership, gold, territory, and occupied structure cells;
+- card draws use the seeded authoritative card RNG; clients never choose the drawn type;
+- a captured buildable is razed at the tick of capture and its aura/income effect disappears immediately;
+- bots do not participate in the card economy in this build, so their snapshot economy is omitted.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);
