@@ -335,6 +335,112 @@ describe('attack stress mode', () => {
 		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
 	});
 
+	it('annexes a detached pocket into the surrounding mainland', () => {
+		const sim = new TerritorySimulation({ seed: 667788 });
+		let pocket = -1;
+		for (let y = 1; y < sim.height - 1 && pocket < 0; y++) {
+			for (let x = 1; x < sim.width - 1; x++) {
+				const index = y * sim.width + x;
+				if (
+					sim.owners[index] === 1 &&
+					sim.owners[index - 1] === 1 &&
+					sim.owners[index + 1] === 1 &&
+					sim.owners[index - sim.width] === 1 &&
+					sim.owners[index + sim.width] === 1
+				) {
+					pocket = index;
+					break;
+				}
+			}
+		}
+		expect(pocket).toBeGreaterThan(-1);
+		if (pocket < 0) return;
+
+		sim.owners[pocket] = 2;
+		(sim as unknown as { annexDisconnectedTerritory(): void }).annexDisconnectedTerritory();
+		expect(sim.owners[pocket]).toBe(1);
+	});
+
+	it('cancels mutual attacks when their claimed fronts touch', () => {
+		const sim = new TerritorySimulation({ seed: 554433 });
+		let candidate = -1;
+		for (let i = 1; i < sim.owners.length - 1; i++) {
+			if (sim.terrain[i] && sim.terrain[i - 1]) {
+				candidate = i;
+				break;
+			}
+		}
+		expect(candidate).toBeGreaterThan(0);
+		if (candidate < 0) return;
+
+		sim.owners[candidate - 1] = 1;
+		sim.owners[candidate] = 2;
+		sim.claimedBy[candidate - 1] = 200;
+
+		const targetX = candidate % sim.width;
+		const targetY = (candidate - targetX) / sim.width;
+		const makeFrontier = () => {
+			const frontier = createGrowthLayer('circular', {
+				width: sim.width,
+				height: sim.height,
+				owners: sim.owners,
+				attackerId: 1,
+				anchorX: targetX,
+				anchorY: targetY,
+				rngSeed: 1
+			});
+			frontier.push(candidate);
+			return frontier;
+		};
+
+		const internals = sim as unknown as {
+			attacks: AttackState[];
+			processAttacks(): void;
+		};
+		internals.attacks.push(
+			{
+				id: 100,
+				attackerId: 1,
+				defenderId: 2,
+				targetX,
+				targetY,
+				anchorX: targetX,
+				anchorY: targetY,
+				growthMode: 'circular',
+				frontier: makeFrontier(),
+				createdAtTick: sim.tick,
+				captures: 0,
+				done: false
+			},
+			{
+				id: 200,
+				attackerId: 2,
+				defenderId: 1,
+				targetX,
+				targetY,
+				anchorX: targetX,
+				anchorY: targetY,
+				growthMode: 'circular',
+				frontier: createGrowthLayer('circular', {
+					width: sim.width,
+					height: sim.height,
+					owners: sim.owners,
+					attackerId: 2,
+					anchorX: targetX,
+					anchorY: targetY,
+					rngSeed: 2
+				}),
+				createdAtTick: sim.tick,
+				captures: 0,
+				done: false
+			}
+		);
+
+		internals.processAttacks();
+		expect(internals.attacks).toEqual([]);
+		expect(sim.owners[candidate]).toBe(2);
+	});
+
 	it('anchors distance-based growth at the border contact, not the click', () => {
 		const sim = new TerritorySimulation({ seed: 998877 });
 		const click = findDeepAttackablePixel(sim, 1);

@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Resource-free attack stress test
 
-**Status:** active in application `0.3.x`  
+**Status:** active in application `0.4.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states attacking simultaneously and no economy throttling?
 
@@ -39,7 +39,7 @@ The normal economy (troops, income, caps, attack costs) limits how many attacks 
 
 The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels, costs nothing, and continues only while every captured pixel remains edge-connected to the attacker's territory. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures that tick peters out. Attacks process in creation-id order.
 
-### Growth layers
+### Growth layers and territorial cleanup
 
 Three modular frontier selectors are implemented and switchable from the HUD for **new orders**:
 
@@ -50,6 +50,11 @@ Three modular frontier selectors are implemented and switchable from the HUD for
 | Organic  | irregular lobes | deterministic random frontier pick               |
 
 Existing orders retain their original layer; bots and the human pick up the currently selected mode for newly created attacks on the next tick. Growth mode and per-frontier state are included in checksums. Distance-based layers grow from the centroid of the initial border contact; the click is only a target/search selector, so growth always emanates from the border.
+
+Two cleanup rules are always active:
+
+- **Mutual front cancellation:** if two states are attacking each other and a front touches land claimed by the opposing attack, every order between the pair ends and the contact line becomes the border.
+- **Detached-land annexation:** once per second, and immediately after a cancellation, the largest component per owner is treated as the mainland; smaller components touching a foreign mainland are transferred to the owner with the largest shared border.
 
 This is the current attack-shape test surface, not a final gameplay choice.
 
@@ -77,6 +82,8 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - [x] Circular, smooth, and organic layers can be switched live and are deterministic.
 - [x] Each layer has focused tests and a benchmark comparison.
 - [x] Distance-based layers anchor at the border contact; a deep click cannot pull a tendril inland.
+- [x] Mutual attacks cancel at contact, and both states' pair orders die.
+- [x] Detached territory is annexed by the surrounding mainland; unclaimed islands are left intact.
 - [ ] Decide the real attack model and retire this experiment.
 
 ### Findings so far
@@ -86,8 +93,9 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
 - 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
-- Full-state checksum remains ~9 ms and is not run per tick.
-- Growth-layer tick cost at 108 states: circular ~1.8–2.0 ms, smooth ~3.0–3.3 ms, organic ~1.8 ms (Node benchmark; radial-band scanning and neighbour scoring are the extra smooth-layer cost).
+- Full-state checksum is ~18 ms (claim provenance doubles the owner-map pass) and is not run per tick.
+- Growth-layer tick cost at 108 states: circular ~3.1 ms, smooth ~4.5 ms, organic ~3.1 ms (Node benchmark; includes throttled integrity scans).
+- One-second integrity scans cost ~8.5 ms and are capped by a cooldown; browser p99 frame time stayed at 7.1 ms with one 13.8 ms frame in 1,008 frames.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 
 ### Exit plan

@@ -1,4 +1,5 @@
 import {
+	ANNEX_INTERVAL_TICKS,
 	ATTACK_LIFETIME_TICKS,
 	ATTACK_SEARCH_RADIUS,
 	BOT_ATTACK_LIMIT,
@@ -18,6 +19,7 @@ import {
 	type GrowthLayer,
 	type GrowthMode
 } from './growth';
+import { TerritoryIntegrity } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import { DeterministicRng } from './rng';
 
@@ -145,6 +147,8 @@ export class TerritorySimulation {
 	readonly height: number;
 	readonly map: GeneratedMap;
 	readonly owners: Uint16Array;
+	/** Attack id that most recently captured each cell; 0 for starting land. */
+	readonly claimedBy: Uint32Array;
 	readonly players: PlayerState[];
 
 	tick = 0;
@@ -167,6 +171,9 @@ export class TerritorySimulation {
 	private changeCount = 0;
 	private changesOverflow = false;
 	private lastSnapshot: GameSnapshot | null = null;
+	private annexRequested = false;
+	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
+	private readonly integrity: TerritoryIntegrity;
 
 	constructor(options: SimulationOptions) {
 		const width = options.width ?? undefined;
@@ -189,6 +196,8 @@ export class TerritorySimulation {
 		this.shade = this.map.shade;
 		this.landCount = this.map.landCount;
 		this.owners = new Uint16Array(this.width * this.height);
+		this.claimedBy = new Uint32Array(this.width * this.height);
+		this.integrity = new TerritoryIntegrity(this.width, this.height, PLAYER_COUNT);
 
 		if (this.landCount <= 0) throw new Error('Generated map has no land.');
 
@@ -287,6 +296,14 @@ export class TerritorySimulation {
 
 			this.runBotDecisions();
 			this.processAttacks();
+			const annexDue =
+				this.tick % ANNEX_INTERVAL_TICKS === 0 ||
+				(this.annexRequested && this.tick - this.lastAnnexTick >= ANNEX_INTERVAL_TICKS);
+			if (annexDue) {
+				this.annexRequested = false;
+				this.lastAnnexTick = this.tick;
+				this.annexDisconnectedTerritory();
+			}
 			this.updateEliminations();
 			this.checkVictory();
 		}
@@ -356,8 +373,13 @@ export class TerritorySimulation {
 		mix(this.winnerId ?? 0);
 		mix(growthModeCode(this.growthMode));
 		mix(this.pendingGrowthMode ? growthModeCode(this.pendingGrowthMode) : 0);
+		mix(this.annexRequested ? 1 : 0);
+		mix(this.lastAnnexTick);
 
-		for (let i = 0; i < this.owners.length; i++) mix(this.owners[i]);
+		for (let i = 0; i < this.owners.length; i++) {
+			mix(this.owners[i]);
+			mix(this.claimedBy[i]);
+		}
 
 		for (const player of this.players) {
 			mix(player.id);
@@ -540,6 +562,8 @@ export class TerritorySimulation {
 	}
 
 	private processAttacks(): void {
+		const attackById = new Map(this.attacks.map((attack) => [attack.id, attack]));
+
 		for (const attack of this.attacks) {
 			if (attack.done) continue;
 			const attacker = this.players[attack.attackerId - 1];
@@ -568,7 +592,16 @@ export class TerritorySimulation {
 				// an enclave.
 				if (!this.hasNeighbourOwner(index, attack.attackerId)) continue;
 
-				this.claim(index, attack.attackerId);
+				// Two states attacking each other have reached a front line: do
+				// not let their fronts interpenetrate or wiggle around each other.
+				// Stop every order between the pair and leave the current border
+				// where it is.
+				if (this.conflictsWithOpposingClaim(index, attack, attackById)) {
+					this.cancelAttacksBetweenPair(attack);
+					break;
+				}
+
+				this.claim(index, attack.attackerId, attack.id);
 				attack.captures++;
 				capturedThisTick++;
 
@@ -601,7 +634,57 @@ export class TerritorySimulation {
 		attack.frontier.push(index);
 	}
 
-	private claim(index: number, newOwner: number): void {
+	/**
+	 * A mutual attack war settles when a front touches land captured by the
+	 * opposing attack. The candidate itself is not captured: the contact line is
+	 * the new border. Other orders between the same two states are cancelled as
+	 * well so the whole front freezes rather than just one lane.
+	 */
+	private conflictsWithOpposingClaim(
+		index: number,
+		attack: AttackState,
+		attackById: Map<number, AttackState>
+	): boolean {
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		const neighbours = [
+			x > 0 ? index - 1 : -1,
+			x + 1 < this.width ? index + 1 : -1,
+			y > 0 ? index - this.width : -1,
+			y + 1 < this.height ? index + this.width : -1
+		];
+
+		for (const neighbour of neighbours) {
+			if (neighbour < 0) continue;
+			const claimId = this.claimedBy[neighbour];
+			if (claimId === 0 || claimId === attack.id) continue;
+			const other = attackById.get(claimId);
+			if (!other || other.done) continue;
+			if (other.attackerId === attack.defenderId && other.defenderId === attack.attackerId) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private cancelAttacksBetweenPair(attack: AttackState): void {
+		for (const other of this.attacks) {
+			if (other.done) continue;
+			const samePair =
+				(other.attackerId === attack.attackerId && other.defenderId === attack.defenderId) ||
+				(other.attackerId === attack.defenderId && other.defenderId === attack.attackerId);
+			if (samePair) other.done = true;
+		}
+		this.annexRequested = true;
+	}
+
+	private annexDisconnectedTerritory(): void {
+		this.integrity.run(this.owners, this.land, (index, newOwner) => {
+			this.claim(index, newOwner, 0);
+		});
+	}
+
+	private claim(index: number, newOwner: number, sourceAttackId = 0): void {
 		const previousOwner = this.owners[index];
 		if (previousOwner === newOwner) return;
 
@@ -612,6 +695,7 @@ export class TerritorySimulation {
 		}
 
 		this.owners[index] = newOwner;
+		this.claimedBy[index] = sourceAttackId;
 		const next = this.players[newOwner - 1];
 		next.territory++;
 		this.refreshBorder(index);

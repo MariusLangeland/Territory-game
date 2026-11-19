@@ -292,7 +292,7 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 - Attack shapes can be compared live under the same 108-state load.
 - Validation, connectivity, and order termination are shared and cannot silently diverge by mode.
 - Per-attack growth state and RNG are included in checksums.
-- Smooth costs more CPU (~2.8 ms/tick vs ~1.6–1.8 ms for circular/organic).
+- Smooth costs more CPU (~4.5 ms/tick vs ~3.1 ms for circular/organic after cleanup passes were added).
 - Growth mode is currently a local test control; online play must make it server-authoritative.
 - An earlier eight-sector round-robin smooth implementation produced long axis-aligned wings because initial seeds on a straight border all fell into two opposite sectors. Radial bands replaced it so tangent candidates cannot outrun the nearest radial band.
 - Distance-based layers originally used the clicked cell as their anchor. Clicking deep inside a target produced a narrow tendril racing inland before the front bloomed. The anchor is now the rounded centroid of the border-contact seeds, so growth always starts at the border; the click only selects the target and search region.
@@ -303,3 +303,38 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 - Hard-code one shape: faster to ship, but loses the requested comparison harness.
 - Custom code path per mode in `processAttacks`: risks inconsistent connectivity/budget behavior.
 - Randomize candidates without per-attack seeds: non-deterministic and untestable.
+
+---
+
+## ADR-011 — Cancel mutual fronts and annex detached territory
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-19
+
+### Context
+
+Organic fronts can interpenetrate when two states attack each other, producing meandering borders and disconnected pixels. Those leftovers are visually noisy and undermine the idea of a stable front line. A pure lifetime timeout does not stop two mutually attacking fronts from chewing around each other, and it leaves detached territory owned by a state with no land route to its mainland.
+
+### Decision
+
+1. Track the id of the attack that most recently captured every cell in `claimedBy`.
+2. Before an attack captures a cell, inspect its four neighbours. If a neighbour was captured by an active attack that targets the current attacker while the current attack targets that attack's owner, the pair is in direct conflict. Mark every order between the two states done and leave the candidate uncaptured.
+3. Throttle a deterministic territory-integrity pass to once per second, plus once after a cancellation subject to a cooldown. The largest connected land component per owner is the mainland. Smaller components touching a foreign mainland are annexed to the owner with the largest shared border; lower player id wins ties. Components with no foreign-mainland contact are left alone.
+
+### Consequences
+
+- Mutual offensives freeze at contact, so the border can settle and both sides' orders disappear.
+- Third-party attacks, common-target attacks, and attacks elsewhere continue.
+- Dead pixels and severed pockets are reattached without deleting legitimate islands.
+- `claimedBy` adds 8 MiB per simulation and doubles the owner portion of the checksum.
+- Integrity preallocates ~16 MiB of scratch typed arrays and costs ~8.5 ms per scan. Frequency and cooldown are deliberate to avoid a 10 Hz hitch.
+- Annexation never removes a player's largest component, so it cannot directly eliminate a state.
+- A server must reproduce the same claim provenance and cleanup ordering.
+
+### Alternatives considered
+
+- Cancel mutual attacks immediately on declaration: simple, but prevents any front from developing.
+- Cancel only the two colliding attacks: leaves other orders between the pair running, so the border still moves.
+- Global component scan every tick: cleaner but adds a ~8.5 ms scan to every tick.
+- Annexe every detached component to its largest adjacent owner regardless of mainland: risks ownership churn between detached chains.
+- Delete detached territory to neutral: removes legitimate islands and creates unclaimed holes.

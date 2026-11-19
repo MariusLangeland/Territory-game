@@ -781,7 +781,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.3.2 / PROTOCOL 7</span>
+				<span>BUILD 0.4.0 / PROTOCOL 8</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -948,8 +948,10 @@
 							Click neutral ground or a rival's border near your territory. A free front opens there
 							and consumes up to 30 connected target pixels per tick. Up to three fronts may run at
 							once. Each order expires after {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds, and a severed
-							front peters out immediately. The HUD growth switch selects the frontier layer for new orders:
-							circular, smooth, or organic. Existing orders keep the layer they started with.
+							front peters out immediately. If two states attack each other and their fronts touch, every
+							order between them cancels and the contact line becomes the border. The HUD growth switch
+							selects the frontier layer for new orders: circular, smooth, or organic. Existing orders
+							keep the layer they started with.
 						</p>
 					</section>
 					<section>
@@ -966,7 +968,8 @@
 						<p>
 							{TICK_RATE} fixed ticks per second, {PLAYER_COUNT - 1} free-attacking AI states, and a seeded
 							PRNG. The {(MAP_WIDTH * MAP_HEIGHT).toLocaleString('en-US')} pixel atlas is rendered from
-							a GPU control texture with only dirty tiles uploaded.
+							a GPU control texture with only dirty tiles uploaded. Every second, land cut off from a
+							state's mainland is annexed by the adjacent mainland with the largest shared border.
 						</p>
 					</section>
 				</div>

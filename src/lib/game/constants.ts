@@ -37,6 +37,9 @@ export const CAPTURE_PER_TICK = 30;
  */
 export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
 
+/** How often disconnected territory is reattached to a surrounding mainland. */
+export const ANNEX_INTERVAL_TICKS = 10;
+
 /** Technical guardrail only: prevents unbounded simultaneous orders while stress testing. */
 export const MAX_ATTACKS_PER_PLAYER = 3;
 
@@ -48,7 +51,7 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_ATTACK_LIMIT = 2;
 export const BOT_SEARCH_TRIES = 8;
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

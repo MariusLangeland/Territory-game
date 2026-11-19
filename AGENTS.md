@@ -14,8 +14,8 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. Three selectable growth layers: circular, smooth, organic. This is not the final combat model.
-- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, pluggable growth layers, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
+- **Active experiment EXP-001:** 108 states (1 human + 107 AI), free attacks with a 50-tick/5-second order lifetime, no troops/income/caps/costs, technical active-front caps of 3 human / 2 bot. Three selectable growth layers: circular, smooth, organic. Mutual fronts cancel at contact; disconnected territory is annexed into surrounding mainlands. This is not the final combat model.
+- Implemented: seeded 2048 × 1024 world, 108 starts, free attack flood fill, pluggable growth layers, claim provenance, territory-integrity cleanup, WebGPU rendering, virtualized 108-state HUD, tests, benchmark.
 - Not implemented: final attack design, economy, online server, WebSockets, lobbies, accounts, persistence, replays UI, fog, audio, pinch zoom.
 - WebGPU is required. There is no fallback map renderer.
 
@@ -47,7 +47,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 10. **Growth layers only select frontier candidates.** Ownership, edge connectivity, capture budget, order lifetime, and checksums stay in `simulation.ts`. Never let a layer bypass those checks.
 11. **Distance-based growth starts at the border.** The attack anchor is the rounded centroid of the initial seed contact; the clicked cell is only a target/search selector. Do not anchor growth on a deep click.
 12. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
-13. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
+13. **Mutual fronts cancel at contact.** Claim provenance is authoritative. Do not let interpenetrating fronts keep capturing around each other, and do not cancel unrelated pairs.
+14. **Annex only to a surrounding mainland.** Largest component is mainland; ties and border counts are deterministic. Leave islands with no foreign-mainland contact alone. Never delete a player's last/main component.
+15. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
 
 ## Where things live
 
@@ -57,6 +59,8 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
 - `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
+- `src/lib/game/integrity.ts` — connected-component planning and detached-territory annexation.
+- `src/lib/game/integrity.test.ts` — mainland, island, and tie-break invariants.
 - `src/lib/game/render/territory-renderer.ts` — GPU resource lifecycle and uploads.
 - `src/lib/game/render/territory.wgsl.ts` — shader source as a TypeScript string.
 - `src/lib/game/net/protocol.ts` — protocol draft; keep docs synchronized.
@@ -85,9 +89,10 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 5. Click a frontier, confirm a success toast and territory growth.
 6. Pause with Space and confirm the tick freezes.
 7. Switch the growth layer through CIRCULAR / SMOOTH / ORGANIC and confirm new attacks use it while in-flight orders keep theirs.
-8. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-9. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
-10. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
+8. Run ORGANIC for several seconds; confirm mutual fronts disappear instead of interpenetrating and no isolated owner specks remain after a cleanup pass.
+9. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
+10. Drag-pan for several seconds with ~200 fronts and confirm no periodic 10 Hz hitch.
+11. Test a narrow viewport and scroll the 108-state leaderboard to the bottom.
 
 ## Style
 

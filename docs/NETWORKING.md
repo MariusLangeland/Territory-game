@@ -232,6 +232,12 @@ Growth mode:
 - client prediction must use the same per-attack layer and deterministic frontier ordering;
 - mode changes must be replayed and checksummed like other commands.
 
+Conflict and integrity state:
+
+- per-cell attack-claim provenance determines when mutual fronts cancel; clients must derive it identically from replayed attacks;
+- detached-territory annexation is authoritative tick logic and must run on the same tick boundaries (every 10 ticks, plus the post-cancellation cooldown) on server and clients;
+- claim provenance and cleanup scheduling are included in checksums, not sent as optional client visuals.
+
 ### Versioning
 
 The welcome/handshake must include:

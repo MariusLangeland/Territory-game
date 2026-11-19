@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.3.2 (attack stress experiment)  
+**Version:** 0.4.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.3.2, map version 2, protocol draft 7
+**Last synchronized with:** application 0.4.0, map version 2, protocol draft 8
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -137,11 +137,12 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 7. Launch is free and requires no troops. Up to **3 attacks** may be active per human state; bots use a limit of 2.
 8. Each tick, the front's selected **growth layer** chooses candidate frontier cells until the front has captured **30** valid target-owned cells or no candidates remain. Invalid/stale cells are skipped without consuming the capture budget. See section 4.12.
 9. Before every capture, the cell must still share a land edge with territory owned by the attacker. If another front severed the path back to the attacker, the queued cell is discarded. A front can never create a detached enclave.
-10. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
-11. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
-12. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
-13. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
-14. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
+10. Before claiming, the candidate checks whether a neighbour was captured by an opposing attack that is part of a mutual war. If so, every order between those two states is cancelled and the candidate is not captured; the contact line becomes the border. See section 4.13.
+11. Capturing a cell claims it for the attacker and pushes its four neighbours onto the growth layer's frontier if they are still owned by the target and are land. Duplicate candidates are tolerated; ownership is the visited check.
+12. **Orders are finite:** a front expires **50 ticks (5 seconds)** after creation (`ATTACK_LIFETIME_TICKS`) even if it still has legal frontier cells.
+13. The front also ends early when its frontier is empty or a tick produces **zero legal captures**. A severed front peters out immediately rather than idling or continuing through disconnected cells.
+14. Attacks are processed in creation-id order. If another front takes a cell first, the later front skips it.
+15. A front continues only while it has at least one legal cell adjacent to the attacker's territory and its 5-second lifetime has not elapsed.
 
 ### 4.4 Valid attack clicks
 
@@ -197,9 +198,10 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 3. Apply queued attack commands sorted by `(sequence, playerId)`.
 4. Run bot decisions (only on every 10th tick).
 5. Process active attacks in creation-id order.
-6. Eliminate states with no territory and remove their attacks.
-7. Check victory.
-8. Build the public snapshot.
+6. Every 10 ticks (or immediately after a mutual cancellation), annex detached territory into surrounding mainlands.
+7. Eliminate states with no territory and remove their attacks.
+8. Check victory.
+9. Build the public snapshot.
 
 No economy phase exists in this experiment.
 
@@ -238,6 +240,27 @@ Every attack captures a `growthMode` at creation time and keeps it for its lifet
 - Candidate queues and per-attack PRNG state are part of checksums.
 
 The HUD growth switcher selects the layer for new orders. It has no effect on orders already in flight.
+
+### 4.13 Conflicting fronts
+
+Each captured cell records the attack id that claimed it. When an attack is about to capture a cell adjacent to a cell claimed by an **opposing active attack**, and the two attacks target each other's owners, the pair is in direct conflict:
+
+- every active order between the two states is cancelled immediately;
+- the candidate is not captured;
+- the contact line is left as the border.
+
+This prevents mutually attacking organic fronts from interpenetrating, wiggling around each other, or leaving a meandering no-man's-land. Third-party attacks and attacks against a common target are unaffected. New orders can be issued later, but they must reach a new contact before cancelling again.
+
+### 4.14 Territory integrity
+
+A player's **mainland** is their largest connected component of owned land (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and immediately after a mutual-front cancellation, the simulation labels components and annexes detached ones:
+
+- a smaller component is transferred only if it touches another player's **mainland**;
+- the recipient is the adjacent mainland owner with the greatest shared border;
+- ties go to the lower player id;
+- components touching only ocean, unclaimed land, or another detached component are left alone.
+
+This restores dead pixels and severed pockets to the surrounding claim. Legitimate islands with no adjacent claimant are not deleted. The largest-component rule is deterministic; equal-size components keep the first one in scan order as the mainland.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -365,7 +388,7 @@ Full detail: [DETERMINISM.md](DETERMINISM.md).
 4. PRNG seeded; bot draw order fixed by ascending player id.
 5. Commands apply at tick boundaries in stable order.
 6. Attack ordering by creation id; queue processing FIFO; neighbour enqueue order W/E/N/S.
-7. Checksums cover tick, RNG, attack ids/queues, owners, players, winner.
+7. Checksums cover tick, RNG, growth modes, attack state/anchors, owners, per-cell claim provenance, players, and winner.
 8. Any behavior change requires tests and a protocol-version decision.
 
 ---
@@ -401,17 +424,17 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 
 ## 10. Performance requirements
 
-| Area                                          | Target                                               |
-| --------------------------------------------- | ---------------------------------------------------- |
-| Simulation tick, circular/organic, 108 states | < 2 ms p95 (10 Hz budget = 100 ms)                   |
-| Simulation tick, smooth, 108 states           | < 4 ms p95                                           |
-| Render loop                                   | 60 fps at 1600 × 1000 under stress                   |
-| Input smoothness under full attack load       | no recurring 10 Hz hitch; 0 frames >10 ms at 144 fps |
-| Tick-boundary upload work                     | < 2 ms; full resync must be chunked                  |
-| Map generation + 108 starts                   | < 500 ms                                             |
-| Checksum                                      | On demand, < 20 ms                                   |
-| Browser JS/GPU memory                         | < 300 MiB total for the stress build                 |
-| Input latency                                 | Click-to-frontier update ≤ 2 ticks                   |
+| Area                                          | Target                                         |
+| --------------------------------------------- | ---------------------------------------------- |
+| Simulation tick, circular/organic, 108 states | < 4 ms p95 (10 Hz budget = 100 ms)             |
+| Simulation tick, smooth, 108 states           | < 6 ms p95                                     |
+| Render loop                                   | 60 fps at 1600 × 1000 under stress             |
+| Input smoothness under full attack load       | no recurring 10 Hz hitch; p99 <8 ms at 144 fps |
+| Tick-boundary upload work                     | < 2 ms; full resync must be chunked            |
+| Map generation + 108 starts                   | < 500 ms                                       |
+| Checksum                                      | On demand, < 25 ms (includes claim provenance) |
+| Browser JS/GPU memory                         | < 300 MiB total for the stress build           |
+| Input latency                                 | Click-to-frontier update ≤ 2 ticks             |
 
 See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 
@@ -443,9 +466,11 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Circular, smooth, and organic growth layers are selectable and deterministic.
 - [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
 - [x] Distance-based growth is anchored at the border contact, never at a deep click.
+- [x] Mutual fronts cancel at contact, leaving a stable border and terminating the pair's orders.
+- [x] Detached pockets are annexed by the adjacent mainland with the largest shared border.
 - [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
-- [x] Panning stays smooth under full stress (0 frames >10 ms in the verification run).
-- [x] 108-state browser run stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
+- [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
+- [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.
 - [x] `pnpm check`, `pnpm test`, `pnpm build` pass.
 - [x] Docs clearly state that current attack semantics are experimental.
 - [ ] Final attack model decided and implemented.
