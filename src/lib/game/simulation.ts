@@ -26,7 +26,9 @@ import {
 	PLAYER_NAMES,
 	STARTING_GOLD,
 	START_RADIUS,
-	STRUCTURE_MIN_SPACING
+	STRUCTURE_MIN_SPACING,
+	UNCLAIMED_CLEANUP_INTERVAL_TICKS,
+	UNCLAIMED_POCKET_MAX_AREA
 } from './constants';
 import {
 	createGrowthLayer,
@@ -97,7 +99,12 @@ interface BotProfile {
 	economy: number;
 	fortification: number;
 	command: number;
+	vengeful: number;
+	cautious: number;
+	conciliatory: number;
+	opportunist: number;
 	focus: BuildableStructureType;
+	buildPlan: BuildableStructureType[];
 }
 
 export interface PublicAttack {
@@ -261,6 +268,9 @@ export class TerritorySimulation {
 	private readonly botGold: number[];
 	private readonly botGoldAccrual: Uint16Array;
 	private readonly botProfiles: BotProfile[];
+	/** Per-defender grievance counts, indexed defender * PLAYER_COUNT + attacker. */
+	private readonly botGrievance: Uint16Array;
+	private readonly botPressure: Uint16Array;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -325,6 +335,8 @@ export class TerritorySimulation {
 		this.commandPostAccrual = new Uint32Array(PLAYER_COUNT);
 		this.botGold = new Array<number>(PLAYER_COUNT).fill(0);
 		this.botGoldAccrual = new Uint16Array(PLAYER_COUNT);
+		this.botGrievance = new Uint16Array(PLAYER_COUNT * PLAYER_COUNT);
+		this.botPressure = new Uint16Array(PLAYER_COUNT);
 		this.botProfiles = Array.from({ length: PLAYER_COUNT }, (_, index) =>
 			this.createBotProfile(index + 1)
 		);
@@ -730,6 +742,9 @@ export class TerritorySimulation {
 				this.lastAnnexTick = this.tick;
 				this.annexDisconnectedTerritory();
 			}
+			if (this.tick % UNCLAIMED_CLEANUP_INTERVAL_TICKS === 0) {
+				this.cleanupUnclaimedPockets();
+			}
 			this.updateEliminations();
 			this.checkVictory();
 		}
@@ -850,6 +865,7 @@ export class TerritorySimulation {
 		mix(this.goldAccrual);
 		for (const botGold of this.botGold) mix(botGold);
 		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
+		for (const grievance of this.botGrievance) mix(grievance);
 		mix(this.nextAttackOrderGrantTick);
 		for (const accrual of this.commandPostAccrual) mix(accrual);
 		for (const orders of this.attackOrders) mix(orders);
@@ -943,7 +959,7 @@ export class TerritorySimulation {
 					command.y,
 					this.width
 				);
-				this.rebuildDistricts();
+				this.refreshDistrictsAround(structure);
 				this.rebuildAuraDefense();
 				this.pushEvent(
 					'build',
@@ -1043,10 +1059,35 @@ export class TerritorySimulation {
 		this.districtsChanged = true;
 	}
 
+	/**
+	 * Recompute districts only in the neighbourhood a structure can affect.
+	 * A new or destroyed buildable changes nearest-owner districts only within
+	 * its own range; a full-map rebuild here would cost hundreds of ms while
+	 * 50 bots build in batches.
+	 */
+	private refreshDistrictsAround(structure: Structure): void {
+		const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+		if (range <= 0) return;
+		const scanRange = range + DISTRICT_NOISE_MARGIN;
+		const minX = Math.max(0, structure.x - scanRange);
+		const maxX = Math.min(this.width - 1, structure.x + scanRange);
+		const minY = Math.max(0, structure.y - scanRange);
+		const maxY = Math.min(this.height - 1, structure.y + scanRange);
+		for (let y = minY; y <= maxY; y++) {
+			for (let x = minX; x <= maxX; x++) {
+				const index = y * this.width + x;
+				if (this.owners[index] !== structure.ownerId) continue;
+				this.updateDistrictAt(index);
+			}
+		}
+		this.districtsChanged = true;
+	}
+
 	private nearestDistrictStructure(ownerId: number, x: number, y: number): Structure | null {
 		let bestDistance = Number.POSITIVE_INFINITY;
 		let best: Structure | null = null;
-		for (const structure of this.structures.forOwner(ownerId)) {
+		const owned = this.structures.forOwner(ownerId);
+		for (const structure of owned) {
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 			const distance = this.districtDistance(structure, x, y, range);
 			if (distance > range * range) continue;
@@ -1500,6 +1541,17 @@ export class TerritorySimulation {
 		});
 	}
 
+	private cleanupUnclaimedPockets(): void {
+		this.integrity.cleanupUnclaimedPockets(
+			this.owners,
+			this.land,
+			UNCLAIMED_POCKET_MAX_AREA,
+			(index, newOwner) => {
+				this.claim(index, newOwner, 0);
+			}
+		);
+	}
+
 	private claim(index: number, newOwner: number, sourceAttackId = 0): void {
 		const previousOwner = this.owners[index];
 		if (previousOwner === newOwner) return;
@@ -1508,6 +1560,13 @@ export class TerritorySimulation {
 			const previous = this.players[previousOwner - 1];
 			previous.territory--;
 			previous.border.delete(index);
+			if (sourceAttackId !== 0) {
+				const attack = this.attacks.find((entry) => entry.id === sourceAttackId);
+				if (attack && attack.attackerId !== previousOwner) {
+					const grudge = (previousOwner - 1) * PLAYER_COUNT + (attack.attackerId - 1);
+					if (this.botGrievance[grudge] < 0xffff) this.botGrievance[grudge]++;
+				}
+			}
 		}
 
 		this.owners[index] = newOwner;
@@ -1515,7 +1574,7 @@ export class TerritorySimulation {
 
 		const structure = this.structures.destroyAt(index);
 		if (structure) {
-			this.rebuildDistricts();
+			this.refreshDistrictsAround(structure);
 			this.rebuildAuraDefense();
 			this.clampAttackOrders(structure.ownerId);
 			const owner = this.players[structure.ownerId - 1];
@@ -1592,63 +1651,91 @@ export class TerritorySimulation {
 		const economy = hash32(playerId, 2, seed ^ 0x7f4a7c15) % 101;
 		const fortification = hash32(playerId, 3, seed ^ 0x9e3779b9) % 101;
 		const command = hash32(playerId, 4, seed ^ 0x85ebca6b) % 101;
-		const options: Array<[BuildableStructureType, number]> = [
-			['mine', 15 + economy],
-			['barracks', 10 + aggression],
-			['defense-post', 10 + fortification],
-			['command-post', 8 + command],
-			['war-academy', 5 + Math.floor((aggression + command) / 2)]
+		const vengeful = hash32(playerId, 6, seed ^ 0xd3a2646c) % 101;
+		const cautious = hash32(playerId, 7, seed ^ 0xfd7046c5) % 101;
+		const conciliatory = hash32(playerId, 8, seed ^ 0xb55a4f09) % 101;
+		const opportunist = hash32(playerId, 9, seed ^ 0x165667b1) % 101;
+
+		const preferred: Array<[BuildableStructureType, number]> = [
+			['mine', 20 + economy + (hash32(playerId, 10, seed) % 25)],
+			['barracks', 12 + aggression + (hash32(playerId, 11, seed) % 25)],
+			['defense-post', 12 + fortification + (hash32(playerId, 12, seed) % 25)],
+			['command-post', 8 + command + (hash32(playerId, 13, seed) % 25)],
+			[
+				'war-academy',
+				5 + Math.floor((aggression + command) / 2) + (hash32(playerId, 14, seed) % 25)
+			]
 		];
-		const total = options.reduce((sum, entry) => sum + entry[1], 0);
-		let pick = hash32(playerId, 5, seed ^ 0xc2b2ae35) % total;
-		let focus: BuildableStructureType = 'mine';
-		for (const [type, weight] of options) {
-			if (pick < weight) {
-				focus = type;
-				break;
-			}
-			pick -= weight;
-		}
-		return { aggression, economy, fortification, command, focus };
+		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+		const buildPlan = preferred.map((entry) => entry[0]);
+		return {
+			aggression,
+			economy,
+			fortification,
+			command,
+			vengeful,
+			cautious,
+			conciliatory,
+			opportunist,
+			focus: buildPlan[0],
+			buildPlan
+		};
 	}
 
 	private runBotEconomy(): void {
 		if (this.tick % BOT_BUILD_INTERVAL !== 0) return;
 
-		let districtChanged = false;
 		let auraChanged = false;
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			const focus = this.botProfiles[player.id - 1].focus;
-			const existing = this.structures.forOwnerType(player.id, focus);
-			if (existing) {
-				const cost = STRUCTURE_DEFINITIONS[focus].cost + existing.stacks;
-				if (this.botGold[player.id - 1] < cost) continue;
-				this.botGold[player.id - 1] -= cost;
-				this.structures.reinforce(existing);
-				auraChanged = true;
-				continue;
-			}
+			const plan = this.botProfiles[player.id - 1].buildPlan;
+			let acted = false;
 
-			const cost = STRUCTURE_DEFINITIONS[focus].cost;
-			if (this.botGold[player.id - 1] < cost) continue;
-			const cell = this.findBotBuildCell(player, focus);
-			if (cell < 0) continue;
-			this.botGold[player.id - 1] -= cost;
-			this.structures.create(
-				focus,
-				player.id,
-				cell % this.width,
-				Math.floor(cell / this.width),
-				this.width
-			);
-			districtChanged = true;
+			// Build the next affordable, placeable structure in the bot's
+			// strategy order. District geometry means a second type often
+			// waits until the bot expands beyond its first district.
+			for (const type of plan) {
+				if (this.structures.forOwnerType(player.id, type)) continue;
+				const cost = STRUCTURE_DEFINITIONS[type].cost;
+				if (this.botGold[player.id - 1] < cost) continue;
+				const cell = this.findBotBuildCell(player, type);
+				if (cell < 0) continue;
+				this.botGold[player.id - 1] -= cost;
+				const structure = this.structures.create(
+					type,
+					player.id,
+					cell % this.width,
+					Math.floor(cell / this.width),
+					this.width
+				);
+				this.refreshDistrictsAround(structure);
+				auraChanged = true;
+				acted = true;
+				break;
+			}
+			if (acted) continue;
+
+			// Nothing new can be placed: raise the lowest-level structure in
+			// the plan, spreading investment instead of over-leveling one type.
+			let target: { type: BuildableStructureType; stacks: number; cost: number } | null = null;
+			for (const type of plan) {
+				const existing = this.structures.forOwnerType(player.id, type);
+				if (!existing) continue;
+				const cost = STRUCTURE_DEFINITIONS[type].cost + existing.stacks;
+				if (this.botGold[player.id - 1] < cost) continue;
+				if (!target || existing.stacks < target.stacks) {
+					target = { type, stacks: existing.stacks, cost };
+				}
+			}
+			if (!target) continue;
+			const existing = this.structures.forOwnerType(player.id, target.type);
+			if (!existing) continue;
+			this.botGold[player.id - 1] -= target.cost;
+			this.structures.reinforce(existing);
 			auraChanged = true;
 		}
-		// Defer the O(map) derived rebuilds until all bot builds for this
-		// decision tick are in place; otherwise up to 50 full rebuilds land in
-		// one simulation tick.
-		if (districtChanged) this.rebuildDistricts();
+		// Aura rebuilds still batch once per decision tick; district refreshes
+		// are local to each new structure and already applied above.
 		if (auraChanged) this.rebuildAuraDefense();
 	}
 
@@ -1692,6 +1779,15 @@ export class TerritorySimulation {
 	private runBotDecisions(): void {
 		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 
+		this.botPressure.fill(0);
+		for (const attack of this.attacks) {
+			if (!attack.done) this.botPressure[attack.defenderId - 1]++;
+		}
+		const strengths = new Uint32Array(PLAYER_COUNT);
+		for (const player of this.players) {
+			if (player.alive) strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
+		}
+
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
 			if (this.attackOrders[player.id - 1] <= 0) continue;
@@ -1700,18 +1796,93 @@ export class TerritorySimulation {
 			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
 			if (attackRoll > 15 + Math.floor(profile.aggression * 0.85)) continue;
 
-			for (let attempt = 0; attempt < BOT_SEARCH_TRIES; attempt++) {
-				const borderIndex = this.pickBorderCell(player);
-				if (borderIndex === null) break;
+			const target = this.chooseBotAttackTarget(
+				player,
+				profile,
+				strengths[player.id - 1],
+				strengths
+			);
+			if (target === null) continue;
+			if (this.createAttack(player.id, target, [target])) {
+				this.attackOrders[player.id - 1]--;
+			}
+		}
+	}
 
-				const target = this.pickAttackTarget(player, borderIndex, profile.aggression);
-				if (target === null) continue;
-				if (this.createAttack(player.id, target, [target])) {
-					this.attackOrders[player.id - 1]--;
-					break;
+	private estimatePlayerStrength(playerId: number): number {
+		const player = this.players[playerId - 1];
+		if (!player) return 0;
+		let levels = 0;
+		for (const structure of this.structures.forOwner(playerId)) levels += structure.stacks;
+		return Math.floor(player.territory / 4) + levels * 300 + this.attackOrders[playerId - 1] * 150;
+	}
+
+	private chooseBotAttackTarget(
+		player: PlayerState,
+		profile: BotProfile,
+		selfStrength: number,
+		strengths: Uint32Array
+	): number | null {
+		let bestIndex = -1;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		const samples = BOT_SEARCH_TRIES * 3;
+		for (let attempt = 0; attempt < samples; attempt++) {
+			const borderIndex = this.pickBorderCell(player);
+			if (borderIndex === null) break;
+			const width = this.width;
+			const x = borderIndex % width;
+			const y = (borderIndex - x) / width;
+			const neighbours = [
+				x > 0 ? borderIndex - 1 : -1,
+				x + 1 < width ? borderIndex + 1 : -1,
+				y > 0 ? borderIndex - width : -1,
+				y + 1 < this.height ? borderIndex + width : -1
+			];
+			for (const index of neighbours) {
+				if (index < 0 || !this.land[index]) continue;
+				const defenderId = this.owners[index];
+				if (defenderId === player.id) continue;
+				const score = this.scoreBotTarget(player.id, profile, defenderId, selfStrength, strengths);
+				if (score > bestScore) {
+					bestScore = score;
+					bestIndex = index;
 				}
 			}
 		}
+		return bestIndex >= 0 ? bestIndex : null;
+	}
+
+	private scoreBotTarget(
+		attackerId: number,
+		profile: BotProfile,
+		defenderId: number,
+		selfStrength: number,
+		strengths: Uint32Array
+	): number {
+		if (defenderId === 0) return 45 + Math.floor(profile.aggression * 0.15);
+		if (defenderId === attackerId) return Number.NEGATIVE_INFINITY;
+
+		let score = 25 + Math.floor(profile.aggression * 0.6);
+		const grudge = this.botGrievance[(attackerId - 1) * PLAYER_COUNT + (defenderId - 1)];
+		if (grudge > 0) {
+			score += 20 + Math.floor(profile.vengeful * 1.2) + Math.min(grudge, 20);
+		}
+		const pressure = this.botPressure[defenderId - 1];
+		if (pressure > 0) {
+			score += pressure * (5 + Math.floor(profile.opportunist * 0.5));
+		}
+
+		const targetStrength = strengths[defenderId - 1];
+		if (targetStrength > Math.floor(selfStrength * 1.1)) {
+			score -= Math.floor(profile.cautious * 0.7);
+			score -= Math.floor(profile.conciliatory * 1.0);
+		} else if (targetStrength < Math.floor(selfStrength * 0.85)) {
+			score += 10 + Math.floor(profile.opportunist * 0.15);
+		}
+		if (this.attackOrders[defenderId - 1] > 0) {
+			score -= Math.floor(profile.cautious * 0.4);
+		}
+		return score;
 	}
 
 	private pickBorderCell(player: PlayerState): number | null {
@@ -1723,38 +1894,6 @@ export class TerritorySimulation {
 			skip--;
 		}
 		return null;
-	}
-
-	private pickAttackTarget(
-		player: PlayerState,
-		borderIndex: number,
-		aggression: number
-	): number | null {
-		const width = this.width;
-		const x = borderIndex % width;
-		const y = (borderIndex - x) / width;
-		const candidates: number[] = [];
-
-		const consider = (index: number) => {
-			if (!this.land[index]) return;
-			if (this.owners[index] === player.id) return;
-			candidates.push(index);
-		};
-
-		if (x > 0) consider(borderIndex - 1);
-		if (x + 1 < width) consider(borderIndex + 1);
-		if (y > 0) consider(borderIndex - width);
-		if (y + 1 < this.height) consider(borderIndex + width);
-
-		if (candidates.length === 0) return null;
-
-		const neutral = candidates.filter((index) => this.owners[index] === 0);
-		const hostile = candidates.filter((index) => this.owners[index] > 0);
-		if (neutral.length > 0 && (aggression < 55 || hostile.length === 0)) {
-			return this.rng.pick(neutral);
-		}
-		if (hostile.length > 0) return this.rng.pick(hostile);
-		return this.rng.pick(candidates);
 	}
 
 	private placeStartingTerritories(starts: StartPoint[]): void {

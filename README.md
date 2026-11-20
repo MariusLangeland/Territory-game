@@ -13,9 +13,9 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.21.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.23.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
-> **AI commanders:** 50 bots receive deterministic profiles for aggression, economy, fortification, and command. Each bot saves gold and builds/upgrades a focus structure — Mines near its capital, defense on its border, or military/command structures depending on profile.
+> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a five-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic.
 >
 > The current build runs **51 states** (1 human + 50 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
@@ -100,6 +100,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 11. **Mutual fronts attrit:** if two states attack each other and their fronts touch, the defender spends available orders up to its issued attack strength, stripping one embedded order per spent order. A 2-order attack needs two 1-order defensive clashes; if the defender runs out, the attack breaks through.
 12. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
 13. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
+14. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets of at most 96 cells that border an owner are filled into the owner with the largest shared border. Coastal slivers are included; large neutral regions and ownerless islands stay open.
 
 ### Terrain and defense
 
@@ -197,7 +198,7 @@ Svelte UI (+page.svelte)
         │     ├── TerritoryRng ... mulberry32
         │     ├── growth/ ........ circular / smooth / organic frontier layers
         │     ├── Structures/ .... one file per structure type + registry
-        │     ├── integrity.ts ... detached-territory annexation
+        │     ├── integrity.ts ... annexation + neutral-pocket cleanup
         │     └── attacks ........ contiguous flood fronts with finite orders
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
         └── MapCamera ............ CSS-pixel camera, zoom, clamping
@@ -212,7 +213,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~247 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~275 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -220,9 +221,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~276 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~300 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.3–2.4% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.9–2.8% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

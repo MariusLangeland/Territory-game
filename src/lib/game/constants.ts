@@ -70,6 +70,10 @@ export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
 
 /** How often disconnected territory is reattached to a surrounding mainland. */
 export const ANNEX_INTERVAL_TICKS = 10;
+/** Small landlocked neutral pockets are filled at most once per 10 seconds. */
+export const UNCLAIMED_CLEANUP_INTERVAL_TICKS = TICK_RATE * 10;
+/** Only pockets at or below this area are auto-filled. */
+export const UNCLAIMED_POCKET_MAX_AREA = 96;
 
 /** Minimum centre-to-centre distance, in map cells, between any two structures. */
 export const STRUCTURE_MIN_SPACING = 8;
@@ -99,7 +103,7 @@ export const BOT_SEARCH_TRIES = 8;
 export const BOT_BUILD_INTERVAL = TICK_RATE * 3;
 export const BOT_STARTING_GOLD = 12;
 
-export const PROTOCOL_VERSION = 28;
+export const PROTOCOL_VERSION = 30;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

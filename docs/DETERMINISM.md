@@ -103,7 +103,7 @@ Bots use the PRNG for:
 - choosing a frontier cell,
 - choosing the attack target among available neutral/hostile neighbours.
 
-Bot profiles — aggression, economy, fortification, command, and focus type — are derived from `hash32` of the player id and world seed, not from the bot PRNG. Removing or changing that derivation changes which structures bots build and when they attack. Target selection still consumes the shared PRNG, and deleting that neutral-preference rule changes draw counts and results.
+Bot profiles — aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and the five-type build plan — are derived from `hash32` of the player id and world seed, not from the bot PRNG. Removing or changing that derivation changes which structures bots build and which targets they choose. Border sampling for target scoring still consumes the shared PRNG, so changing the sample count or order changes draw counts and results.
 
 Changing the number or order of these draws changes all subsequent bot behavior. A refactor that "just moves a random call" is a simulation change.
 
@@ -169,6 +169,8 @@ Mutual front contact is deterministic: each capture records `claimedBy[index] = 
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
+Neutral-pocket cleanup runs when `tick % 100 === 0`, after annexation. It labels every neutral land component in row-major seed order with BFS cell order, skips components above 96 cells, counts direct owner borders, and fills eligible components into the largest-border owner (lowest id tie-break) in BFS cell order. Ocean adjacency does not block cleanup; zero-owner contact does. Fills use `claim(..., 0)` as well.
+
 Structure effects are derived from the live registry. Defense auras are stamped into a `Uint16Array` only on cells owned by the aura's structure owner. A buildable defense aura fills **every cell in its own district**, ignoring the effect radius entirely; State auras use their fixed 16 px radius because State has no district. Max-stacking State auras are applied first, then additive Defense Post auras. Effect magnitudes multiply by `structure.stacks`. Rebuilding after destruction clears and restamps the whole overlay, so overlap results do not depend on history. Capturing a structure cell destroys that registry entry inside `claim` and rebuilds districts and auras before later attacks see defense. Capturing an ordinary cell calls `updateDistrictAt` and `updateAuraAt` for that cell. Income and order-gain rates are read from live structures every tick, so capture changes accrual immediately; order-cap effects are read from the live registry.
 
 Districts are derived deterministically by a bounded Voronoi pass over each owner's cells. For every buildable structure-range bounding box (expanded by `DISTRICT_NOISE_MARGIN`), each owned cell chooses the nearest eligible owner structure after an integer noise offset; ties use type code and structure id. The offset is computed from `hash32` on 8 px value-noise corners plus per-pixel jitter, with no RNG draws. Multiple structures of the same type are allowed, so each cell also records the winning structure id; stacking targets that district's structure and does not alter geometry. State capitals have no district and keep their radius aura.
@@ -215,7 +217,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
-9. human and bot gold plus their accrual remainders, every player's attack orders, the base order grant timer, and command-post accrual;
+9. human and bot gold plus their accrual remainders, every player's attack orders, the base order grant timer, command-post accrual, and the capped per-defender grievance matrix;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, lifetime, current/initial embedded orders, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -299,8 +301,8 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
 14. A deep click produces an attack anchor at the border contact, not at the click.
 15. Mutual attacks attrit when a front touches opposing claim provenance: a 1-order defender strips one embedded order per clash, so a 2-order attack needs two clashes unless Barracks strength lets one clash strip both. No defender orders means the attack breaks through.
-16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left.
-17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, and deterministic tie-breaks.
+16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left. Small neutral pockets (≤96 cells) are filled into their dominant owner every 100 ticks.
+17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, deterministic tie-breaks, small neutral/coastal pocket filling, ownerless-pocket skips, and the area threshold.
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.

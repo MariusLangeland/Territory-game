@@ -428,17 +428,83 @@ describe('attack stress mode', () => {
 	it('gives bots varied strategies and lets them build', () => {
 		const sim = new TerritorySimulation({ seed: 581321 });
 		const internals = sim as unknown as {
-			botProfiles: Array<{ aggression: number; focus: string }>;
+			botProfiles: Array<{
+				aggression: number;
+				focus: string;
+				vengeful: number;
+				cautious: number;
+				conciliatory: number;
+				opportunist: number;
+				buildPlan: string[];
+			}>;
 		};
-		const focuses = new Set(internals.botProfiles.slice(1).map((profile) => profile.focus));
+		const profiles = internals.botProfiles.slice(1);
+		const focuses = new Set(profiles.map((profile) => profile.focus));
 		expect(focuses.size).toBeGreaterThan(1);
-		const aggressions = internals.botProfiles.slice(1).map((profile) => profile.aggression);
+		for (const profile of profiles) {
+			expect(profile.buildPlan).toHaveLength(5);
+			expect(new Set(profile.buildPlan).size).toBe(5);
+			expect(profile.buildPlan[0]).toBe(profile.focus);
+		}
+		const aggressions = profiles.map((profile) => profile.aggression);
 		expect(Math.max(...aggressions) - Math.min(...aggressions)).toBeGreaterThan(30);
+		for (const trait of ['vengeful', 'cautious', 'conciliatory', 'opportunist'] as const) {
+			const values = profiles.map((profile) => profile[trait]);
+			expect(Math.max(...values) - Math.min(...values)).toBeGreaterThan(30);
+		}
 
 		for (let i = 0; i < 60; i++) sim.step();
 		const built = sim.structures.all.filter((structure) => structure.type !== 'state');
 		expect(built.length).toBeGreaterThan(0);
 		expect(new Set(built.map((structure) => structure.type)).size).toBeGreaterThan(1);
+		for (let index = 0; index < sim.districtStructureIds.length; index++) {
+			const structureId = sim.districtStructureIds[index];
+			if (structureId === 0) continue;
+			const structure = sim.structures.byId(structureId);
+			expect(structure).toBeDefined();
+			expect(structure?.ownerId).toBe(sim.owners[index]);
+		}
+	});
+
+	it('weights grudges, caution, conciliation, and opportunity in bot targeting', () => {
+		const sim = new TerritorySimulation({ seed: 918273 });
+		const internals = sim as unknown as {
+			botGrievance: Uint16Array;
+			botPressure: Uint16Array;
+			scoreBotTarget(
+				attackerId: number,
+				profile: Record<string, unknown>,
+				defenderId: number,
+				selfStrength: number,
+				strengths: Uint32Array
+			): number;
+		};
+		const base = {
+			aggression: 50,
+			economy: 50,
+			fortification: 50,
+			command: 50,
+			vengeful: 0,
+			cautious: 0,
+			conciliatory: 0,
+			opportunist: 0,
+			focus: 'mine',
+			buildPlan: []
+		};
+		const strengths = new Uint32Array(PLAYER_COUNT);
+		strengths[0] = 1000;
+		const score = (overrides: Record<string, number>) =>
+			internals.scoreBotTarget(2, { ...base, ...overrides }, 1, 100, strengths);
+
+		internals.botGrievance[PLAYER_COUNT] = 10;
+		expect(score({ vengeful: 100 })).toBeGreaterThan(score({ vengeful: 0 }));
+		internals.botGrievance[PLAYER_COUNT] = 0;
+
+		expect(score({ cautious: 100 })).toBeLessThan(score({ cautious: 0 }));
+		expect(score({ conciliatory: 100 })).toBeLessThan(score({ conciliatory: 0 }));
+
+		internals.botPressure[0] = 3;
+		expect(score({ opportunist: 100 })).toBeGreaterThan(score({ opportunist: 0 }));
 	});
 
 	it('issues extra barracks orders into each attack without merging clicks', () => {

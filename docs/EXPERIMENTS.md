@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.21.x`  
+**Status:** active in application `0.23.x`  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 51 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -24,33 +24,36 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 
 ### Temporary rules
 
-| Rule                     | Value                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------- |
-| States                   | 51 (1 human + 50 AI)                                                            |
-| Troops / production caps | removed                                                                         |
-| Gold / cards             | light human economy; 3 starting gold, +1/10s                                    |
-| Attack launch cost       | 1 attack order                                                                  |
-| Capture cost             | `max(1, defense − embedded orders + 1)`                                         |
-| Attack budget            | `30 + 15 × (embedded orders − 1)` per attack per tick                           |
-| Least resistance         | Sample top 10 frontier candidates; take the cheapest defense                    |
-| Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)         |
-| Elevation                | six tiers, lowland through peaks                                                |
-| Attack lifetime          | `50 + 10 × (initial embedded orders − 1)` ticks                                 |
-| Embedded orders          | 1 + min(5, ceil(Barracks levels / 2)); clicks never stack                       |
-| Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                               |
-| Extra order gain         | Command Post: +1 per 60 seconds, accrued continuously                           |
-| District upgrades        | Click a district or drop its card for base cost + current level                 |
-| Order cap growth         | War Academy: +1 cap                                                             |
-| Bot decisions            | attack check 1/s; focus build check every 3s                                    |
-| Bot economy              | 12 starting gold; 1 + Mine levels per 10s, accrued continuously                 |
-| Starting territory       | radius ~16, ragged, spaced across the map                                       |
-| Structures               | one capturable State structure per state at its capital                         |
-| Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                           |
-| Districts                | bounded Voronoi claim per buildable; min 32 px; no overlap; friendly auras only |
-| Structure stacking       | multiple same-type districts allowed; drops inside a district add stacks        |
-| State aura               | +20 friendly defense within 16 px; overlaps do not stack                        |
-| Human economy            | 3 starting gold; 1 gold / 10s; permanent five-card hand                         |
-| Build cards              | Mine 3g, Barracks 12g, Defense Post 2g, Command Post 4g, War Academy 6g         |
+| Rule                     | Value                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| States                   | 51 (1 human + 50 AI)                                                             |
+| Troops / production caps | removed                                                                          |
+| Gold / cards             | light human economy; 3 starting gold, +1/10s                                     |
+| Attack launch cost       | 1 attack order                                                                   |
+| Capture cost             | `max(1, defense − embedded orders + 1)`                                          |
+| Attack budget            | `30 + 15 × (embedded orders − 1)` per attack per tick                            |
+| Least resistance         | Sample top 10 frontier candidates; take the cheapest defense                     |
+| Pixel defense            | `1 + elevation + occupied + friendly aura` (1–27 base/State; posts add)          |
+| Elevation                | six tiers, lowland through peaks                                                 |
+| Attack lifetime          | `50 + 10 × (initial embedded orders − 1)` ticks                                  |
+| Embedded orders          | 1 + min(5, ceil(Barracks levels / 2)); clicks never stack                        |
+| Attack orders            | Start at 3 human / 2 bots; +1 every 10s up to cap                                |
+| Extra order gain         | Command Post: +1 per 60 seconds, accrued continuously                            |
+| District upgrades        | Click a district or drop its card for base cost + current level                  |
+| Order cap growth         | War Academy: +1 cap                                                              |
+| Bot decisions            | attack check 1/s; focus build check every 3s                                     |
+| Bot economy              | 12 starting gold; 1 + Mine levels per 10s, accrued continuously                  |
+| Bot personalities        | aggression, vengeance, caution, conciliation, opportunism                        |
+| Bot build plan           | five-type priority order; builds new types, then levels the lowest existing type |
+| Neutral cleanup          | fill owner-bordered pockets ≤96 cells every 10s; ocean contact allowed           |
+| Starting territory       | radius ~16, ragged, spaced across the map                                        |
+| Structures               | one capturable State structure per state at its capital                          |
+| Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                            |
+| Districts                | bounded Voronoi claim per buildable; min 32 px; no overlap; friendly auras only  |
+| Structure stacking       | multiple same-type districts allowed; drops inside a district add stacks         |
+| State aura               | +20 friendly defense within 16 px; overlaps do not stack                         |
+| Human economy            | 3 starting gold; 1 gold / 10s; permanent five-card hand                          |
+| Build cards              | Mine 3g, Barracks 12g, Defense Post 2g, Command Post 4g, War Academy 6g          |
 
 Each launch consumes one inventory order. The attack also embeds `1 + min(5, ceil(Barracks levels / 2))` orders without costing extra inventory. A player gains +1 inventory order every 10 seconds, up to the cap, and orders are not refunded when a front ends. The attack still requires a shared land border with the clicked target's owner. It flood-fills through connected target-owned pixels; extra embedded orders add capture points, defense piercing, and lifetime. A capture costs `max(1, defense − embeddedOrders + 1)`, so high ground and defended pixels fall more slowly. Each capture samples the 10 highest-priority frontier cells and takes the cheapest defense. If opposing fronts sever that connection, candidates are dropped and a front with zero legal captures on a non-clash tick peters out. At a mutual front, the defender spends inventory orders up to its own issued attack strength to strip incoming embedded orders. Attacks process in creation-id order; repeated clicks create separate fronts.
 
@@ -82,6 +85,9 @@ This is the current attack-shape test surface, not a final gameplay choice.
 
 - There is no economy HUD.
 - AI profiles vary aggression from passive to highly aggressive. Passive bots attack less often and prefer neutral land; aggressive bots more often strike rivals.
+- Vengeful bots prioritize owners that captured their land; cautious bots avoid stronger targets and owners holding attack orders; conciliatory bots avoid stronger neighbours; opportunistic bots target states already under attack or clearly weaker.
+- Each bot follows a five-type build priority, building new types when territory allows and otherwise leveling its lowest existing structure.
+- Every 10 seconds, neutral pockets up to 96 cells with at least one neighbouring owner are filled into the owner with the most shared border. This removes organic coastal slivers and interior specks; large neutral regions remain open.
 - Attack orders are now a gameplay constraint; the +1 order per 10 seconds is part of the experiment.
 - The match may end quickly or settle into a patchwork; balance is not validated in this build.
 - The leaderboard is scrollable because 51 states are alive at the start.
@@ -125,7 +131,7 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
 - Full-state checksum is ~18.1 ms (claim provenance doubles the owner-map pass) and is not run per tick.
 - Growth-layer tick cost at 51 states: circular ~1.1 ms, smooth ~1.3 ms, organic ~1.1 ms (Node benchmark; includes throttled integrity scans, structure effects, defense spending, and attack-order grants).
-- Attack orders, bot aggression profiles, capital auras, and defense costs reduce capture volume; the benchmark ended around 22–29 fronts.
+- Attack orders, bot aggression profiles, capital auras, and defense costs reduce capture volume; the benchmark ended around 23–30 fronts.
 - One-second integrity scans cost ~8.5 ms and are capped by a cooldown.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 

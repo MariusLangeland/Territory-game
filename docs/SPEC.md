@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.21.0 (attack stress experiment)  
+**Version:** 0.23.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.21.0, map version 4, protocol draft 28
+**Last synchronized with:** application 0.23.0, map version 4, protocol draft 30
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 28`.
+- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 30`.
 
 ### 4.2 Starting positions
 
@@ -191,13 +191,28 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 ### 4.8 Bots
 
 - 50 AI states.
-- Each bot derives a deterministic profile from the world seed: aggression, economy, fortification, command, and a focus structure type. Profiles vary from passive to aggressive.
-- Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Low-aggression bots skip more attack opportunities; high-aggression bots more often choose rivals even when neutral land is adjacent.
-- Bots accrue gold continuously (`BOT_STARTING_GOLD = 12`, 1 base + Mine income per 10s) and evaluate their focus build every 3 seconds (`BOT_BUILD_INTERVAL = 30`).
-- Bot build focus is one of Mine, Barracks, Defense Post, Command Post, or War Academy. Economy-focused bots save for and upgrade Mines near the capital; defensive bots place posts on the border; aggressive bots favor Barracks/Command Posts; command-focused bots favor War Academies.
-- The first focus structure is placed on valid owned land outside districts. Once it exists, the bot keeps upgrading that district at the normal level-scaled cost.
+- Each bot derives a deterministic profile from the world seed:
+  - aggression,
+  - economy,
+  - fortification,
+  - command,
+  - **vengeance** (retaliation drive),
+  - **caution** (retaliation fear),
+  - **conciliation** (avoid stronger opponents),
+  - **opportunism** (join existing wars).
+- Every bot also gets a five-type **build plan** sorted by its preferences, with a per-type hash jitter. The first entry is its opening focus; later entries become placeable as territory expands outside existing districts.
+- Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Aggression gates how often they attempt an attack.
+- Bots accrue gold continuously (`BOT_STARTING_GOLD = 12`, 1 base + Mine income per 10s) and evaluate construction every 3 seconds (`BOT_BUILD_INTERVAL = 30`).
+- Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Mines/Command Posts/War Academies prefer capital-adjacent sites; Defense Posts/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
+- **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available attack orders.
+  - Vengeful bots strongly favor owners that have captured their land.
+  - Cautious bots penalize stronger targets and targets holding attack orders, since those can retaliate.
+  - Conciliatory bots more strongly avoid stronger opponents, preferring neutral expansion.
+  - Opportunistic bots gain a large bonus against states already under attack and against weaker states.
+  - Aggression raises the baseline hostile score; low-aggression bots usually prefer neutral land.
+- Capturing a pixel records one grievance for the defender against the attacking owner. Grievances persist, are capped, and are checksummed.
 - Bots use the same attack-order, structure, district, aura, and clash rules as the human.
-- Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles and build choices are derived from hashes of the seed and player id. Behavior is replayable.
+- Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, build plans, and grievances are derived/stored deterministically. Behavior is replayable.
 
 ### 4.9 Tick order
 
@@ -208,7 +223,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 5. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
 6. Run bot economy/build decisions every 30 ticks, then bot attack decisions every 10 ticks.
 7. Process active attacks in creation-id order.
-8. Every 10 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands.
+8. Every 10 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Every 100 ticks, fill small neutral pockets.
 9. Eliminate states with no territory and remove their attacks.
 10. Check victory.
 11. Build the public snapshot.
@@ -273,6 +288,17 @@ Every player begins with one **State structure** at their capital. A player's **
 - components touching only ocean, unclaimed land, another unprotected component, or an unprotected territory are left alone.
 
 This restores dead pixels and severed pockets to the surrounding claim while guaranteeing that territory connected to a State structure is never annexed. Legitimate islands with no adjacent protected claimant are not deleted.
+
+#### Neutral pocket cleanup
+
+Every `UNCLAIMED_CLEANUP_INTERVAL_TICKS` (100 ticks / 10 seconds), neutral land components of at most `UNCLAIMED_POCKET_MAX_AREA` (96 cells) are cleaned up:
+
+- the component must border at least one owned cell;
+- the recipient is the owner with the largest shared border, breaking ties by lowest owner id;
+- ocean contact is allowed, because organic fronts often leave thin coastal gaps that look like holes;
+- ownerless islands and larger neutral regions are left untouched for expansion.
+
+This removes the small unclaimed specks and coastal slivers that organic growth leaves behind without closing off the main neutral landmass.
 
 ### 4.15 State structures
 
@@ -573,6 +599,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Distance-based growth is anchored at the border contact, never at a deep click.
 - [x] Mutual fronts spend defender attack orders to strip embedded orders from the incoming attack; a 2-order attack needs two 1-order defensive clashes to halt.
 - [x] Detached pockets are annexed by the adjacent protected mainland with the largest shared border.
+- [x] Small neutral pockets and coastal slivers are filled into the dominant adjacent owner every 10 seconds.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense; embedded attack orders scale points, piercing, and lifetime.

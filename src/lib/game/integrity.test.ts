@@ -37,6 +37,23 @@ function runAnnexation(
 	return { changed, result };
 }
 
+function runPocketCleanup(
+	owners: Uint16Array,
+	land: Uint8Array,
+	maxArea = 8
+): {
+	changed: Map<number, number>;
+	result: ReturnType<TerritoryIntegrity['cleanupUnclaimedPockets']>;
+} {
+	const integrity = new TerritoryIntegrity(WIDTH, HEIGHT, 3);
+	const changed = new Map<number, number>();
+	const result = integrity.cleanupUnclaimedPockets(owners, land, maxArea, (index, owner) => {
+		owners[index] = owner;
+		changed.set(index, owner);
+	});
+	return { changed, result };
+}
+
 describe('territory integrity', () => {
 	it('annexes a detached pocket into the surrounding mainland', () => {
 		const { owners, land } = makeGrid();
@@ -54,6 +71,51 @@ describe('territory integrity', () => {
 		for (const owner of changed.values()) expect(owner).toBe(2);
 		expect(owners[6 * WIDTH + 6]).toBe(2);
 		expect(owners[7 * WIDTH + 7]).toBe(2);
+	});
+
+	it('fills a small landlocked neutral pocket with its only neighbour', () => {
+		const { owners, land } = makeGrid();
+		fill(owners, 0, 0, WIDTH - 1, HEIGHT - 1, 1);
+		const centre = 4 * WIDTH + 4;
+		owners[centre] = 0;
+
+		const { changed, result } = runPocketCleanup(owners, land);
+		expect(result.filledComponents).toBe(1);
+		expect(result.filledCells).toBe(1);
+		expect(changed.get(centre)).toBe(1);
+	});
+
+	it('fills a small coastal pocket that still touches an owner', () => {
+		const { owners, land } = makeGrid();
+		fill(owners, 0, 0, WIDTH - 1, HEIGHT - 1, 1);
+		const coastal = 4 * WIDTH + 4;
+		owners[coastal] = 0;
+		land[coastal + 1] = 0;
+
+		const { changed, result } = runPocketCleanup(owners, land);
+		expect(result.filledComponents).toBe(1);
+		expect(changed.get(coastal)).toBe(1);
+	});
+
+	it('leaves neutral pockets with no owner contact', () => {
+		const { owners, land } = makeGrid();
+		const island = 4 * WIDTH + 4;
+		land[island - 1] = 0;
+		land[island + 1] = 0;
+		land[island - WIDTH] = 0;
+		land[island + WIDTH] = 0;
+
+		const { changed } = runPocketCleanup(owners, land);
+		expect(changed.size).toBe(0);
+	});
+
+	it('leaves neutral pockets larger than the cleanup limit', () => {
+		const { owners, land } = makeGrid();
+		fill(owners, 0, 0, WIDTH - 1, HEIGHT - 1, 1);
+		fill(owners, 3, 3, 5, 5, 0);
+
+		const { changed } = runPocketCleanup(owners, land, 4);
+		expect(changed.size).toBe(0);
 	});
 
 	it('annexes a larger detached component that has no State structure', () => {

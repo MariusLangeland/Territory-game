@@ -818,7 +818,7 @@ The stress build had 107 bots, all following the same neutral-first attack polic
 - Bots start with 12 gold and accrue `1 + Mine levels` per 10 seconds continuously.
 - Every 3 seconds a bot saves toward or upgrades its focus structure. Mines/Command Posts/War Academies prefer capital-adjacent placement; Defense Posts/Barracks prefer border placement.
 - Every second, aggression modulates attack frequency and target choice. Passive bots skip more attacks and prefer neutral land; aggressive bots attack more and can choose rival territory even when neutral land is adjacent.
-- Defer district/aura rebuilds until all bot builds in a decision batch finish, preventing up to 50 full rebuilds in one tick.
+- Defer district/aura rebuilds until all bot builds in a decision batch finish, preventing up to 50 full rebuilds in one tick. **Later refined by ADR-028:** district changes refresh locally; only aura rebuilds batch.
 
 ### Consequences
 
@@ -832,6 +832,83 @@ The stress build had 107 bots, all following the same neutral-first attack polic
 - **Random profiles from the shared PRNG:** would perturb all attack draws and obscure determinism reasoning; hashing is isolated and replayable.
 - **Let bots use cards:** the hand is a human UI concept; a direct gold/build decision is simpler and testable.
 - **Rebuild districts after every bot build:** causes a large periodic spike; batching is safe because each bot's first district is owner-local.
+
+---
+
+## ADR-028 — Bot personalities, grievances, and five-type build plans
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+The first bot economy gave each bot one focus structure and a single aggression score. All bots expanded into neutral land until none was adjacent, so diplomatic/emotional behavior, retaliation, and multi-structure build paths were absent.
+
+### Decision
+
+- Add hash-derived traits: vengeance, caution, conciliation, opportunism.
+- Replace the single focus with a five-type build plan sorted by profile preferences; the first entry remains the opening focus.
+- Bots build the next unbuilt plan type when affordable and placeable, otherwise upgrade the lowest-level existing plan structure.
+- Record a capped grievance for each captured pixel: `defender × attacker` matrix.
+- Target selection samples border neighbours and scores them using:
+  - neutral expansion baseline,
+  - aggression,
+  - stored grievance × vengeance,
+  - active attacks on the target × opportunism,
+  - caution/conciliation penalties when the target is stronger,
+  - caution penalty when the target still has attack orders.
+- Compute target pressure and player strength once per bot decision tick. Strength is `territory/4 + structure levels × 300 + attack orders × 150`.
+- Checkpoints can now show grudges leading to retaliation and bots joining existing wars.
+- New/destroyed buildables refresh districts only within their own radius. A full-map district rebuild under 50 bot builds cost ~200 ms; local refresh keeps sustained ticks at ~2 ms.
+
+### Consequences
+
+- Bots fight earlier and more selectively; high-aggression/vengeful/opportunistic bots start and join wars while cautious/conciliatory bots prefer neutral expansion.
+- Build diversity grows over time: a 90-second sample produced all five structure types and up to four structures per bot.
+- Grievance counts persist, so emotional bots hold grudges; no diplomacy/alliance system exists.
+- Grievances alter behavior and are checksummed, so replay and determinism include them.
+
+### Alternatives considered
+
+- **One archetype label per bot:** simpler, but a single label cannot express mixed traits like cautious-opportunist or friendly-vengeful.
+- **Decaying grudges:** more realistic but adds timers and tuning; persistent capped counts are simpler and visibly retaliatory.
+- **Global strategic target selection:** bots only know adjacent owners; a global planner is outside this stress experiment.
+
+---
+
+## ADR-029 — Periodically fill small neutral pockets
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+Organic growth leaves many one-pixel and small coastal neutral gaps. The annexation pass intentionally handles only owned components, so these neutral specks persist inside or along claimed territory and dominate the visual read.
+
+### Decision
+
+- Add a separate neutral-component cleanup to `TerritoryIntegrity`.
+- Label neutral land components in row-major seed/BFS order.
+- Eligible pockets are at most **96 cells** and border at least one owner.
+- Fill into the owner with the largest shared border, lowest id on ties.
+- Allow ocean contact: many distracting organic gaps are thin coastal slivers rather than landlocked holes.
+- Leave ownerless islands and larger neutral regions untouched.
+- Run every **100 ticks (10 seconds)**, after annexation.
+- Apply fills through `claim(..., 0)` so territory counts, borders, districts, auras, and renderer changes stay consistent.
+
+### Consequences
+
+- A 90-second organic sample left 155 small owner-bordered neutral components (661 cells); cleanup removes them in a single pass.
+- The main neutral landmass remains open for expansion because it is far above the area threshold.
+- Cleanup costs one additional labeling pass every 10 seconds; benchmark sustained ticks remain ~2.2 ms.
+- Legitimate neutral islands with no adjacent owner are preserved.
+
+### Alternatives considered
+
+- **Fill all neutral components touching owners:** would erase large expansion regions.
+- **Only landlocked holes:** missed most visible organic coastal slivers.
+- **Run every annexation tick:** unnecessary cost and removes specks before they are visually noticed.
+- **Merge cleanup into owned-component annexation:** different labels, thresholds, and ocean policy would complicate the annexation invariants.
 
 ---
 

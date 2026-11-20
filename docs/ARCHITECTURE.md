@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.21.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.23.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.21.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.23.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -51,7 +51,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, elevation tiers, starts                         | `generateMap`, `hash32`      |
 | `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
-| `src/lib/game/integrity.ts`                 | Core      | Connected-component labeling and detached-territory annexation                        | `TerritoryIntegrity`         |
+| `src/lib/game/integrity.ts`                 | Core      | Component labeling, detached-territory annexation, neutral-pocket cleanup             | `TerritoryIntegrity`         |
 | `src/lib/game/Structures/`                  | Core      | Per-type structure definitions, shared types, registry, and effects                   | `StructureRegistry`, cards   |
 | `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
@@ -163,6 +163,7 @@ step()
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
  ├─ every 10 ticks or after a cancellation: annex detached components
+ ├─ every 100 ticks: fill small neutral pockets into their dominant neighbour
  ├─ updateEliminations()
  ├─ checkVictory()
  └─ buildSnapshot()
@@ -172,11 +173,13 @@ No rendering, DOM, timers, or promises are present in this path.
 
 ### Bot strategy layer
 
-Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, and a focus buildable type. No new RNG stream is introduced.
+Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and a five-type `buildPlan`. No new RNG stream is introduced.
 
-- At every `BOT_BUILD_INTERVAL` (30 ticks), a living bot accrues gold (`1 + Mine levels` per 100 ticks) and evaluates its focus. If it has no focus structure, it places one on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If the structure exists, it upgrades it at the usual level-scaled cost.
-- At every `BOT_DECISION_INTERVAL` (10 ticks), aggression modulates whether the bot attempts an attack and whether it prefers neutral or hostile neighbours. High-aggression bots more often strike rivals; passive bots skip more opportunities.
-- Profiles and build choices are deterministic hash-derived state; bot gold and accrual are checksummed.
+- At every `BOT_BUILD_INTERVAL` (30 ticks), a living bot accrues gold (`1 + Mine levels` per 100 ticks) and tries the next unbuilt plan type on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If no new type is placeable/affordable, it upgrades the lowest-level existing plan structure at the usual level-scaled cost. Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
+- At every `BOT_DECISION_INTERVAL` (10 ticks), `runBotDecisions` computes target pressure (active attacks per defender) and player strength (`territory/4 + structure levels*300 + orders*150`). It samples border neighbours and uses `scoreBotTarget` to select a cell.
+- `scoreBotTarget` combines neutral-expansion score, aggression, stored grievances, opportunism × target pressure, and caution/conciliation penalties against stronger targets or targets holding attack orders. Vengeful bots retaliate, cautious bots avoid retaliation-capable targets, conciliatory bots avoid stronger neighbours, and opportunistic bots pile onto contested or weak targets.
+- Captures increment `botGrievance[defender * PLAYER_COUNT + attacker]`, capped at 65,535.
+- Profiles and build plans are hash-derived; bot gold, accrual, and grievance counts are checksummed.
 
 ### Conflicting fronts
 
@@ -209,6 +212,8 @@ The simulation validates every candidate identically. The layer never claims own
 ### Territory integrity
 
 `TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Mines, Barracks, Defense Posts, Command Posts, or War Academies — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+
+`cleanupUnclaimedPockets` is a second labeling pass over neutral land. It fills components of at most `UNCLAIMED_POCKET_MAX_AREA` (96) that directly border an owner, assigning the pocket to the owner with the largest shared border (lowest id tie-break). Ocean contact is intentionally allowed so thin coastal slivers left by organic fronts are removed; ownerless islands and larger neutral regions are skipped. It runs every 100 ticks and also applies claims through `claim(..., 0)`.
 
 Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`. The structure disappears from the map, minimap, snapshot, and checksums, its aura is removed, and the owner loses protection for all remaining components. A dead state's territory is therefore not a valid annexation target, though it can still be attacked.
 
@@ -305,7 +310,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~276 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~300 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
 
 ---
 
@@ -437,7 +442,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~276 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~300 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

@@ -31,6 +31,11 @@ export interface IntegrityAnchor {
 	ownerId: number;
 }
 
+export interface UnclaimedCleanupResult {
+	filledComponents: number;
+	filledCells: number;
+}
+
 export class TerritoryIntegrity {
 	private readonly width: number;
 	private readonly height: number;
@@ -95,6 +100,97 @@ export class TerritoryIntegrity {
 			annexedComponents,
 			annexedCells
 		};
+	}
+
+	/**
+	 * Fill small neutral pockets. A pocket is eligible when it is no larger
+	 * than `maxArea` and borders at least one owner. The owner with the largest
+	 * shared border wins (lowest id on ties). Ocean contact is allowed: organic
+	 * fronts often leave thin coastal gaps that read as distracting holes.
+	 * Large neutral regions and ownerless islands are left alone so expansion
+	 * still has open land to move into.
+	 */
+	cleanupUnclaimedPockets(
+		owners: Uint16Array,
+		land: Uint8Array,
+		maxArea: number,
+		onClaim: (index: number, newOwner: number) => void
+	): UnclaimedCleanupResult {
+		this.componentOf.fill(0);
+		this.cellCount = 0;
+		let filledComponents = 0;
+		let filledCells = 0;
+		const width = this.width;
+		const height = this.height;
+		const counts = this.contactCounts;
+		let nextId = 1;
+
+		for (let seed = 0; seed < this.pixelCount; seed++) {
+			if (this.componentOf[seed] !== 0 || !land[seed] || owners[seed] !== 0) continue;
+
+			const id = nextId++;
+			const start = this.cellCount;
+			this.componentOf[seed] = id;
+			this.cellOrder[this.cellCount++] = seed;
+			let head = start;
+
+			while (head < this.cellCount) {
+				const index = this.cellOrder[head++];
+				const x = index % width;
+				const y = (index - x) / width;
+				if (x > 0) this.visitUnclaimed(index - 1, id, owners, land);
+				if (x + 1 < width) this.visitUnclaimed(index + 1, id, owners, land);
+				if (y > 0) this.visitUnclaimed(index - width, id, owners, land);
+				if (y + 1 < height) this.visitUnclaimed(index + width, id, owners, land);
+			}
+
+			const end = this.cellCount;
+			const area = end - start;
+			if (area > maxArea) continue;
+
+			counts.fill(0);
+			for (let i = start; i < end; i++) {
+				const index = this.cellOrder[i];
+				const x = index % width;
+				const y = (index - x) / width;
+				if (x > 0 && land[index - 1] && owners[index - 1] > 0) {
+					counts[owners[index - 1]]++;
+				}
+				if (x + 1 < width && land[index + 1] && owners[index + 1] > 0) {
+					counts[owners[index + 1]]++;
+				}
+				if (y > 0 && land[index - width] && owners[index - width] > 0) {
+					counts[owners[index - width]]++;
+				}
+				if (y + 1 < height && land[index + width] && owners[index + width] > 0) {
+					counts[owners[index + width]]++;
+				}
+			}
+
+			let target = 0;
+			let bestCount = 0;
+			for (let owner = 1; owner <= this.playerCount; owner++) {
+				const count = counts[owner];
+				if (count > bestCount) {
+					target = owner;
+					bestCount = count;
+				}
+			}
+			if (target === 0) continue;
+
+			for (let i = start; i < end; i++) onClaim(this.cellOrder[i], target);
+			filledComponents++;
+			filledCells += area;
+		}
+
+		return { filledComponents, filledCells };
+	}
+
+	private visitUnclaimed(index: number, id: number, owners: Uint16Array, land: Uint8Array): void {
+		if (this.componentOf[index] !== 0) return;
+		if (!land[index] || owners[index] !== 0) return;
+		this.componentOf[index] = id;
+		this.cellOrder[this.cellCount++] = index;
 	}
 
 	private labelComponents(owners: Uint16Array, land: Uint8Array): void {
