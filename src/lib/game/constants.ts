@@ -103,7 +103,8 @@ export const SUPPLY_WIN_SHARE = 70;
 export const ATTACK_SEARCH_RADIUS = 34;
 
 /** Active artillery: one shell per structure level per volley. */
-export const ARTILLERY_SUPPLY_COST_PER_LEVEL = 150;
+export const ARTILLERY_SUPPLY_COST_PER_LEVEL = 300;
+export const UPGRADE_LEVEL_COST_STEP = 5;
 export const ARTILLERY_RANGE = 140;
 /** Artillery needs this much district-free ground around its centre. */
 export const ARTILLERY_BUILD_CLEARANCE = 16;
@@ -138,7 +139,7 @@ export const BOT_THREAT_DEFENSIVE = 20;
 export const BOT_THREAT_SAFE = 10;
 
 /** Gold a threatened bot withholds from its build plan until it is safe again. */
-export const BOT_DEFENSE_RESERVE_MAX = 12; // roughly one Barracks
+export const BOT_DEFENSE_RESERVE_MAX = 40; // enough for one Fortification
 /**
  * Build intervals a threatened bot may fail to afford any defensive action
  * before the reserve is released. This keeps a long stalemate from blocking

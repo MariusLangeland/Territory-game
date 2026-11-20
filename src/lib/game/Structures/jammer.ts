@@ -9,7 +9,7 @@ export const JAMMER_SUPPRESSION_PER_LEVEL = 1;
 export const JAMMER_DEFINITION: StructureDefinition = {
 	label: 'JAMMER',
 	description: 'Global aura: -1 effective enemy Barracks level per stack.',
-	cost: 8,
+	cost: 160,
 	buildable: true,
 	accent: '#7be0c0',
 	districtRange: 32,

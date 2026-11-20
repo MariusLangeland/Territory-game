@@ -132,14 +132,13 @@ describe('player economy and cards', () => {
 
 	it('upgrades a district by clicking anywhere inside it', () => {
 		const sim = new TerritorySimulation({ seed: 246813 });
-		const { index } = buildCard(sim, 'artillery');
+		const { index } = buildCard(sim, 'fortification');
 		const structure = sim.structures.at(index);
 		expect(structure?.stacks).toBe(1);
-		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
-		raiseSupplyCap(sim);
-		sim.gold = 500;
+		sim.gold = 100;
 		const result = sim.upgradeDistrict(
 			HUMAN_PLAYER_ID,
 			target % sim.width,
@@ -148,24 +147,25 @@ describe('player economy and cards', () => {
 		expect(result.ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(199);
+		expect(sim.gold).toBe(55);
 
-		sim.gold = 500;
+		sim.gold = 100;
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width)).ok
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(3);
-		expect(sim.gold).toBeGreaterThanOrEqual(198);
+		expect(sim.gold).toBeGreaterThanOrEqual(50);
 	});
 
 	it('quotes and queues five-level upgrades atomically', () => {
 		const sim = new TerritorySimulation({ seed: 246815 });
-		const { index } = buildCard(sim, 'barracks');
-		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.barracks);
+		const { index } = buildCard(sim, 'fortification');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
-		sim.gold = 100;
+		raiseSupplyCap(sim);
+		sim.gold = 300;
 		const quote = sim.getUpgradeQuote(
 			HUMAN_PLAYER_ID,
 			target % sim.width,
@@ -173,7 +173,7 @@ describe('player economy and cards', () => {
 			5
 		);
 		expect(quote.ok).toBe(true);
-		expect(quote.cost).toBe(75);
+		expect(quote.cost).toBe(275);
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
 		).toBe(true);
@@ -184,11 +184,12 @@ describe('player economy and cards', () => {
 
 	it('rejects a five-level upgrade without queuing partial levels', () => {
 		const sim = new TerritorySimulation({ seed: 246816 });
-		const { index } = buildCard(sim, 'barracks');
-		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.barracks);
+		const { index } = buildCard(sim, 'fortification');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
-		sim.gold = 50;
+		raiseSupplyCap(sim);
+		sim.gold = 200;
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
 		).toBe(false);
@@ -198,19 +199,18 @@ describe('player economy and cards', () => {
 
 	it('reserves the projected cost of multiple queued upgrades', () => {
 		const sim = new TerritorySimulation({ seed: 246814 });
-		const { index } = buildCard(sim, 'artillery');
-		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
+		const { index } = buildCard(sim, 'fortification');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
 		const x = target % sim.width;
 		const y = Math.floor(target / sim.width);
-		raiseSupplyCap(sim);
-		sim.gold = 500;
+		sim.gold = 90;
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(true);
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(false);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(199);
+		expect(sim.gold).toBe(45);
 	});
 
 	it('reports district dirty tiles instead of forcing a full rebuild', () => {
@@ -218,12 +218,11 @@ describe('player economy and cards', () => {
 		const cell = findBuildCell(sim);
 		const x = cell % sim.width;
 		const y = (cell - x) / sim.width;
-		raiseSupplyCap(sim);
-		sim.gold = 400;
-		const artilleryCard = sim.hand.find((card) => card.type === 'artillery');
-		expect(artilleryCard).toBeDefined();
-		if (!artilleryCard) return;
-		expect(sim.playCard(HUMAN_PLAYER_ID, artilleryCard.id, x, y).ok).toBe(true);
+		sim.gold = 100;
+		const fortificationCard = sim.hand.find((card) => card.type === 'fortification');
+		expect(fortificationCard).toBeDefined();
+		if (!fortificationCard) return;
+		expect(sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y).ok).toBe(true);
 		const result = sim.step();
 		expect(result.districtsChanged).toBe(true);
 		expect(result.districtTiles.length).toBeGreaterThan(0);
@@ -272,11 +271,11 @@ describe('player economy and cards', () => {
 
 	it('stacks the same structure type inside its district', () => {
 		const sim = new TerritorySimulation({ seed: 616161 });
-		const { index } = buildCard(sim, 'artillery');
+		const { index } = buildCard(sim, 'fortification');
 		const structure = sim.structures.at(index);
 		expect(structure?.stacks).toBe(1);
-		sim.hand = [{ id: 8801, type: 'artillery' }];
-		sim.gold = 3;
+		sim.hand = [{ id: 8801, type: 'fortification' }];
+		sim.gold = 39;
 		const tooPoor = sim.playCard(
 			HUMAN_PLAYER_ID,
 			8801,
@@ -286,8 +285,7 @@ describe('player economy and cards', () => {
 		expect(tooPoor.ok).toBe(false);
 		expect(tooPoor.reason).toBe('no-gold');
 
-		raiseSupplyCap(sim);
-		sim.gold = 400;
+		sim.gold = 100;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
 			8801,
@@ -298,20 +296,20 @@ describe('player economy and cards', () => {
 		sim.step();
 		expect(
 			sim.structures.all.filter(
-				(entry) => entry.type === 'artillery' && entry.ownerId === HUMAN_PLAYER_ID
+				(entry) => entry.type === 'fortification' && entry.ownerId === HUMAN_PLAYER_ID
 			)
 		).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(99);
+		expect(sim.gold).toBe(55);
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 
-		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
+		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
 		expect(other).toBeGreaterThan(-1);
 		if (other < 0) return;
 		const x = other % sim.width;
 		const y = (other - x) / sim.width;
-		sim.hand = [{ id: 8802, type: 'fortification' }];
-		sim.gold = 10;
+		sim.hand = [{ id: 8802, type: 'barracks' }];
+		sim.gold = 50;
 		const blocked = sim.playCard(HUMAN_PLAYER_ID, 8802, x, y);
 		expect(blocked.ok).toBe(false);
 		expect(blocked.reason).toBe('inside-district');
@@ -319,20 +317,19 @@ describe('player economy and cards', () => {
 
 	it('keeps cards available for repeat purchases', () => {
 		const sim = new TerritorySimulation({ seed: 864209 });
-		const artilleryCard = sim.hand.find((card) => card.type === 'artillery');
-		expect(artilleryCard).toBeDefined();
-		if (!artilleryCard) return;
+		const fortificationCard = sim.hand.find((card) => card.type === 'fortification');
+		expect(fortificationCard).toBeDefined();
+		if (!fortificationCard) return;
 		const cell = findBuildCell(sim);
 		const x = cell % sim.width;
 		const y = (cell - x) / sim.width;
-		raiseSupplyCap(sim);
-		sim.gold = 400;
-		expect(sim.playCard(HUMAN_PLAYER_ID, artilleryCard.id, x, y).ok).toBe(true);
+		sim.gold = 100;
+		expect(sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y).ok).toBe(true);
 		sim.step();
-		expect(sim.hand.map((card) => card.id)).toContain(artilleryCard.id);
-		expect(sim.gold).toBe(100);
-		sim.gold = 400;
-		expect(sim.playCard(HUMAN_PLAYER_ID, artilleryCard.id, x, y).ok).toBe(true);
+		expect(sim.hand.map((card) => card.id)).toContain(fortificationCard.id);
+		expect(sim.gold).toBe(60);
+		sim.gold = 100;
+		expect(sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(cell)?.stacks).toBe(2);
 		expect(sim.hand).toHaveLength(BUILDABLE_STRUCTURE_TYPES.length);
@@ -345,7 +342,7 @@ describe('player economy and cards', () => {
 		const y = (index - x) / sim.width;
 		const before = sim.getAuraDefense(x, y);
 		sim.hand = [{ id: 4567, type: 'fortification' }];
-		sim.gold = 2;
+		sim.gold = 40;
 		expect(sim.playCard(HUMAN_PLAYER_ID, 4567, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.type).toBe('fortification');
@@ -412,7 +409,7 @@ describe('player economy and cards', () => {
 		const y = (index - x) / sim.width;
 		const before = sim.getAuraDefense(x, y);
 		sim.hand = [{ id: 9901, type: 'fortification' }];
-		sim.gold = 10;
+		sim.gold = 100;
 		expect(sim.playCard(HUMAN_PLAYER_ID, 9901, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
@@ -426,7 +423,7 @@ describe('player economy and cards', () => {
 		expect(blocked).toBeGreaterThan(-1);
 		if (blocked < 0) return;
 		sim.hand = [{ id: 7001, type: 'fortification' }];
-		sim.gold = 2;
+		sim.gold = 50;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
 			7001,
@@ -439,7 +436,7 @@ describe('player economy and cards', () => {
 
 	it('allows another district of the same structure type outside the first', () => {
 		const sim = new TerritorySimulation({ seed: 919191 });
-		const first = buildCard(sim, 'artillery');
+		const first = buildCard(sim, 'fortification');
 		const internals = sim as unknown as {
 			claim(index: number, newOwner: number, attackId?: number): void;
 		};
@@ -458,8 +455,8 @@ describe('player economy and cards', () => {
 		}
 		expect(secondIndex).toBeGreaterThan(-1);
 		if (secondIndex < 0) return;
-		sim.hand = [{ id: 8803, type: 'artillery' }];
-		sim.gold = 400;
+		sim.hand = [{ id: 8803, type: 'fortification' }];
+		sim.gold = 100;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
 			8803,
@@ -468,10 +465,10 @@ describe('player economy and cards', () => {
 		);
 		expect(result.ok).toBe(true);
 		sim.step();
-		const artilleryCards = sim.structures.all.filter(
-			(entry) => entry.type === 'artillery' && entry.ownerId === HUMAN_PLAYER_ID
+		const fortificationCards = sim.structures.all.filter(
+			(entry) => entry.type === 'fortification' && entry.ownerId === HUMAN_PLAYER_ID
 		);
-		expect(artilleryCards).toHaveLength(2);
+		expect(fortificationCards).toHaveLength(2);
 		expect(
 			sim.getDistrictStructureId(secondIndex % sim.width, Math.floor(secondIndex / sim.width))
 		).not.toBe(sim.structures.at(first.index)?.id);

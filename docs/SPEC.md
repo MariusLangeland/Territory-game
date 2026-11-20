@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.35.0 (Frontage v1 + siege rework)  
+**Version:** 0.36.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.35.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.36.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -209,7 +209,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - `1` per hostile pixel touching its border, capped at `8`;
   - `2` per grievance captured since the previous refresh, capped at `20`.
   - A bot enters defensive posture at threat `≥20` and leaves at `≤10` (hysteresis).
-- **Defensive reserve:** a threatened bot withholds up to **12 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
+- **Defensive reserve:** a threatened bot withholds up to **40 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
 - **Defensive spending:** while threatened, the bot first builds a missing Fortification on a border cell touching an enemy, then a Barracks, then upgrades the lower of the two. These actions may consume the reserve; non-defence spending cannot.
 - **Rebuilding:** a destroyed plan structure is simply missing from the plan and is rebuilt when affordable and placeable; destroyed defensive structures are rebuilt first under threat.
 - **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available supply.
@@ -352,25 +352,25 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Command Post stacks add **+2/s**.
 - Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + current level` (projected through queued upgrades). Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 5 × current level` (projected through queued upgrades). Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
 - Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for 1 level, or 5 levels while Shift is held.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
-- Dropping inside a same-type district upgrades that district's structure at `base cost + current level`; dropping the same type outside all districts creates another structure at its base cost.
+- Dropping inside a same-type district upgrades that district's structure at `base cost + 5 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
-- Costs: Artillery **300**, Barracks **12**, Fortification **2**, Jammer **8**, Command Post **4**, War Academy **6** supply.
+- Costs: Artillery **1000**, Barracks **240**, Fortification **40**, Jammer **160**, Command Post **80**, War Academy **120** supply.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
 
 | Card          | Cost | Effect                                                             |
 | ------------- | ---- | ------------------------------------------------------------------ |
-| Artillery     | 300  | Active: inaccurate, 150 supply/level, 140 px range, 64 px district |
-| Barracks      | 12   | +1 effective attack level; cost +15, strength +450 per level       |
-| Fortification | 2    | +5 defense to every friendly pixel in its 40 px district; stacks   |
-| Jammer        | 8    | Global aura: −1 effective enemy Barracks level per stack           |
-| Command Post  | 4    | +2 supply per second                                               |
-| War Academy   | 6    | +40 supply cap                                                     |
+| Artillery     | 1000 | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
+| Barracks      | 240  | +1 effective attack level; cost +15, strength +450 per level       |
+| Fortification | 40   | +1 defense to every friendly pixel in its 40 px district; stacks   |
+| Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
+| Command Post  | 80   | +2 supply per second                                               |
+| War Academy   | 120  | +40 supply cap                                                     |
 
 Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 
@@ -378,12 +378,12 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 
 - The human toggles targeting with the HUD `FIRE` button or `A`, then clicks an aim point.
 - The clicked aim point is used directly; there is no target snapping. At least one ready battery must be within **140 px**.
-- Every ready battery in range fires **one shell per structure level**, costing **150 supply per level**. A battery then reloads for **6 seconds**.
+- Every ready battery in range fires **one shell per structure level**, costing **300 supply per level**. A battery then reloads for **6 seconds**.
 - Shells take **2 seconds** to land, with deterministic spread up to **±36 px** around the aim point, so most shells miss small targets.
 - Artillery cannot be built unless every district cell within **16 px** of its centre is absent; it needs a 16 px district-free clearance. Its own district covers **64 px**.
 - Artillery cannot damage or destroy a State structure.
 - On impact, the nearest hostile structure within **12 px** loses one level. A level-1 structure is destroyed; State destruction removes annexation protection.
-- Artillery has no passive income. A volley costs **150 supply per level**; firing is rejected if the total cannot be paid. It has no front-cap interaction.
+- Artillery has no passive income. A volley costs **300 supply per level**; firing is rejected if the total cannot be paid. It has no front-cap interaction.
 - Bots use the same cooldown and shell rules, ignore State targets, and aim at the strongest non-State structure in range.
 
 ### 4.18 Districts and structure stacking
@@ -402,7 +402,7 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 | ------------- | -------------: | ------------------------------- |
 | Artillery     |          64 px | active siege, no passive income |
 | Barracks      |          44 px | +1 effective attack level       |
-| Fortification |          40 px | +5 defense per stack            |
+| Fortification |          40 px | +1 defense per stack            |
 | Jammer        |          32 px | −1 enemy attack level per stack |
 | Command Post  |          32 px | +2 supply/s per stack           |
 | War Academy   |          32 px | +40 supply cap per stack        |

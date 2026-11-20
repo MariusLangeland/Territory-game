@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.35.0 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.36.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -238,7 +238,7 @@ captureCost   = max(1, defense − logTier)             // per capture, paid fro
 
 - `elevationTier` is the versioned 6-tier map data (`MAP_VERSION` unchanged).
 - State aura: +20 within 16 px (max-stacking, friendly-owned land only).
-- Fortification: +5 per stack over every cell of its own district (additive, friendly-only).
+- Fortification: +1 per stack over every cell of its own district (additive, friendly-only).
 - Jammer: global enemy suppression, −1 effective Barracks level per stack; never alters pixel defense.
 - Districts, structure spacing (8 px), stacking, and razing rules are unchanged.
 - Barracks is the offensive scaler: each level adds +450 strength and +15 launch cost; each log2 tier
@@ -255,12 +255,12 @@ Supply costs and the permanent six-card hand:
 
 | Card          | Cost | Implemented effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------------------ |
-| Artillery     | 300  | Active: 150 supply/level, ±36 px spread, 64 px district, State-immune.   |
-| Barracks      | 12   | +1 effective level; +450 strength/+15 cost per level, log2 power/pierce. |
-| Fortification | 2    | +5 defense per stack across its district.                                |
-| Jammer        | 8    | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
-| Command Post  | 4    | +2 supply per second per stack.                                          |
-| War Academy   | 6    | +40 supply cap per stack; no global maximum.                             |
+| Artillery     | 1000 | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
+| Barracks      | 240  | +1 effective level; +450 strength/+15 cost per level, log2 power/pierce. |
+| Fortification | 40   | +1 defense per stack across its district.                                |
+| Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
+| Command Post  | 80   | +2 supply per second per stack.                                          |
+| War Academy   | 120  | +40 supply cap per stack; no global maximum.                             |
 
 - `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is

@@ -1215,7 +1215,7 @@ describe('bot threat detection and defensive behaviour', () => {
 			sim.structures.reinforce(post);
 			sim.structures.reinforce(barracks);
 		}
-		internals.botGold[1] = 7;
+		internals.botGold[1] = 300;
 
 		// Fresh losses at every decision tick keep the bot threatened.
 		const grudge = (2 - 1) * PLAYER_COUNT + (3 - 1);
@@ -1314,6 +1314,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(sim.structures.forOwnerType(2, 'fortification')).toBeUndefined();
 
 		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] += 10;
+		internals.botGold[1] = 100;
 		sim.step();
 
 		const rebuilt = sim.structures.forOwnerType(2, 'fortification');

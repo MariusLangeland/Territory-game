@@ -47,8 +47,8 @@ function impact(
 
 describe('artillery active ability', () => {
 	it('is expensive to build and fire', () => {
-		expect(ARTILLERY_DEFINITION.cost).toBe(300);
-		expect(ARTILLERY_SUPPLY_COST_PER_LEVEL).toBe(150);
+		expect(ARTILLERY_DEFINITION.cost).toBe(1000);
+		expect(ARTILLERY_SUPPLY_COST_PER_LEVEL).toBe(300);
 
 		const sim = new TerritorySimulation({ seed: 700001 });
 		const { target } = createBattery(sim);
@@ -129,7 +129,7 @@ describe('artillery active ability', () => {
 		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
 		expect(capital).toBeDefined();
 		if (!capital) return;
-		for (let level = 0; level < 6; level++) {
+		for (let level = 0; level < 15; level++) {
 			sim.structures.create(
 				'war-academy',
 				HUMAN_PLAYER_ID,
@@ -138,7 +138,7 @@ describe('artillery active ability', () => {
 				sim.width
 			);
 		}
-		sim.gold = 400;
+		sim.gold = 700;
 		expect(sim.enqueueArtillery(HUMAN_PLAYER_ID, target.x, target.y).ok).toBe(true);
 		sim.step();
 		expect(sim.validateArtillery(HUMAN_PLAYER_ID, target.x, target.y).reason).toBe('cooling');
@@ -153,10 +153,10 @@ describe('artillery active ability', () => {
 		if (!capital) return;
 		sim.structures.create('artillery', 2, capital.x, capital.y, sim.width);
 		sim.structures.create('barracks', HUMAN_PLAYER_ID, capital.x + 40, capital.y, sim.width);
-		for (let level = 0; level < 5; level++) {
+		for (let level = 0; level < 10; level++) {
 			sim.structures.create('war-academy', 2, capital.x + 10 + level, capital.y + 10, sim.width);
 		}
-		(sim as unknown as { botGold: number[] }).botGold[1] = 400;
+		(sim as unknown as { botGold: number[] }).botGold[1] = 500;
 		const internals = sim as unknown as { artilleryShells: ArtilleryShell[] };
 		for (let tick = 0; tick < 20; tick++) sim.step();
 		expect(sim.getSnapshot().shells.length).toBeGreaterThan(0);

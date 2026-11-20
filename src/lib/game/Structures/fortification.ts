@@ -2,12 +2,12 @@ import type { StructureDefinition } from './types';
 
 /** Kept for the shared effect shape; district coverage ignores radius entirely. */
 export const FORTIFICATION_AURA_RADIUS = 0;
-export const FORTIFICATION_DEFENSE = 5;
+export const FORTIFICATION_DEFENSE = 1;
 
 export const FORTIFICATION_DEFINITION: StructureDefinition = {
 	label: 'FORTIFICATION',
-	description: '+5 defense to every friendly pixel in its district.',
-	cost: 2,
+	description: '+1 defense to every friendly pixel in its district.',
+	cost: 40,
 	buildable: true,
 	accent: '#63c6d7',
 	districtRange: 40,

@@ -242,7 +242,7 @@
 				return {
 					index: '02 / 03',
 					title: 'BUILD SOMETHING',
-					body: 'Drag one of the five cards from the bottom hand into your territory. Cards stay in hand and can be bought again.'
+					body: 'Drag one of the six cards from the bottom hand into your territory. Cards stay in hand and can be bought again.'
 				};
 			case 3:
 				return {
@@ -1417,7 +1417,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.35.0 / PROTOCOL 36</span>
+				<span>BUILD 0.36.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1578,7 +1578,7 @@
 							structure. Fortifications add district defense. Jammers project a global aura that
 							subtracts one effective Barracks level from every enemy attacking you, without raising
 							pixel defense. Cards are permanent. Click a district, or drop its matching card inside
-							it, to upgrade; cost is the card price plus current level. Shift-click queues five
+							it, to upgrade; cost is the card price plus 5 × current level. Shift-click queues five
 							upgrades atomically, and the cursor tooltip shows the total cost. Each capture spends
 							both per-tick power and durable strength. Hold 70% of the land to win immediately.
 						</p>
@@ -1594,9 +1594,9 @@
 							When mutual fronts touch, both sides lose strength simultaneously; a front at zero
 							dies and the survivor holds the contact line. Use CANCEL LAST or press X to refund the
 							remaining strength share. Each State structure anchors its mainland and adds 20
-							defense. Artillery costs 300 supply, needs 16 px of district-free ground, and covers a
-							64 px district. <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
-							one inaccurate shell at 150 supply per level; shells damage structures but cannot destroy
+							defense. Artillery costs 1000 supply, needs 16 px of district-free ground, and covers
+							a 64 px district. <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
+							one inaccurate shell at 300 supply per level; shells damage structures but cannot destroy
 							a State.
 						</p>
 					</section>

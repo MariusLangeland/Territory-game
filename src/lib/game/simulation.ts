@@ -56,6 +56,7 @@ import {
 	SUPPLY_INCOME_TERRITORY_DIVISOR,
 	SUPPLY_WIN_SHARE,
 	STRUCTURE_MIN_SPACING,
+	UPGRADE_LEVEL_COST_STEP,
 	TICK_RATE,
 	UNCLAIMED_CLEANUP_INTERVAL_TICKS,
 	UNCLAIMED_POCKET_MAX_AREA
@@ -976,7 +977,7 @@ export class TerritorySimulation {
 		if (districtId !== 0) {
 			const districtStructure = this.structures.byId(districtId);
 			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
-				const cost = baseCost + districtStructure.stacks;
+				const cost = baseCost + districtStructure.stacks * UPGRADE_LEVEL_COST_STEP;
 				if (this.supplyOf(playerId) < cost) {
 					return {
 						ok: false,
@@ -1079,7 +1080,9 @@ export class TerritorySimulation {
 		const projectedLevel = target.structure.stacks + this.pendingUpgradesFor(target.structure.id);
 		const baseCost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
 		let cost = 0;
-		for (let level = 0; level < count; level++) cost += baseCost + projectedLevel + level;
+		for (let level = 0; level < count; level++) {
+			cost += baseCost + (projectedLevel + level) * UPGRADE_LEVEL_COST_STEP;
+		}
 		if (this.supplyOf(playerId) - this.pendingUpgradeCost(playerId) < cost) {
 			return {
 				...fail(
@@ -1116,7 +1119,7 @@ export class TerritorySimulation {
 				playerId,
 				x: Math.floor(x),
 				y: Math.floor(y),
-				cost: baseCost + quote.projectedLevel + level,
+				cost: baseCost + (quote.projectedLevel + level) * UPGRADE_LEVEL_COST_STEP,
 				sequence: this.nextCommandSequence++
 			});
 		}
@@ -1391,7 +1394,7 @@ export class TerritorySimulation {
 				const districtStructure = districtId ? this.structures.byId(districtId) : undefined;
 				const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
 				if (districtStructure && districtStructure.type === card.type) {
-					const cost = baseCost + districtStructure.stacks;
+					const cost = baseCost + districtStructure.stacks * UPGRADE_LEVEL_COST_STEP;
 					if (!this.spendSupply(command.playerId, cost)) continue;
 					const stacks = this.structures.reinforce(districtStructure);
 					this.rebuildAuraDefense();
@@ -2234,7 +2237,7 @@ export class TerritorySimulation {
 			for (const type of plan) {
 				const existing = this.structures.forOwnerType(player.id, type);
 				if (!existing) continue;
-				const cost = STRUCTURE_DEFINITIONS[type].cost + existing.stacks;
+				const cost = STRUCTURE_DEFINITIONS[type].cost + existing.stacks * UPGRADE_LEVEL_COST_STEP;
 				if (budget < cost) continue;
 				if (!target || existing.stacks < target.stacks) {
 					target = { type, stacks: existing.stacks, cost };
@@ -2307,7 +2310,7 @@ export class TerritorySimulation {
 			barracks && barracks.stacks < fortificationStructure.stacks
 				? barracks
 				: fortificationStructure;
-		const cost = STRUCTURE_DEFINITIONS[target.type].cost + target.stacks;
+		const cost = STRUCTURE_DEFINITIONS[target.type].cost + target.stacks * UPGRADE_LEVEL_COST_STEP;
 		if (this.botGold[goldIndex] < cost) return false;
 		this.botGold[goldIndex] -= cost;
 		this.structures.reinforce(target);
@@ -2333,8 +2336,9 @@ export class TerritorySimulation {
 			return Math.min(STRUCTURE_DEFINITIONS['barracks'].cost, BOT_DEFENSE_RESERVE_MAX);
 		}
 		const upgradeCost = Math.min(
-			STRUCTURE_DEFINITIONS['fortification'].cost + fortificationStructure.stacks,
-			STRUCTURE_DEFINITIONS['barracks'].cost + barracks.stacks
+			STRUCTURE_DEFINITIONS['fortification'].cost +
+				fortificationStructure.stacks * UPGRADE_LEVEL_COST_STEP,
+			STRUCTURE_DEFINITIONS['barracks'].cost + barracks.stacks * UPGRADE_LEVEL_COST_STEP
 		);
 		return Math.min(upgradeCost, BOT_DEFENSE_RESERVE_MAX);
 	}

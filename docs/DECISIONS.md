@@ -1257,3 +1257,35 @@ Upgrading a district required one click per level, and the player had no advance
 - **Queue five separate calls from the UI:** could queue partial levels when supply runs out.
 - **Show a fixed base cost:** wrong once level scaling and queued upgrades are included.
 - **Tooltip only on click:** the request asks for a cursor tooltip before committing.
+
+---
+
+## ADR-039 — ×20 card economy, +5 upgrade steps, +1 Fortifications
+
+**Status:** accepted and implemented in 0.36.0  
+**Date:** 2026-11-20
+
+### Context
+
+The card economy had drifted down to single-digit costs while artillery carried a special 300 price. Upgrades increased by 1 per level, flattening the late-game curve, and Fortification stacks at +5 defense each made small defensive investments extremely efficient.
+
+### Decision
+
+- Multiply all non-Artillery card base costs by 20:
+  - Fortification 40, Command Post 80, War Academy 120, Jammer 160, Barracks 240.
+- Artillery costs **1000** to build and **300 per level** to fire.
+- Upgrade cost is now `base cost + 5 × projected current level` instead of `base cost + current level`. Shift-click five-level quotes use the same stepped formula.
+- **Fortification** adds **+1 defense per stack** to friendly pixels in its district instead of +5.
+- App 0.36.0; protocol remains 36 because no payload shape changed.
+
+### Consequences
+
+- Early expansion is much slower and the supply cap and War Academy economy matter more.
+- Leveling is a steeper investment; repeated upgrades become expensive quickly.
+- Fortification stacking is still useful but no longer dominates pixel defense.
+- Artillery remains a late-game structure requiring a raised cap.
+
+### Alternatives considered
+
+- **Keep Artillery at 300 while scaling other cards:** it would be comparatively cheap after the ×20 pass, so the explicit 1000/300 override was kept.
+- **+2 or +3 Fortification defense:** +1 matches the request and keeps pixel defense primary.
