@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.33.0 / protocol 35.  
+**Status:** IMPLEMENTED in application 0.34.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -255,7 +255,7 @@ Supply costs and the permanent six-card hand:
 
 | Card          | Cost | Implemented effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------------------ |
-| Artillery     | 30   | Active: 12 supply/shell, 140 px range, 6 s cooldown, 12 px blast.        |
+| Artillery     | 300  | Active: 150 supply/level, ±36 px spread, 64 px district, State-immune.   |
 | Barracks      | 12   | +1 effective level; +450 strength/+15 cost per level, log2 power/pierce. |
 | Fortification | 2    | +5 defense per stack across its district.                                |
 | Jammer        | 8    | Global −1 effective enemy Barracks level per stack; no pixel defense.    |

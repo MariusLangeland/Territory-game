@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.33.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.34.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.33.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.34.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -229,7 +229,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - Fortification: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
 - Barracks: `barracks-power`, +1 effective attack level per stack; cost/strength linear, power/pierce log2.
 - Jammer: `barracks-suppression`, −1 effective enemy Barracks level per stack, global and no pixel defense.
-- Artillery: `artillery`, cost 30, active 140 px range, 6-second cooldown, one shell per level at 12 supply/shell; shells remove one level from the nearest hostile structure in a 12 px blast.
+- Artillery: `artillery`, cost 300, 64 px district, 16 px district-free build clearance, 140 px range, 6-second cooldown, one shell per level at 150 supply/level with ±36 px spread; shells remove one level from the nearest non-State hostile structure in a 12 px blast.
 - Command Post: `supply-income`, +2 supply per second.
 - War Academy: `supply-cap`, +40.
 
@@ -257,7 +257,7 @@ type GameCommand =
 	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation reserves supply for already-queued fronts. Applying an attack spends launch supply and creates strength; builds validate supply, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. A build that lands in a matching district pays `base cost + current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
+`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation reserves supply for already-queued fronts. Applying an attack spends launch supply and creates strength; builds validate supply, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, stack eligibility, and Artillery's 16 px district-free clearance again. A build that lands in a matching district pays `base cost + current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
 
 ### 3.7 Snapshots
 

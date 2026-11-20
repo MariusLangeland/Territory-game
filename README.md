@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.33.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.34.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
@@ -105,7 +105,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 9. **Least resistance:** each capture samples 10 high-priority frontier cells and takes the cheapest local defense.
 10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
 11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent logTier` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
-12. **Artillery:** costs 30 supply to build. `A` or FIRE, then click an aim point. Every ready battery in 140 px fires one shell per level at 12 supply per shell; after 2 s each shell removes one level from a hostile structure within 12 px. Batteries reload for 6 s.
+12. **Artillery:** costs 300 supply, needs 16 px of district-free ground, and covers a 64 px district. `A` or FIRE, then click a raw aim point (no snapping). Every ready battery in 140 px fires one shell per level at 150 supply per level; after 2 s each shell lands with ±36 px spread and removes one level from a non-State structure within 12 px. Batteries reload for 6 s; States are immune.
 13. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
 14. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
 15. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
@@ -154,11 +154,11 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **90 supply** and **all six build cards** permanently available. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
+The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
 
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |
-| Artillery     | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range     |
+| Artillery     | 300  | Active: inaccurate, 150 supply/level, 64 px district         |
 | Barracks      | 12   | +1 effective attack level; +15 cost, +450 strength per level |
 | Fortification | 2    | +5 defense to every friendly pixel in its district; stacks   |
 | Jammer        | 8    | Global −1 enemy effective Barracks level per stack           |
@@ -184,7 +184,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 
 | Structure     | District range | Stack effect    |
 | ------------- | -------------: | --------------- |
-| Artillery     |             32 | active siege    |
+| Artillery     |             64 | active siege    |
 | Barracks      |             44 | +1 attack level |
 | Fortification |             40 | +5 defense      |
 | Jammer        |             32 | −1 enemy level  |
@@ -199,7 +199,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Supply, cap, active fronts, cancellation, and hovered defense share a compact panel beside the hand.
 
-The HUD shows **supply / cap** in compact three-digit form, active fronts, and an artillery `FIRE` control. Supply accrues from territory and structures; Command Posts add +2/s, War Academies +40 cap with no maximum. Barracks levels add +15 launch cost and +450 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires one shell per level at structures within 140 px.
+The HUD shows **supply / cap** in compact three-digit form, active fronts, and an artillery `FIRE` control. Supply accrues from territory and structures; Command Posts add +2/s, War Academies +40 cap with no maximum. Barracks levels add +15 launch cost and +450 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires inaccurate 150-supply shells and cannot destroy a State.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 

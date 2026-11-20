@@ -1191,3 +1191,38 @@ Supply had a hard 600 maximum, Barracks scaling stopped at +5 steps, and Defense
 - **Linear speed/pierce:** would make high Barracks overwhelming.
 - **Flat Jammer effect not per stack:** would not support infinite scaling.
 - **Keep cap at a larger fixed number:** still a ceiling; violates uncapped requirement.
+
+---
+
+## ADR-037 — Artillery siege rework
+
+**Status:** accepted and implemented in 0.34.0  
+**Date:** 2026-11-20
+
+### Context
+
+Artillery was still too cheap and too precise after the previous cost pass. A level-1 battery at 30 build/12 per shell could reliably delete structures, including State capitals, making it a dominant precision tool. The requested direction is a late-game, expensive, inaccurate siege weapon that cannot decapitate a State.
+
+### Decision
+
+- Build cost **300**; shot cost **150 supply per level**.
+- Increase shell spread from ±7 px to **±36 px** and remove target snapping (radius 0). The clicked aim point is used raw.
+- State structures are **immune** to artillery impact; other structures still lose one level per hit.
+- Artillery district range increases from 32 px to **64 px**.
+- Artillery cannot be built unless no district cell exists within **16 px** of its centre.
+- Sort the permanent hand ascending by card cost: Fortification, Command Post, War Academy, Jammer, Barracks, Artillery.
+- Protocol 36 / app 0.34.0.
+
+### Consequences
+
+- Artillery is a late-game saturation weapon and generally requires a raised supply cap.
+- High-level batteries are expensive to fire and scatter many shells; overshooting can waste most of a volley.
+- State capitals can only be removed by direct capture, not bombardment.
+- Placement requires deliberate empty space away from existing districts.
+- The hand order now communicates cost progression directly.
+
+### Alternatives considered
+
+- **Keep ±7 accuracy with high damage:** too reliable for the cost.
+- **Allow State damage but not destruction:** a State has one level, so effectively immunity is the same rule.
+- **Require 16 px only from the caster's own districts:** global clearance makes artillery placement a map-space decision and avoids enemy-district ambiguity.

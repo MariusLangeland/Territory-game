@@ -30,7 +30,7 @@ This directory is the long-term reference for the project. Start with the specif
 | Surface                | Version     | Defined in                                               |
 | ---------------------- | ----------- | -------------------------------------------------------- |
 | Map + start generation | `4`         | `MAP_VERSION` in `src/lib/game/constants.ts`             |
-| Wire protocol draft    | `35`        | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application            | `0.33.0`    | `package.json`                                           |
+| Wire protocol draft    | `36`        | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
+| Application            | `0.34.0`    | `package.json`                                           |
 | Simulation tick rate   | 10 Hz       | `TICK_RATE` in `src/lib/game/constants.ts`               |
 | Combat model           | Frontage v1 | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                     |

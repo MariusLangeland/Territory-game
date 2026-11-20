@@ -280,6 +280,7 @@ export type BuildFailure =
 	| 'occupied'
 	| 'too-close'
 	| 'inside-district'
+	| 'district-clearance'
 	| 'no-district'
 	| 'invalid';
 
@@ -2516,17 +2517,15 @@ export class TerritorySimulation {
 				}
 				if (nearest > ARTILLERY_RANGE * ARTILLERY_RANGE) continue;
 				const priority =
-					structure.type === 'state'
-						? 100
-						: structure.type === 'war-academy'
-							? 70
-							: structure.type === 'artillery'
-								? 60
-								: structure.type === 'barracks'
-									? 50
-									: structure.type === 'command-post'
-										? 40
-										: 30;
+					structure.type === 'war-academy'
+						? 70
+						: structure.type === 'artillery'
+							? 60
+							: structure.type === 'barracks'
+								? 50
+								: structure.type === 'command-post'
+									? 40
+									: 30;
 				const score = structure.stacks * 1000 + priority * 5 - nearest;
 				if (score > bestScore || (score === bestScore && structure.id < (best?.id ?? 0))) {
 					best = structure;

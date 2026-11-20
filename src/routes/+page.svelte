@@ -7,7 +7,7 @@
 	import { formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
-		ARTILLERY_SUPPLY_COST_PER_SHELL,
+		ARTILLERY_SUPPLY_COST_PER_LEVEL,
 		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
 		MAP_HEIGHT,
@@ -145,7 +145,7 @@
 	let readyArtilleryShells = $derived(
 		readyArtillery.reduce((total, structure) => total + structure.stacks, 0)
 	);
-	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_SHELL);
+	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_LEVEL);
 	let artilleryTargeting = $state(false);
 	let human = $derived.by(() => {
 		if (!snapshot) return null;
@@ -1357,7 +1357,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.33.0 / PROTOCOL 35</span>
+				<span>BUILD 0.34.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1533,9 +1533,10 @@
 							When mutual fronts touch, both sides lose strength simultaneously; a front at zero
 							dies and the survivor holds the contact line. Use CANCEL LAST or press X to refund the
 							remaining strength share. Each State structure anchors its mainland and adds 20
-							defense. Artillery costs 30 supply to build and fires on command: <kbd>A</kbd> or FIRE,
-							then click an aim point in range. Each level fires one shell at 12 supply per shell; shells
-							that hit a structure remove one level.
+							defense. Artillery costs 300 supply, needs 16 px of district-free ground, and covers a
+							64 px district. <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
+							one inaccurate shell at 150 supply per level; shells damage structures but cannot destroy
+							a State.
 						</p>
 					</section>
 					<section>
