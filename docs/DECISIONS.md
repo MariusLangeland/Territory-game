@@ -1226,3 +1226,34 @@ Artillery was still too cheap and too precise after the previous cost pass. A le
 - **Keep ±7 accuracy with high damage:** too reliable for the cost.
 - **Allow State damage but not destruction:** a State has one level, so effectively immunity is the same rule.
 - **Require 16 px only from the caster's own districts:** global clearance makes artillery placement a map-space decision and avoids enemy-district ambiguity.
+
+---
+
+## ADR-038 — Five-level batch upgrades and cursor cost tooltip
+
+**Status:** accepted and implemented in 0.35.0  
+**Date:** 2026-11-20
+
+### Context
+
+Upgrading a district required one click per level, and the player had no advance view of the total supply cost. Artifact costs now scale to 300+ and multi-level upgrades can be expensive, so batch upgrading and a pre-click quote matter.
+
+### Decision
+
+- `getUpgradeQuote(player, x, y, levels)` returns the atomic total for 1-5 levels, including queued upgrades and their projected levels.
+- Shift-click calls `upgradeDistrict(..., 5)`. The full total is validated before any command is queued; if unaffordable, nothing is queued.
+- The HUD tracks pointer screen position and Shift state, and shows a pointer-anchored tooltip above the cursor with the quoted total (`+1 LV` normally, `+5 LV` while Shift is held), current level, and final level. Insufficient supply is highlighted.
+- Keyboard Shift+Enter follows the same modifier state.
+- App 0.35.0; protocol unchanged at 36.
+
+### Consequences
+
+- Players can plan large upgrades without five separate clicks.
+- No partial five-level batches are queued.
+- The tooltip reuses the same quote used by queueing, so displayed and charged totals cannot drift.
+
+### Alternatives considered
+
+- **Queue five separate calls from the UI:** could queue partial levels when supply runs out.
+- **Show a fixed base cost:** wrong once level scaling and queued upgrades are included.
+- **Tooltip only on click:** the request asks for a cursor tooltip before committing.

@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.34.0 (Frontage v1 + siege rework)  
+**Version:** 0.35.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.34.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.35.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -352,7 +352,8 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Command Post stacks add **+2/s**.
 - Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + current level` (projected through queued upgrades). No card is consumed.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + current level` (projected through queued upgrades). Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for 1 level, or 5 levels while Shift is held.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + current level`; dropping the same type outside all districts creates another structure at its base cost.
@@ -439,7 +440,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Status console: hover coordinate/ownership and human active orders.
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Pointer drag pans and the wheel zooms. Touch supports one-finger pan/tap and two-finger pinch zoom anchored at the gesture midpoint; a pinch suppresses the follow-up tap.
-- Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates, Enter attacks or upgrades the cursor cell, and Escape clears it. A visually hidden live region announces owner, defense, and available action.
+- Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates and makes Enter queue a five-level upgrade, Enter attacks or upgrades the cursor cell, and Escape clears it. A visually hidden live region announces owner, defense, and available action.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center; supply, cap, fronts, and defense share a compact readout with a CANCEL LAST control.
@@ -637,7 +638,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts accrue orders continuously, and War Academies raise the cap.
-- [x] Clicking an owned district upgrades its structure without consuming a card.
+- [x] Clicking an owned district upgrades its structure without consuming a card; Shift-click queues five levels and the cursor tooltip shows the total cost.
 - [x] HUD and leaderboard scale to 51 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 51-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

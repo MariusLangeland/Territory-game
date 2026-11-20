@@ -119,7 +119,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 17. Build a card, confirm it stays in the hand, and buy it again after supply recovers; confirm there is no Refresh control.
 18. Confirm the compact SUPPLY/CAP/FRONTS readout drops supply per launch, accepts up to three immediate human fronts, shows CANCEL LAST, and refunds a proportional strength share on cancel.
 19. Build a Command Post and observe supply income rise by 2/s; build a War Academy and confirm supply cap rises by 40. Build Artillery only after creating 16 px of district clearance; confirm FIRE / `A` shows range rings, shells scatter widely, and a State structure is never destroyed by a hit.
-20. Click anywhere inside one of your buildable districts and confirm its structure gains a level without consuming a card.
+20. Click anywhere inside one of your buildable districts and confirm its structure gains a level without consuming a card. Hover it and confirm the cursor tooltip shows the total cost; hold Shift and confirm the tooltip shows the five-level total, then Shift-click and confirm exactly five levels are queued.
 21. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, districts recompute, and a war-feed event appears.
 22. Run ORGANIC for several seconds; confirm mutual fronts trade strength instead of interpenetrating, no isolated owner specks remain, and repeated clicks create separate attacks rather than upgrading one.
 23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.

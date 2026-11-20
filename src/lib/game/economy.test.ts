@@ -159,6 +159,43 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBeGreaterThanOrEqual(198);
 	});
 
+	it('quotes and queues five-level upgrades atomically', () => {
+		const sim = new TerritorySimulation({ seed: 246815 });
+		const { index } = buildCard(sim, 'barracks');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.barracks);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		sim.gold = 100;
+		const quote = sim.getUpgradeQuote(
+			HUMAN_PLAYER_ID,
+			target % sim.width,
+			Math.floor(target / sim.width),
+			5
+		);
+		expect(quote.ok).toBe(true);
+		expect(quote.cost).toBe(75);
+		expect(
+			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
+		).toBe(true);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(6);
+		expect(sim.gold).toBe(25);
+	});
+
+	it('rejects a five-level upgrade without queuing partial levels', () => {
+		const sim = new TerritorySimulation({ seed: 246816 });
+		const { index } = buildCard(sim, 'barracks');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.barracks);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		sim.gold = 50;
+		expect(
+			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
+		).toBe(false);
+		sim.step();
+		expect(sim.structures.at(index)?.stacks).toBe(1);
+	});
+
 	it('reserves the projected cost of multiple queued upgrades', () => {
 		const sim = new TerritorySimulation({ seed: 246814 });
 		const { index } = buildCard(sim, 'artillery');

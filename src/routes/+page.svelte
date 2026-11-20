@@ -66,6 +66,8 @@
 	let defeatOpen = $state(false);
 	let defeatHandled = $state(false);
 	let hover = $state<HoverState | null>(null);
+	let pointerScreen = $state<{ x: number; y: number } | null>(null);
+	let shiftHeld = $state(false);
 	let cameraView = $state<CameraView | null>(null);
 	let perf = $state<RendererFrameStats>({
 		fps: 0,
@@ -147,6 +149,39 @@
 	);
 	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_LEVEL);
 	let artilleryTargeting = $state(false);
+	let upgradeTooltip = $derived.by(() => {
+		if (
+			!sim ||
+			!snapshot ||
+			!hover?.land ||
+			!pointerScreen ||
+			!gameStarted ||
+			showIntro ||
+			showHelp ||
+			defeatOpen ||
+			snapshot.ended ||
+			draggingCardId !== null ||
+			artilleryTargeting
+		) {
+			return null;
+		}
+		const x = hover.x;
+		const y = hover.y;
+		if (sim.getOwner(x, y) !== HUMAN_PLAYER_ID) return null;
+		if (sim.getDistrictStructureId(x, y) === 0) return null;
+		const levels = shiftHeld ? 5 : 1;
+		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels);
+		if (quote.currentLevel === 0) return null;
+		return {
+			x: pointerScreen.x,
+			y: pointerScreen.y,
+			levels: quote.levels,
+			cost: quote.cost,
+			currentLevel: quote.currentLevel,
+			projectedLevel: quote.projectedLevel,
+			ok: quote.ok
+		};
+	});
 	let human = $derived.by(() => {
 		if (!snapshot) return null;
 		const humanId = snapshot.humanId;
@@ -465,7 +500,7 @@
 			sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID &&
 			sim.getDistrictStructureId(Math.floor(x), Math.floor(y)) !== 0
 		) {
-			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y);
+			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y, shiftHeld ? 5 : 1);
 			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
 			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
 			return;
@@ -656,6 +691,8 @@
 	}
 
 	function handleWindowPointerMove(event: PointerEvent): void {
+		pointerScreen = { x: event.clientX, y: event.clientY };
+		shiftHeld = event.shiftKey;
 		if (!gameStarted || showIntro) return;
 		if (draggingCardId !== null) {
 			handRaised = true;
@@ -734,7 +771,12 @@
 		handleAttack(cursor.x, cursor.y);
 	}
 
+	function handleKeyup(event: KeyboardEvent): void {
+		if (event.key === 'Shift') shiftHeld = false;
+	}
+
 	function handleKeydown(event: KeyboardEvent): void {
+		shiftHeld = event.shiftKey;
 		const target = event.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
@@ -816,6 +858,7 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
+		window.addEventListener('keyup', handleKeyup);
 		window.addEventListener('pointermove', handleWindowPointerMove);
 		try {
 			onboardingDone = window.localStorage.getItem(ONBOARDING_KEY) === 'done';
@@ -826,6 +869,7 @@
 
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('pointermove', handleWindowPointerMove);
 			clearTimeout(worldTimer);
 			clearTimeout(toastTimer);
@@ -839,6 +883,22 @@
 </svelte:head>
 
 <main class="game-shell" ondragover={handleDragOver} ondrop={handleCardDrop}>
+	{#if upgradeTooltip}
+		<div
+			class="upgrade-tooltip"
+			class:insufficient={!upgradeTooltip.ok}
+			style={`left:${upgradeTooltip.x}px;top:${upgradeTooltip.y}px`}
+			aria-hidden="true"
+		>
+			<span>UPGRADE +{upgradeTooltip.levels} LV</span>
+			<strong>{formatSupply(upgradeTooltip.cost)}<small>S TOTAL</small></strong>
+			<i>
+				LV.{upgradeTooltip.currentLevel} → LV.{upgradeTooltip.projectedLevel +
+					upgradeTooltip.levels}
+			</i>
+			{#if !upgradeTooltip.ok}<em>INSUFFICIENT SUPPLY</em>{/if}
+		</div>
+	{/if}
 	{#if sim}
 		{#key sim}
 			<GameCanvas
@@ -1357,7 +1417,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.34.0 / PROTOCOL 36</span>
+				<span>BUILD 0.35.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1518,8 +1578,9 @@
 							structure. Fortifications add district defense. Jammers project a global aura that
 							subtracts one effective Barracks level from every enemy attacking you, without raising
 							pixel defense. Cards are permanent. Click a district, or drop its matching card inside
-							it, to upgrade; cost is the card price plus current level. Each capture spends both
-							per-tick power and durable strength. Hold 70% of the land to win immediately.
+							it, to upgrade; cost is the card price plus current level. Shift-click queues five
+							upgrades atomically, and the cursor tooltip shows the total cost. Each capture spends
+							both per-tick power and durable strength. Hold 70% of the land to win immediately.
 						</p>
 					</section>
 					<section>
@@ -3491,6 +3552,62 @@
 
 	.manual-footer span:last-child {
 		margin-left: auto;
+	}
+
+	.upgrade-tooltip {
+		position: fixed;
+		z-index: 130;
+		transform: translate(-50%, calc(-100% - 14px));
+		display: grid;
+		gap: 2px;
+		min-width: 132px;
+		padding: 7px 10px 8px;
+		border: 1px solid rgba(255, 214, 144, 0.4);
+		background: rgba(5, 14, 18, 0.94);
+		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+		font-family: var(--font-mono);
+		font-size: 6.5px;
+		letter-spacing: 0.08em;
+		color: var(--ink-faint);
+		pointer-events: none;
+		backdrop-filter: blur(12px);
+	}
+
+	.upgrade-tooltip span {
+		color: var(--ink-dim);
+	}
+
+	.upgrade-tooltip strong {
+		font-family: var(--font-display);
+		font-size: 18px;
+		line-height: 1;
+		letter-spacing: 0.02em;
+		color: #ffd690;
+	}
+
+	.upgrade-tooltip strong small {
+		margin-left: 3px;
+		font-family: var(--font-mono);
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--ink-faint);
+	}
+
+	.upgrade-tooltip i {
+		font-style: normal;
+		font-size: 6px;
+		color: var(--ink-dim);
+	}
+
+	.upgrade-tooltip em {
+		font-style: normal;
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--danger);
+	}
+
+	.upgrade-tooltip.insufficient {
+		border-color: rgba(255, 120, 103, 0.5);
 	}
 
 	.toast {

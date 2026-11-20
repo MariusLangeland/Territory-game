@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.34.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.35.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
@@ -77,6 +77,7 @@ pnpm format     # Prettier write
 | --------------------------- | ------------------------------------------------------ |
 | Click / tap a shared border | Buy a durable front with supply                        |
 | Click / tap your district   | Upgrade that district's structure with supply          |
+| Shift + click your district | Queue 5 upgrades at once                               |
 | Drag                        | Pan the map                                            |
 | Scroll                      | Zoom at the pointer                                    |
 | Two-finger pinch            | Zoom on touch                                          |
@@ -154,7 +155,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
+The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |

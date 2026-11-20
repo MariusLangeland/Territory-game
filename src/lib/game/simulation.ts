@@ -290,6 +290,13 @@ export interface BuildOrderResult {
 	message: string;
 }
 
+export interface UpgradeQuote extends BuildOrderResult {
+	levels: number;
+	cost: number;
+	currentLevel: number;
+	projectedLevel: number;
+}
+
 export interface StepResult {
 	tick: number;
 	/** Packed as `(owner << 21) | pixelIndex`. Consumed before the next step. */
@@ -1048,50 +1055,72 @@ export class TerritorySimulation {
 	 * Queue a one-level upgrade for the structure whose district owns this
 	 * pixel. Clicking a district is enough; no card is consumed.
 	 */
-	upgradeDistrict(playerId: number, x: number, y: number): BuildOrderResult {
-		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
+	/** Quote the total cost of upgrading an owned district by 1-5 levels. */
+	getUpgradeQuote(playerId: number, x: number, y: number, levels = 1): UpgradeQuote {
+		const count = Math.max(1, Math.min(5, Math.floor(levels)));
+		const fail = (reason: BuildFailure, message: string): UpgradeQuote => ({
+			ok: false,
+			reason,
+			message,
+			levels: count,
+			cost: 0,
+			currentLevel: 0,
+			projectedLevel: 0
+		});
+		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
-		if (!player?.alive) {
-			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
-		}
+		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
 		if (playerId !== HUMAN_PLAYER_ID) {
-			return {
-				ok: false,
-				reason: 'invalid',
-				message: 'Only the human commander upgrades districts.'
-			};
+			return fail('invalid', 'Only the human commander upgrades districts.');
 		}
 		const target = this.resolveUpgradeTarget(playerId, x, y);
-		if (!target) {
-			return {
-				ok: false,
-				reason: 'no-district',
-				message: 'Click one of your structure districts to upgrade it.'
-			};
-		}
+		if (!target) return fail('no-district', 'Click one of your structure districts to upgrade it.');
+
 		const projectedLevel = target.structure.stacks + this.pendingUpgradesFor(target.structure.id);
-		const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost + projectedLevel;
+		const baseCost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		let cost = 0;
+		for (let level = 0; level < count; level++) cost += baseCost + projectedLevel + level;
 		if (this.supplyOf(playerId) - this.pendingUpgradeCost(playerId) < cost) {
 			return {
-				ok: false,
-				reason: 'no-gold',
-				message: `Need ${cost} supply to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${projectedLevel + 1}.`
+				...fail(
+					'no-gold',
+					`Need ${cost} supply to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} by ${count} level${count === 1 ? '' : 's'}.`
+				),
+				cost,
+				currentLevel: target.structure.stacks,
+				projectedLevel
 			};
 		}
-		this.pendingCommands.push({
-			type: 'upgrade',
-			playerId,
-			x: Math.floor(x),
-			y: Math.floor(y),
-			cost,
-			sequence: this.nextCommandSequence++
-		});
 		return {
 			ok: true,
-			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${
-				projectedLevel + 1
-			} for ${cost} supply.`
+			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} by ${count} level${
+				count === 1 ? '' : 's'
+			} for ${cost} supply.`,
+			levels: count,
+			cost,
+			currentLevel: target.structure.stacks,
+			projectedLevel
 		};
+	}
+
+	/** Queue one or more district upgrades; Shift-click queues five at once. */
+	upgradeDistrict(playerId: number, x: number, y: number, levels = 1): BuildOrderResult {
+		const quote = this.getUpgradeQuote(playerId, x, y, levels);
+		if (!quote.ok) return quote;
+		const target = this.resolveUpgradeTarget(playerId, x, y);
+		if (!target) return quote;
+		const baseCost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		for (let level = 0; level < quote.levels; level++) {
+			this.pendingCommands.push({
+				type: 'upgrade',
+				playerId,
+				x: Math.floor(x),
+				y: Math.floor(y),
+				cost: baseCost + quote.projectedLevel + level,
+				sequence: this.nextCommandSequence++
+			});
+		}
+		return quote;
 	}
 
 	private resolveUpgradeTarget(
