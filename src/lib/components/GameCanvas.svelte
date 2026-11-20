@@ -56,6 +56,12 @@
 	let pointerStartY = 0;
 	let pointerLastX = 0;
 	let pointerLastY = 0;
+	const activePointers = new Map<number, { x: number; y: number }>();
+	let pinchActive = false;
+	let pinchDistance = 0;
+	let pinchCentreX = 0;
+	let pinchCentreY = 0;
+	let suppressNextTap = false;
 
 	onMount(() => {
 		let disposed = false;
@@ -297,7 +303,8 @@
 						result.changes,
 						result.changeCount,
 						result.changesOverflow,
-						result.districtsChanged
+						result.districtsChanged,
+						result.districtTiles
 					);
 					latestSnapshot = result.snapshot;
 					pendingEvents.push(...result.events);
@@ -414,20 +421,69 @@
 			}
 		}
 
+		function pinchGeometry(): { distance: number; x: number; y: number } | null {
+			const points = [...activePointers.values()];
+			if (points.length < 2) return null;
+			const [a, b] = points;
+			const dx = b.x - a.x;
+			const dy = b.y - a.y;
+			return {
+				distance: Math.hypot(dx, dy),
+				x: (a.x + b.x) / 2,
+				y: (a.y + b.y) / 2
+			};
+		}
+
 		function handlePointerDown(event: PointerEvent): void {
-			if (event.button !== 0 || !renderer) return;
+			if ((event.pointerType === 'mouse' && event.button !== 0) || !renderer) return;
+			activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			canvas.setPointerCapture(event.pointerId);
+
+			if (activePointers.size === 2) {
+				const geometry = pinchGeometry();
+				if (geometry) {
+					pinchActive = true;
+					suppressNextTap = true;
+					pointerActive = false;
+					dragging = false;
+					pinchDistance = geometry.distance;
+					pinchCentreX = geometry.x;
+					pinchCentreY = geometry.y;
+				}
+				return;
+			}
+			if (activePointers.size > 2) return;
+
 			pointerActive = true;
 			dragging = false;
 			pointerStartX = event.clientX;
 			pointerStartY = event.clientY;
 			pointerLastX = event.clientX;
 			pointerLastY = event.clientY;
-			canvas.setPointerCapture(event.pointerId);
 			localHover(event.clientX, event.clientY);
 		}
 
 		function handlePointerMove(event: PointerEvent): void {
 			if (!renderer) return;
+			if (activePointers.has(event.pointerId)) {
+				activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			}
+
+			if (pinchActive) {
+				const geometry = pinchGeometry();
+				if (geometry && pinchDistance > 0) {
+					const rect = canvas.getBoundingClientRect();
+					const ratio = Math.max(0.5, Math.min(2, geometry.distance / pinchDistance));
+					renderer.camera.zoomAt(geometry.x - rect.left, geometry.y - rect.top, ratio);
+					renderer.camera.panBy(geometry.x - pinchCentreX, geometry.y - pinchCentreY);
+					pinchDistance = geometry.distance;
+					pinchCentreX = geometry.x;
+					pinchCentreY = geometry.y;
+					cameraBridge.report();
+				}
+				return;
+			}
+
 			localHover(event.clientX, event.clientY);
 			if (!pointerActive) return;
 
@@ -447,7 +503,21 @@
 
 		function handlePointerUp(event: PointerEvent): void {
 			if (!renderer) return;
-			if (pointerActive && !dragging) {
+			const wasPinching = pinchActive;
+			activePointers.delete(event.pointerId);
+
+			if (wasPinching) {
+				pinchActive = false;
+				pointerActive = false;
+				dragging = false;
+				const remaining = pinchGeometry();
+				if (remaining) {
+					pinchDistance = remaining.distance;
+					pinchCentreX = remaining.x;
+					pinchCentreY = remaining.y;
+					pinchActive = true;
+				}
+			} else if (pointerActive && !dragging && !suppressNextTap) {
 				const rect = canvas.getBoundingClientRect();
 				const point = renderer.camera.screenToMap(
 					event.clientX - rect.left,
@@ -455,6 +525,8 @@
 				);
 				onAttack?.(Math.floor(point.x), Math.floor(point.y));
 			}
+
+			if (activePointers.size === 0) suppressNextTap = false;
 			pointerActive = false;
 			dragging = false;
 			if (canvas.hasPointerCapture(event.pointerId)) {

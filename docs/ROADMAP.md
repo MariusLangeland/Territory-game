@@ -36,19 +36,21 @@ Acceptance criteria met:
 
 ## Phase 0.5 — Attack stress experiment (current)
 
-**Outcome:** Prove the attack pipeline stays deterministic and interactive with no economy and 51 attacking states, then decide what the real attack model should be.
+**Outcome:** Prove the attack pipeline stays deterministic and interactive with 51 states, light economies, and no troop/production caps, then decide what the real attack model should be.
 
-Status: implemented; final attack design still open. See [EXPERIMENTS.md](EXPERIMENTS.md).
+Status: complete. Frontage v1 is implemented in 0.30.0; EXP-001 is retired. See [COMBAT_DESIGN.md](COMBAT_DESIGN.md).
 
 Work completed:
 
-- Removed troops, income, caps, launch costs, and capture costs.
+- Replaced troops/production caps with one supply economy, build cards, durable fronts, and defense-derived capture costs.
 - Added 50 AI states (51 total).
 - Implemented spaced start placement for every state, with fallback.
 - Replaced per-attack Sets/arrays with packed `Uint32Array` queues and ownership-based dedup.
 - Reduced dirty tiles to 32 × 32 for dispersed fronts.
 - Made the leaderboard virtualized and scrollable for 51 logical states.
 - Added attack stress tests, an all-bot benchmark, and honest experiment documentation.
+- Added deterministic headless match telemetry ([TELEMETRY.md](TELEMETRY.md)).
+- Added threat-aware bot defense, supply reserves, and structure rebuilding.
 
 Acceptance criteria:
 
@@ -57,10 +59,10 @@ Acceptance criteria:
 - [x] No ownership/border invariant failures under sustained load.
 - [x] Browser stays interactive under sustained attack load.
 - [x] No synchronous per-frame full-map upload; dense resyncs are chunked across frames.
-- [ ] Final attack semantics approved.
-- [ ] Stress-only UI/guards removed or promoted to real rules.
+- [x] Final attack semantics approved and implemented (Frontage v1).
+- [x] Stress-only order economy replaced by supply, durable strength, refunds, and 70% victory.
 
-**Exit condition:** a documented attack design replaces the free flood-fill experiment; economy work can resume against that design.
+**Exit condition met:** Frontage v1 replaces the free flood-fill experiment; economy work can continue against supply.
 
 ---
 
@@ -80,11 +82,11 @@ Acceptance criteria:
    - Victory/defeat transitions and final standings polish.
    - Bot aggression and pacing tuned to a 4–10 minute match after the economy returns.
 3. **Mobile parity**
-   - Pinch zoom.
-   - Safer tap targets and a compact HUD mode.
+   - Pinch zoom: implemented (two-finger, gesture-midpoint anchored, tap suppression).
+   - Compact mobile hand/minimap/tool layout: implemented; 320–430 px test pass still pending.
    - Test at 320–430 px widths and touch scroll behavior.
 4. **Accessibility**
-   - Keyboard map navigation or a keyboard-accessible attack alternative.
+   - Keyboard map navigation and attack alternative: implemented (arrow cursor, Enter, Shift, live status).
    - Screen-reader status for major events.
    - Color-blind palette check and non-color owner cues.
    - Reduced-motion mode tested.
@@ -104,6 +106,7 @@ Acceptance criteria:
 8. **Balance**
    - Measure average match length and human win rate.
    - Tune the final attack model, economy, and bot aggression from data. The current free-attack stress build is not a balance baseline.
+   - Headless harness: `pnpm telemetry` ([TELEMETRY.md](TELEMETRY.md)).
 
 ### Acceptance criteria
 

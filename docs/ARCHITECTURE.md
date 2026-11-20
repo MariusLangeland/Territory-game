@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.23.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.30.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.23.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.30.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -73,21 +73,21 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `shade: Uint8Array` — static terrain brightness for the renderer.
 - `elevation: Uint8Array` — six discrete terrain tiers; base defense = `1 + elevation`.
 - `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
-- `attacks: AttackState[]` — a per-attack growth layer frontier, anchor, embedded/current order counts, capture counts, and lifetime.
+- `attacks: AttackState[]` — per-front growth layer, anchor, durable strength, power, pierce, idle counter, bonus steps, and captures.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
-- `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks embedded-order strength.
+- `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks bonus steps.
 - `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts), only on cells owned by the structure owner and covered by that structure's district. State auras use their fixed radius. Rebuilt on structure changes; captured cells are locally recomputed.
 - `districtTypes: Uint8Array` — structure-type code of each cell's district, or 0.
 - `districtStructureIds: Uint32Array` — winning structure id for each district cell; needed now that an owner can have multiple same-type structures.
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
-- `defenseAt` = `1 + elevation + occupied + aura`. Attack capture cost is `max(1, defenseAt − (embeddedOrders − 1))`.
-- Human economy: `gold`, `goldAccrual`, and a permanent five-card `hand`. Income is `1 + mine stacks` per 100 ticks and is accrued every tick through an integer remainder.
-- Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap. `commandPostAccrual` drips order-gain effects over 600 ticks; `nextAttackOrderGrantTick` schedules the base grant.
+- `defenseAt` = `1 + elevation + occupied + aura`. Capture cost is `max(1, defenseAt − pierce)` paid from power and strength.
+- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `min(60, 3 + territory/10000 + supply-income effects)` per second; cap is `min(600, 120 + territory/1000 + 40 × Academy stacks)`. `supplyCap` is public.
+- No attack-order inventory exists. Front launch cost and durable strength derive from live Barracks bonus steps.
 - Permanent hand: all five buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
-- Bot economy: `botGold`, `botGoldAccrual`, and deterministic `botProfiles` (aggression, economy, fortification, command, focus type). Bots save and spend on their focus structure without cards.
-- Bot budgets and profiles affect checksums through their gold and the structures they create.
-- Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies income, aura defense, attack strength, order gain, and order cap. Stacking does not change its district.
+- Bot economy: `botGold`, `botGoldAccrual`, and deterministic `botProfiles` (aggression, economy, fortification, command, focus type). Bots save and spend supply on fronts and their focus structure without cards.
+- Bot budgets and profiles affect checksums through their supply and the structures they create.
+- Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies supply income, aura defense, Barracks bonus steps, and supply cap.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
 - Pending command queue and packed change buffer.
@@ -118,10 +118,10 @@ const index = packed & 0x1f_ffff;
 - `Uint32Array(16_384)` reused each tick.
 - `step()` resets `changeCount` and `changesOverflow`.
 - Every ownership transition writes one word.
-- The driver calls `renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow)` before the next tick.
-- If the buffer overflows, the renderer does a full control-texture rebuild. Game state is unaffected.
+- The driver calls `renderer.applyChanges(result.changes, result.changeCount, result.changesOverflow, result.districtsChanged, result.districtTiles)` before the next tick.
+- District changes rewrite only the packed alpha channel in the reported 32 × 32 tiles. A full control-texture rebuild happens only on overflow or an explicit resync. Game state is unaffected.
 
-Attack-order supply (3 human / 2 bots, plus Command Post grants) bounds active fronts. The 16,384-word change buffer remains comfortably above observed capture batches; defense spending reduces the actual capture count. Stress tests assert no overflow during sustained runs.
+Supply income and launch costs bound active fronts. The 16,384-word change buffer remains comfortably above observed capture batches; defense spending reduces the actual capture count. Stress tests assert no overflow during sustained runs.
 
 ### 3.4 Derived frontier sets
 
@@ -145,19 +145,18 @@ step()
  ├─ if ended: emit snapshot only
  ├─ tick += 1
  ├─ apply pending growth-mode switch
- ├─ grant +1 attack order to each living player every 100 ticks
- ├─ accrue Mine gold and Command Post orders every tick
+ ├─ accrue supply from territory/Mines/Command Posts every tick
  ├─ applyPendingCommands()
  │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds
  ├─ runBotEconomy() every 30 ticks (save, build/upgrade focus structure)
- ├─ runBotDecisions() every 10 ticks (requires an attack order)
+ ├─ runBotDecisions() every 10 ticks (requires launch supply)
  ├─ processAttacks()
- │    ├─ drop fronts after their embedded-order lifetime
+ │    ├─ drop fronts at zero strength or after 20 idle ticks
  │    ├─ for each attack id: sample up to 10 top growth-layer candidates
  │    ├─ validate target ownership + attacker border at capture time
- │    ├─ on opposing claim: spend defender orders, strip incoming embedded orders
+ │    ├─ on opposing claim: trade durable strength once per pair
  │    ├─ take the cheapest sampled defense and requeue the rest
- │    ├─ claim until the embedded-order budget, write provenance, push neighbours
+ │    ├─ claim until power/strength runs out, write provenance, push neighbours
  │    ├─ destroy any structure if its cell is captured and rebuild auras
  │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
@@ -175,26 +174,26 @@ No rendering, DOM, timers, or promises are present in this path.
 
 Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and a five-type `buildPlan`. No new RNG stream is introduced.
 
-- At every `BOT_BUILD_INTERVAL` (30 ticks), a living bot accrues gold (`1 + Mine levels` per 100 ticks) and tries the next unbuilt plan type on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If no new type is placeable/affordable, it upgrades the lowest-level existing plan structure at the usual level-scaled cost. Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
-- At every `BOT_DECISION_INTERVAL` (10 ticks), `runBotDecisions` computes target pressure (active attacks per defender) and player strength (`territory/4 + structure levels*300 + orders*150`). It samples border neighbours and uses `scoreBotTarget` to select a cell.
-- `scoreBotTarget` combines neutral-expansion score, aggression, stored grievances, opportunism × target pressure, and caution/conciliation penalties against stronger targets or targets holding attack orders. Vengeful bots retaliate, cautious bots avoid retaliation-capable targets, conciliatory bots avoid stronger neighbours, and opportunistic bots pile onto contested or weak targets.
+- At every `BOT_DECISION_INTERVAL` (10 ticks), `updateBotThreat` refreshes active-attacker pressure and a per-bot integer threat score: active fronts (25 each, cap 50), hostile border contact (1 each, cap 8), and recent grievance deltas (2 each, cap 20). Posture enters at 20 and leaves at 10, with a supply reserve up to 12 for the next missing/cheapest defensive structure and a 3-interval stall release.
+- Each bot evaluates construction once per `BOT_BUILD_INTERVAL` (30 ticks), staggered by player id (about two bots per tick). A threatened bot first tries a defensive build/upgrade (Defense Post, then Barracks, then the lower-level one, preferring a border cell touching an enemy). Otherwise it accrues supply from territory and structures and tries the next unbuilt plan type on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If no new type is placeable/affordable, it upgrades the lowest-level existing plan structure. Destroyed structures are rebuilt by the same passes. Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
+- `runBotDecisions` computes player strength (`territory/4 + structure levels*300 + supply*2`), samples border neighbours, and uses `scoreBotTarget`. Threat biases retaliation: a grudge holder gains a large bonus, an active attacker a counter bonus, and unrelated neighbours a penalty.
+- `scoreBotTarget` combines neutral-expansion score, aggression, stored grievances, opportunism × target pressure, and caution/conciliation penalties against stronger targets or targets holding launch supply. Vengeful bots retaliate, cautious bots avoid retaliation-capable targets, conciliatory bots avoid stronger neighbours, and opportunistic bots pile onto contested or weak targets.
 - Captures increment `botGrievance[defender * PLAYER_COUNT + attacker]`, capped at 65,535.
-- Profiles and build plans are hash-derived; bot gold, accrual, and grievance counts are checksummed.
+- Profiles and build plans are hash-derived; bot supply, accrual, grievance counts, threat, posture, reserve, stall counters, and grievance marks are checksummed.
 
 ### Conflicting fronts
 
 Each attack capture writes its id into `claimedBy[index]`. Before claiming a candidate, the attacking front checks the four neighbouring cells for a claim from an active mutual attack (`other.attackerId === attack.defenderId` and vice versa). On contact:
 
-- defender spend = `min(defender issued attack strength, defender attack-order inventory, incoming embedded orders)`;
-- defender inventory is reduced by that spend;
-- the incoming attack's `orders` is reduced by the same amount;
-- at 0, the incoming attack halts; otherwise the front pauses for the tick and keeps its frontier.
+- both fronts lose `100 + 50 × opponent bonus steps` strength simultaneously;
+- damage is applied once per pair per tick;
+- at 0 strength a front dies; otherwise it pauses on the contact line and keeps its frontier.
 
-This is a front-line attrition, not a global truce: attacks against other states and third-party attacks continue. Insufficient defender orders mean the incoming attack breaks through.
+This is front-line attrition, not a global truce: attacks against other states and third-party attacks continue.
 
-For each capture, the simulation pops up to `LEAST_RESISTANCE_SAMPLE_SIZE` (10) candidates from the attack's growth layer, validates them, and picks the one with the lowest effective defense cost. The unchosen candidates are pushed back, so geometry still bounds the choice, but a costly strongpoint does not consume the whole budget while a cheaper adjacent lane exists. If even the cheapest sampled candidate costs more than the remaining budget, all are requeued and the tick ends. The capture spends `1 + elevation`, plus one when the target is owned. Defense is derived from elevation and live ownership; it is not allocated per attack.
+For each capture, the simulation pops up to `LEAST_RESISTANCE_SAMPLE_SIZE` (10) candidates from the attack's growth layer, validates them, and picks the one with the lowest effective defense cost. The unchosen candidates are pushed back, so geometry still bounds the choice, but a costly strongpoint does not consume the whole budget while a cheaper adjacent lane exists. If even the cheapest sampled candidate costs more than remaining power or strength, all are requeued and the tick ends. The capture spends `max(1, defense − pierce)` from both pools. Defense is derived from elevation and live ownership; it is not allocated per attack.
 
-Attack frontier processing also enforces border connectivity at capture time: the candidate cell must share a land edge with the attacker. If opposing fronts sever that path, the candidate is skipped; a front with zero legal captures in a tick is removed rather than continuing into disconnected territory. All fronts also expire after `50 + 10 × (initial embedded orders − 1)` ticks, so no order can continue indefinitely even while connected. This is what prevents enclaves, phase-through attacks, and unbounded orders.
+Attack frontier processing also enforces border connectivity at capture time: the candidate cell must share a land edge with the attacker. If opposing fronts sever that path, the candidate is skipped. A front that captures nothing for 20 consecutive ticks dies; a clash resets the idle counter. This prevents enclaves, phase-through attacks, and indefinitely stalled fronts.
 
 ### Growth layers
 
@@ -223,10 +222,10 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
-- Barracks: `attack-order-bonus`, +1 embedded order per two levels (up to +5) in every attack.
-- Mine: `income`, +1 gold per 100 ticks, accrued continuously.
-- Command Post: `order-gain`, +1 attack order per 600 ticks, accrued continuously.
-- War Academy: `order-cap`, +1 attack-order cap.
+- Barracks: `attack-order-bonus`, +1 bonus step per two levels (up to +5) for every front.
+- Mine: `supply-income`, +1 supply per second.
+- Command Post: `supply-income`, +2 supply per second.
+- War Academy: `supply-cap`, +40.
 
 `simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner **or outside that structure's district** (State auras use their radius, with no district). `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `getAttackOrderStrength` sums live Barracks bonuses; attack creation embeds that many orders.
 
@@ -234,7 +233,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 `simulation.rebuildDistricts` clears the district arrays, then for each buildable structure scans its `districtRange` bounding box expanded by `DISTRICT_NOISE_MARGIN`. Every owned cell is assigned the nearest eligible structure of that owner; the comparison distance is `actual distance + integerNoiseOffset`, with ties breaking on structure type code then id. The offset comes from coherent 8 px value noise plus per-pixel jitter (`districtNoise`), so outer edges grow/shrink by roughly two pixels and split lines wiggle. The result is a constrained, non-overlapping Voronoi partition. `districtStructureIds` records the winning structure so same-type districts remain distinct; `districtColorCodes` gives each a render palette variant. `updateDistrictAt` handles an ordinary ownership change by reassigning just that cell.
 
-Placing a new type requires an unassigned owned cell outside all districts. If the target is inside a same-type district, that district's structure's `stacks` is incremented. If the same type lands outside all districts, a new structure and district are created. Different types inside any district are rejected. Full district recomputation runs on structure creation/destruction; stacking leaves the district map unchanged.
+Placing a new type requires an unassigned owned cell outside all districts. If the target is inside a same-type district, that district's structure's `stacks` is incremented. If the same type lands outside all districts, a new structure and district are created. Different types inside any district are rejected. Structure creation/destruction calls `refreshDistrictsAround`, which recomputes only the affected neighbourhood and records dirty renderer tiles; stacking leaves the district map unchanged.
 
 The scan is preallocated and runs at most once per second (or immediately after a clash halts a front, with a cooldown). Labeling is single-threaded and deterministic.
 
@@ -252,7 +251,7 @@ type GameCommand =
 	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation subtracts already-queued attack commands so the player cannot overcommit orders. Applying an attack spends one order; builds validate gold, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. A build that lands in a matching district pays `base cost + current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
+`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation reserves supply for already-queued fronts. Applying an attack spends launch supply and creates strength; builds validate supply, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, and stack eligibility again. A build that lands in a matching district pays `base cost + current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
 
 ### 3.7 Snapshots
 
@@ -261,8 +260,8 @@ type GameCommand =
 - tick, seed, land counts, claimed land;
 - public player records;
 - active attacks and live structures with effect descriptors;
-- human gold, income, permanent hand, available attack orders, and order cap;
-- active attacks with embedded/current orders and lifetime;
+- human supply, cap, income, and permanent hand;
+- active fronts with strength/initial strength, power, pierce, idle ticks, and bonus steps;
 - winner/ended/human id and growth mode.
 
 The UI never receives frontier sets, queue internals, or the PRNG.
@@ -274,8 +273,8 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
 - each player's alive flag and territory;
-- current/pending growth mode, annex scheduling, human and bot gold/accrual, attack orders and their timers, command-post accrual, districts, and structures;
-- every player's attack orders, order grant timer, command-post accrual, and live order-cap effects;
+- current/pending growth mode, annex scheduling, human and bot supply/accrual, districts, and structures;
+- human and bot supply plus accrual remainders;
 - every active attack's embedded/current orders, initial orders, and lifetime;
 - live structures and per-cell claim provenance;
 - active attack ids, attacker/defender, target/anchor, growth mode, creation tick, capture count;
@@ -310,7 +309,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~300 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~303 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
 
 ---
 
@@ -346,7 +345,7 @@ The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indic
 
 After a tick:
 
-1. For each changed pixel, update the control shadow and mark its 32 × 32 tile dirty using a generation-stamped `Uint32Array`.
+1. For each changed pixel, update the control shadow and mark its 32 × 32 tile dirty using a generation-stamped `Uint32Array`. District-only changes arrive as tile ids and rewrite the alpha channel for those tiles.
 2. Clear a small per-tile-row dirty flag array and count unique dirty tiles.
 3. If the dirty tile count is ≤ 96, merge contiguous dirty tiles per row and upload strips immediately.
 4. If > 96 tiles are dirty, queue an adaptive full-texture resync instead.
@@ -398,7 +397,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The free-floating card hand reads gold/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues an upgrade command. The compact gold/ORDERS/defense readout uses snapshot `attackOrders`/`attackOrderCap` rather than active-front count. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
+- The free-floating card hand reads supply/cap/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues an upgrade command. The compact supply/CAP/FRONTS/DEF readout uses snapshot `supply`/`supplyCap` and exposes CANCEL LAST. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
 - Growth-layer test switch; new orders use the pending simulation mode while in-flight orders keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.
@@ -442,7 +441,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~300 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~303 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 

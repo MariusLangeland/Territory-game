@@ -16,6 +16,8 @@ export const MAP_VERSION = 4;
 
 export const TICK_RATE = 10;
 export const TICK_MS = 1000 / TICK_RATE;
+/** Renderer dirty-tile granularity; simulation also reports district tiles at this size. */
+export const RENDER_TILE_SIZE = 32;
 
 /** One human + 50 AI states for the attack stress test. */
 export const PLAYER_COUNT = 51;
@@ -31,11 +33,18 @@ export const START_RADIUS = 16;
  * Attack points spent by one front per tick. A capture costs the target
  * pixel's defense, so defended or elevated pixels are captured more slowly.
  */
+/** Frontage v1: durable strength and per-tick capture budget. */
 export const ATTACK_DAMAGE_PER_TICK = 30;
-/** Each additional embedded order: more capture points, defense pierce, range. */
 export const ATTACK_ORDER_DAMAGE_BONUS = 15;
 export const ATTACK_ORDER_DEFENSE_PIERCE = 1;
-export const ATTACK_ORDER_LIFETIME_BONUS = 10;
+export const ATTACK_SUPPLY_COST_BASE = 30;
+export const ATTACK_SUPPLY_COST_BONUS = 15;
+export const ATTACK_STRENGTH_BASE = 1500;
+export const ATTACK_STRENGTH_BONUS = 450;
+export const ATTACK_ATTRITION_BASE = 100;
+export const ATTACK_ATTRITION_BONUS = 50;
+/** A front that captures nothing for this many ticks dies. */
+export const ATTACK_IDLE_TICKS = 20;
 
 /**
  * The attack samples this many top-priority frontier cells and takes the
@@ -62,12 +71,6 @@ export const BASE_DEFENSE_OFFSET = 1;
 /** An owned pixel adds this much defense on top of its base. */
 export const OCCUPIED_DEFENSE_BONUS = 1;
 
-/**
- * Orders are finite. An attack front expires after this many simulation ticks
- * (5 seconds at 10 Hz), even if its frontier still has reachable cells.
- */
-export const ATTACK_LIFETIME_TICKS = TICK_RATE * 5;
-
 /** How often disconnected territory is reattached to a surrounding mainland. */
 export const ANNEX_INTERVAL_TICKS = 10;
 /** Small landlocked neutral pockets are filled at most once per 10 seconds. */
@@ -83,15 +86,17 @@ export const DISTRICT_NOISE_CELL = 8;
 export const DISTRICT_NOISE_MARGIN = 4;
 
 /** Player economy. */
-export const STARTING_GOLD = 3;
-export const BASE_GOLD_INCOME = 1;
+/** Single resource: supply pays for cards, upgrades, and front launches. */
+export const STARTING_GOLD = 90;
+export const BASE_GOLD_INCOME = 3;
 export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
-
-/** Attack-order charges. Each living player gains 1 order every 10 seconds, up to the cap. */
-export const BASE_HUMAN_ATTACK_ORDERS = 3;
-export const BASE_BOT_ATTACK_ORDERS = 2;
-export const ATTACK_ORDER_GAIN_TICKS = TICK_RATE * 10;
-export const COMMAND_POST_ORDER_TICKS = TICK_RATE * 60;
+export const SUPPLY_CAP_BASE = 120;
+export const SUPPLY_CAP_TERRITORY_DIVISOR = 1000;
+export const SUPPLY_CAP_WAR_ACADEMY = 40;
+export const SUPPLY_CAP_MAX = 600;
+export const SUPPLY_INCOME_TERRITORY_DIVISOR = 10000;
+export const SUPPLY_INCOME_MAX = 60;
+export const SUPPLY_WIN_SHARE = 70;
 
 /** How far from a click the simulation looks for a shared border. */
 export const ATTACK_SEARCH_RADIUS = 34;
@@ -101,9 +106,40 @@ export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
 /** Bots evaluate their focus build every 3 seconds. */
 export const BOT_BUILD_INTERVAL = TICK_RATE * 3;
-export const BOT_STARTING_GOLD = 12;
+export const BOT_STARTING_GOLD = 90;
 
-export const PROTOCOL_VERSION = 30;
+/**
+ * Bot defence. A bot's threat score is an integer recomputed once per decision
+ * tick from active attacks, hostile border contact, and recent territory loss.
+ * It only gates deterministic spending/targeting; it never uses the shared RNG.
+ */
+export const BOT_THREAT_PER_ATTACK = 25; // one active front is already an emergency
+export const BOT_THREAT_ATTACK_CAP = 50;
+export const BOT_THREAT_PER_CONTACT = 1; // hostile pixels touching the bot's border
+export const BOT_THREAT_CONTACT_CAP = 8; // below SAFE: contact alone cannot hold the posture
+export const BOT_THREAT_PER_LOSS = 2; // grievances added since the previous refresh
+export const BOT_THREAT_LOSS_CAP = 20;
+/** Enter defensive posture at/above DEFENSIVE, leave at/below SAFE (hysteresis). */
+export const BOT_THREAT_DEFENSIVE = 20;
+export const BOT_THREAT_SAFE = 10;
+
+/** Gold a threatened bot withholds from its build plan until it is safe again. */
+export const BOT_DEFENSE_RESERVE_MAX = 12; // roughly one Barracks
+/**
+ * Build intervals a threatened bot may fail to afford any defensive action
+ * before the reserve is released. This keeps a long stalemate from blocking
+ * every non-defensive purchase forever; saving resumes after the next
+ * successful fortification. (3 intervals = 9 seconds.)
+ */
+export const BOT_DEFENSE_STALL_INTERVALS = 3;
+
+/** While threatened, value the grudge/attacker target over unrelated ones. */
+export const BOT_THREAT_RETALIATE_BONUS = 60;
+export const BOT_THREAT_COUNTER_BONUS = 40;
+export const BOT_THREAT_UNRELATED_PENALTY = 30;
+export const BOT_THREAT_NEUTRAL_BIAS = 10;
+
+export const PROTOCOL_VERSION = 33;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

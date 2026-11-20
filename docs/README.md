@@ -2,17 +2,19 @@
 
 This directory is the long-term reference for the project. Start with the specification, then follow the topic you are changing.
 
-| Document                           | Authority                                   | Use it when                                                                          |
-| ---------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [SPEC.md](SPEC.md)                 | Canonical product + technical specification | You need the intended game rules, systems, contracts, or acceptance criteria         |
-| [EXPERIMENTS.md](EXPERIMENTS.md)   | Temporary deviations from the spec          | You are working on the resource-free attack stress mode or deciding how to retire it |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Current code structure                      | You are adding a feature and need to know which module owns what                     |
-| [DETERMINISM.md](DETERMINISM.md)   | Non-negotiable simulation rules             | You touch ticks, random numbers, commands, attacks, map generation, or checksums     |
-| [RENDERING.md](RENDERING.md)       | Renderer contract                           | You touch WebGPU, shaders, textures, camera, upload budgets, or visual effects       |
-| [NETWORKING.md](NETWORKING.md)     | Target online design (not yet implemented)  | You start the authoritative server, protocol, rooms, reconnect, or anti-cheat work   |
-| [PERFORMANCE.md](PERFORMANCE.md)   | Budgets and measurement practice            | You need to know whether a change is fast enough or how to profile it                |
-| [ROADMAP.md](ROADMAP.md)           | Delivery plan and acceptance criteria       | You are choosing the next milestone                                                  |
-| [DECISIONS.md](DECISIONS.md)       | Architecture decision records               | You want to know why a choice was made before revisiting it                          |
+| Document                             | Authority                                     | Use it when                                                                          |
+| ------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [SPEC.md](SPEC.md)                   | Canonical product + technical specification   | You need the intended game rules, systems, contracts, or acceptance criteria         |
+| [EXPERIMENTS.md](EXPERIMENTS.md)     | Temporary deviations from the spec            | You are working on the resource-free attack stress mode or deciding how to retire it |
+| [ARCHITECTURE.md](ARCHITECTURE.md)   | Current code structure                        | You are adding a feature and need to know which module owns what                     |
+| [DETERMINISM.md](DETERMINISM.md)     | Non-negotiable simulation rules               | You touch ticks, random numbers, commands, attacks, map generation, or checksums     |
+| [RENDERING.md](RENDERING.md)         | Renderer contract                             | You touch WebGPU, shaders, textures, camera, upload budgets, or visual effects       |
+| [NETWORKING.md](NETWORKING.md)       | Target online design (not yet implemented)    | You start the authoritative server, protocol, rooms, reconnect, or anti-cheat work   |
+| [PERFORMANCE.md](PERFORMANCE.md)     | Budgets and measurement practice              | You need to know whether a change is fast enough or how to profile it                |
+| [ROADMAP.md](ROADMAP.md)             | Delivery plan and acceptance criteria         | You are choosing the next milestone                                                  |
+| [DECISIONS.md](DECISIONS.md)         | Architecture decision records                 | You want to know why a choice was made before revisiting it                          |
+| [COMBAT_DESIGN.md](COMBAT_DESIGN.md) | Proposed combat replacement (not implemented) | You are reviewing or implementing the post-stress attack model                       |
+| [TELEMETRY.md](TELEMETRY.md)         | Headless match telemetry                      | You need repeatable outcome/balance metrics across seeds                             |
 
 ## Documentation rules
 
@@ -28,7 +30,7 @@ This directory is the long-term reference for the project. Start with the specif
 | Surface                  | Version   | Defined in                                               |
 | ------------------------ | --------- | -------------------------------------------------------- |
 | Map + start generation   | `4`       | `MAP_VERSION` in `src/lib/game/constants.ts`             |
-| Wire protocol draft      | `30`      | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application              | `0.23.0`  | `package.json`                                           |
+| Wire protocol draft      | `33`      | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
+| Application              | `0.30.0`  | `package.json`                                           |
 | Simulation tick rate     | 10 Hz     | `TICK_RATE` in `src/lib/game/constants.ts`               |
 | Attack stress experiment | `EXP-001` | [EXPERIMENTS.md](EXPERIMENTS.md)                         |

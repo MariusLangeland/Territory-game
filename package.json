@@ -1,6 +1,6 @@
 {
 	"name": "territory",
-	"version": "0.23.0",
+	"version": "0.30.0",
 	"private": true,
 	"description": "A deterministic, WebGPU-rendered pixel territory war. Attack stress experiment.",
 	"type": "module",
@@ -24,6 +24,7 @@
 		"test:unit": "vitest",
 		"test": "vitest run",
 		"bench": "tsx scripts/benchmark.ts",
+		"telemetry": "tsx scripts/telemetry.ts",
 		"test:watch": "vitest --watch"
 	},
 	"devDependencies": {

@@ -1,32 +1,56 @@
 import {
 	ANNEX_INTERVAL_TICKS,
+	ATTACK_ATTRITION_BASE,
+	ATTACK_ATTRITION_BONUS,
 	ATTACK_DAMAGE_PER_TICK,
-	ATTACK_LIFETIME_TICKS,
+	ATTACK_IDLE_TICKS,
 	ATTACK_ORDER_DAMAGE_BONUS,
 	ATTACK_ORDER_DEFENSE_PIERCE,
-	ATTACK_ORDER_LIFETIME_BONUS,
 	ATTACK_SEARCH_RADIUS,
-	BASE_BOT_ATTACK_ORDERS,
+	ATTACK_STRENGTH_BASE,
+	ATTACK_STRENGTH_BONUS,
+	ATTACK_SUPPLY_COST_BASE,
+	ATTACK_SUPPLY_COST_BONUS,
 	BASE_DEFENSE_OFFSET,
 	BASE_GOLD_INCOME,
-	BASE_HUMAN_ATTACK_ORDERS,
 	BOT_BUILD_INTERVAL,
+	BOT_DEFENSE_RESERVE_MAX,
+	BOT_DEFENSE_STALL_INTERVALS,
 	BOT_DECISION_INTERVAL,
 	BOT_STARTING_GOLD,
+	BOT_THREAT_ATTACK_CAP,
+	BOT_THREAT_CONTACT_CAP,
+	BOT_THREAT_COUNTER_BONUS,
+	BOT_THREAT_DEFENSIVE,
+	BOT_THREAT_LOSS_CAP,
+	BOT_THREAT_NEUTRAL_BIAS,
+	BOT_THREAT_PER_ATTACK,
+	BOT_THREAT_PER_CONTACT,
+	BOT_THREAT_PER_LOSS,
+	BOT_THREAT_RETALIATE_BONUS,
+	BOT_THREAT_SAFE,
+	BOT_THREAT_UNRELATED_PENALTY,
 	DISTRICT_NOISE_CELL,
 	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
-	COMMAND_POST_ORDER_TICKS,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
-	ATTACK_ORDER_GAIN_TICKS,
 	LEAST_RESISTANCE_SAMPLE_SIZE,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
+	RENDER_TILE_SIZE,
 	STARTING_GOLD,
 	START_RADIUS,
+	SUPPLY_CAP_BASE,
+	SUPPLY_CAP_MAX,
+	SUPPLY_CAP_TERRITORY_DIVISOR,
+	SUPPLY_CAP_WAR_ACADEMY,
+	SUPPLY_INCOME_MAX,
+	SUPPLY_INCOME_TERRITORY_DIVISOR,
+	SUPPLY_WIN_SHARE,
 	STRUCTURE_MIN_SPACING,
+	TICK_RATE,
 	UNCLAIMED_CLEANUP_INTERVAL_TICKS,
 	UNCLAIMED_POCKET_MAX_AREA
 } from './constants';
@@ -81,6 +105,16 @@ export interface AttackState {
 	/** Orders still embedded in this attack; reaching 0 halts it. */
 	orders: number;
 	initialOrders: number;
+	/** Durable Frontage strength pool; captures and attrition spend it. */
+	strength: number;
+	initialStrength: number;
+	/** Supply paid at launch; cancellation refunds a ratio of it. */
+	supplyCost: number;
+	/** Captures per tick allowed by this front's power. */
+	power: number;
+	pierce: number;
+	/** Consecutive ticks without a capture. */
+	idleTicks: number;
 	captures: number;
 	done: boolean;
 }
@@ -114,6 +148,10 @@ export interface PublicAttack {
 	targetX: number;
 	targetY: number;
 	orders: number;
+	strength: number;
+	initialStrength: number;
+	power: number;
+	pierce: number;
 	captures: number;
 	growthMode: GrowthMode;
 }
@@ -129,6 +167,9 @@ export interface GameSnapshot {
 	/** Human state's economy. Bots do not build cards yet. */
 	gold: number;
 	income: number;
+	supply: number;
+	supplyCap: number;
+	supplyIncome: number;
 	hand: PublicCard[];
 	attackOrders: number;
 	attackOrderCap: number;
@@ -139,7 +180,7 @@ export interface GameSnapshot {
 	growthMode: GrowthMode;
 }
 
-export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'build' | 'system';
+export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'system';
 
 export interface SimEvent {
 	id: number;
@@ -213,6 +254,8 @@ export interface StepResult {
 	changeCount: number;
 	changesOverflow: boolean;
 	districtsChanged: boolean;
+	/** Renderer tiles whose district palette changed this tick. */
+	districtTiles: number[];
 	events: SimEvent[];
 	snapshot: GameSnapshot;
 }
@@ -251,6 +294,7 @@ export class TerritorySimulation {
 	/** Compact 5-bit render palette code for the district; 0 = none. */
 	readonly districtColorCodes: Uint8Array;
 	private districtsChanged = false;
+	private readonly districtDirtyTiles = new Set<number>();
 	readonly players: PlayerState[];
 
 	tick = 0;
@@ -262,15 +306,25 @@ export class TerritorySimulation {
 
 	private pendingGrowthMode: GrowthMode | null = null;
 	private goldAccrual = 0;
-	private nextAttackOrderGrantTick = ATTACK_ORDER_GAIN_TICKS;
 	private attackOrders: number[] = [];
-	private readonly commandPostAccrual: Uint32Array;
 	private readonly botGold: number[];
 	private readonly botGoldAccrual: Uint16Array;
 	private readonly botProfiles: BotProfile[];
 	/** Per-defender grievance counts, indexed defender * PLAYER_COUNT + attacker. */
 	private readonly botGrievance: Uint16Array;
 	private readonly botPressure: Uint16Array;
+	/** Integer threat score per bot, refreshed once per decision tick. */
+	private readonly botThreat: Uint16Array;
+	/** 1 while a bot is in defensive posture. Hysteresis avoids per-tick flapping. */
+	private readonly botDefensive: Uint8Array;
+	/** Gold a threatened bot withholds from non-defence spending. */
+	private readonly botReserve: Uint8Array;
+	/** Consecutive build intervals without an affordable defensive action. */
+	private readonly botDefenseStall: Uint8Array;
+	/** Grievance total each bot held at the previous threat refresh. */
+	private readonly botGrievanceMark: Uint32Array;
+	/** botAttackers[attacker * PLAYER_COUNT + defender] = 1 while a front is live. */
+	private readonly botAttackers: Uint8Array;
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -332,11 +386,16 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
-		this.commandPostAccrual = new Uint32Array(PLAYER_COUNT);
 		this.botGold = new Array<number>(PLAYER_COUNT).fill(0);
 		this.botGoldAccrual = new Uint16Array(PLAYER_COUNT);
 		this.botGrievance = new Uint16Array(PLAYER_COUNT * PLAYER_COUNT);
 		this.botPressure = new Uint16Array(PLAYER_COUNT);
+		this.botThreat = new Uint16Array(PLAYER_COUNT);
+		this.botDefensive = new Uint8Array(PLAYER_COUNT);
+		this.botReserve = new Uint8Array(PLAYER_COUNT);
+		this.botDefenseStall = new Uint8Array(PLAYER_COUNT);
+		this.botGrievanceMark = new Uint32Array(PLAYER_COUNT);
+		this.botAttackers = new Uint8Array(PLAYER_COUNT * PLAYER_COUNT);
 		this.botProfiles = Array.from({ length: PLAYER_COUNT }, (_, index) =>
 			this.createBotProfile(index + 1)
 		);
@@ -356,7 +415,11 @@ export class TerritorySimulation {
 		this.rebuildDistricts();
 		this.rebuildAuraDefense();
 		this.hand = BUILDABLE_STRUCTURE_TYPES.map((type, index) => ({ id: index + 1, type }));
-		this.attackOrders = this.players.map((player) => this.attackOrderCap(player.id));
+		this.attackOrders = new Array<number>(PLAYER_COUNT).fill(0);
+		this.setSupply(HUMAN_PLAYER_ID, STARTING_GOLD);
+		for (const player of this.players) {
+			if (player.isBot) this.setSupply(player.id, BOT_STARTING_GOLD);
+		}
 
 		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
 	}
@@ -372,106 +435,92 @@ export class TerritorySimulation {
 	}
 
 	get income(): number {
-		let income = BASE_GOLD_INCOME;
-		for (const structure of this.structures.forOwner(HUMAN_PLAYER_ID)) {
-			for (const effect of structure.effects) {
-				if (effect.kind === 'income') income += effect.goldPerInterval * structure.stacks;
-			}
-		}
-		return income;
+		return this.supplyIncomeFor(HUMAN_PLAYER_ID);
 	}
 
-	private attackOrderCap(playerId: number): number {
-		let cap = playerId === HUMAN_PLAYER_ID ? BASE_HUMAN_ATTACK_ORDERS : BASE_BOT_ATTACK_ORDERS;
+	private supplyIncomeFor(playerId: number): number {
+		const player = this.players[playerId - 1];
+		if (!player) return 0;
+		let income = BASE_GOLD_INCOME + Math.floor(player.territory / SUPPLY_INCOME_TERRITORY_DIVISOR);
 		for (const structure of this.structures.forOwner(playerId)) {
 			for (const effect of structure.effects) {
-				if (effect.kind === 'order-cap') cap += effect.amount * structure.stacks;
+				if (effect.kind === 'supply-income') {
+					income += effect.perSecond * structure.stacks;
+				}
 			}
 		}
-		return cap;
+		return Math.min(SUPPLY_INCOME_MAX, income);
 	}
 
-	private availableAttackOrders(playerId: number): number {
-		let pending = 0;
-		for (const command of this.pendingCommands) {
-			if (command.type === 'attack' && command.playerId === playerId) pending++;
+	supplyCap(playerId: number): number {
+		const player = this.players[playerId - 1];
+		if (!player) return SUPPLY_CAP_BASE;
+		let cap = SUPPLY_CAP_BASE + Math.floor(player.territory / SUPPLY_CAP_TERRITORY_DIVISOR);
+		for (const structure of this.structures.forOwner(playerId)) {
+			for (const effect of structure.effects) {
+				if (effect.kind === 'supply-cap') cap += effect.amount * structure.stacks;
+			}
 		}
-		return this.attackOrders[playerId - 1] - pending;
+		return Math.min(SUPPLY_CAP_MAX, cap);
 	}
 
-	private addAttackOrders(playerId: number, amount: number): void {
-		const index = playerId - 1;
-		this.attackOrders[index] = Math.min(
-			this.attackOrders[index] + amount,
-			this.attackOrderCap(playerId)
-		);
+	private supplyOf(playerId: number): number {
+		return playerId === HUMAN_PLAYER_ID ? this.gold : (this.botGold[playerId - 1] ?? 0);
 	}
 
-	private clampAttackOrders(playerId: number): void {
-		const index = playerId - 1;
-		this.attackOrders[index] = Math.min(this.attackOrders[index], this.attackOrderCap(playerId));
+	private setSupply(playerId: number, value: number): void {
+		const clamped = Math.max(0, Math.min(this.supplyCap(playerId), value));
+		if (playerId === HUMAN_PLAYER_ID) this.gold = clamped;
+		else this.botGold[playerId - 1] = clamped;
 	}
 
-	private grantAttackOrders(): void {
-		for (const player of this.players) {
-			if (!player.alive) continue;
-			this.addAttackOrders(player.id, 1);
-		}
+	private creditSupply(playerId: number, amount: number): void {
+		if (amount <= 0) return;
+		this.setSupply(playerId, this.supplyOf(playerId) + amount);
+	}
+
+	private spendSupply(playerId: number, amount: number): boolean {
+		if (amount < 0 || this.supplyOf(playerId) < amount) return false;
+		this.setSupply(playerId, this.supplyOf(playerId) - amount);
+		return true;
+	}
+
+	private attackSupplyCost(playerId: number): number {
+		const bonus = Math.max(0, this.getAttackOrderStrength(playerId) - 1);
+		return ATTACK_SUPPLY_COST_BASE + bonus * ATTACK_SUPPLY_COST_BONUS;
 	}
 
 	/**
-	 * Resource structures pay continuously. A level-30 Mine contributes 30
-	 * gold per 100 ticks, so it adds 30 gold over ten seconds rather than a
-	 * lump sum at the end. Command Posts use the same model over 600 ticks.
+	 * Supply accrues continuously from territory and live resource structures.
+	 * Rates are per second and converted with an integer remainder at 10 Hz.
 	 */
 	private accrueResources(): void {
-		this.goldAccrual += this.income;
+		this.goldAccrual += this.income * TICK_RATE;
 		const earnedGold = Math.floor(this.goldAccrual / INCOME_INTERVAL_TICKS);
 		if (earnedGold > 0) {
-			this.gold += earnedGold;
+			this.creditSupply(HUMAN_PLAYER_ID, earnedGold);
 			this.goldAccrual -= earnedGold * INCOME_INTERVAL_TICKS;
 		}
 
 		for (const player of this.players) {
-			if (!player.alive) continue;
-			if (player.isBot) {
-				let goldRate = 1;
-				let orderRate = 0;
-				for (const structure of this.structures.forOwner(player.id)) {
-					for (const effect of structure.effects) {
-						if (effect.kind === 'income') goldRate += effect.goldPerInterval * structure.stacks;
-						else if (effect.kind === 'order-gain') {
-							orderRate += effect.amount * structure.stacks;
-						}
-					}
-				}
-				this.botGoldAccrual[player.id - 1] += goldRate;
-				const earned = Math.floor(this.botGoldAccrual[player.id - 1] / INCOME_INTERVAL_TICKS);
-				if (earned > 0) {
-					this.botGold[player.id - 1] += earned;
-					this.botGoldAccrual[player.id - 1] -= earned * INCOME_INTERVAL_TICKS;
-				}
-				if (orderRate > 0) {
-					const next = this.commandPostAccrual[player.id - 1] + orderRate;
-					const earnedOrders = Math.floor(next / COMMAND_POST_ORDER_TICKS);
-					this.commandPostAccrual[player.id - 1] = next - earnedOrders * COMMAND_POST_ORDER_TICKS;
-					if (earnedOrders > 0) this.addAttackOrders(player.id, earnedOrders);
-				}
-				continue;
+			if (!player.alive || !player.isBot) continue;
+			const rate = this.supplyIncomeFor(player.id);
+			this.botGoldAccrual[player.id - 1] += rate * TICK_RATE;
+			const earned = Math.floor(this.botGoldAccrual[player.id - 1] / INCOME_INTERVAL_TICKS);
+			if (earned > 0) {
+				this.creditSupply(player.id, earned);
+				this.botGoldAccrual[player.id - 1] -= earned * INCOME_INTERVAL_TICKS;
 			}
-			let orderRate = 0;
-			for (const structure of this.structures.forOwner(player.id)) {
-				for (const effect of structure.effects) {
-					if (effect.kind !== 'order-gain') continue;
-					orderRate += effect.amount * structure.stacks;
-				}
-			}
-			if (orderRate <= 0) continue;
-			const next = this.commandPostAccrual[player.id - 1] + orderRate;
-			const earnedOrders = Math.floor(next / COMMAND_POST_ORDER_TICKS);
-			this.commandPostAccrual[player.id - 1] = next - earnedOrders * COMMAND_POST_ORDER_TICKS;
-			if (earnedOrders > 0) this.addAttackOrders(player.id, earnedOrders);
 		}
+	}
+
+	private pendingAttackSupply(playerId: number): number {
+		let reserved = 0;
+		const cost = this.attackSupplyCost(playerId);
+		for (const command of this.pendingCommands) {
+			if (command.type === 'attack' && command.playerId === playerId) reserved += cost;
+		}
+		return reserved;
 	}
 
 	/** Queue a human attack. It is applied at the start of the next tick. */
@@ -488,6 +537,32 @@ export class TerritorySimulation {
 		});
 
 		return validation;
+	}
+
+	/** Cancel one active front and refund its remaining strength share. */
+	cancelAttack(playerId: number, attackId: number): AttackOrderResult {
+		const attack = this.attacks.find(
+			(entry) => entry.id === attackId && entry.attackerId === playerId && !entry.done
+		);
+		if (!attack) return fail('invalid', 'That front is no longer active.');
+		const refund = Math.floor((attack.supplyCost * attack.strength) / attack.initialStrength);
+		attack.done = true;
+		this.creditSupply(playerId, refund);
+		this.attacks = this.attacks.filter((entry) => !entry.done);
+		this.pushEvent('attack', `Front #${attack.id} cancelled; ${refund} supply refunded.`, playerId);
+		this.lastSnapshot = this.buildSnapshot();
+		return { ok: true, message: `Front cancelled. ${refund} supply refunded.` };
+	}
+
+	/** Cancel the most recently launched active front for a player. */
+	cancelLatestAttack(playerId: number): AttackOrderResult {
+		let latest: AttackState | null = null;
+		for (const attack of this.attacks) {
+			if (attack.attackerId !== playerId || attack.done) continue;
+			if (!latest || attack.id > latest.id) latest = attack;
+		}
+		if (!latest) return fail('invalid', 'No active fronts to cancel.');
+		return this.cancelAttack(playerId, latest.id);
 	}
 
 	/** Validate a click against current state for immediate UI feedback. */
@@ -507,8 +582,10 @@ export class TerritorySimulation {
 		if (this.owners[index] === playerId) {
 			return fail('own-territory', 'That territory is already yours.');
 		}
-		if (this.availableAttackOrders(playerId) <= 0) {
-			return fail('no-orders', 'No attack orders. Gain 1 order every 10 seconds.');
+		const cost = this.attackSupplyCost(playerId);
+		const reserved = this.pendingAttackSupply(playerId);
+		if (this.supplyOf(playerId) - reserved < cost) {
+			return fail('no-orders', `Need ${cost} supply to launch a front.`);
 		}
 		if (this.findAttackSeeds(playerId, index).length === 0) {
 			return fail('no-shared-border', 'No friendly border is close enough. Move your frontier.');
@@ -555,11 +632,11 @@ export class TerritorySimulation {
 			const districtStructure = this.structures.byId(districtId);
 			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
 				const cost = baseCost + districtStructure.stacks;
-				if (this.gold < cost) {
+				if (this.supplyOf(playerId) < cost) {
 					return {
 						ok: false,
 						reason: 'no-gold',
-						message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[card.type].label} to Lv.${
+						message: `Need ${cost} supply to upgrade ${STRUCTURE_DEFINITIONS[card.type].label} to Lv.${
 							districtStructure.stacks + 1
 						}.`
 					};
@@ -568,7 +645,7 @@ export class TerritorySimulation {
 					ok: true,
 					message: `Upgrade ${STRUCTURE_DEFINITIONS[card.type].label} to Lv.${
 						districtStructure.stacks + 1
-					} for ${cost} gold.`
+					} for ${cost} supply.`
 				};
 			}
 			const districtType = structureTypeFromCode(this.districtTypes[index]);
@@ -592,17 +669,17 @@ export class TerritorySimulation {
 			};
 		}
 
-		if (this.gold < baseCost) {
+		if (this.supplyOf(playerId) < baseCost) {
 			return {
 				ok: false,
 				reason: 'no-gold',
-				message: `Need ${baseCost} gold to build ${STRUCTURE_DEFINITIONS[card.type].label}.`
+				message: `Need ${baseCost} supply to build ${STRUCTURE_DEFINITIONS[card.type].label}.`
 			};
 		}
 
 		return {
 			ok: true,
-			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${baseCost} gold.`
+			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${baseCost} supply.`
 		};
 	}
 
@@ -648,11 +725,11 @@ export class TerritorySimulation {
 		}
 		const projectedLevel = target.structure.stacks + this.pendingUpgradesFor(target.structure.id);
 		const cost = STRUCTURE_DEFINITIONS[target.structure.type].cost + projectedLevel;
-		if (this.gold - this.pendingUpgradeCost(playerId) < cost) {
+		if (this.supplyOf(playerId) - this.pendingUpgradeCost(playerId) < cost) {
 			return {
 				ok: false,
 				reason: 'no-gold',
-				message: `Need ${cost} gold to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${projectedLevel + 1}.`
+				message: `Need ${cost} supply to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${projectedLevel + 1}.`
 			};
 		}
 		this.pendingCommands.push({
@@ -667,7 +744,7 @@ export class TerritorySimulation {
 			ok: true,
 			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} to Lv.${
 				projectedLevel + 1
-			} for ${cost} gold.`
+			} for ${cost} supply.`
 		};
 	}
 
@@ -713,6 +790,7 @@ export class TerritorySimulation {
 		this.changeCount = 0;
 		this.changesOverflow = false;
 		this.districtsChanged = false;
+		this.districtDirtyTiles.clear();
 		this.events = [];
 
 		if (!this.ended) {
@@ -723,14 +801,12 @@ export class TerritorySimulation {
 				this.pendingGrowthMode = null;
 			}
 
-			if (this.tick >= this.nextAttackOrderGrantTick) {
-				this.grantAttackOrders();
-				this.nextAttackOrderGrantTick += ATTACK_ORDER_GAIN_TICKS;
-			}
-
 			this.accrueResources();
 			this.applyPendingCommands();
 
+			// Threat must refresh before the economy and decision passes so a
+			// front opened this tick is already visible to the defender.
+			this.updateBotThreat();
 			this.runBotEconomy();
 			this.runBotDecisions();
 			this.processAttacks();
@@ -756,6 +832,7 @@ export class TerritorySimulation {
 			changeCount: this.changeCount,
 			changesOverflow: this.changesOverflow,
 			districtsChanged: this.districtsChanged,
+			districtTiles: [...this.districtDirtyTiles].sort((a, b) => a - b),
 			events: this.events.slice(),
 			snapshot: this.lastSnapshot
 		};
@@ -866,8 +943,11 @@ export class TerritorySimulation {
 		for (const botGold of this.botGold) mix(botGold);
 		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
 		for (const grievance of this.botGrievance) mix(grievance);
-		mix(this.nextAttackOrderGrantTick);
-		for (const accrual of this.commandPostAccrual) mix(accrual);
+		for (const threat of this.botThreat) mix(threat);
+		for (const defensive of this.botDefensive) mix(defensive);
+		for (const reserve of this.botReserve) mix(reserve);
+		for (const stall of this.botDefenseStall) mix(stall);
+		for (const mark of this.botGrievanceMark) mix(mark);
 		for (const orders of this.attackOrders) mix(orders);
 
 		for (let i = 0; i < this.owners.length; i++) {
@@ -939,19 +1019,17 @@ export class TerritorySimulation {
 				const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
 				if (districtStructure && districtStructure.type === card.type) {
 					const cost = baseCost + districtStructure.stacks;
-					if (this.gold < cost) continue;
-					this.gold -= cost;
+					if (!this.spendSupply(command.playerId, cost)) continue;
 					const stacks = this.structures.reinforce(districtStructure);
 					this.rebuildAuraDefense();
 					this.pushEvent(
 						'build',
-						`${STRUCTURE_DEFINITIONS[card.type].label} upgraded to Lv.${stacks} for ${cost} gold.`,
+						`${STRUCTURE_DEFINITIONS[card.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
 						command.playerId
 					);
 					continue;
 				}
-				if (this.gold < baseCost) continue;
-				this.gold -= baseCost;
+				if (!this.spendSupply(command.playerId, baseCost)) continue;
 				const structure = this.structures.create(
 					card.type,
 					command.playerId,
@@ -963,7 +1041,7 @@ export class TerritorySimulation {
 				this.rebuildAuraDefense();
 				this.pushEvent(
 					'build',
-					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${baseCost} gold.`,
+					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${baseCost} supply.`,
 					command.playerId
 				);
 				continue;
@@ -973,25 +1051,22 @@ export class TerritorySimulation {
 				const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
 				if (!target) continue;
 				const cost = command.cost;
-				if (this.gold < cost) continue;
-				this.gold -= cost;
+				if (!this.spendSupply(command.playerId, cost)) continue;
 				const stacks = this.structures.reinforce(target.structure);
 				this.rebuildAuraDefense();
 				this.pushEvent(
 					'build',
-					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} gold.`,
+					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
 					command.playerId
 				);
 				continue;
 			}
 
-			if (this.attackOrders[command.playerId - 1] <= 0) continue;
 			const index = command.y * this.width + command.x;
 			if (index < 0 || index >= this.owners.length) continue;
 			const seeds = this.findAttackSeeds(command.playerId, index);
 			if (seeds.length === 0) continue;
-			if (!this.createAttack(command.playerId, index, seeds)) continue;
-			this.attackOrders[command.playerId - 1]--;
+			this.createAttack(command.playerId, index, seeds);
 		}
 	}
 
@@ -1057,6 +1132,19 @@ export class TerritorySimulation {
 			}
 		}
 		this.districtsChanged = true;
+		this.markDistrictTiles(0, this.width - 1, 0, this.height - 1);
+	}
+
+	private markDistrictTiles(minX: number, maxX: number, minY: number, maxY: number): void {
+		const tilesX = Math.ceil(this.width / RENDER_TILE_SIZE);
+		const tilesY = Math.ceil(this.height / RENDER_TILE_SIZE);
+		const firstX = Math.max(0, Math.floor(minX / RENDER_TILE_SIZE));
+		const lastX = Math.min(tilesX - 1, Math.floor(maxX / RENDER_TILE_SIZE));
+		const firstY = Math.max(0, Math.floor(minY / RENDER_TILE_SIZE));
+		const lastY = Math.min(tilesY - 1, Math.floor(maxY / RENDER_TILE_SIZE));
+		for (let ty = firstY; ty <= lastY; ty++) {
+			for (let tx = firstX; tx <= lastX; tx++) this.districtDirtyTiles.add(ty * tilesX + tx);
+		}
 	}
 
 	/**
@@ -1081,6 +1169,7 @@ export class TerritorySimulation {
 			}
 		}
 		this.districtsChanged = true;
+		this.markDistrictTiles(minX, maxX, minY, maxY);
 	}
 
 	private nearestDistrictStructure(ownerId: number, x: number, y: number): Structure | null {
@@ -1320,6 +1409,10 @@ export class TerritorySimulation {
 		for (const seed of unique) frontier.push(seed);
 
 		const orders = this.getAttackOrderStrength(attackerId);
+		const bonus = orders - 1;
+		const supplyCost = ATTACK_SUPPLY_COST_BASE + bonus * ATTACK_SUPPLY_COST_BONUS;
+		if (!this.spendSupply(attackerId, supplyCost)) return false;
+		const strength = ATTACK_STRENGTH_BASE + bonus * ATTACK_STRENGTH_BONUS;
 		this.attacks.push({
 			id,
 			attackerId,
@@ -1331,9 +1424,15 @@ export class TerritorySimulation {
 			growthMode: mode,
 			frontier,
 			createdAtTick: this.tick,
-			lifetimeTicks: ATTACK_LIFETIME_TICKS + (orders - 1) * ATTACK_ORDER_LIFETIME_BONUS,
+			lifetimeTicks: 0,
 			orders,
 			initialOrders: orders,
+			strength,
+			initialStrength: strength,
+			supplyCost,
+			power: ATTACK_DAMAGE_PER_TICK + bonus * ATTACK_ORDER_DAMAGE_BONUS,
+			pierce: bonus * ATTACK_ORDER_DEFENSE_PIERCE,
+			idleTicks: 0,
 			captures: 0,
 			done: false
 		});
@@ -1343,6 +1442,7 @@ export class TerritorySimulation {
 
 	private processAttacks(): void {
 		const attackById = new Map(this.attacks.map((attack) => [attack.id, attack]));
+		const clashedPairs = new Set<number>();
 
 		for (const attack of this.attacks) {
 			if (attack.done) continue;
@@ -1351,15 +1451,14 @@ export class TerritorySimulation {
 				attack.done = true;
 				continue;
 			}
-			if (this.tick - attack.createdAtTick >= attack.lifetimeTicks) {
+			if (attack.strength <= 0) {
 				attack.done = true;
 				continue;
 			}
 
 			let capturedThisTick = 0;
-			let frontierEmpty = false;
 			let clashHeld = false;
-			let attackPoints = ATTACK_DAMAGE_PER_TICK + (attack.orders - 1) * ATTACK_ORDER_DAMAGE_BONUS;
+			let attackPoints = attack.power;
 			while (attackPoints > 0) {
 				// Sample a small batch of the highest-priority frontier cells.
 				// Geometry decides who is eligible; the cheapest sampled defense
@@ -1369,14 +1468,10 @@ export class TerritorySimulation {
 				let chosenPosition = -1;
 				let chosenCost = Number.POSITIVE_INFINITY;
 				let halted = false;
-				let exhausted = false;
 
 				for (let sample = 0; sample < LEAST_RESISTANCE_SAMPLE_SIZE; sample++) {
 					const index = attack.frontier.pop();
-					if (index === undefined) {
-						exhausted = true;
-						break;
-					}
+					if (index === undefined) break;
 					if (!this.land[index] || this.owners[index] !== attack.defenderId) continue;
 
 					// Connectivity is re-checked at the moment of capture, not just
@@ -1388,7 +1483,7 @@ export class TerritorySimulation {
 					// Mutual attacks meet at their claimed front lines. The defender
 					// spends attack orders up to its issued attack strength; every
 					// spent order removes one embedded order from the incoming front.
-					const clash = this.resolveOpposingClash(index, attack, attackById);
+					const clash = this.resolveOpposingClash(index, attack, attackById, clashedPairs);
 					if (clash === 'halted') {
 						halted = true;
 						break;
@@ -1398,10 +1493,7 @@ export class TerritorySimulation {
 						break;
 					}
 
-					const cost = Math.max(
-						1,
-						this.defenseAt(index) - (attack.orders - 1) * ATTACK_ORDER_DEFENSE_PIERCE
-					);
+					const cost = Math.max(1, this.defenseAt(index) - attack.pierce);
 					sampled.push(index);
 					if (cost < chosenCost) {
 						chosenCost = cost;
@@ -1418,26 +1510,29 @@ export class TerritorySimulation {
 					break;
 				}
 
+				if (chosenPosition < 0) {
+					// Put the missed candidates back.
+					for (let i = sampled.length - 1; i >= 0; i--) attack.frontier.push(sampled[i]);
+					break;
+				}
+
+				// The cheapest sampled cell is still too expensive for this tick
+				// or for the remaining durable strength. Keep the sample queued;
+				// the front pauses rather than losing its cheapest lane.
+				if (chosenCost > attackPoints || chosenCost > attack.strength) {
+					for (let i = sampled.length - 1; i >= 0; i--) attack.frontier.push(sampled[i]);
+					break;
+				}
+
 				// Put the missed candidates back. The chosen one is consumed.
 				for (let i = sampled.length - 1; i >= 0; i--) {
 					if (i !== chosenPosition) attack.frontier.push(sampled[i]);
 				}
 
-				if (chosenPosition < 0) {
-					if (exhausted) {
-						frontierEmpty = true;
-						break;
-					}
-					continue;
-				}
-
-				// The cheapest sampled cell is still too expensive for this tick.
-				// Keep it (and the rest) queued for a future tick.
-				if (chosenCost > attackPoints) break;
-
 				const index = sampled[chosenPosition];
 				this.claim(index, attack.attackerId, attack.id);
 				attackPoints -= chosenCost;
+				attack.strength -= chosenCost;
 				attack.captures++;
 				capturedThisTick++;
 
@@ -1449,9 +1544,9 @@ export class TerritorySimulation {
 				if (y + 1 < this.height) this.enqueueAttackCell(attack, index + this.width);
 			}
 
-			// A clash hold is not an exhausted or severed front; keep it alive for
-			// the next tick so it can continue once the defender runs out of orders.
-			if (!clashHeld && (frontierEmpty || capturedThisTick === 0)) {
+			if (clashHeld || capturedThisTick > 0) attack.idleTicks = 0;
+			else attack.idleTicks++;
+			if (attack.strength <= 0 || attack.idleTicks > ATTACK_IDLE_TICKS) {
 				attack.done = true;
 			}
 		}
@@ -1504,29 +1599,39 @@ export class TerritorySimulation {
 	}
 
 	/**
-	 * A mutual front contact spends the defender's available attack orders. The
-	 * defender can spend at most its issued attack strength, and never more than
-	 * its remaining order inventory. Each spent order removes one order from the
-	 * incoming attack. Returning `null` means the defender could not spend
-	 * anything, so the incoming front breaks through.
+	 * Mutual fronts trade durable strength simultaneously. Damage is applied
+	 * once per pair per tick; a front whose strength reaches zero dies while
+	 * the survivor stays paused on the contact line.
 	 */
 	private resolveOpposingClash(
 		index: number,
 		attack: AttackState,
-		attackById: Map<number, AttackState>
+		attackById: Map<number, AttackState>,
+		clashedPairs: Set<number>
 	): 'halted' | 'blocked' | null {
 		const other = this.findOpposingAttack(index, attack, attackById);
 		if (!other) return null;
-		const defenderId = attack.defenderId;
-		const worth = this.getAttackOrderStrength(defenderId);
-		const available = this.attackOrders[defenderId - 1] ?? 0;
-		const reduction = Math.min(worth, available, attack.orders);
-		if (reduction <= 0) return null;
+		const pair = Math.min(attack.id, other.id) * 1_000_000 + Math.max(attack.id, other.id);
+		if (clashedPairs.has(pair)) return 'blocked';
+		clashedPairs.add(pair);
 
-		this.attackOrders[defenderId - 1] -= reduction;
-		attack.orders -= reduction;
-		if (attack.orders <= 0) {
-			attack.orders = 0;
+		const incomingBonus = Math.max(0, other.orders - 1);
+		const outgoingBonus = Math.max(0, attack.orders - 1);
+		const damageToAttack = Math.min(
+			attack.strength,
+			ATTACK_ATTRITION_BASE + incomingBonus * ATTACK_ATTRITION_BONUS
+		);
+		const damageToOther = Math.min(
+			other.strength,
+			ATTACK_ATTRITION_BASE + outgoingBonus * ATTACK_ATTRITION_BONUS
+		);
+		attack.strength -= damageToAttack;
+		other.strength -= damageToOther;
+		attack.idleTicks = 0;
+		other.idleTicks = 0;
+		if (other.strength <= 0) other.done = true;
+
+		if (attack.strength <= 0) {
 			attack.done = true;
 			this.annexRequested = true;
 			return 'halted';
@@ -1576,7 +1681,7 @@ export class TerritorySimulation {
 		if (structure) {
 			this.refreshDistrictsAround(structure);
 			this.rebuildAuraDefense();
-			this.clampAttackOrders(structure.ownerId);
+			this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
 			const owner = this.players[structure.ownerId - 1];
 			const label = STRUCTURE_DEFINITIONS[structure.type].label;
 			this.pushEvent(
@@ -1683,24 +1788,54 @@ export class TerritorySimulation {
 	}
 
 	private runBotEconomy(): void {
-		if (this.tick % BOT_BUILD_INTERVAL !== 0) return;
-
 		let auraChanged = false;
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			const plan = this.botProfiles[player.id - 1].buildPlan;
+			// Stagger budgets across the interval. Every bot still evaluates once
+			// per BOT_BUILD_INTERVAL, but 50 builds no longer land on one tick
+			// (which also triggers a huge renderer district-tile batch).
+			if ((this.tick + (player.id - 1)) % BOT_BUILD_INTERVAL !== 0) continue;
+			if (this.tick % BOT_DECISION_INTERVAL !== 0) this.refreshBotThreat(player);
+			const goldIndex = player.id - 1;
+
+			// A threatened bot fortifies before continuing its build plan. The
+			// defensive action may dip into the reserve because defence is the
+			// reason the reserve exists.
+			const defensive = this.botDefensive[goldIndex] === 1;
+			if (defensive && this.runBotDefense(player)) {
+				this.botDefenseStall[goldIndex] = 0;
+				auraChanged = true;
+				continue;
+			}
+
+			// If saving has made no defensive progress for several build
+			// intervals, release the reserve for this interval. Otherwise a
+			// stalemate could block every non-defensive purchase forever.
+			if (defensive) {
+				if (this.botDefenseStall[goldIndex] < 0xff) this.botDefenseStall[goldIndex]++;
+			} else {
+				this.botDefenseStall[goldIndex] = 0;
+			}
+			const stalled = this.botDefenseStall[goldIndex] >= BOT_DEFENSE_STALL_INTERVALS;
+
+			const plan = this.botProfiles[goldIndex].buildPlan;
+			// Non-defence spending must leave the reserve intact; a bot that is
+			// saving for a fortification should not burn its last gold on a mine.
+			const reserve = stalled ? 0 : this.botReserve[goldIndex];
+			const budget = this.botGold[goldIndex] - reserve;
 			let acted = false;
 
 			// Build the next affordable, placeable structure in the bot's
-			// strategy order. District geometry means a second type often
-			// waits until the bot expands beyond its first district.
+			// strategy order. A destroyed plan structure is simply missing again,
+			// so this pass also rebuilds it. District geometry means a second type
+			// often waits until the bot expands beyond its first district.
 			for (const type of plan) {
 				if (this.structures.forOwnerType(player.id, type)) continue;
 				const cost = STRUCTURE_DEFINITIONS[type].cost;
-				if (this.botGold[player.id - 1] < cost) continue;
+				if (budget < cost) continue;
 				const cell = this.findBotBuildCell(player, type);
 				if (cell < 0) continue;
-				this.botGold[player.id - 1] -= cost;
+				this.botGold[goldIndex] -= cost;
 				const structure = this.structures.create(
 					type,
 					player.id,
@@ -1722,7 +1857,7 @@ export class TerritorySimulation {
 				const existing = this.structures.forOwnerType(player.id, type);
 				if (!existing) continue;
 				const cost = STRUCTURE_DEFINITIONS[type].cost + existing.stacks;
-				if (this.botGold[player.id - 1] < cost) continue;
+				if (budget < cost) continue;
 				if (!target || existing.stacks < target.stacks) {
 					target = { type, stacks: existing.stacks, cost };
 				}
@@ -1730,13 +1865,212 @@ export class TerritorySimulation {
 			if (!target) continue;
 			const existing = this.structures.forOwnerType(player.id, target.type);
 			if (!existing) continue;
-			this.botGold[player.id - 1] -= target.cost;
+			this.botGold[goldIndex] -= target.cost;
 			this.structures.reinforce(existing);
 			auraChanged = true;
 		}
 		// Aura rebuilds still batch once per decision tick; district refreshes
 		// are local to each new structure and already applied above.
 		if (auraChanged) this.rebuildAuraDefense();
+	}
+
+	/**
+	 * One defensive build/upgrade, attempted before the plan while threatened.
+	 * Returns true when gold was spent, so the plan waits for the next build
+	 * interval. Defence posts come first because they are cheap and cover a
+	 * whole district; barracks come second because they raise clash strength.
+	 */
+	private runBotDefense(player: PlayerState): boolean {
+		const goldIndex = player.id - 1;
+
+		const defensePost = this.structures.forOwnerType(player.id, 'defense-post');
+		if (!defensePost) {
+			const cost = STRUCTURE_DEFINITIONS['defense-post'].cost;
+			if (this.botGold[goldIndex] < cost) return false;
+			const cell = this.findBotDefenseCell(player);
+			if (cell < 0) return false;
+			this.botGold[goldIndex] -= cost;
+			const structure = this.structures.create(
+				'defense-post',
+				player.id,
+				cell % this.width,
+				Math.floor(cell / this.width),
+				this.width
+			);
+			this.refreshDistrictsAround(structure);
+			return true;
+		}
+
+		const barracks = this.structures.forOwnerType(player.id, 'barracks');
+		if (!barracks) {
+			const cost = STRUCTURE_DEFINITIONS['barracks'].cost;
+			if (this.botGold[goldIndex] >= cost) {
+				const cell = this.findBotBuildCell(player, 'barracks');
+				if (cell >= 0) {
+					this.botGold[goldIndex] -= cost;
+					const structure = this.structures.create(
+						'barracks',
+						player.id,
+						cell % this.width,
+						Math.floor(cell / this.width),
+						this.width
+					);
+					this.refreshDistrictsAround(structure);
+					return true;
+				}
+			}
+			// A barracks is out of reach (or has no site), but raising the
+			// existing defence post still beats an unrelated plan step.
+		}
+
+		// Raise the lower of the two defensive structures. This spending is
+		// defence itself, so it is allowed to consume the reserve.
+		const target = barracks && barracks.stacks < defensePost.stacks ? barracks : defensePost;
+		const cost = STRUCTURE_DEFINITIONS[target.type].cost + target.stacks;
+		if (this.botGold[goldIndex] < cost) return false;
+		this.botGold[goldIndex] -= cost;
+		this.structures.reinforce(target);
+		return true;
+	}
+
+	/**
+	 * Gold a threatened bot holds back from its build plan. It saves for the
+	 * next missing defensive structure, then for the cheaper next defensive
+	 * level, capped so it can never hoard without bound. A zero reserve is
+	 * returned when no defensive action is possible at all, which keeps the
+	 * reserve from deadlocking plan spending.
+	 */
+	private defenseReserveTarget(player: PlayerState): number {
+		const defensePost = this.structures.forOwnerType(player.id, 'defense-post');
+		if (!defensePost) {
+			if (this.findBotDefenseCell(player) < 0) return 0;
+			return STRUCTURE_DEFINITIONS['defense-post'].cost;
+		}
+		const barracks = this.structures.forOwnerType(player.id, 'barracks');
+		if (!barracks) {
+			if (this.findBotBuildCell(player, 'barracks') < 0) return 0;
+			return Math.min(STRUCTURE_DEFINITIONS['barracks'].cost, BOT_DEFENSE_RESERVE_MAX);
+		}
+		const upgradeCost = Math.min(
+			STRUCTURE_DEFINITIONS['defense-post'].cost + defensePost.stacks,
+			STRUCTURE_DEFINITIONS['barracks'].cost + barracks.stacks
+		);
+		return Math.min(upgradeCost, BOT_DEFENSE_RESERVE_MAX);
+	}
+
+	/**
+	 * Prefer a border cell that already touches an enemy so a new Defence Post
+	 * projects its district over the threatened edge; otherwise fall back to a
+	 * deterministic hash pick from valid border cells.
+	 */
+	private findBotDefenseCell(player: PlayerState): number {
+		const candidates: number[] = [];
+		for (const index of player.border) {
+			if (!this.isBotBuildCellValid(player, index)) continue;
+			if (this.hasHostileNeighbour(index, player.id)) return index;
+			candidates.push(index);
+			if (candidates.length >= 32) break;
+		}
+		if (candidates.length === 0) return -1;
+		return candidates[hash32(this.tick, player.id, this.seed ^ 0x3c6ef372) % candidates.length];
+	}
+
+	private hasHostileNeighbour(index: number, playerId: number): boolean {
+		const width = this.width;
+		const height = this.height;
+		const x = index % width;
+		const y = (index - x) / width;
+		if (x > 0 && this.isHostileOwner(index - 1, playerId)) return true;
+		if (x + 1 < width && this.isHostileOwner(index + 1, playerId)) return true;
+		if (y > 0 && this.isHostileOwner(index - width, playerId)) return true;
+		if (y + 1 < height && this.isHostileOwner(index + width, playerId)) return true;
+		return false;
+	}
+
+	private isHostileOwner(index: number, playerId: number): boolean {
+		if (!this.land[index]) return false;
+		const owner = this.owners[index];
+		return owner !== 0 && owner !== playerId;
+	}
+
+	/**
+	 * Refresh the per-bot threat score once per decision tick. Threat is an
+	 * integer signal: active attacks targeting the bot, hostile pixels touching
+	 * its border, and territory lost since the previous refresh (grievance
+	 * delta). Posture uses hysteresis so a bot does not flip between saving and
+	 * spending every second; the reserve is freed as soon as threat is safe.
+	 */
+	private updateBotThreat(): void {
+		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
+
+		this.botPressure.fill(0);
+		this.botAttackers.fill(0);
+		for (const attack of this.attacks) {
+			// Neutral expansion fronts have defenderId 0 and threaten nobody.
+			if (attack.done || attack.defenderId <= 0) continue;
+			this.botPressure[attack.defenderId - 1]++;
+			this.botAttackers[(attack.attackerId - 1) * PLAYER_COUNT + (attack.defenderId - 1)] = 1;
+		}
+
+		for (const player of this.players) this.refreshBotThreat(player);
+	}
+
+	/**
+	 * Recompute one bot's threat/posture. Normally called for every bot on a
+	 * decision tick; also called immediately before a staggered build tick so a
+	 * budget decision never uses a stale posture.
+	 */
+	private refreshBotThreat(player: PlayerState): void {
+		const index = player.id - 1;
+		if (!player.alive || !player.isBot) {
+			this.botThreat[index] = 0;
+			if (!player.alive) {
+				this.botDefensive[index] = 0;
+				this.botReserve[index] = 0;
+				this.botDefenseStall[index] = 0;
+			}
+			return;
+		}
+
+		let threat = Math.min(this.botPressure[index] * BOT_THREAT_PER_ATTACK, BOT_THREAT_ATTACK_CAP);
+		threat += Math.min(
+			this.botContactPressure(player) * BOT_THREAT_PER_CONTACT,
+			BOT_THREAT_CONTACT_CAP
+		);
+
+		// Grievances are cumulative; the delta since the last refresh is the
+		// "recent territory loss" signal and decays on its own once the
+		// fighting stops, so a grudge with no active war cannot hold the
+		// reserve forever.
+		let grievances = 0;
+		const grievanceBase = index * PLAYER_COUNT;
+		for (let attacker = 0; attacker < PLAYER_COUNT; attacker++) {
+			grievances += this.botGrievance[grievanceBase + attacker];
+		}
+		const recentLosses = Math.max(0, grievances - this.botGrievanceMark[index]);
+		this.botGrievanceMark[index] = grievances;
+		threat += Math.min(recentLosses * BOT_THREAT_PER_LOSS, BOT_THREAT_LOSS_CAP);
+
+		this.botThreat[index] = Math.min(0xffff, threat);
+		const wasDefensive = this.botDefensive[index] === 1;
+		const isDefensive = wasDefensive
+			? this.botThreat[index] > BOT_THREAT_SAFE
+			: this.botThreat[index] >= BOT_THREAT_DEFENSIVE;
+		this.botDefensive[index] = isDefensive ? 1 : 0;
+		this.botReserve[index] = isDefensive ? this.defenseReserveTarget(player) : 0;
+		if (!isDefensive) this.botDefenseStall[index] = 0;
+	}
+
+	/** Hostile pixels adjacent to the bot's border, the cheapest contact metric. */
+	private botContactPressure(player: PlayerState): number {
+		let contact = 0;
+		for (const index of player.border) {
+			if (!this.hasHostileNeighbour(index, player.id)) continue;
+			contact++;
+			// Stop once the capped contribution is reached; borders can be long.
+			if (contact * BOT_THREAT_PER_CONTACT >= BOT_THREAT_CONTACT_CAP) break;
+		}
+		return contact;
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
@@ -1779,10 +2113,8 @@ export class TerritorySimulation {
 	private runBotDecisions(): void {
 		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 
-		this.botPressure.fill(0);
-		for (const attack of this.attacks) {
-			if (!attack.done) this.botPressure[attack.defenderId - 1]++;
-		}
+		// botPressure and botAttackers are refreshed by updateBotThreat() at the
+		// same interval, just before the economy pass.
 		const strengths = new Uint32Array(PLAYER_COUNT);
 		for (const player of this.players) {
 			if (player.alive) strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
@@ -1790,7 +2122,7 @@ export class TerritorySimulation {
 
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			if (this.attackOrders[player.id - 1] <= 0) continue;
+			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id)) continue;
 			if (player.border.size === 0) continue;
 			const profile = this.botProfiles[player.id - 1];
 			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
@@ -1803,9 +2135,7 @@ export class TerritorySimulation {
 				strengths
 			);
 			if (target === null) continue;
-			if (this.createAttack(player.id, target, [target])) {
-				this.attackOrders[player.id - 1]--;
-			}
+			this.createAttack(player.id, target, [target]);
 		}
 	}
 
@@ -1814,7 +2144,7 @@ export class TerritorySimulation {
 		if (!player) return 0;
 		let levels = 0;
 		for (const structure of this.structures.forOwner(playerId)) levels += structure.stacks;
-		return Math.floor(player.territory / 4) + levels * 300 + this.attackOrders[playerId - 1] * 150;
+		return Math.floor(player.territory / 4) + levels * 300 + this.supplyOf(playerId) * 2;
 	}
 
 	private chooseBotAttackTarget(
@@ -1859,7 +2189,13 @@ export class TerritorySimulation {
 		selfStrength: number,
 		strengths: Uint32Array
 	): number {
-		if (defenderId === 0) return 45 + Math.floor(profile.aggression * 0.15);
+		const threatened = this.botDefensive[attackerId - 1] === 1;
+		if (defenderId === 0) {
+			// With a war at home, quiet neutral expansion beats opening a new front.
+			return (
+				45 + Math.floor(profile.aggression * 0.15) + (threatened ? BOT_THREAT_NEUTRAL_BIAS : 0)
+			);
+		}
 		if (defenderId === attackerId) return Number.NEGATIVE_INFINITY;
 
 		let score = 25 + Math.floor(profile.aggression * 0.6);
@@ -1879,8 +2215,21 @@ export class TerritorySimulation {
 		} else if (targetStrength < Math.floor(selfStrength * 0.85)) {
 			score += 10 + Math.floor(profile.opportunist * 0.15);
 		}
-		if (this.attackOrders[defenderId - 1] > 0) {
+		if (this.supplyOf(defenderId) >= this.attackSupplyCost(defenderId)) {
 			score -= Math.floor(profile.cautious * 0.4);
+		}
+
+		if (threatened) {
+			// High threat biases retaliation: an adjacent grudge holder or an
+			// active attacker is worth more than an unrelated third party, and
+			// unrelated aggression is devalued so the bot can defend instead.
+			const counterAttacking =
+				this.botAttackers[(defenderId - 1) * PLAYER_COUNT + (attackerId - 1)] === 1;
+			if (grudge > 0) {
+				score += BOT_THREAT_RETALIATE_BONUS + Math.floor(profile.vengeful * 0.5);
+			}
+			if (counterAttacking) score += BOT_THREAT_COUNTER_BONUS;
+			if (grudge === 0 && !counterAttacking) score -= BOT_THREAT_UNRELATED_PENALTY;
 		}
 		return score;
 	}
@@ -1962,6 +2311,20 @@ export class TerritorySimulation {
 	private checkVictory(): void {
 		if (this.ended) return;
 		const alive = this.players.filter((player) => player.alive);
+		if (alive.length === 0) return;
+
+		for (const player of alive) {
+			if (player.territory * 100 < this.landCount * SUPPLY_WIN_SHARE) continue;
+			this.ended = true;
+			this.winnerId = player.id;
+			this.pushEvent(
+				'victory',
+				`${player.name} controls ${SUPPLY_WIN_SHARE}% of the land and wins.`,
+				player.id
+			);
+			return;
+		}
+
 		if (alive.length !== 1) return;
 		this.ended = true;
 		this.winnerId = alive[0].id;
@@ -1992,9 +2355,12 @@ export class TerritorySimulation {
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
 			gold: this.gold,
 			income: this.income,
+			supply: this.gold,
+			supplyCap: this.supplyCap(HUMAN_PLAYER_ID),
+			supplyIncome: this.income,
 			hand: this.hand.map((card) => ({ id: card.id, type: card.type })),
-			attackOrders: this.attackOrders[HUMAN_PLAYER_ID - 1] ?? 0,
-			attackOrderCap: this.attackOrderCap(HUMAN_PLAYER_ID),
+			attackOrders: 0,
+			attackOrderCap: 0,
 			winnerId: this.winnerId,
 			ended: this.ended,
 			humanId: HUMAN_PLAYER_ID,
@@ -2010,6 +2376,10 @@ export class TerritorySimulation {
 			targetX: attack.targetX,
 			targetY: attack.targetY,
 			orders: attack.orders,
+			strength: attack.strength,
+			initialStrength: attack.initialStrength,
+			power: attack.power,
+			pierce: attack.pierce,
 			captures: attack.captures,
 			growthMode: attack.growthMode
 		};

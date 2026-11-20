@@ -2,17 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { createGrowthLayer, GROWTH_MODES } from './growth';
 import { generateMap } from './map';
 import { TerritorySimulation, type AttackState } from './simulation';
+import type { BuildableStructureType } from './Structures';
 import {
-	ATTACK_DAMAGE_PER_TICK,
-	ATTACK_LIFETIME_TICKS,
-	ATTACK_ORDER_LIFETIME_BONUS,
+	ATTACK_IDLE_TICKS,
+	BOT_BUILD_INTERVAL,
+	BOT_DECISION_INTERVAL,
+	BOT_DEFENSE_RESERVE_MAX,
+	BOT_DEFENSE_STALL_INTERVALS,
+	BOT_THREAT_DEFENSIVE,
 	ELEVATION_LEVELS,
+	HUMAN_PLAYER_ID,
 	LAND_FRACTION,
 	MAP_HEIGHT,
 	MAP_WIDTH,
 	PALETTE,
 	PLAYER_COUNT,
-	PLAYER_NAMES
+	PLAYER_NAMES,
+	STRUCTURE_MIN_SPACING,
+	TICK_RATE
 } from './constants';
 
 function findAttackablePixel(
@@ -122,9 +129,15 @@ function runDefenseCapture(elevationLevel: number): number {
 		growthMode: 'circular',
 		frontier,
 		createdAtTick: sim.tick,
-		lifetimeTicks: ATTACK_LIFETIME_TICKS,
+		lifetimeTicks: 0,
 		orders: 1,
 		initialOrders: 1,
+		strength: 1500,
+		initialStrength: 1500,
+		supplyCost: 30,
+		power: 30,
+		pierce: 0,
+		idleTicks: 0,
 		captures: 0,
 		done: false
 	};
@@ -300,14 +313,14 @@ describe('attack stress mode', () => {
 		expect(sim.getSnapshot().attacks.length).toBeGreaterThan(0);
 	});
 
-	it('spends attack orders and gains one back every 10 seconds', () => {
+	it('pays supply for each front and regenerates it from territory', () => {
 		const sim = new TerritorySimulation({ seed: 271828 });
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
 		if (!target) return;
 
-		expect(sim.getSnapshot().attackOrders).toBe(3);
-		expect(sim.getSnapshot().attackOrderCap).toBe(3);
+		const startSupply = sim.getSnapshot().supply;
+		expect(startSupply).toBeGreaterThanOrEqual(90);
 		for (let i = 0; i < 3; i++) {
 			expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
 		}
@@ -315,15 +328,9 @@ describe('attack stress mode', () => {
 		expect(blocked.ok).toBe(false);
 		expect(blocked.reason).toBe('no-orders');
 
-		for (let tick = 0; tick < 100; tick++) sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(1);
-		for (let tick = 0; tick < 100; tick++) sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(2);
-		for (let tick = 0; tick < 100; tick++) sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(3);
-
-		for (let tick = 0; tick < 100; tick++) sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(3);
+		for (let tick = 0; tick < TICK_RATE * 5; tick++) sim.step();
+		expect(sim.getSnapshot().supply).toBeGreaterThan(0);
+		expect(sim.getSnapshot().supply).toBeLessThanOrEqual(sim.supplyCap(HUMAN_PLAYER_ID));
 	});
 
 	it('runs many simultaneous bot fronts and keeps ownership valid', () => {
@@ -526,11 +533,7 @@ describe('attack stress mode', () => {
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
 		if (!target) return;
-		const internals = sim as unknown as {
-			attackOrders: number[];
-			attacks: AttackState[];
-		};
-		internals.attackOrders[0] = 3;
+		const internals = sim as unknown as { attacks: AttackState[] };
 		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
 		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
 		sim.step();
@@ -540,11 +543,36 @@ describe('attack stress mode', () => {
 		for (const attack of humanAttacks) {
 			expect(attack.orders).toBe(2);
 			expect(attack.initialOrders).toBe(2);
-			expect(attack.lifetimeTicks).toBe(ATTACK_LIFETIME_TICKS + ATTACK_ORDER_LIFETIME_BONUS);
+			expect(attack.power).toBe(45);
+			expect(attack.pierce).toBe(1);
+			expect(attack.initialStrength).toBe(1950);
 		}
 	});
 
-	it('expires attack orders after their maximum lifetime', () => {
+	it('cancels a front and refunds its remaining strength share', () => {
+		const sim = new TerritorySimulation({ seed: 24681 });
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
+		sim.step();
+		const supplyBefore = sim.getSnapshot().supply;
+		const cancel = sim.cancelLatestAttack(1);
+		expect(cancel.ok).toBe(true);
+		expect(sim.getSnapshot().attacks.some((attack) => attack.attackerId === 1)).toBe(false);
+		expect(sim.getSnapshot().supply).toBeGreaterThan(supplyBefore);
+	});
+
+	it('ends the match immediately when one state holds 70% of land', () => {
+		const sim = new TerritorySimulation({ seed: 24682 });
+		const landCount = sim.getSnapshot().landCount;
+		sim.players[0].territory = Math.ceil((landCount * 70) / 100);
+		(sim as unknown as { checkVictory(): void }).checkVictory();
+		expect(sim.ended).toBe(true);
+		expect(sim.winnerId).toBe(1);
+	});
+
+	it('removes a front when its durable strength reaches zero', () => {
 		const sim = new TerritorySimulation({ seed: 24680 });
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
@@ -557,7 +585,7 @@ describe('attack stress mode', () => {
 		expect(attack).toBeDefined();
 		if (!attack) return;
 
-		attack.createdAtTick = sim.tick - attack.lifetimeTicks;
+		attack.strength = 0;
 		const result = sim.step();
 		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
 	});
@@ -676,9 +704,15 @@ describe('attack stress mode', () => {
 				growthMode: 'organic',
 				frontier,
 				createdAtTick: sim.tick,
-				lifetimeTicks: ATTACK_LIFETIME_TICKS,
+				lifetimeTicks: 0,
 				orders: 1,
 				initialOrders: 1,
+				strength: 1500,
+				initialStrength: 1500,
+				supplyCost: 30,
+				power: 30,
+				pierce: 0,
+				idleTicks: 0,
 				captures: 0,
 				done: false
 			}
@@ -686,6 +720,61 @@ describe('attack stress mode', () => {
 		internals.processAttacks();
 		expect(sim.getOwner(low % sim.width, Math.floor(low / sim.width))).toBe(1);
 		expect(sim.getOwner(high % sim.width, Math.floor(high / sim.width))).toBe(2);
+	});
+
+	it('keeps a front alive when its cheapest candidate is unaffordable', () => {
+		const sim = new TerritorySimulation({ seed: 424242 });
+		const target = findAttackablePixel(sim, 1);
+		expect(target).not.toBeNull();
+		if (!target) return;
+		const index = target.y * sim.width + target.x;
+		const internals = sim as unknown as {
+			attacks: AttackState[];
+			auraDefense: Uint16Array;
+			processAttacks(): void;
+		};
+		internals.auraDefense[index] = 100;
+
+		const frontier = createGrowthLayer('circular', {
+			width: sim.width,
+			height: sim.height,
+			owners: sim.owners,
+			attackerId: 1,
+			anchorX: target.x,
+			anchorY: target.y,
+			rngSeed: 1
+		});
+		frontier.push(index);
+		const attack: AttackState = {
+			id: 700,
+			attackerId: 1,
+			defenderId: sim.owners[index],
+			targetX: target.x,
+			targetY: target.y,
+			anchorX: target.x,
+			anchorY: target.y,
+			growthMode: 'circular',
+			frontier,
+			createdAtTick: sim.tick,
+			lifetimeTicks: 0,
+			orders: 1,
+			initialOrders: 1,
+			strength: 1500,
+			initialStrength: 1500,
+			supplyCost: 30,
+			power: 30,
+			pierce: 0,
+			idleTicks: 0,
+			captures: 0,
+			done: false
+		};
+		internals.attacks = [attack];
+		internals.processAttacks();
+
+		expect(attack.captures).toBe(0);
+		expect(attack.done).toBe(false);
+		expect(attack.frontier.size).toBeGreaterThan(0);
+		expect(sim.getOwner(target.x, target.y)).not.toBe(1);
 	});
 
 	it('slows attacks by the target pixel defense', () => {
@@ -769,7 +858,7 @@ describe('attack stress mode', () => {
 		expect(sim.owners[pocket]).toBe(1);
 	});
 
-	it('spends defender attack orders to halt a multi-order attack', () => {
+	it('trades durable strength on mutual front contact', () => {
 		const sim = new TerritorySimulation({ seed: 554433 });
 		let candidate = -1;
 		for (let i = 1; i < sim.owners.length - 1; i++) {
@@ -806,19 +895,25 @@ describe('attack stress mode', () => {
 				rngSeed: id
 			}),
 			createdAtTick: sim.tick,
-			lifetimeTicks: ATTACK_LIFETIME_TICKS,
+			lifetimeTicks: 0,
 			orders,
 			initialOrders: orders,
+			strength: 1500,
+			initialStrength: 1500,
+			supplyCost: 30,
+			power: 30,
+			pierce: orders - 1,
+			idleTicks: 0,
 			captures: 0,
 			done: false
 		});
 
 		const internals = sim as unknown as {
-			attackOrders: number[];
 			resolveOpposingClash(
 				index: number,
 				attack: AttackState,
-				attackById: Map<number, AttackState>
+				attackById: Map<number, AttackState>,
+				clashedPairs: Set<number>
 			): 'halted' | 'blocked' | null;
 		};
 		const incoming = makeAttack(100, 1, 2, 2);
@@ -827,30 +922,20 @@ describe('attack stress mode', () => {
 			[100, incoming],
 			[200, opposing]
 		]);
-		internals.attackOrders[1] = 2;
 
-		expect(internals.resolveOpposingClash(candidate, incoming, attackById)).toBe('blocked');
-		expect(incoming.orders).toBe(1);
-		expect(internals.attackOrders[1]).toBe(1);
+		expect(internals.resolveOpposingClash(candidate, incoming, attackById, new Set())).toBe(
+			'blocked'
+		);
+		expect(incoming.strength).toBe(1400);
+		expect(opposing.strength).toBe(1350);
 		expect(incoming.done).toBe(false);
 
-		expect(internals.resolveOpposingClash(candidate, incoming, attackById)).toBe('halted');
-		expect(incoming.orders).toBe(0);
+		incoming.strength = 50;
+		expect(internals.resolveOpposingClash(candidate, incoming, attackById, new Set())).toBe(
+			'halted'
+		);
+		expect(incoming.strength).toBe(0);
 		expect(incoming.done).toBe(true);
-		expect(internals.attackOrders[1]).toBe(0);
-
-		const limited = makeAttack(101, 1, 2, 2);
-		const limitedOpposing = makeAttack(201, 2, 1, 1);
-		const limitedMap = new Map<number, AttackState>([
-			[101, limited],
-			[201, limitedOpposing]
-		]);
-		sim.claimedBy[candidate - 1] = 201;
-		internals.attackOrders[1] = 1;
-		expect(internals.resolveOpposingClash(candidate, limited, limitedMap)).toBe('blocked');
-		expect(limited.orders).toBe(1);
-		expect(internals.resolveOpposingClash(candidate, limited, limitedMap)).toBeNull();
-		expect(limited.done).toBe(false);
 	});
 
 	it('anchors distance-based growth at the border contact, not the click', () => {
@@ -925,9 +1010,15 @@ describe('attack stress mode', () => {
 			growthMode: 'circular',
 			frontier,
 			createdAtTick: sim.tick,
-			lifetimeTicks: ATTACK_LIFETIME_TICKS,
+			lifetimeTicks: 0,
 			orders: 1,
 			initialOrders: 1,
+			strength: 1500,
+			initialStrength: 1500,
+			supplyCost: 30,
+			power: 30,
+			pierce: 0,
+			idleTicks: 0,
 			captures: 0,
 			done: false
 		};
@@ -939,6 +1030,352 @@ describe('attack stress mode', () => {
 
 		expect(sim.owners[isolatedIndex]).toBe(isolatedOwner);
 		expect(sim.players[0].territory).toBe(territoryBefore);
-		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(false);
+		expect(result.snapshot.attacks.some((entry) => entry.id === attack.id)).toBe(true);
+		for (let tick = 0; tick <= ATTACK_IDLE_TICKS; tick++) sim.step();
+		expect(sim.getSnapshot().attacks.some((entry) => entry.id === attack.id)).toBe(false);
+	});
+});
+
+type BotDefenseInternals = {
+	botThreat: Uint16Array;
+	botDefensive: Uint8Array;
+	botReserve: Uint8Array;
+	botDefenseStall: Uint8Array;
+	botGold: number[];
+	botGrievance: Uint16Array;
+	botAttackers: Uint8Array;
+	botProfiles: Array<{ buildPlan: BuildableStructureType[] }>;
+	attacks: AttackState[];
+	scoreBotTarget(
+		attackerId: number,
+		profile: Record<string, unknown>,
+		defenderId: number,
+		selfStrength: number,
+		strengths: Uint32Array
+	): number;
+};
+
+/** Step until the simulation reaches the requested tick. */
+function stepUntilTick(sim: TerritorySimulation, targetTick: number): void {
+	while (sim.tick < targetTick) sim.step();
+}
+
+function findBareOwnedCells(sim: TerritorySimulation, playerId: number, count: number): number[] {
+	const cells: number[] = [];
+	for (let index = 0; index < sim.owners.length && cells.length < count; index++) {
+		if (sim.owners[index] !== playerId || !sim.terrain[index]) continue;
+		if (sim.structures.at(index)) continue;
+		const x = index % sim.width;
+		const y = (index - x) / sim.width;
+		if (sim.getDistrictStructureId(x, y) !== 0) continue;
+		if (sim.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING)) continue;
+		cells.push(index);
+	}
+	return cells;
+}
+
+/**
+ * Inject a hostile front that is retired by processAttacks on the same step.
+ * The threat refresh runs before combat, so the defender still sees the attack.
+ */
+function injectThreatAttack(
+	sim: TerritorySimulation,
+	attackerId: number,
+	defenderId: number
+): void {
+	const start = sim.map.starts[defenderId - 1];
+	const internals = sim as unknown as { attacks: AttackState[] };
+	internals.attacks.push({
+		id: 900_000 + attackerId,
+		attackerId,
+		defenderId,
+		targetX: start.x,
+		targetY: start.y,
+		anchorX: start.x,
+		anchorY: start.y,
+		growthMode: 'circular',
+		frontier: createGrowthLayer('circular', {
+			width: sim.width,
+			height: sim.height,
+			owners: sim.owners,
+			attackerId,
+			anchorX: start.x,
+			anchorY: start.y,
+			rngSeed: 7
+		}),
+		createdAtTick: sim.tick,
+		lifetimeTicks: 0,
+		orders: 1,
+		initialOrders: 1,
+		strength: 1500,
+		initialStrength: 1500,
+		supplyCost: 30,
+		power: 30,
+		pierce: 0,
+		idleTicks: 0,
+		captures: 0,
+		done: false
+	});
+}
+
+describe('bot threat detection and defensive behaviour', () => {
+	it('detects an active attack targeting a bot and enters a defensive posture', () => {
+		const sim = new TerritorySimulation({ seed: 13579 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_DECISION_INTERVAL - 1);
+		expect(internals.botThreat[1]).toBe(0);
+		expect(internals.botDefensive[1]).toBe(0);
+
+		injectThreatAttack(sim, 3, 2);
+		sim.step();
+
+		expect(internals.botThreat[1]).toBeGreaterThanOrEqual(BOT_THREAT_DEFENSIVE);
+		expect(internals.botDefensive[1]).toBe(1);
+		expect(internals.botReserve[1]).toBeGreaterThan(0);
+		expect(internals.botReserve[1]).toBeLessThanOrEqual(BOT_DEFENSE_RESERVE_MAX);
+	});
+
+	it('counts hostile border contact as threat without holding the posture', () => {
+		const sim = new TerritorySimulation({ seed: 97531 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_DECISION_INTERVAL - 1);
+
+		// Fabricate enemy ownership on three neutral pixels touching bot 2.
+		let touches = 0;
+		for (const index of sim.players[1].border) {
+			const x = index % sim.width;
+			const y = (index - x) / sim.width;
+			const neighbours = [
+				x > 0 ? index - 1 : -1,
+				x + 1 < sim.width ? index + 1 : -1,
+				y > 0 ? index - sim.width : -1,
+				y + 1 < sim.height ? index + sim.width : -1
+			];
+			for (const neighbour of neighbours) {
+				if (neighbour < 0 || !sim.terrain[neighbour]) continue;
+				if (sim.owners[neighbour] !== 0) continue;
+				sim.owners[neighbour] = 3;
+				touches++;
+				if (touches >= 3) break;
+			}
+			if (touches >= 3) break;
+		}
+		expect(touches).toBe(3);
+
+		sim.step();
+		expect(internals.botThreat[1]).toBeGreaterThan(0);
+		expect(internals.botThreat[1]).toBeLessThan(BOT_THREAT_DEFENSIVE);
+		expect(internals.botDefensive[1]).toBe(0);
+		expect(internals.botReserve[1]).toBe(0);
+	});
+
+	it('releases the gold reserve once the threat passes', () => {
+		const sim = new TerritorySimulation({ seed: 24680 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_DECISION_INTERVAL - 1);
+
+		injectThreatAttack(sim, 3, 2);
+		sim.step();
+		expect(internals.botDefensive[1]).toBe(1);
+		expect(internals.botReserve[1]).toBeGreaterThan(0);
+
+		// The injected front idles out, then the next decision clears posture.
+		stepUntilTick(sim, BOT_DECISION_INTERVAL * 2 + ATTACK_IDLE_TICKS + 4);
+		expect(internals.botThreat[1]).toBe(0);
+		expect(internals.botDefensive[1]).toBe(0);
+		expect(internals.botReserve[1]).toBe(0);
+	});
+
+	it('releases a stuck reserve so a long stalemate cannot block spending forever', () => {
+		const sim = new TerritorySimulation({ seed: 314159 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
+
+		const cells = findBareOwnedCells(sim, 2, 2);
+		expect(cells).toHaveLength(2);
+		if (cells.length < 2) return;
+		const [postCell, barracksCell] = cells;
+		const post = sim.structures.create(
+			'defense-post',
+			2,
+			postCell % sim.width,
+			Math.floor(postCell / sim.width),
+			sim.width
+		);
+		const barracks = sim.structures.create(
+			'barracks',
+			2,
+			barracksCell % sim.width,
+			Math.floor(barracksCell / sim.width),
+			sim.width
+		);
+		// Both defensive options are far above what the bot can save between
+		// build intervals, so defensive progress genuinely stalls.
+		for (let level = 1; level < 100; level++) {
+			sim.structures.reinforce(post);
+			sim.structures.reinforce(barracks);
+		}
+		internals.botGold[1] = 7;
+
+		// Fresh losses at every decision tick keep the bot threatened.
+		const grudge = (2 - 1) * PLAYER_COUNT + (3 - 1);
+		const lastTick = BOT_BUILD_INTERVAL * BOT_DEFENSE_STALL_INTERVALS;
+		for (let tick = BOT_DECISION_INTERVAL; tick <= lastTick; tick += BOT_DECISION_INTERVAL) {
+			stepUntilTick(sim, tick - 1);
+			internals.botGrievance[grudge] += 10;
+			sim.step();
+		}
+
+		expect(internals.botDefensive[1]).toBe(1);
+		// The reserve was released, so the bot finally bought a plan structure.
+		const planStructures = sim.structures
+			.forOwner(2)
+			.filter(
+				(entry) => entry.type !== 'state' && entry.id !== post.id && entry.id !== barracks.id
+			);
+		expect(planStructures.length).toBeGreaterThan(0);
+	});
+
+	it('builds a defense post before the build plan when threatened', () => {
+		const sim = new TerritorySimulation({ seed: 246810 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
+		expect(internals.botDefensive[1]).toBe(0);
+		expect(sim.structures.forOwner(2).filter((entry) => entry.type !== 'state')).toHaveLength(0);
+
+		// A fresh loss at the refresh tick raises threat past the threshold.
+		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] += 10;
+		sim.step();
+
+		expect(internals.botDefensive[1]).toBe(1);
+		expect(internals.botReserve[1]).toBeGreaterThan(0);
+		expect(sim.structures.forOwnerType(2, 'defense-post')).toBeDefined();
+		const buildables = sim.structures
+			.forOwner(2)
+			.filter((entry) => entry.type !== 'state')
+			.map((entry) => entry.type);
+		expect(buildables).toEqual(['defense-post']);
+	});
+
+	it('upgrades a defensive structure before unrelated plan steps when threatened', () => {
+		const sim = new TerritorySimulation({ seed: 918273 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
+
+		const cells = findBareOwnedCells(sim, 2, 2);
+		expect(cells).toHaveLength(2);
+		if (cells.length < 2) return;
+		const [postCell, barracksCell] = cells;
+		const post = sim.structures.create(
+			'defense-post',
+			2,
+			postCell % sim.width,
+			Math.floor(postCell / sim.width),
+			sim.width
+		);
+		const barracks = sim.structures.create(
+			'barracks',
+			2,
+			barracksCell % sim.width,
+			Math.floor(barracksCell / sim.width),
+			sim.width
+		);
+
+		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] += 10;
+		sim.step();
+
+		expect(internals.botDefensive[1]).toBe(1);
+		expect(post.stacks).toBe(2);
+		expect(barracks.stacks).toBe(1);
+		const built = sim.structures
+			.forOwner(2)
+			.filter(
+				(entry) => entry.type !== 'state' && entry.id !== post.id && entry.id !== barracks.id
+			);
+		expect(built).toHaveLength(0);
+	});
+
+	it('rebuilds a destroyed defense post when threatened', () => {
+		const sim = new TerritorySimulation({ seed: 553311 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
+
+		const [cell] = findBareOwnedCells(sim, 2, 1);
+		expect(cell).toBeDefined();
+		if (cell === undefined) return;
+		const destroyed = sim.structures.create(
+			'defense-post',
+			2,
+			cell % sim.width,
+			Math.floor(cell / sim.width),
+			sim.width
+		);
+		expect(sim.structures.destroy(destroyed)).toBe(true);
+		expect(sim.structures.forOwnerType(2, 'defense-post')).toBeUndefined();
+
+		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] += 10;
+		sim.step();
+
+		const rebuilt = sim.structures.forOwnerType(2, 'defense-post');
+		expect(rebuilt).toBeDefined();
+		expect(rebuilt?.id).not.toBe(destroyed.id);
+	});
+
+	it('rebuilds a destroyed plan structure when affordable and a site exists', () => {
+		const sim = new TerritorySimulation({ seed: 314159 });
+		const internals = sim as unknown as BotDefenseInternals;
+		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
+		expect(internals.botDefensive[1]).toBe(0);
+
+		const planType = internals.botProfiles[1].buildPlan[0];
+		const [cell] = findBareOwnedCells(sim, 2, 1);
+		expect(cell).toBeDefined();
+		if (cell === undefined) return;
+		const destroyed = sim.structures.create(
+			planType,
+			2,
+			cell % sim.width,
+			Math.floor(cell / sim.width),
+			sim.width
+		);
+		expect(sim.structures.destroy(destroyed)).toBe(true);
+
+		sim.step();
+		expect(sim.structures.forOwnerType(2, planType)).toBeDefined();
+	});
+
+	it('biases high-threat targeting toward the grudge holder and attacker', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const internals = sim as unknown as BotDefenseInternals;
+		const profile = internals.botProfiles[1] as unknown as Record<string, unknown>;
+		const strengths = new Uint32Array(PLAYER_COUNT).fill(1000);
+		const score = (defenderId: number): number =>
+			internals.scoreBotTarget(2, profile, defenderId, 1000, strengths);
+
+		const peacefulNeutral = score(0);
+		expect(peacefulNeutral).toBeGreaterThan(0);
+
+		internals.botDefensive[1] = 1;
+		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] = 8;
+		internals.botAttackers[(4 - 1) * PLAYER_COUNT + (2 - 1)] = 1;
+
+		expect(score(0)).toBeGreaterThan(peacefulNeutral);
+		expect(score(3)).toBeGreaterThan(score(5));
+		expect(score(4)).toBeGreaterThan(score(5));
+	});
+
+	it('includes bot threat state in the checksum and stays deterministic', () => {
+		const left = new TerritorySimulation({ seed: 424242 });
+		const right = new TerritorySimulation({ seed: 424242 });
+		for (let tick = 0; tick < 200; tick++) {
+			left.step();
+			right.step();
+		}
+		expect(left.checksum()).toBe(right.checksum());
+
+		const internals = left as unknown as BotDefenseInternals;
+		const before = left.checksum();
+		internals.botReserve[1] = internals.botReserve[1] + 1;
+		expect(left.checksum()).not.toBe(before);
 	});
 });

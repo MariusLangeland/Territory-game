@@ -6,7 +6,7 @@
 
 ## 1. Goals
 
-1. **Server authority:** the server owns authoritative game state, including ownership, attacks, attack orders, gold/cards, structures, eliminations, and winners.
+1. **Server authority:** the server owns authoritative game state, including ownership, fronts, supply/cards, structures, eliminations, and winners.
 2. **Deterministic lockstep:** clients run the same simulation and can verify agreement via checksums.
 3. **Responsive input:** a click should feel immediate even with 50–200 ms latency.
 4. **Recoverability:** reconnect or desync must produce a clean resync, never a silently corrupted match.
@@ -89,7 +89,7 @@ A player joining mid-match needs:
 - current tick;
 - full public player state;
 - a baseline owner map at that tick;
-- active attacks, live structures, human gold/income/hand, and available attack orders;
+- active fronts, live structures, and human supply/cap/income/hand;
 - the last event sequence and current checksum.
 
 The owner map is 2M owner bytes. Options:
@@ -110,10 +110,10 @@ Server tick at 10 Hz:
 
 1. Acquire the room's command queue.
 2. Drain all intents accepted for this tick.
-3. Validate ownership, player, sequence, rate limit, attack orders, gold, and card constraints.
+3. Validate ownership, player, sequence, rate limit, supply, and card constraints.
 4. Sort accepted commands by `(playerId, clientSequence)` (or another fixed rule).
 5. Apply them to the simulation at the tick boundary.
-6. Grant base attack orders, accrue Mine gold and Command Post orders, run bot decisions/attacks, then eliminations and victory.
+6. Accrue supply, run bot decisions/fronts, then eliminations and 70%/last-standing victory.
 7. Broadcast a tick delta to all clients.
 8. Every N ticks, broadcast checksum.
 9. If the match ended, broadcast results and freeze tick advancement.
@@ -248,8 +248,8 @@ Structures:
 
 Player economy and cards:
 
-- gold, income, hand, and available attack orders / cap are authoritative snapshot fields (`gold`, `income`, `hand`, `attackOrders`, `attackOrderCap`);
-- builds are tick-stamped commands, validated server-side against permanent-hand membership, gold, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility; a matching district build pays base cost + current level, while a new structure pays base cost;
+- supply, cap, income, and hand are authoritative snapshot fields (`supply`, `supplyCap`, `supplyIncome`, `hand`; `gold`/`income` remain legacy aliases);
+- builds are tick-stamped commands, validated server-side against permanent-hand membership, supply, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility; a matching district build pays base cost + current level, while a new structure pays base cost;
 - upgrades are tick-stamped commands targeting an owned district; the server resolves the district's structure, spends `base card cost + projected current level`, and increments stacks without consuming a card;
 - the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - base order grants, continuous Command Post order accrual, continuous Mine income, and War Academy caps are server-authoritative; clients only display the snapshot;
@@ -293,7 +293,7 @@ Server validation:
 - attack coordinate is integer, inside map, on land;
 - origin is owned by the player at the target tick;
 - attack has a shared border;
-- the player has an available attack order at the target tick;
+- the player has enough supply for the front launch at the target tick;
 - sequence numbers strictly increase;
 - intents per second per player are rate-limited;
 - rejected intents do not mutate state.
@@ -357,7 +357,7 @@ At 10 Hz with the online target of 8 human states:
 
 - Public player state ~8 × ~100 bytes = < 1 KiB/tick in JSON.
 - Owner changes are typically tens to hundreds of changed pixels/tick; binary is a few KiB.
-- Active attacks: bounded by outstanding attack orders and per-attack lifetimes; usually well under 24 records per client.
+- Active fronts: bounded by supply income/launch costs and 20-tick idle expiry; usually well under 24 records per client.
 - Checksum: 4 bytes (hex/string overhead in JSON).
 
 Baseline join is the expensive payload (owner map). Compress it.

@@ -6,7 +6,6 @@
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
-		ATTACK_LIFETIME_TICKS,
 		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
 		MAP_HEIGHT,
@@ -59,6 +58,9 @@
 	let paused = $state(true);
 	let showIntro = $state(true);
 	let showHelp = $state(false);
+	type OnboardingStep = 1 | 2 | 3;
+	let onboardingStep = $state<OnboardingStep | null>(null);
+	let onboardingDone = $state(false);
 	let defeatOpen = $state(false);
 	let defeatHandled = $state(false);
 	let hover = $state<HoverState | null>(null);
@@ -79,6 +81,30 @@
 	let handRaised = $state(true);
 	let handShellEl = $state<HTMLDivElement | null>(null);
 	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
+	let keyboardCursor = $state<{ x: number; y: number } | null>(null);
+	let keyboardCursorScreen = $derived.by(() => {
+		if (!keyboardCursor || !cameraView) return null;
+		return {
+			x:
+				cameraView.viewportWidth / 2 +
+				(keyboardCursor.x + 0.5 - cameraView.centerX) * cameraView.scale,
+			y:
+				cameraView.viewportHeight / 2 +
+				(keyboardCursor.y + 0.5 - cameraView.centerY) * cameraView.scale
+		};
+	});
+	let keyboardCursorStatus = $derived.by(() => {
+		if (!keyboardCursor || !sim || !snapshot) return '';
+		const { x, y } = keyboardCursor;
+		const ownerId = sim.getOwner(x, y);
+		const owner = snapshot.players.find((player) => player.id === ownerId);
+		const defense = sim.getDefense(x, y);
+		const action =
+			ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
+				? 'Enter upgrades'
+				: 'Enter attacks';
+		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;
+	});
 	let draggingCardId = $state<number | null>(null);
 	let dragOrigin = $state<{ x: number; y: number } | null>(null);
 	let dragPointer = $state<{ x: number; y: number } | null>(null);
@@ -102,6 +128,9 @@
 		cameraView = view;
 	};
 
+	let humanFronts = $derived(
+		snapshot?.attacks.filter((attack) => attack.attackerId === HUMAN_PLAYER_ID) ?? []
+	);
 	let human = $derived.by(() => {
 		if (!snapshot) return null;
 		const humanId = snapshot.humanId;
@@ -141,6 +170,39 @@
 	let showResult = $derived(Boolean(gameStarted && snapshot?.ended));
 	let seedHex = $derived(currentSeed.toString(16).toUpperCase().padStart(8, '0'));
 	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null);
+	let onboardingVisible = $derived(
+		onboardingStep !== null &&
+			gameStarted &&
+			!showIntro &&
+			!showHelp &&
+			!defeatOpen &&
+			!paused &&
+			snapshot?.ended !== true
+	);
+	let onboardingCopy = $derived.by(() => {
+		switch (onboardingStep) {
+			case 1:
+				return {
+					index: '01 / 03',
+					title: 'OPEN A FRONT',
+					body: 'Click any land pixel touching your border. One click buys a front; repeated clicks create separate fronts.'
+				};
+			case 2:
+				return {
+					index: '02 / 03',
+					title: 'BUILD SOMETHING',
+					body: 'Drag one of the five cards from the bottom hand into your territory. Cards stay in hand and can be bought again.'
+				};
+			case 3:
+				return {
+					index: '03 / 03',
+					title: 'UPGRADE A DISTRICT',
+					body: 'Click anywhere inside one of your built districts to raise its structure. Each level costs more supply.'
+				};
+			default:
+				return null;
+		}
+	});
 	let matchClock = $derived(formatClock((snapshot?.tick ?? 0) / TICK_RATE));
 	let draggingCard = $derived(
 		draggingCardId === null
@@ -192,6 +254,28 @@
 	function formatClock(totalSeconds: number): string {
 		const seconds = Math.max(0, Math.floor(totalSeconds));
 		return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+	}
+
+	const ONBOARDING_KEY = 'territory.onboarding.v1';
+
+	function beginOnboarding(): void {
+		if (onboardingDone) return;
+		onboardingStep = 1;
+	}
+
+	function advanceOnboarding(from: OnboardingStep, to: OnboardingStep): void {
+		if (onboardingStep === from) onboardingStep = to;
+	}
+
+	function finishOnboarding(): void {
+		onboardingDone = true;
+		onboardingStep = null;
+		try {
+			window.localStorage.setItem(ONBOARDING_KEY, 'done');
+		} catch {
+			// Storage can be unavailable in private/sandboxed contexts; the
+			// current match still gets the hints, they just reappear next time.
+		}
 	}
 
 	function randomSeed(): number {
@@ -275,6 +359,7 @@
 		showIntro = false;
 		gameStarted = true;
 		paused = false;
+		beginOnboarding();
 	}
 
 	function togglePause(): void {
@@ -346,7 +431,7 @@
 		if (!sim || !snapshot || !gameStarted || showIntro) return;
 		if (snapshot.ended || defeatOpen) return;
 		if (paused) {
-			showToast('Simulation paused. Resume to issue orders.', 'warn');
+			showToast('Simulation paused. Resume to launch fronts.', 'warn');
 			return;
 		}
 		if (
@@ -355,10 +440,19 @@
 		) {
 			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y);
 			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
+			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
 			return;
 		}
 		const result = sim.enqueueAttack(HUMAN_PLAYER_ID, x, y);
 		showToast(result.message, result.ok ? 'success' : 'error');
+		if (result.ok) advanceOnboarding(1, 2);
+	}
+
+	function cancelLatestFront(): void {
+		if (!sim) return;
+		const result = sim.cancelLatestAttack(HUMAN_PLAYER_ID);
+		showToast(result.message, result.ok ? 'success' : 'warn');
+		snapshot = sim.getSnapshot();
 	}
 
 	function handleHover(next: HoverState | null): void {
@@ -391,7 +485,7 @@
 		if (!sim) return;
 		growthMode = mode;
 		sim.setGrowthMode(mode);
-		showToast(`${GROWTH_LABELS[mode]} growth selected for new orders.`, 'success');
+		showToast(`${GROWTH_LABELS[mode]} growth selected for new fronts.`, 'success');
 	}
 
 	function cardDefinition(card: PublicCard) {
@@ -506,6 +600,7 @@
 
 		const result = sim.playCard(HUMAN_PLAYER_ID, cardId, Math.floor(mapX), Math.floor(mapY));
 		showToast(result.message, result.ok ? 'success' : 'error');
+		if (result.ok) advanceOnboarding(2, 3);
 	}
 
 	function handleWindowPointerMove(event: PointerEvent): void {
@@ -548,12 +643,52 @@
 		window.location.reload();
 	}
 
+	function ensureKeyboardCursor(): { x: number; y: number } | null {
+		if (!sim) return null;
+		if (keyboardCursor) return keyboardCursor;
+		const start = sim.map.starts[HUMAN_PLAYER_ID - 1];
+		keyboardCursor = start ? { x: start.x, y: start.y } : null;
+		return keyboardCursor;
+	}
+
+	function moveKeyboardCursor(dx: number, dy: number, fast: boolean): void {
+		if (!sim || !cameraView) return;
+		const cursor = ensureKeyboardCursor();
+		if (!cursor) return;
+		const step = Math.max(1, Math.round(6 / Math.max(0.2, cameraView.scale))) * (fast ? 3 : 1);
+		const next = {
+			x: Math.max(0, Math.min(sim.width - 1, cursor.x + dx * step)),
+			y: Math.max(0, Math.min(sim.height - 1, cursor.y + dy * step))
+		};
+		keyboardCursor = next;
+
+		const screenX =
+			cameraView.viewportWidth / 2 + (next.x + 0.5 - cameraView.centerX) * cameraView.scale;
+		const screenY =
+			cameraView.viewportHeight / 2 + (next.y + 0.5 - cameraView.centerY) * cameraView.scale;
+		if (
+			screenX < 70 ||
+			screenY < 70 ||
+			screenX > cameraView.viewportWidth - 70 ||
+			screenY > cameraView.viewportHeight - 70
+		) {
+			cameraBridge.centerOn(next.x, next.y);
+		}
+	}
+
+	function activateKeyboardCursor(): void {
+		const cursor = ensureKeyboardCursor();
+		if (!cursor) return;
+		handleAttack(cursor.x, cursor.y);
+	}
+
 	function handleKeydown(event: KeyboardEvent): void {
 		const target = event.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
 		if (event.key === 'Escape') {
-			if (showHelp) showHelp = false;
+			if (keyboardCursor) keyboardCursor = null;
+			else if (showHelp) showHelp = false;
 			else if (defeatOpen) return;
 			return;
 		}
@@ -575,6 +710,30 @@
 			return;
 		}
 
+		const fast = event.shiftKey;
+		switch (event.key) {
+			case 'ArrowLeft':
+				event.preventDefault();
+				moveKeyboardCursor(-1, 0, fast);
+				return;
+			case 'ArrowRight':
+				event.preventDefault();
+				moveKeyboardCursor(1, 0, fast);
+				return;
+			case 'ArrowUp':
+				event.preventDefault();
+				moveKeyboardCursor(0, -1, fast);
+				return;
+			case 'ArrowDown':
+				event.preventDefault();
+				moveKeyboardCursor(0, 1, fast);
+				return;
+			case 'Enter':
+				event.preventDefault();
+				activateKeyboardCursor();
+				return;
+		}
+
 		switch (event.key.toLowerCase()) {
 			case 'f':
 				cameraBridge.fitMap();
@@ -593,12 +752,20 @@
 			case 'h':
 				showHelp = true;
 				break;
+			case 'x':
+				cancelLatestFront();
+				break;
 		}
 	}
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
 		window.addEventListener('pointermove', handleWindowPointerMove);
+		try {
+			onboardingDone = window.localStorage.getItem(ONBOARDING_KEY) === 'done';
+		} catch {
+			onboardingDone = false;
+		}
 		createWorld(readSeedFromLocation());
 
 		return () => {
@@ -612,7 +779,7 @@
 </script>
 
 <svelte:head>
-	<title>TERRITORY — Attack stress test</title>
+	<title>TERRITORY — Frontage v1</title>
 </svelte:head>
 
 <main class="game-shell" ondragover={handleDragOver} ondrop={handleCardDrop}>
@@ -629,6 +796,17 @@
 				onError={handleError}
 				onPerf={handlePerf}
 			/>
+			{#if keyboardCursorScreen && keyboardCursor}
+				<div
+					class="keyboard-cursor"
+					style:left={`${keyboardCursorScreen.x}px`}
+					style:top={`${keyboardCursorScreen.y}px`}
+					aria-hidden="true"
+				>
+					<span></span>
+				</div>
+				<p class="visually-hidden" aria-live="polite">{keyboardCursorStatus}</p>
+			{/if}
 		{/key}
 	{/if}
 
@@ -639,7 +817,7 @@
 			<div class="brand-lockup">
 				<div class="brand-mark" aria-hidden="true"><span></span></div>
 				<div class="brand-type">
-					<p class="eyebrow">ATTACK STRESS / {PLAYER_COUNT} STATES</p>
+					<p class="eyebrow">FRONTAGE V1 / {PLAYER_COUNT} STATES</p>
 					<h1>TERRITORY<span>.</span></h1>
 				</div>
 			</div>
@@ -703,6 +881,19 @@
 				</button>
 			</div>
 		</header>
+
+		{#if onboardingVisible && onboardingCopy}
+			<aside class="onboarding-hint hud" aria-live="polite">
+				<div class="onboarding-meta">
+					<span>FIRST MATCH / {onboardingCopy.index}</span>
+					<button type="button" onclick={finishOnboarding} aria-label="Skip first-match hints">
+						SKIP
+					</button>
+				</div>
+				<h2>{onboardingCopy.title}</h2>
+				<p>{onboardingCopy.body}</p>
+			</aside>
+		{/if}
 
 		<aside class="right-rail hud">
 			<section class="panel board" aria-label="World leaderboard">
@@ -824,8 +1015,8 @@
 			</div>
 		</div>
 
-		<div class="growth-switcher hud" aria-label="Growth layer for new attack orders">
-			<span class="growth-label">GROWTH / NEW ORDERS</span>
+		<div class="growth-switcher hud" aria-label="Growth layer for new fronts">
+			<span class="growth-label">GROWTH / NEW FRONTS</span>
 			<div class="growth-options">
 				{#each GROWTH_MODES as mode (mode)}
 					<button
@@ -844,13 +1035,22 @@
 		<div class="card-tray hud" aria-label="Build cards">
 			<div class="economy-readout">
 				<div class="economy-row">
-					<span>GOLD</span>
-					<strong>{snapshot.gold}</strong>
+					<span>SUPPLY</span>
+					<strong>{snapshot.supply}</strong>
 				</div>
 				<div class="economy-row economy-orders">
-					<span>ORDERS</span>
-					<b>{snapshot.attackOrders}/{snapshot.attackOrderCap}</b>
+					<span>CAP</span>
+					<b>{snapshot.supply}/{snapshot.supplyCap}</b>
 				</div>
+				<div class="economy-row economy-orders">
+					<span>FRONTS</span>
+					<b>{humanFronts.length}</b>
+				</div>
+				{#if humanFronts.length > 0}
+					<button class="cancel-front" type="button" onclick={cancelLatestFront}>
+						CANCEL LAST
+					</button>
+				{/if}
 				<div
 					class="economy-row economy-defense"
 					title={hover?.land
@@ -862,7 +1062,7 @@
 					<span>DEF</span>
 					<b>{hover?.land ? hover.defense : '—'}</b>
 				</div>
-				<small>+{snapshot.income}G / 10s · +1 ORDER / 10s</small>
+				<small>+{snapshot.supplyIncome}/s · cards & fronts</small>
 			</div>
 
 			<div
@@ -877,10 +1077,10 @@
 						{@const accent = STRUCTURE_ACCENTS[card.type]}
 						<article
 							class="build-card"
-							class:unaffordable={snapshot.gold < definition.cost}
+							class:unaffordable={snapshot.supply < definition.cost}
 							class:dragging={draggingCardId === card.id}
 							style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
-							draggable={snapshot.gold >= definition.cost}
+							draggable={snapshot.supply >= definition.cost}
 							in:fly={{ y: 42, duration: 360, delay: Math.min(index, 2) * 55 }}
 							out:fly={{ y: 28, duration: 240 }}
 							animate:flip={{ duration: 260 }}
@@ -893,7 +1093,7 @@
 							<div class="card-face">
 								<div class="card-banner">
 									<span>BUILD CARD</span>
-									<div class="card-cost"><b>{definition.cost}</b><small>G</small></div>
+									<div class="card-cost"><b>{definition.cost}</b><small>S</small></div>
 								</div>
 								<h3 class="card-title">{definition.label}</h3>
 								<div class="card-art" aria-hidden="true">
@@ -923,7 +1123,7 @@
 								</div>
 								<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
 								<p class="card-rules">{definition.description}</p>
-								<div class="card-footer"><span>DRAG TO DEPLOY</span><span>◆</span></div>
+								<div class="card-footer"><span>DRAG TO BUILD</span><span>◆</span></div>
 							</div>
 						</article>
 					{/each}
@@ -995,12 +1195,12 @@
 			<div class="intro-content">
 				<div class="intro-copy">
 					<p class="overlay-kicker">
-						<span class="kicker-line"></span>ATTACK SYSTEM / STRESS BUILD
+						<span class="kicker-line"></span>FRONTAGE SYSTEM / SUPPLY WAR
 					</p>
 					<h2 id="intro-title">DRAW THE<br /><em>FRONTIER.</em></h2>
 					<p class="intro-lede">
-						Free, resource-free attacks are the experiment. Launch fronts into neutral land or rival
-						states and watch {PLAYER_COUNT} deterministic actors fight over the same pixel atlas.
+						Durable fronts spend supply, strength, and terrain defense against
+						{PLAYER_COUNT} deterministic states fighting over the same pixel atlas.
 					</p>
 
 					<div class="spec-strip">
@@ -1034,9 +1234,9 @@
 					</div>
 
 					<p class="intro-footnote">
-						Attack stress prototype: {PLAYER_COUNT - 1} AI states attack automatically while you build
-						from a small gold/card economy. This is not the intended final combat model. Share a seed
-						to replay the same test.
+						Frontage prototype: {PLAYER_COUNT - 1} AI states fight for 70% of the land while you build
+						with a single supply economy. Fronts cost supply, trade strength on contact, and can be cancelled.
+						Share a seed to replay the same test.
 					</p>
 				</div>
 
@@ -1045,22 +1245,22 @@
 						<span>FIELD BRIEF / 01</span>
 						<span class="brief-status"><i></i>{rendererReady ? 'READY' : 'LINKING'}</span>
 					</div>
-					<h3>ATTACK IS<br />THE ONLY VERB.</h3>
+					<h3>SUPPLY IS<br />THE ONLY VERB.</h3>
 					<ol>
 						<li>
 							<span>01</span>
-							<p>Click any land touching your frontier to open a free attack.</p>
+							<p>Click any land touching your frontier to buy a front with supply.</p>
 						</li>
 						<li>
 							<span>02</span>
 							<p>
-								Each front embeds attack orders. More orders mean more speed and a longer life; the
-								base front lasts {ATTACK_LIFETIME_TICKS / TICK_RATE} seconds.
+								Each front buys durable strength. Barracks add power and defense piercing; fronts
+								spend strength on captures and mutual attrition.
 							</p>
 						</li>
 						<li>
 							<span>03</span>
-							<p>Every state attacks at once. Build cards and terrain defense shape the front.</p>
+							<p>Take 70% of the land to win. Build cards and terrain defense shape the front.</p>
 						</li>
 					</ol>
 					<div class="brief-footer">
@@ -1071,7 +1271,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.23.0 / PROTOCOL 30</span>
+				<span>BUILD 0.30.0 / PROTOCOL 33</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1131,7 +1331,7 @@
 				</h2>
 				<p class="result-lede">
 					{#if winner?.id === snapshot.humanId}
-						Every land pixel flies your colour. The frontier is closed.
+						You hold 70% of the land. The frontier is closed.
 					{:else}
 						Your command has ended. The map remembers who held the last pixel.
 					{/if}
@@ -1208,7 +1408,7 @@
 			<article class="modal help-modal">
 				<header class="help-head">
 					<div>
-						<p class="overlay-kicker">FIELD MANUAL / ATTACK STRESS</p>
+						<p class="overlay-kicker">FIELD MANUAL / FRONTAGE V1</p>
 						<h2 id="help-title">HOW TO<br /><em>ATTACK.</em></h2>
 					</div>
 					<button
@@ -1223,36 +1423,30 @@
 
 				<div class="manual-grid">
 					<section>
-						<span class="manual-index">01 / THE EXPERIMENT</span>
-						<h3>Cards, gold, and fronts.</h3>
+						<span class="manual-index">01 / THE MODEL</span>
+						<h3>One supply. Durable fronts.</h3>
 						<p>
-							Troops and production caps are removed. The human commander earns 1 gold every 10
-							seconds and always has all five build cards; buy any of them whenever you can afford
-							it by dragging it into controlled territory. Click a district, or drop its matching
-							card inside it, to upgrade its structure; each upgrade costs the card price plus its
-							current level. Mine gold and Command Post orders are paid continuously over their
-							intervals. The hand sinks out of the way and rises when you hover it. Terrain matters:
-							base defense is 1 plus the elevation tier, occupied pixels add 1 more, and each front
-							spends points scaled by its embedded orders. State auras add another 20 defense. Each
-							front samples nearby frontier cells and presses the cheapest defense, so it bends
-							around strongpoints when a weaker lane exists. This is still not the final combat
-							design.
+							Supply is the only resource. It accrues from territory and structures, pays for cards,
+							upgrades, and front launches, and is capped by territory plus War Academies. Mines and
+							Command Posts add supply income. Cards are permanent. Click a district, or drop its
+							matching card inside it, to upgrade; cost is the card price plus current level.
+							Terrain defense is 1 plus elevation, plus occupied and aura bonuses. Each capture
+							spends both the front's per-tick power and its durable strength. Hold 70% of the land
+							to win immediately.
 						</p>
 					</section>
 					<section>
-						<span class="manual-index">02 / ORDERS</span>
-						<h3>Click a shared frontier.</h3>
+						<span class="manual-index">02 / FRONTS</span>
+						<h3>Buy strength. Cancel for a refund.</h3>
 						<p>
-							Click neutral ground or a rival's border near your territory. A free front opens there
-							and embeds the orders your Barracks issue. More embedded orders mean more capture
-							speed, defense piercing, and lifetime. Repeated clicks in the same area create
-							separate attacks; they never upgrade the first one. When mutually attacking fronts
-							touch, the defender spends available attack orders up to its own attack strength to
-							strip orders from the incoming front. If it runs out, the attack breaks through. Each
-							state begins with a State structure at its capital, marked by a circled star;
-							territory connected to it cannot be annexed, and its aura adds 20 defense to
-							surrounding pixels. The HUD growth switch selects the frontier layer for new orders:
-							circular, smooth, or organic. Existing orders keep the layer they started with.
+							Click neutral ground or a rival's border near your territory to launch a front. A
+							launch costs 30 supply plus 15 per Barracks bonus step. The front gains a strength
+							pool and per-tick power; Barracks add power and defense piercing. Repeated clicks
+							create separate fronts. When mutual fronts touch, both sides lose strength
+							simultaneously; a front at zero dies and the survivor holds the contact line. Use
+							CANCEL LAST or press X to refund the remaining strength share. Each state's State
+							structure anchors its mainland and adds 20 defense. The growth switch selects
+							circular, smooth, or organic for new fronts.
 						</p>
 					</section>
 					<section>
@@ -1260,7 +1454,9 @@
 						<h3>Read the whole atlas.</h3>
 						<p>
 							Drag to pan, scroll to zoom at the pointer, or use <kbd>F</kbd> to fit the world and
-							<kbd>C</kbd> to return to your frontier. Click the minimap to jump anywhere.
+							<kbd>C</kbd> to return to your frontier. Click the minimap to jump anywhere. On touch,
+							pinch with two fingers. Arrow keys move a keyboard cursor; <kbd>Enter</kbd>
+							attacks or upgrades under it, <kbd>Shift</kbd> moves faster, and <kbd>Esc</kbd> clears it.
 						</p>
 					</section>
 					<section>
@@ -2016,6 +2212,22 @@
 		font-size: 6px;
 		line-height: 1.35;
 		color: var(--ink-dim);
+	}
+
+	.cancel-front {
+		margin-top: 4px;
+		padding: 4px 5px;
+		border: 1px solid rgba(255, 120, 103, 0.45);
+		background: rgba(255, 120, 103, 0.08);
+		color: var(--danger);
+		font-family: var(--font-mono);
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		cursor: pointer;
+	}
+
+	.cancel-front:hover {
+		background: rgba(255, 120, 103, 0.16);
 	}
 
 	.hand-shell {
@@ -3367,16 +3579,32 @@
 
 		.minimap-dock {
 			left: 14px;
-			bottom: 14px;
-			width: 180px;
+			top: 64px;
+			bottom: auto;
+			width: 150px;
 		}
 
 		.map-tools {
 			right: 14px;
-			bottom: 14px;
+			bottom: 202px;
 		}
 
 		.perf-readout {
+			display: none;
+		}
+
+		.card-tray {
+			left: 8px;
+			right: 8px;
+			width: auto;
+			max-width: none;
+			transform: none;
+			justify-content: safe center;
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+
+		.card-tray::-webkit-scrollbar {
 			display: none;
 		}
 
@@ -3730,6 +3958,131 @@
 
 		.economy-readout small {
 			font-size: 5px;
+		}
+	}
+
+	.keyboard-cursor {
+		position: absolute;
+		z-index: 18;
+		width: 34px;
+		height: 34px;
+		transform: translate(-50%, -50%);
+		border: 2px solid rgba(61, 219, 217, 0.96);
+		border-radius: 50%;
+		background: radial-gradient(circle, rgba(61, 219, 217, 0.2), transparent 68%);
+		box-shadow:
+			0 0 0 2px rgba(3, 8, 13, 0.88),
+			0 0 24px rgba(61, 219, 217, 0.62);
+		pointer-events: none;
+	}
+
+	.keyboard-cursor::before,
+	.keyboard-cursor::after {
+		content: '';
+		position: absolute;
+		background: rgba(61, 219, 217, 0.94);
+	}
+
+	.keyboard-cursor::before {
+		left: 50%;
+		top: -9px;
+		width: 1px;
+		height: 50px;
+		transform: translateX(-50%);
+	}
+
+	.keyboard-cursor::after {
+		top: 50%;
+		left: -9px;
+		height: 1px;
+		width: 50px;
+		transform: translateY(-50%);
+	}
+
+	.keyboard-cursor span {
+		position: absolute;
+		inset: 13px;
+		border-radius: 50%;
+		background: #d9ffff;
+	}
+
+	.onboarding-hint {
+		position: fixed;
+		top: 94px;
+		left: 50%;
+		z-index: 26;
+		width: min(430px, calc(100vw - 28px));
+		padding: 13px 15px 14px;
+		transform: translateX(-50%);
+		background: rgba(9, 19, 23, 0.95);
+		border: 1px solid rgba(220, 233, 149, 0.42);
+		box-shadow: 0 16px 44px rgba(0, 0, 0, 0.42);
+		backdrop-filter: blur(16px);
+		animation: hint-in 220ms ease-out both;
+	}
+
+	.onboarding-meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		color: var(--ink-faint);
+		font-size: 7px;
+		letter-spacing: 0.16em;
+	}
+
+	.onboarding-meta button {
+		padding: 2px 0;
+		background: none;
+		border: 0;
+		color: var(--ink-faint);
+		font: inherit;
+		letter-spacing: 0.16em;
+		cursor: pointer;
+	}
+
+	.onboarding-meta button:hover {
+		color: var(--ink);
+	}
+
+	.onboarding-hint h2 {
+		margin: 7px 0 5px;
+		color: var(--ink);
+		font-size: 17px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+	}
+
+	.onboarding-hint p {
+		margin: 0;
+		color: var(--ink-dim);
+		font-size: 10px;
+		line-height: 1.45;
+	}
+
+	@keyframes hint-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, -6px);
+		}
+		to {
+			opacity: 1;
+			transform: translate(-50%, 0);
+		}
+	}
+
+	@media (max-width: 620px) {
+		.onboarding-hint {
+			top: 74px;
+			padding: 11px 13px 12px;
+		}
+
+		.onboarding-hint h2 {
+			font-size: 15px;
+		}
+
+		.onboarding-hint p {
+			font-size: 9px;
 		}
 	}
 

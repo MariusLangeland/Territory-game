@@ -2,7 +2,7 @@
 
 **A deterministic, WebGPU-rendered pixel territory war.** Every pixel of the 2048 × 1024 atlas is land, ocean, or somebody's country.
 
-![Territory attack stress test](docs/media/gameplay.png)
+![Territory Frontage v1](docs/media/gameplay.png)
 
 <details>
 <summary>More screens</summary>
@@ -13,11 +13,13 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.23.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: Frontage v1 (v0.30.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
-> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a five-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic.
+> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a five-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
-> The current build runs **51 states** (1 human + 50 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
+> The current build runs **51 states** (1 human + 50 AI) with three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
+>
+> **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
 
 ---
 
@@ -25,17 +27,20 @@
 
 | Area            | Implementation                                                                                                                             |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Attack stress   | 51 states, State structures, three growth layers, 3 human / 2 bot attack orders with embedded-order attacks, terrain defense               |
+| Frontage v1     | 51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, instant 70% victory                              |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; embedded attack orders scale points and piercing          |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks bonus steps scale power and piercing             |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                         |
-| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable level-scaled builds/upgrades                     |
-| Bot commanders  | 50 deterministic bots with varied aggression and build focuses; bots generate gold, build, and upgrade                                     |
+| Supply economy  | 90 starting supply, territory/structure income and cap, all five cards always available, repeatable level-scaled builds/upgrades           |
+| Bot commanders  | 50 deterministic bots with personalities, build plans, threat detection, defensive reserves, rebuilding, retaliation, and opportunism      |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking    |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                         |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input   |
 | UI scale        | Virtualized 51-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                        |
+| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                   |
+| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                |
+| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                    |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                  |
 
 ## Quick start
 
@@ -59,6 +64,7 @@ pnpm dev        # Vite dev server (HMR)
 pnpm check      # svelte-check + TypeScript
 pnpm test       # deterministic + 50-bot stress tests
 pnpm bench      # map/tick/checksum benchmark
+pnpm telemetry  # headless multi-seed match telemetry
 pnpm build      # production build via adapter-node
 pnpm preview    # preview the production build
 pnpm lint       # Prettier check
@@ -67,61 +73,64 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                       |
-| --------------------------- | ------------------------------------------------------------ |
-| Click / tap a shared border | Open a free attack front into neutral land or a rival state  |
-| Click / tap your district   | Upgrade that district's structure by one level for gold      |
-| Drag                        | Pan the map                                                  |
-| Scroll                      | Zoom at the pointer                                          |
-| `Space`                     | Pause / resume the simulation                                |
-| `F`                         | Fit the whole atlas                                          |
-| `C`                         | Return to your beachhead                                     |
-| `+` / `−`                   | Zoom                                                         |
-| `H`                         | Open the field manual                                        |
-| Minimap click               | Jump the camera                                              |
-| Growth switcher             | Select circular / smooth / organic for **new** attack orders |
-| Drag a build card           | Drop on controlled land to buy/build that structure          |
-| Refresh button              | Spend 1 gold to replace the hand with three new cards        |
+| Input                       | Action                                                |
+| --------------------------- | ----------------------------------------------------- |
+| Click / tap a shared border | Buy a durable front with supply                       |
+| Click / tap your district   | Upgrade that district's structure with supply         |
+| Drag                        | Pan the map                                           |
+| Scroll                      | Zoom at the pointer                                   |
+| Two-finger pinch            | Zoom on touch                                         |
+| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade              |
+| `X`                         | Cancel latest front                                   |
+| `Space`                     | Pause / resume the simulation                         |
+| `F` / `C`                   | Fit atlas / return to beachhead                       |
+| `H`                         | Open the field manual                                 |
+| Minimap click               | Jump the camera                                       |
+| Growth switcher             | Select circular / smooth / organic for **new** fronts |
+| Drag a build card           | Drop on controlled land to buy/build that structure   |
 
-A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and no-attack-orders failures. Attacks consume attack orders; build cards cost gold.
+A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and insufficient-supply failures.
 
-## How the attack works right now
+## How Frontage v1 works
 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
-3. A launch consumes one attack order: start with 3 for the human and 2 for bots. Every 10 seconds each living player gains 1 order, up to the cap; orders do not refund when a front ends.
-4. Each attack embeds **1 order plus one per two live Barracks levels, capped at +5**. More embedded orders mean more capture points, defense piercing, and lifetime. The launch still costs one inventory order; clicking again creates a separate attack, never upgrades the first.
-5. Each tick, a front has **30 + 15 per extra embedded order attack points**. Capturing a pixel costs `max(1, defense − embeddedOrders + 1)`: `1 + elevation`, plus **1 if occupied**. Flat neutral land costs 1, defended lowland costs 2, and defended peaks cost 7.
-6. A front captures connected target-owned pixels until its attack budget is spent, traversing through the target's territory. High ground and occupied land therefore fall more slowly.
-7. Every captured pixel must still touch the attacker's territory at capture time. If another front cuts the connection, queued pixels are discarded.
-8. A front with no legal captures in a tick peters out immediately, so fronts cannot phase through each other and leave enclaves.
-9. **Least resistance:** each capture samples the 10 highest-priority frontier cells and takes the cheapest local defense, so a front slides around a costly strongpoint into weaker ground while keeping its overall growth shape.
-10. **Orders are finite:** every front expires after `50 + 10 per extra embedded order` ticks.
-11. **Mutual fronts attrit:** if two states attack each other and their fronts touch, the defender spends available orders up to its issued attack strength, stripping one embedded order per spent order. A 2-order attack needs two 1-order defensive clashes; if the defender runs out, the attack breaks through.
-12. **State structures anchor territory:** each state begins with a State structure at its capital. Every land component connected to a live State structure is protected from annexation.
-13. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland is transferred to the owner with the largest shared border. Capturing a State structure destroys it and removes that state's annexation protection.
-14. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets of at most 96 cells that border an owner are filled into the owner with the largest shared border. Coastal slivers are included; large neutral regions and ownerless islands stay open.
+3. A launch costs **30 supply + 15 per Barracks bonus step**. Bonus steps are `min(5, ceil(Barracks levels / 2))`.
+4. Each front gains durable strength `1500 + 450 × bonus steps`, per-tick power `30 + 15 × bonus steps`, and defense piercing equal to bonus steps. Repeated clicks create separate fronts.
+5. Each capture costs `max(1, defense − bonus steps)` from both the per-tick power and the durable strength pool.
+6. A front captures connected target-owned pixels while it has power and strength. High ground and occupied land fall more slowly.
+7. Every captured pixel must still touch the attacker's territory at capture time. Cut connections discard queued pixels.
+8. If a front captures nothing for 20 consecutive ticks, it dies. A clash pause resets the idle counter.
+9. **Least resistance:** each capture samples 10 high-priority frontier cells and takes the cheapest local defense.
+10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
+11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent bonus steps` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
+12. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
+13. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
+14. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
+15. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
 
 ### Terrain and defense
 
 The map has six discrete elevation tiers: **lowland, plains, hills, highlands, mountains, peaks**. Elevation is part of the generated map, rendered as a green-to-ochre-to-grey-to-snow palette and marked with subtle contour boundaries.
 
-| Property                         | Value                                           |
-| -------------------------------- | ----------------------------------------------- |
-| Base defense                     | `1 + elevation tier` (1–6)                      |
-| Occupied bonus                   | `+1`                                            |
-| State aura                       | `+20` within 16 px, max once                    |
-| Attack points per front per tick | 30                                              |
-| Capture cost                     | Target pixel defense                            |
-| Attack orders                    | Start 3 human / 2 bots; +1 per 10s, cap-limited |
-| Command Post                     | +1 order per 60s                                |
-| War Academy                      | +1 order cap                                    |
+| Property                 | Value                                      |
+| ------------------------ | ------------------------------------------ |
+| Base defense             | `1 + elevation tier` (1–6)                 |
+| Occupied bonus           | `+1`                                       |
+| State aura               | `+20` within 16 px, max once               |
+| Supply launch cost       | `30 + 15 × Barracks bonus steps`           |
+| Durable strength         | `1500 + 450 × bonus steps`                 |
+| Power per front per tick | `30 + 15 × bonus steps`                    |
+| Capture cost             | `max(1, defense − bonus steps)`            |
+| Contact attrition        | `100 + 50 × opponent bonus steps` per tick |
+| Command Post             | +2 supply per second                       |
+| War Academy              | +40 supply cap                             |
 
 Hovering a land cell updates the compact defense readout beside the card hand; its tooltip shows elevation, base defense, and aura details. Grid reference and target-description panels were removed to keep vertical space clear.
 
 ### Growth layers
 
-The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing orders keep the layer they started with, so you can compare layers in the same match.
+The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing fronts keep the layer they started with, so you can compare layers in the same match.
 
 | Layer        | Behavior                                                                              |
 | ------------ | ------------------------------------------------------------------------------------- |
@@ -141,19 +150,19 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **3 gold** and **all five build cards** permanently available. Base income is **1 gold per 10 seconds**, plus 1 per live Mine level; it is paid continuously across the interval rather than as a lump sum. Drag any affordable card into your territory to buy it; cards are never consumed, so the same card can be bought again as soon as you can afford it. Clicking any pixel of one of your districts, or dropping a matching card inside it, upgrades its structure by one level for its **base card cost plus its current level**:
+The human commander starts with **90 supply** and **all five build cards** permanently available. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `min(600, 120 + floor(territory/1000) + 40 × War Academy stacks)`. Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
 
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |
-| Mine         | 3    | +1 gold per 10 seconds, paid continuously                  |
-| Barracks     | 12   | +1 embedded attack order per 2 levels, up to +5            |
+| Mine         | 3    | +1 supply per second                                       |
+| Barracks     | 12   | +1 front bonus step per 2 levels, up to +5                 |
 | Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
-| Command Post | 4    | +1 attack order per 60 seconds, paid continuously          |
-| War Academy  | 6    | +1 attack-order cap                                        |
+| Command Post | 4    | +2 supply per second                                       |
+| War Academy  | 6    | +40 supply cap                                             |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 
-Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every two levels add one embedded order, capped at +5, to all of that owner's attacks.
+Defensive auras only protect land owned by the structure's owner. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every two levels add one bonus step, capped at +5, to all of that owner's fronts.
 
 ### Districts
 
@@ -182,9 +191,9 @@ District pixels receive a subtle structure-type tint, a per-district brightness 
 
 Structures must be at least **8 px apart** (centre to centre); dropping a new type too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 
-The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Gold, attack orders, and hovered defense share a compact panel beside the hand; grid/target text panels are gone.
+The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Supply, cap, active fronts, cancellation, and hovered defense share a compact panel beside the hand.
 
-The HUD shows available **attack orders / cap**. Gain +1 order every 10 seconds up to the cap. Command Posts accrue +1 order per 60 seconds continuously, clamped to the cap; War Academies permanently raise the cap while alive. Barracks levels add one embedded order per two levels (max +5), not inventory cap.
+The HUD shows **supply / cap** and active fronts. Supply accrues from territory and structures; Mines add +1/s, Command Posts +2/s, War Academies +40 cap. Barracks levels add one front bonus step per two levels (max +5).
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -199,7 +208,7 @@ Svelte UI (+page.svelte)
         │     ├── growth/ ........ circular / smooth / organic frontier layers
         │     ├── Structures/ .... one file per structure type + registry
         │     ├── integrity.ts ... annexation + neutral-pocket cleanup
-        │     └── attacks ........ contiguous flood fronts with finite orders
+        │     └── attacks ........ durable fronts, strength attrition, refunds
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
         └── MapCamera ............ CSS-pixel camera, zoom, clamping
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
@@ -213,7 +222,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~275 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~235 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -221,9 +230,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~300 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~303 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.9–2.8% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 3.7–4.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 
@@ -249,10 +258,10 @@ src/
       GameCanvas.svelte          canvas lifecycle, fixed loop, pointer handling
       Minimap.svelte             throttled 2D overview
     game/
-      constants.ts               attack stress rules, 51-state palette/names
+      constants.ts               Frontage/supply rules, 51-state palette/names
       rng.ts                     deterministic PRNG
       map.ts                     map generation and 51 start placement
-      simulation.ts              world state, free attacks, bots, checksums
+      simulation.ts              world state, fronts, bots, checksums
       simulation.test.ts         determinism, ownership, frontier, stress tests
       growth/                    switchable circular/smooth/organic frontier layers
       net/protocol.ts            multiplayer wire protocol draft
@@ -263,7 +272,7 @@ src/
         territory-renderer.ts    WebGPU setup, control texture, dirty uploads
 docs/
   SPEC.md                        canonical product + technical specification
-  EXPERIMENTS.md                 active attack stress experiment and exit plan
+  EXPERIMENTS.md                 retired EXP-001 history and exit plan
   ARCHITECTURE.md                module responsibilities and data flow
   DETERMINISM.md                 invariants, replay, multiplayer rules
   RENDERING.md                   WebGPU pipeline and upload strategy
@@ -283,20 +292,20 @@ AGENTS.md                        orientation for future coding agents
 - The 51-state leaderboard and AI load are a stress mode, not the shipping match format.
 - Online play, accounts, matchmaking, and persistence are specified but not implemented.
 - No audio, fog of war, diplomacy, or spectator camera UI.
-- Touch pan/tap works; pinch-to-zoom is not implemented yet.
+- Touch pan/tap and two-finger pinch zoom are supported.
 - WebGPU is required. There is no WebGL/Canvas2D fallback.
 - The simulation runs on the main thread.
 
 ## Documentation index
 
-| Document                                     | Read it for                                            |
-| -------------------------------------------- | ------------------------------------------------------ |
-| [docs/SPEC.md](docs/SPEC.md)                 | The canonical game and technical specification         |
-| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)   | Temporary attack stress rules, findings, and exit plan |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, data flow, extension points                  |
-| [docs/DETERMINISM.md](docs/DETERMINISM.md)   | Rules that keep every client in lockstep               |
-| [docs/RENDERING.md](docs/RENDERING.md)       | WebGPU pipeline, texture layout, upload batching       |
-| [docs/NETWORKING.md](docs/NETWORKING.md)     | Authoritative server, protocol, latency, anti-cheat    |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)   | Budgets, measured baseline, profiling playbook         |
-| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phased plan and acceptance criteria                    |
-| [docs/DECISIONS.md](docs/DECISIONS.md)       | Why the stack and engine work this way                 |
+| Document                                     | Read it for                                         |
+| -------------------------------------------- | --------------------------------------------------- |
+| [docs/SPEC.md](docs/SPEC.md)                 | The canonical game and technical specification      |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)   | Retired EXP-001 history, findings, and exit plan    |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, data flow, extension points               |
+| [docs/DETERMINISM.md](docs/DETERMINISM.md)   | Rules that keep every client in lockstep            |
+| [docs/RENDERING.md](docs/RENDERING.md)       | WebGPU pipeline, texture layout, upload batching    |
+| [docs/NETWORKING.md](docs/NETWORKING.md)     | Authoritative server, protocol, latency, anti-cheat |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)   | Budgets, measured baseline, profiling playbook      |
+| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phased plan and acceptance criteria                 |
+| [docs/DECISIONS.md](docs/DECISIONS.md)       | Why the stack and engine work this way              |

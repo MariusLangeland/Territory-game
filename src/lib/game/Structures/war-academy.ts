@@ -2,10 +2,10 @@ import type { StructureDefinition } from './types';
 
 export const WAR_ACADEMY_DEFINITION: StructureDefinition = {
 	label: 'WAR ACADEMY',
-	description: 'Increase the attack-order cap by 1.',
+	description: '+40 supply cap.',
 	cost: 6,
 	buildable: true,
 	accent: '#c6a2ff',
 	districtRange: 32,
-	effects: [{ kind: 'order-cap', amount: 1 }]
+	effects: [{ kind: 'supply-cap', amount: 40 }]
 };

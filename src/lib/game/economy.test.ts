@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
 	BASE_GOLD_INCOME,
-	COMMAND_POST_ORDER_TICKS,
 	DISTRICT_NOISE_MARGIN,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
+	RENDER_TILE_SIZE,
 	STARTING_GOLD,
-	STRUCTURE_MIN_SPACING
+	STRUCTURE_MIN_SPACING,
+	TICK_RATE
 } from './constants';
 import { TerritorySimulation } from './simulation';
 import {
@@ -64,14 +65,16 @@ describe('player economy and cards', () => {
 		expect(sim.getSnapshot().hand.map((card) => card.type)).toEqual(BUILDABLE_STRUCTURE_TYPES);
 	});
 
-	it('pays base income every 10 seconds', () => {
+	it('pays base supply income every second and respects the cap', () => {
 		const sim = new TerritorySimulation({ seed: 135791 });
-		const startGold = sim.gold;
+		const cap = sim.supplyCap(HUMAN_PLAYER_ID);
+		for (let i = 0; i < TICK_RATE; i++) sim.step();
+		expect(sim.gold).toBe(Math.min(cap, STARTING_GOLD + BASE_GOLD_INCOME));
 		for (let i = 0; i < INCOME_INTERVAL_TICKS; i++) sim.step();
-		expect(sim.gold).toBe(startGold + BASE_GOLD_INCOME);
+		expect(sim.gold).toBe(cap);
 	});
 
-	it('drips Mine income over the whole interval', () => {
+	it('drips Mine supply income over the whole interval', () => {
 		const sim = new TerritorySimulation({ seed: 135792 });
 		const { index } = buildCard(sim, 'mine');
 		const structure = sim.structures.at(index);
@@ -81,10 +84,10 @@ describe('player economy and cards', () => {
 		const internals = sim as unknown as { goldAccrual: number };
 		sim.gold = 0;
 		internals.goldAccrual = 0;
-		for (let i = 0; i < 10; i++) sim.step();
-		expect(sim.gold).toBe(3);
-		for (let i = 0; i < 90; i++) sim.step();
-		expect(sim.gold).toBe(31);
+		for (let i = 0; i < TICK_RATE; i++) sim.step();
+		expect(sim.gold).toBe(33);
+		for (let i = 0; i < INCOME_INTERVAL_TICKS; i++) sim.step();
+		expect(sim.gold).toBe(sim.supplyCap(HUMAN_PLAYER_ID));
 	});
 
 	it('perturbs district edges with deterministic noise', () => {
@@ -141,7 +144,7 @@ describe('player economy and cards', () => {
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(3);
-		expect(sim.gold).toBe(15);
+		expect(sim.gold).toBeGreaterThanOrEqual(15);
 	});
 
 	it('reserves the projected cost of multiple queued upgrades', () => {
@@ -158,6 +161,27 @@ describe('player economy and cards', () => {
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
 		expect(sim.gold).toBe(4);
+	});
+
+	it('reports district dirty tiles instead of forcing a full rebuild', () => {
+		const sim = new TerritorySimulation({ seed: 864209 });
+		const cell = findBuildCell(sim);
+		const x = cell % sim.width;
+		const y = (cell - x) / sim.width;
+		sim.gold = 10;
+		const mine = sim.hand.find((card) => card.type === 'mine');
+		expect(mine).toBeDefined();
+		if (!mine) return;
+		expect(sim.playCard(HUMAN_PLAYER_ID, mine.id, x, y).ok).toBe(true);
+		const result = sim.step();
+		expect(result.districtsChanged).toBe(true);
+		expect(result.districtTiles.length).toBeGreaterThan(0);
+		const tilesX = Math.ceil(sim.width / RENDER_TILE_SIZE);
+		const tilesY = Math.ceil(sim.height / RENDER_TILE_SIZE);
+		for (const tile of result.districtTiles) {
+			expect(tile).toBeGreaterThanOrEqual(0);
+			expect(tile).toBeLessThan(tilesX * tilesY);
+		}
 	});
 
 	it('builds a mine, spends gold, keeps the card, and raises income', () => {
@@ -220,7 +244,11 @@ describe('player economy and cards', () => {
 		);
 		expect(result.ok).toBe(true);
 		sim.step();
-		expect(sim.structures.all.filter((entry) => entry.type === 'mine')).toHaveLength(1);
+		expect(
+			sim.structures.all.filter(
+				(entry) => entry.type === 'mine' && entry.ownerId === HUMAN_PLAYER_ID
+			)
+		).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
 		expect(sim.gold).toBe(6);
 		expect(sim.income).toBe(BASE_GOLD_INCOME + 2);
@@ -387,7 +415,9 @@ describe('player economy and cards', () => {
 		);
 		expect(result.ok).toBe(true);
 		sim.step();
-		const mines = sim.structures.all.filter((entry) => entry.type === 'mine');
+		const mines = sim.structures.all.filter(
+			(entry) => entry.type === 'mine' && entry.ownerId === HUMAN_PLAYER_ID
+		);
 		expect(mines).toHaveLength(2);
 		expect(
 			sim.getDistrictStructureId(secondIndex % sim.width, Math.floor(secondIndex / sim.width))
@@ -460,43 +490,36 @@ describe('player economy and cards', () => {
 		expect(sim.getAuraDefense(target % sim.width, Math.floor(target / sim.width))).toBe(0);
 	});
 
-	it('raises the attack-order cap with a War Academy', () => {
+	it('raises the supply cap with a War Academy', () => {
 		const sim = new TerritorySimulation({ seed: 112358 });
-		expect(sim.getSnapshot().attackOrderCap).toBe(3);
+		const baseCap = sim.supplyCap(HUMAN_PLAYER_ID);
 		buildCard(sim, 'war-academy');
-		expect(sim.getSnapshot().attackOrderCap).toBe(4);
-		for (let tick = 0; tick < INCOME_INTERVAL_TICKS; tick++) sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(4);
+		expect(sim.supplyCap(HUMAN_PLAYER_ID)).toBe(baseCap + 40);
 	});
 
-	it('clamps attack orders when a War Academy is razed', () => {
+	it('clamps supply when a War Academy is razed', () => {
 		const sim = new TerritorySimulation({ seed: 161803 });
+		const baseCap = sim.supplyCap(HUMAN_PLAYER_ID);
 		const { index } = buildCard(sim, 'war-academy');
+		const raisedCap = sim.supplyCap(HUMAN_PLAYER_ID);
+		expect(raisedCap).toBe(baseCap + 40);
+		sim.gold = raisedCap;
 		const internals = sim as unknown as {
 			claim(index: number, newOwner: number, attackId?: number): void;
 		};
-		(sim as unknown as { attackOrders: number[] }).attackOrders[HUMAN_PLAYER_ID - 1] = 4;
 		internals.claim(index, 2, 999);
 		sim.step();
-		expect(sim.getSnapshot().attackOrderCap).toBe(3);
-		expect(sim.getSnapshot().attackOrders).toBe(3);
+		expect(sim.supplyCap(HUMAN_PLAYER_ID)).toBe(baseCap);
+		expect(sim.gold).toBeLessThanOrEqual(baseCap);
 	});
 
-	it('drips Command Post attack orders over its 60-second interval', () => {
+	it('adds Command Post supply income continuously', () => {
 		const sim = new TerritorySimulation({ seed: 132134 });
 		buildCard(sim, 'command-post');
-		const internals = sim as unknown as {
-			commandPostAccrual: Uint32Array;
-			attackOrders: number[];
-		};
-		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 0;
-		internals.commandPostAccrual[HUMAN_PLAYER_ID - 1] = COMMAND_POST_ORDER_TICKS - 1;
-		sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(1);
-
-		internals.attackOrders[HUMAN_PLAYER_ID - 1] = 3;
-		internals.commandPostAccrual[HUMAN_PLAYER_ID - 1] = COMMAND_POST_ORDER_TICKS - 1;
-		sim.step();
-		expect(sim.getSnapshot().attackOrders).toBe(3);
+		const internals = sim as unknown as { goldAccrual: number };
+		sim.gold = 0;
+		internals.goldAccrual = 0;
+		for (let i = 0; i < TICK_RATE; i++) sim.step();
+		expect(sim.gold).toBe(BASE_GOLD_INCOME + 2);
 	});
 });

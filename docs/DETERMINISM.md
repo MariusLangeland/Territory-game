@@ -56,14 +56,14 @@ All authoritative quantities are integers:
 | Structure identity         | integer id, type enum, owner, map cell, stacks |
 | District                   | per-cell structure type code (0 = none)        |
 | Attack seed distance       | squared integer distance                       |
-| Attack budget              | `30 + 15 × (embedded orders − 1)` per tick     |
+| Power                      | `30 + 15 × bonus steps` per tick               |
 | Defense                    | `1 + elevation + occupied + aura`              |
 | State aura                 | 16 px radius, +20, max once, friendly          |
 | Elevation tier             | uint8, 0–5                                     |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
-In this experiment there are no troop or production-cap values. Gold, fixed card ids, attack orders, embedded attack orders, and attack-order caps are integer authoritative state. Attack points per tick scale with the attack's current embedded orders.
+There are no troop or production-cap values. Supply, supply accrual, fixed card ids, front strength, initial strength, power, piercing, initial bonus steps, and idle ticks are integer authoritative state.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -116,7 +116,7 @@ Bots are processed in ascending player id order. Economy/build checks run every 
 ### 5.1 Current local model
 
 - `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
-- `step()` increments the tick, grants +1 order to each living player on 100-tick boundaries, accrues Mine gold and Command Post orders for this tick, drains pending commands, and sorts by `(sequence, playerId)`.
+- `step()` increments the tick, accrues supply from territory and structures for this tick, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
 - Applying an attack command spends one order. Build commands are then applied before bot decisions and attack processing.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
@@ -148,14 +148,14 @@ For each attack:
 - skip candidates that no longer share a land edge with the attacker's territory,
 - compare integer effective costs and take the cheapest sampled candidate; ties keep sample order,
 - requeue every unchosen sampled candidate in reverse sample order,
-- pay `1 + elevation + occupied bonus` attack points for each valid capture,
-- requeue the sample and stop the tick if even the cheapest candidate is unaffordable,
+- pay `max(1, derived defense − piercing)` from both per-tick power and durable strength for each valid capture,
+- requeue all sampled candidates and pause the front if the cheapest candidate exceeds power or remaining strength,
 - claim valid cells with a deterministic `claim()` operation,
 - push still-target-owned neighbours onto the growth layer in the fixed order west, east, north, south,
-- expire the front when `tick - createdAtTick >= attack.lifetimeTicks`,
-- reduce the front's embedded orders through defender clashes,
-- stop when the budget reaches zero, embedded orders reach 0, or the frontier is empty,
-- drop the front if a tick captures zero cells.
+- on mutual contact, apply `100 + 50 × opponent bonus steps` strength damage to each side once per pair per tick,
+- stop when power is spent, strength reaches zero, or the frontier is empty,
+- increment `idleTicks` on a captureless non-clash tick; a clash resets it; the front dies after 20 idle ticks,
+- remove a front when its strength reaches zero or idle expiry triggers.
 
 Attack seeds are derived deterministically:
 
@@ -165,7 +165,7 @@ Attack seeds are derived deterministically:
 - cap at 96;
 - set the growth anchor to the rounded centroid of the surviving seed cells. The click is not used as the growth origin.
 
-Mutual front contact is deterministic: each capture records `claimedBy[index] = attack.id`; before a capture, neighbouring claims are checked against active mutual attacks. On contact the defender spends `min(issued attack strength, attack-order inventory, incoming embedded orders)` inventory orders; each spent order strips one embedded order from the incoming attack. At 0 the attack halts; otherwise the front pauses for the tick. The candidate is not captured during a clash.
+Mutual front contact is deterministic: each capture records `claimedBy[index] = attack.id`; before a capture, neighbouring claims are checked against active mutual attacks. On contact both fronts lose `100 + 50 × opponent bonus steps` durable strength, once per pair per tick. At 0 strength the front dies; otherwise it pauses for the tick. The candidate is not captured during a clash.
 
 Territory integrity runs after attacks every 10 ticks, or immediately after a cancellation subject to a 10-tick cooldown. Component labels are built in row-major seed order. A component is protected when it contains a live State structure owned by the same player (first structure in registry order marks it; duplicates have no further effect). Unprotected components touching a foreign protected component are annexed to the owner with the largest shared border, lower id on a tie. Components are applied in component order and cells in BFS order. Annexation uses `claim(..., 0)`, clearing attack provenance.
 
@@ -177,9 +177,9 @@ Districts are derived deterministically by a bounded Voronoi pass over each owne
 
 This is deterministic and part of the authoritative state. Effect definitions are versioned by structure type and protocol, not serialized as mutable per-cell state.
 
-Human card economy has no RNG: the hand always contains all five buildable types with fixed ids. Build and upgrade commands share the command sequence order with attacks. A build revalidates card membership, gold, ownership, emptiness, land, district placement, and stack eligibility at execution. A card landing in a matching district pays `base card cost + current level`; a new structure pays base cost. A click upgrade resolves the district's structure and spends `base card cost + projected current level` without consuming a card; queued upgrade costs are reserved using their projected levels. The card is never removed, so repeat purchases require no new draw. Income is accrued continuously: each tick adds `1 + mine stacks` to `goldAccrual`, and whole 100-point chunks become gold. Command posts accrue similarly toward a 600-point order threshold.
+Human card economy has no RNG: the hand always contains all five buildable types with fixed ids. Build and upgrade commands share the command sequence order with attacks. A build revalidates card membership, supply, ownership, emptiness, land, district placement, and stack eligibility at execution. A card landing in a matching district pays `base card cost + current level`; a new structure pays base cost. A click upgrade resolves the district's structure and spends `base card cost + projected current level` without consuming a card; queued upgrade costs are reserved using their projected levels. The card is never removed. Supply accrues continuously: each tick adds `income × 10` to the integer remainder; whole 100-point chunks become supply, clamped to cap.
 
-Attack orders are per-player integer charges. They are initialized to base caps (3 human / 2 bots). Every 100 ticks each living player gains 1 order, clamped to the cap; this is not a full refill. Command Posts accrue their order-gain rate each tick, converting whole 600-point chunks into clamped orders. War Academies add to the live cap, and losing one clamps that owner's current orders to the new cap. Attack order arrays, the base grant timer, and command-post accrual are checksummed.
+Supply is the only resource. Income is `min(60, 3 + territory/10000 + income structures)` per second; cap is `min(600, 120 + territory/1000 + 40 × War Academy stacks)`. Gains clamp and losing a War Academy clamps current supply. Front launches spend `30 + 15 × bonus steps`; cancellation refunds `floor(cost × remaining/initial strength)`.
 
 Each attack has a growth-layer-specific frontier. There is **no separate visited set**: once a cell is captured its owner changes, so later duplicate candidates fail the ownership check. Duplicates are a deterministic product of the fixed W/E/N/S push order and the layer's deterministic selection, and are harmless to outcomes.
 
@@ -217,8 +217,8 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
-9. human and bot gold plus their accrual remainders, every player's attack orders, the base order grant timer, command-post accrual, and the capped per-defender grievance matrix;
-10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, lifetime, current/initial embedded orders, capture count, and growth-layer frontier state.
+9. human and bot supply plus their accrual remainders, the capped per-defender grievance matrix, and bot threat/posture/reserve/stall/grievance-mark state;
+10. each active front's id, attacker, defender, target/anchor, growth mode, creation tick, strength/initial strength, power, pierce, idle ticks, bonus steps, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 
@@ -295,22 +295,22 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 7. Frontier sets match a brute-force scan after combat under 51-bot load.
 8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
 9. A fabricated attack frontier candidate that is not edge-connected to the attacker is neither captured nor kept as an active front.
-10. An attack whose creation tick is at or beyond its embedded-order lifetime is removed before it can capture.
+10. A front whose strength reaches zero or whose idle counter exceeds 20 is removed.
 11. Circular, smooth, and organic simulations are each deterministic across two identical runs.
 12. A growth-mode switch applies at the next tick and is reflected in snapshots.
 13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
 14. A deep click produces an attack anchor at the border contact, not at the click.
-15. Mutual attacks attrit when a front touches opposing claim provenance: a 1-order defender strips one embedded order per clash, so a 2-order attack needs two clashes unless Barracks strength lets one clash strip both. No defender orders means the attack breaks through.
+15. Mutual attacks trade strength on contact: each side loses `100 + 50 × opponent bonus steps` once per pair per tick; zero strength kills a front.
 16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left. Small neutral pockets (≤96 cells) are filled into their dominant owner every 100 ticks.
 17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, deterministic tie-breaks, small neutral/coastal pocket filling, ownerless-pocket skips, and the area threshold.
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.
 21. A live State structure adds 20 defense within 16 px on land it owns (including its own cell); destroying it removes the aura. Defensive auras never buff neutral or enemy land.
-22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever gold and placement rules allow.
-23. Build commands spend gold/remove cards only when applied; invalid or stale drops do nothing.
-24. Inventory attack orders are spent on launch and defensive clashes; embedded attack orders are a separate per-front count and are never added by repeated clicks.
-25. War Academy cap changes are derived from live structures; a cap reduction clamps current orders, and excess Command Post accrual is lost at the cap. Barracks levels increase embedded orders one per two levels (max +5), not inventory.
+22. The hand is a fixed five-card catalog; purchase keeps the card, and no card RNG exists. Repeat builds are valid whenever supply and placement rules allow.
+23. Build commands spend supply only when applied; invalid or stale drops do nothing.
+24. Supply is spent on cards, upgrades, and launches; repeated clicks create separate fronts.
+25. Supply cap changes are derived from live structures; a cap reduction clamps current supply. Barracks levels add one front bonus step per two levels (max +5).
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
 28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.

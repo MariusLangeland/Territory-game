@@ -6,7 +6,7 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.23.x`  
+**Status:** retired in application `0.30.x`; see [COMBAT_DESIGN.md](COMBAT_DESIGN.md)  
 **Started:** 2026-11-19  
 **Question:** Does the attack pipeline stay correct, deterministic, and fast with 51 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
@@ -20,7 +20,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 - many dispersed dirty texture regions,
 - 51 frontier sets and bot decisions.
 
-**This is not the intended final combat model.** Attack orders, cards, and structures are experimental layers on the attack stress test.
+**Retired in 0.30.0.** EXP-001 was replaced by Frontage v1: supply, durable strength, attrition, refunds, and 70% victory. The historical question and results are kept for context; attack orders and fixed lifetimes no longer exist.
 
 ### Temporary rules
 
@@ -45,6 +45,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Bot economy              | 12 starting gold; 1 + Mine levels per 10s, accrued continuously                  |
 | Bot personalities        | aggression, vengeance, caution, conciliation, opportunism                        |
 | Bot build plan           | five-type priority order; builds new types, then levels the lowest existing type |
+| Bot defense              | threat posture + ≤12g reserve; fortify/rebuild before plan spending              |
 | Neutral cleanup          | fill owner-bordered pockets ≤96 cells every 10s; ocean contact allowed           |
 | Starting territory       | radius ~16, ragged, spaced across the map                                        |
 | Structures               | one capturable State structure per state at its capital                          |
@@ -87,6 +88,8 @@ This is the current attack-shape test surface, not a final gameplay choice.
 - AI profiles vary aggression from passive to highly aggressive. Passive bots attack less often and prefer neutral land; aggressive bots more often strike rivals.
 - Vengeful bots prioritize owners that captured their land; cautious bots avoid stronger targets and owners holding attack orders; conciliatory bots avoid stronger neighbours; opportunistic bots target states already under attack or clearly weaker.
 - Each bot follows a five-type build priority, building new types when territory allows and otherwise leveling its lowest existing structure.
+- Threatened bots save up to 12 gold, build a Defense Post or Barracks first, and rebuild destroyed defenses. Threat posture enters at score 20, leaves at 10, and a 9-second stall valve prevents reserve deadlock.
+- Outcome metrics come from the deterministic headless harness in [TELEMETRY.md](TELEMETRY.md). The proposed post-experiment combat model is in [COMBAT_DESIGN.md](COMBAT_DESIGN.md) and is **not implemented**.
 - Every 10 seconds, neutral pockets up to 96 cells with at least one neighbouring owner are filled into the owner with the most shared border. This removes organic coastal slivers and interior specks; large neutral regions remain open.
 - Attack orders are now a gameplay constraint; the +1 order per 10 seconds is part of the experiment.
 - The match may end quickly or settle into a patchwork; balance is not validated in this build.

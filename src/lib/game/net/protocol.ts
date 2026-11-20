@@ -10,7 +10,7 @@ import type { GrowthMode } from '../growth';
 import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
 import type { PublicCard, PublicStructure } from '../Structures';
 
-export const NET_PROTOCOL_VERSION = 30;
+export const NET_PROTOCOL_VERSION = 33;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -55,7 +55,7 @@ export type ClientMessage =
 			t: 'leave';
 	  };
 
-/** Compact per-tick player view. Sent in full because there are only eight states. */
+/** Compact per-tick player view. Sent in full because there are only 51 states. */
 export interface WirePlayer {
 	id: PlayerId;
 	name: string;
@@ -69,15 +69,14 @@ export interface WireSnapshot {
 	players: WirePlayer[];
 	attacks: PublicAttack[];
 	structures: PublicStructure[];
-	gold: number;
-	income: number;
+	supply: number;
+	supplyCap: number;
+	supplyIncome: number;
 	hand: PublicCard[];
-	attackOrders: number;
-	attackOrderCap: number;
 	winnerId: PlayerId | null;
 	claimedLand: number;
 	landCount: number;
-	/** Growth layer used for new attack orders. Must be server-authoritative. */
+	/** Growth layer used for new fronts. Must be server-authoritative. */
 	growthMode: GrowthMode;
 }
 

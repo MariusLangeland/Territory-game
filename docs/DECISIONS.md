@@ -308,6 +308,8 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 
 ## ADR-011 — Cancel mutual fronts and annex detached territory
 
+**Status:** clash-cancellation rules superseded by ADR-024 (order-stripping attrition). Annexation remains current.
+
 **Status:** accepted for EXP-001; largest-component mainland superseded by ADR-012  
 **Date:** 2026-11-19
 
@@ -414,6 +416,8 @@ Attacks were a flat 30 pixels per tick regardless of terrain or whether the targ
 
 ## ADR-014 — Structure effects and the State defense aura
 
+**Status:** aura radius and ownership rules superseded by ADR-021 (radius 16, friendly-only). The derived-overlay approach remains current.
+
 **Status:** accepted for EXP-001  
 **Date:** 2026-11-19
 
@@ -487,6 +491,8 @@ State structures are anchors, but the player needs buildable structures and a re
 ---
 
 ## ADR-016 — Attack orders gain +1 every 10 seconds; Command Post and War Academy cards
+
+**Status:** Command Post lump grants superseded by ADR-022 (continuous accrual). Base order grants and War Academy remain current.
 
 **Status:** accepted for EXP-001; revised after playtest feedback  
 **Date:** 2026-11-19
@@ -912,6 +918,103 @@ Organic growth leaves many one-pixel and small coastal neutral gaps. The annexat
 
 ---
 
+## ADR-030 — Threat-aware bot defense and gold reserves
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+Bots could build and attack but ignored attacks against them. They spent every affordable tick on their offensive build plan and never reserved gold for fortification or rebuilt a destroyed defense.
+
+### Decision
+
+- Compute an integer threat score per bot once per decision tick:
+  - 25 per active hostile front (cap 50),
+  - 1 per hostile border pixel (cap 8),
+  - 2 per grievance added since the previous refresh (cap 20).
+- Use hysteresis: enter defensive posture at 20, leave at 10.
+- Reserve up to 12 gold for the next missing Defense Post, missing Barracks, or cheaper defensive upgrade.
+- While threatened, build/upgrade defense before the plan. Prefer a border cell touching an enemy. Rebuild destroyed defenses first.
+- Release the reserve after 3 build intervals without an affordable defensive action.
+- Bias target scoring toward an active attacker or grudge holder while threatened; penalize unrelated aggression and raise the value of quiet neutral expansion.
+- Include threat, posture, reserve, stall counters, and grievance marks in checksums.
+
+### Consequences
+
+- Bots now react to wars instead of ignoring them.
+- Contact alone cannot hold the reserve forever, and the stall valve prevents deadlock.
+- Macro telemetry over 2 × 900 ticks preserved attack volume and alive counts while adding defensive spending.
+- Sustained tick cost remained ~1.8 ms.
+
+### Alternatives considered
+
+- **Global threat from total enemy territory:** too coarse; bots need local war pressure.
+- **Uncapped reserve:** would freeze the economy during long wars.
+- **Immediate reserve release on peace:** caused flapping; hysteresis and the stall valve are more stable.
+
+---
+
+## ADR-031 — Requeue unaffordable least-resistance candidates
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+`processAttacks` sampled candidates, requeued all but the chosen one, then broke when the chosen candidate exceeded the remaining point budget. The cheapest candidate was therefore dropped and a zero-capture tick could kill the front, contradicting the documented requeue rule.
+
+### Decision
+
+- When the chosen candidate is unaffordable, requeue **all** sampled candidates, mark the tick cost-blocked, and keep the front alive.
+- Keep the existing requeue for the unchosen candidates only after an affordable capture.
+- Do not kill a front on a zero-capture tick when a clash or affordability check paused it.
+
+### Consequences
+
+- Fronts no longer lose their cheapest frontier cell at the end of a tick.
+- The code matches SPEC/DETERMINISM and preserves determinism.
+- This is a behavior fix; protocol remains 31 with the same wire shape.
+
+### Alternatives considered
+
+- **Increase the point budget:** hides the bug and changes balance.
+- **Drop the chosen candidate intentionally:** creates needless front churn and contradicts the documented least-resistance contract.
+
+---
+
+## ADR-032 — Dirty district tiles and staggered bot construction
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+`refreshDistrictsAround` avoided a full simulation district rebuild, but it still set `districtsChanged`, which made the renderer rebuild the entire 2.1M-pixel control texture and queue a full upload. All 50 bots also built on the same 3-second tick, which produced up to 549 dirty district tiles at once (above the 96-tile full-upload threshold).
+
+### Decision
+
+- `StepResult` reports `districtTiles`, the 32 × 32 tiles whose district palette can change.
+- `TerritoryRenderer.applyChanges` rewrites only the packed alpha channel for those tiles and uses the normal dirty-tile upload path. Full rebuild remains the fallback for overflow/reconnect.
+- `RENDER_TILE_SIZE = 32` is shared by simulation and renderer.
+- Stagger bot build ticks by player id: each bot still evaluates once per `BOT_BUILD_INTERVAL`, but only about two bots act per tick.
+- Before a staggered build, refresh that bot's threat/posture so it does not spend using a stale reserve.
+
+### Consequences
+
+- A structure build no longer triggers a full control-texture CPU rebuild.
+- In a 300-tick sample, the worst district batch fell from 549 tiles to 32, below the full-upload threshold.
+- Bot behavior changes slightly because budgets are spread across the interval; protocol is bumped to 32.
+- Threat can be computed on build ticks between decision ticks, at the cost of one border scan for that bot.
+
+### Alternatives considered
+
+- **Keep all bots on one tick:** simple but causes periodic rendering and simulation spikes.
+- **Full resync for district changes:** correct but expensive and unnecessary; only alpha bytes change.
+- **Increase the full-upload threshold:** hides the batch problem and turns it into hundreds of tiny uploads.
+
+---
+
 ## ADR-022 — Click-to-upgrade districts and continuous resource accrual
 
 **Status:** accepted for EXP-001  
@@ -944,3 +1047,41 @@ Players could upgrade a district only by dragging another matching card onto it.
 - **Store fractional gold as floats:** harms deterministic exactness.
 - **Charge an escalating upgrade cost:** adopted by ADR-025 as `base card cost + current level`.
 - **Upgrade only by clicking the structure icon:** the request explicitly targets districts, and the whole colored area is larger and easier to hit.
+
+---
+
+## ADR-033 — Frontage v1: supply, durable strength, refunds, 70% victory
+
+**Status:** accepted and implemented in 0.30.0  
+**Date:** 2026-11-20
+
+### Context
+
+The approved product decisions replaced EXP-001's attack-order inventory and fixed front lifetime: Frontage v1, 51 states, one resource, instant victory at 70% land, cancellation with refunds, and arbitrary match length. The existing gold card economy, order grants, embedded-order clashes, and Command Post/War Academy order effects could not coexist with a single supply resource.
+
+### Decision
+
+- Use **supply** as the only resource for cards, upgrades, and fronts. The internal `gold` field name is retained for save/snapshot compatibility in this build, but UI and rules call it supply.
+- Supply income is `min(60, 3 + floor(territory/10000) + income effects)` per second; cap is `min(600, 120 + floor(territory/1000) + 40 × War Academy stacks)`. Gains clamp; losing a War Academy clamps supply.
+- A front costs `30 + 15 × bonus steps` supply and gains strength `1500 + 450 × steps`, power `30 + 15 × steps`, and piercing `steps`.
+- Captures spend power and strength. Idle fronts die after 20 captureless ticks; no fixed lifetime and no match clock.
+- Mutual fronts lose `100 + 50 × opponent steps` strength once per pair per tick.
+- Cancellation refunds `floor(launchCost × remainingStrength / initialStrength)`.
+- Mine/Command Post become supply-income effects; War Academy becomes supply cap; Barracks keeps its bonus-step scaling.
+- Holding 70% of land wins immediately. Last living state still wins when others are eliminated.
+- Protocol 33 / app 0.30.0.
+
+### Consequences
+
+- Every card and front competes for the same resource.
+- Supply cap makes War Academy a spending-headroom choice instead of an order cap.
+- Cancellation gives players a way out of overcommitted fronts without erasing attrition.
+- Long matches are possible; telemetry must treat timeout as unbounded rather than a 15-minute fallback.
+- Supply/strength/idle state is checksummed and tests cover cancellation, 70% victory, income/cap, and strength attrition.
+
+### Alternatives considered
+
+- **Gold + supply:** rejected by the approved single-resource decision.
+- **Fixed front lifetime:** rejected in favour of strength and idle expiry.
+- **No refunds:** rejected by the approved cancellation decision.
+- **60% held for 60s:** rejected in favour of instant 70% victory.

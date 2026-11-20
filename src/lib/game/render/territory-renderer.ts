@@ -1,4 +1,4 @@
-import { PALETTE } from '../constants';
+import { PALETTE, RENDER_TILE_SIZE } from '../constants';
 import type { TerritorySimulation } from '../simulation';
 import { MapCamera } from './camera';
 import { TERRITORY_SHADER } from './territory.wgsl';
@@ -15,7 +15,7 @@ function controlAlpha(elevation: number, districtColor: number): number {
  * fronts can change scattered pixels in one tick. 64×64 tiles would upload
  * 4× more unchanged pixels per local front.
  */
-const UPLOAD_TILE_SIZE = 32;
+const UPLOAD_TILE_SIZE = RENDER_TILE_SIZE;
 /**
  * Above this many dirty tiles, hundreds of tiny texture writes cost more than
  * a full-texture resync. The resync is split across frames so no single frame
@@ -260,9 +260,10 @@ export class TerritoryRenderer {
 		changes: Uint32Array,
 		count: number,
 		overflow = false,
-		districtsChanged = false
+		districtsChanged = false,
+		districtTiles: readonly number[] = []
 	): void {
-		if (overflow || districtsChanged) {
+		if (overflow || (districtsChanged && districtTiles.length === 0)) {
 			this.rebuildFromSimulation();
 			this.queueFullUpload();
 			return;
@@ -270,7 +271,7 @@ export class TerritoryRenderer {
 
 		const width = this.simulation.width;
 		const height = this.simulation.height;
-		if (count === 0) return;
+		if (count === 0 && districtTiles.length === 0) return;
 
 		this.tileGeneration = (this.tileGeneration + 1) >>> 0 || 1;
 		this.dirtyRows.fill(0);
@@ -289,15 +290,29 @@ export class TerritoryRenderer {
 				this.simulation.terrainElevation[index],
 				this.simulation.districtColorCodes[index]
 			);
+			this.markDirtyTile(Math.floor(x / UPLOAD_TILE_SIZE), Math.floor(y / UPLOAD_TILE_SIZE));
+		}
 
-			const tileX = Math.floor(x / UPLOAD_TILE_SIZE);
-			const tileY = Math.floor(y / UPLOAD_TILE_SIZE);
-			const tileIndex = tileY * this.tilesX + tileX;
-			if (this.tileMarks[tileIndex] !== this.tileGeneration) {
-				this.tileMarks[tileIndex] = this.tileGeneration;
-				this.dirtyRows[tileY] = 1;
-				this.dirtyTileCount++;
+		// District changes use the same dirty-tile path as ownership changes:
+		// only the packed alpha channel changes, so the owner byte is preserved.
+		for (const tileIndex of districtTiles) {
+			if (tileIndex < 0 || tileIndex >= this.tileMarks.length) continue;
+			const tileY = Math.floor(tileIndex / this.tilesX);
+			const tileX = tileIndex - tileY * this.tilesX;
+			const x0 = tileX * UPLOAD_TILE_SIZE;
+			const y0 = tileY * UPLOAD_TILE_SIZE;
+			const x1 = Math.min(x0 + UPLOAD_TILE_SIZE, width);
+			const y1 = Math.min(y0 + UPLOAD_TILE_SIZE, height);
+			for (let y = y0; y < y1; y++) {
+				for (let x = x0; x < x1; x++) {
+					const index = y * width + x;
+					this.controlPixels[index * 4 + 3] = controlAlpha(
+						this.simulation.terrainElevation[index],
+						this.simulation.districtColorCodes[index]
+					);
+				}
 			}
+			this.markDirtyTile(tileX, tileY);
 		}
 
 		if (this.dirtyTileCount > FULL_UPLOAD_TILE_THRESHOLD) {
@@ -476,6 +491,14 @@ export class TerritoryRenderer {
 			// Changes arriving during the cycle schedule one more pass.
 			if (!this.fullUploadQueued) this.fullUploadRow = 0;
 		}
+	}
+
+	private markDirtyTile(tileX: number, tileY: number): void {
+		const tileIndex = tileY * this.tilesX + tileX;
+		if (this.tileMarks[tileIndex] === this.tileGeneration) return;
+		this.tileMarks[tileIndex] = this.tileGeneration;
+		this.dirtyRows[tileY] = 1;
+		this.dirtyTileCount++;
 	}
 
 	/**

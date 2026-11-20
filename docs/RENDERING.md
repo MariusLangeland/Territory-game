@@ -85,7 +85,9 @@ The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is n
 
 This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle structure-type tint, a per-district brightness variant, and darker boundaries, making Voronoi districts readable without hiding terrain or ownership.
 
-Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer writes R and packed A for ownership changes; G/B are written at initialization/resync. District-wide changes (structure built, razed, or stack-district changes) trigger one chunked full resync.
+Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer writes R and packed A for ownership changes; G/B are written at initialization/resync.
+
+District geometry changes are local too. A new or destroyed buildable reports the 32 × 32 tiles whose district palette can change; the renderer rewrites only the packed alpha bytes for those tiles and sends them through the same dirty-tile upload path. It no longer rebuilds the whole 2.1M-pixel control texture when a bot builds a structure. Full resync remains the fallback for overflow, reconnect, GPU reset, or an explicit rebuild.
 
 The CPU shadow is `Uint8Array(2048 * 1024 * 4) = 8 MiB`. The GPU texture is another 8 MiB. This is acceptable for the target map size.
 

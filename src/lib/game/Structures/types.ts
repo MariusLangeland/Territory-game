@@ -25,24 +25,19 @@ export interface AttackOrderBonusEffect {
 	amount: number;
 }
 
-export interface IncomeEffect {
-	kind: 'income';
-	goldPerInterval: number;
+export interface SupplyIncomeEffect {
+	kind: 'supply-income';
+	/** Supply generated per second. */
+	perSecond: number;
 }
 
-export interface OrderGainEffect {
-	kind: 'order-gain';
-	intervalTicks: number;
-	amount: number;
-}
-
-export interface OrderCapEffect {
-	kind: 'order-cap';
+export interface SupplyCapEffect {
+	kind: 'supply-cap';
 	amount: number;
 }
 
 export type StructureEffect =
-	DefenseAuraEffect | AttackOrderBonusEffect | IncomeEffect | OrderGainEffect | OrderCapEffect;
+	DefenseAuraEffect | AttackOrderBonusEffect | SupplyIncomeEffect | SupplyCapEffect;
 
 export interface StructureDefinition {
 	label: string;
