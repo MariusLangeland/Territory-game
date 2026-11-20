@@ -1153,3 +1153,41 @@ Artillery at 6 supply with free volleys was too efficient: it replaced the Mine 
 - **Flat cost per volley:** simpler, but ignored the one-shell-per-level scaling.
 - **Supply per battery rather than per shell:** undercharged high-level batteries.
 - **Keep build at 6 and only add fire cost:** still too easy to spam batteries.
+
+---
+
+## ADR-036 — Uncapped supply, infinite Barracks scaling, Fortifications, Jammers
+
+**Status:** accepted and implemented in 0.33.0  
+**Date:** 2026-11-20
+
+### Context
+
+Supply had a hard 600 maximum, Barracks scaling stopped at +5 steps, and Defense Posts were the only defensive structure. The requested direction is infinite scaling with controlled diminishing returns, compact supply readouts, and a global defensive aura that suppresses enemy Barracks effect without adding pixel defense.
+
+### Decision
+
+- Remove `SUPPLY_CAP_MAX`. Cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, unbounded.
+- HUD supply values use at most three significant digits with a comma decimal (`42 500 -> 42,5k`).
+- Effective attack levels = `max(0, attacker Barracks stacks − defender Jammer stacks)`.
+- Launch cost = `30 + 15 × effective levels`; durable strength = `1500 + 450 × effective levels`.
+- `logTier = floor(log2(effective levels + 1))` via `Math.clz32`; power = `30 + 15 × logTier`; piercing = `logTier`; contact attrition uses opponent `logTier`.
+- Rename Defense Post to **Fortification** (same +5 district defense, cost 2).
+- Add **Jammer** (cost 8): global aura, −1 effective enemy Barracks level per stack, no pixel defense.
+- Add a derived `structureStacksByType` cache keyed by `StructureRegistry.version`; income/cap/Barracks/Jammer lookups are O(types) and refresh only on registry mutation.
+- Protocol 35 / app 0.33.0.
+
+### Consequences
+
+- Supply and attack scaling no longer have hard ceilings; HUD formatting handles large banks.
+- Barracks strength/cost are linear, while speed/pierce grow logarithmically.
+- Jammers make high-Barracks attacks cheaper but much weaker; they do not help against non-Barracks fronts.
+- The permanent hand grows to six cards and bot build plans to six types.
+- Cache invalidation is via registry mutation version; direct stack writes outside the registry must use `setStacks` (test helper) or effects go stale.
+
+### Alternatives considered
+
+- **Log strength too:** speed is the main per-tick leverage; strength should remain a linear investment.
+- **Linear speed/pierce:** would make high Barracks overwhelming.
+- **Flat Jammer effect not per stack:** would not support infinite scaling.
+- **Keep cap at a larger fixed number:** still a ceiling; violates uncapped requirement.

@@ -488,7 +488,15 @@ function formatTable(report: TelemetryReport): string {
 	lines.push('');
 
 	lines.push('STRUCTURES BY SEED (count max/median level)');
-	const typeHeaders = ['state', 'artillery', 'barracks', 'defense', 'command', 'academy'] as const;
+	const typeHeaders = [
+		'state',
+		'artillery',
+		'barracks',
+		'fortification',
+		'command',
+		'academy',
+		'jammer'
+	] as const;
 	lines.push(
 		[
 			pad('seed', 12),

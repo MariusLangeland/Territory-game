@@ -51,8 +51,8 @@ describe('artillery active ability', () => {
 	it('fires one shell per level and removes one level per hit', () => {
 		const sim = new TerritorySimulation({ seed: 700002 });
 		const { battery, target } = createBattery(sim);
-		battery.stacks = 3;
-		target.stacks = 5;
+		sim.structures.setStacks(battery, 3);
+		sim.structures.setStacks(target, 5);
 
 		const result = sim.enqueueArtillery(HUMAN_PLAYER_ID, target.x, target.y);
 		expect(result.ok).toBe(true);
@@ -96,7 +96,7 @@ describe('artillery active ability', () => {
 		const run = (): number => {
 			const sim = new TerritorySimulation({ seed: 700006 });
 			const { target } = createBattery(sim);
-			target.stacks = 4;
+			sim.structures.setStacks(target, 4);
 			expect(sim.enqueueArtillery(HUMAN_PLAYER_ID, target.x, target.y).ok).toBe(true);
 			for (let tick = 0; tick <= ARTILLERY_SHELL_TRAVEL_TICKS + 5; tick++) sim.step();
 			return sim.checksum();

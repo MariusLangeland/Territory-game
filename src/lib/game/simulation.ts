@@ -1,11 +1,12 @@
 import {
 	ANNEX_INTERVAL_TICKS,
 	ARTILLERY_BLAST_RADIUS,
+	ARTILLERY_BUILD_CLEARANCE,
 	ARTILLERY_COOLDOWN_TICKS,
 	ARTILLERY_RANGE,
 	ARTILLERY_SHELL_SPREAD,
 	ARTILLERY_SHELL_TRAVEL_TICKS,
-	ARTILLERY_SUPPLY_COST_PER_SHELL,
+	ARTILLERY_SUPPLY_COST_PER_LEVEL,
 	ARTILLERY_TARGET_SNAP_RADIUS,
 	ATTACK_ATTRITION_BASE,
 	ATTACK_ATTRITION_BONUS,
@@ -50,9 +51,7 @@ import {
 	STARTING_GOLD,
 	START_RADIUS,
 	SUPPLY_CAP_BASE,
-	SUPPLY_CAP_MAX,
 	SUPPLY_CAP_TERRITORY_DIVISOR,
-	SUPPLY_CAP_WAR_ACADEMY,
 	SUPPLY_INCOME_MAX,
 	SUPPLY_INCOME_TERRITORY_DIVISOR,
 	SUPPLY_WIN_SHARE,
@@ -71,12 +70,11 @@ import {
 import { TerritoryIntegrity } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import {
-	BARRACKS_LEVELS_PER_ORDER,
-	BARRACKS_MAX_BONUS_ORDERS,
 	BUILDABLE_STRUCTURE_TYPES,
 	StructureRegistry,
 	STRUCTURE_DEFINITIONS,
 	STRUCTURE_TYPE_CODES,
+	STRUCTURE_TYPES,
 	structureTypeFromCode,
 	type BuildableStructureType,
 	type Card,
@@ -226,7 +224,8 @@ export type AttackFailure =
 	| 'no-artillery'
 	| 'cooling'
 	| 'no-supply'
-	| 'out-of-range';
+	| 'out-of-range'
+	| 'district-clearance';
 
 export interface AttackOrderResult {
 	ok: boolean;
@@ -391,6 +390,9 @@ export class TerritorySimulation {
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
 	private readonly integrity: TerritoryIntegrity;
 	readonly structures: StructureRegistry;
+	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
+	private readonly structureStacksByType = new Uint32Array(PLAYER_COUNT * 8);
+	private structureCacheVersion = -1;
 
 	constructor(options: SimulationOptions) {
 		const width = options.width ?? undefined;
@@ -485,15 +487,43 @@ export class TerritorySimulation {
 		return this.supplyIncomeFor(HUMAN_PLAYER_ID);
 	}
 
+	/**
+	 * Effects are queried every tick and on every launch. Cache total structure
+	 * stacks per owner/type so high-frequency triggers are O(types), not O(structures).
+	 */
+	private ensureStructureCache(): void {
+		const version = this.structures.version;
+		if (version === this.structureCacheVersion) return;
+		this.structureStacksByType.fill(0);
+		for (const structure of this.structures.all) {
+			const slot = (structure.ownerId - 1) * 8 + (STRUCTURE_TYPE_CODES[structure.type] - 1);
+			this.structureStacksByType[slot] += structure.stacks;
+		}
+		this.structureCacheVersion = version;
+	}
+
+	private stacksOfType(playerId: number, type: StructureType): number {
+		this.ensureStructureCache();
+		return this.structureStacksByType[(playerId - 1) * 8 + (STRUCTURE_TYPE_CODES[type] - 1)];
+	}
+
+	getBarracksLevels(playerId: number): number {
+		return this.stacksOfType(playerId, 'barracks');
+	}
+
+	private jammerLevels(playerId: number): number {
+		return this.stacksOfType(playerId, 'jammer');
+	}
+
 	private supplyIncomeFor(playerId: number): number {
 		const player = this.players[playerId - 1];
 		if (!player) return 0;
 		let income = BASE_GOLD_INCOME + Math.floor(player.territory / SUPPLY_INCOME_TERRITORY_DIVISOR);
-		for (const structure of this.structures.forOwner(playerId)) {
-			for (const effect of structure.effects) {
-				if (effect.kind === 'supply-income') {
-					income += effect.perSecond * structure.stacks;
-				}
+		for (const type of STRUCTURE_TYPES) {
+			const stacks = this.stacksOfType(playerId, type);
+			if (stacks === 0) continue;
+			for (const effect of STRUCTURE_DEFINITIONS[type].effects) {
+				if (effect.kind === 'supply-income') income += effect.perSecond * stacks;
 			}
 		}
 		return Math.min(SUPPLY_INCOME_MAX, income);
@@ -503,12 +533,14 @@ export class TerritorySimulation {
 		const player = this.players[playerId - 1];
 		if (!player) return SUPPLY_CAP_BASE;
 		let cap = SUPPLY_CAP_BASE + Math.floor(player.territory / SUPPLY_CAP_TERRITORY_DIVISOR);
-		for (const structure of this.structures.forOwner(playerId)) {
-			for (const effect of structure.effects) {
-				if (effect.kind === 'supply-cap') cap += effect.amount * structure.stacks;
+		for (const type of STRUCTURE_TYPES) {
+			const stacks = this.stacksOfType(playerId, type);
+			if (stacks === 0) continue;
+			for (const effect of STRUCTURE_DEFINITIONS[type].effects) {
+				if (effect.kind === 'supply-cap') cap += effect.amount * stacks;
 			}
 		}
-		return Math.min(SUPPLY_CAP_MAX, cap);
+		return cap;
 	}
 
 	private supplyOf(playerId: number): number {
@@ -532,9 +564,35 @@ export class TerritorySimulation {
 		return true;
 	}
 
-	private attackSupplyCost(playerId: number): number {
-		const bonus = Math.max(0, this.getAttackOrderStrength(playerId) - 1);
-		return ATTACK_SUPPLY_COST_BASE + bonus * ATTACK_SUPPLY_COST_BONUS;
+	getAttackStats(
+		attackerId: number,
+		defenderId: number
+	): {
+		levels: number;
+		effectiveLevels: number;
+		logTier: number;
+		power: number;
+		pierce: number;
+		strength: number;
+		cost: number;
+	} {
+		const levels = this.getBarracksLevels(attackerId);
+		const suppression = defenderId > 0 ? this.jammerLevels(defenderId) : 0;
+		const effectiveLevels = Math.max(0, levels - suppression);
+		const logTier = effectiveLevels > 0 ? 31 - Math.clz32(effectiveLevels + 1) : 0;
+		return {
+			levels,
+			effectiveLevels,
+			logTier,
+			power: ATTACK_DAMAGE_PER_TICK + logTier * ATTACK_ORDER_DAMAGE_BONUS,
+			pierce: logTier * ATTACK_ORDER_DEFENSE_PIERCE,
+			strength: ATTACK_STRENGTH_BASE + effectiveLevels * ATTACK_STRENGTH_BONUS,
+			cost: ATTACK_SUPPLY_COST_BASE + effectiveLevels * ATTACK_SUPPLY_COST_BONUS
+		};
+	}
+
+	private attackSupplyCost(attackerId: number, defenderId: number): number {
+		return this.getAttackStats(attackerId, defenderId).cost;
 	}
 
 	/**
@@ -563,9 +621,11 @@ export class TerritorySimulation {
 
 	private pendingAttackSupply(playerId: number): number {
 		let reserved = 0;
-		const cost = this.attackSupplyCost(playerId);
 		for (const command of this.pendingCommands) {
-			if (command.type === 'attack' && command.playerId === playerId) reserved += cost;
+			if (command.type !== 'attack' || command.playerId !== playerId) continue;
+			const index = command.y * this.width + command.x;
+			const defenderId = index >= 0 && index < this.owners.length ? this.owners[index] : 0;
+			reserved += this.attackSupplyCost(playerId, defenderId);
 		}
 		return reserved;
 	}
@@ -633,6 +693,7 @@ export class TerritorySimulation {
 
 	/** Snap a click to a nearby hostile structure so artillery targeting stays usable. */
 	private snapArtilleryTarget(playerId: number, x: number, y: number): { x: number; y: number } {
+		if (ARTILLERY_TARGET_SNAP_RADIUS <= 0) return { x, y };
 		const radiusSq = ARTILLERY_TARGET_SNAP_RADIUS * ARTILLERY_TARGET_SNAP_RADIUS;
 		let best: Structure | null = null;
 		let bestDistance = radiusSq + 1;
@@ -686,14 +747,14 @@ export class TerritorySimulation {
 		const target = this.snapArtilleryTarget(playerId, roundedX, roundedY);
 		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
 		if (batteries.length > 0) {
-			const shells = batteries.reduce((total, battery) => total + battery.stacks, 0);
-			const cost = shells * ARTILLERY_SUPPLY_COST_PER_SHELL;
+			const levels = batteries.reduce((total, battery) => total + battery.stacks, 0);
+			const cost = levels * ARTILLERY_SUPPLY_COST_PER_LEVEL;
 			if (this.supplyOf(playerId) < cost) {
-				return fail('no-supply', `Need ${cost} supply to fire ${shells} shells.`);
+				return fail('no-supply', `Need ${cost} supply to fire ${levels} shells.`);
 			}
 			return {
 				ok: true,
-				message: `${batteries.length} artillery ${batteries.length === 1 ? 'battery' : 'batteries'} ready: ${shells} shells for ${cost} supply.`
+				message: `${batteries.length} artillery ${batteries.length === 1 ? 'battery' : 'batteries'} ready: ${levels} shells for ${cost} supply.`
 			};
 		}
 
@@ -716,7 +777,7 @@ export class TerritorySimulation {
 		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
 		if (batteries.length === 0) return 0;
 		const totalShells = batteries.reduce((total, battery) => total + battery.stacks, 0);
-		const totalCost = totalShells * ARTILLERY_SUPPLY_COST_PER_SHELL;
+		const totalCost = totalShells * ARTILLERY_SUPPLY_COST_PER_LEVEL;
 		if (!this.spendSupply(playerId, totalCost)) return 0;
 
 		let shellsFired = 0;
@@ -778,6 +839,7 @@ export class TerritorySimulation {
 		let bestDistance = radiusSq + 1;
 		for (const structure of this.structures.all) {
 			if (structure.ownerId === shell.ownerId) continue;
+			if (structure.type === 'state') continue;
 			const dx = structure.x - shell.targetX;
 			const dy = structure.y - shell.targetY;
 			const distance = dx * dx + dy * dy;
@@ -839,7 +901,8 @@ export class TerritorySimulation {
 		if (this.owners[index] === playerId) {
 			return fail('own-territory', 'That territory is already yours.');
 		}
-		const cost = this.attackSupplyCost(playerId);
+		const target = this.owners[index];
+		const cost = this.attackSupplyCost(playerId, target);
 		const reserved = this.pendingAttackSupply(playerId);
 		if (this.supplyOf(playerId) - reserved < cost) {
 			return fail('no-orders', `Need ${cost} supply to launch a front.`);
@@ -848,11 +911,28 @@ export class TerritorySimulation {
 			return fail('no-shared-border', 'No friendly border is close enough. Move your frontier.');
 		}
 
-		const target = this.owners[index];
 		return {
 			ok: true,
 			message: target === 0 ? 'Expansion ordered.' : `Assault on ${this.players[target - 1].name}.`
 		};
+	}
+
+	private hasDistrictWithin(x: number, y: number): boolean {
+		const radius = ARTILLERY_BUILD_CLEARANCE;
+		const radiusSq = radius * radius;
+		const minX = Math.max(0, x - radius);
+		const maxX = Math.min(this.width - 1, x + radius);
+		const minY = Math.max(0, y - radius);
+		const maxY = Math.min(this.height - 1, y + radius);
+		for (let py = minY; py <= maxY; py++) {
+			const dy = py - y;
+			for (let px = minX; px <= maxX; px++) {
+				const dx = px - x;
+				if (dx * dx + dy * dy > radiusSq) continue;
+				if (this.districtStructureIds[py * this.width + px] !== 0) return true;
+			}
+		}
+		return false;
 	}
 
 	/** Validate a card drop for immediate UI feedback. */
@@ -912,6 +992,14 @@ export class TerritorySimulation {
 				message: `Cannot place this inside a ${
 					districtType ? STRUCTURE_DEFINITIONS[districtType].label : 'different'
 				} district.`
+			};
+		}
+
+		if (card.type === 'artillery' && this.hasDistrictWithin(roundedX, roundedY)) {
+			return {
+				ok: false,
+				reason: 'district-clearance',
+				message: `Artillery needs ${ARTILLERY_BUILD_CLEARANCE} px of district-free ground.`
 			};
 		}
 
@@ -1145,22 +1233,6 @@ export class TerritorySimulation {
 	getAuraDefense(x: number, y: number): number {
 		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
 		return this.auraDefense[y * this.width + x];
-	}
-
-	getAttackOrderStrength(ownerId: number): number {
-		let bonusLevels = 0;
-		for (const structure of this.structures.forOwner(ownerId)) {
-			for (const effect of structure.effects) {
-				if (effect.kind !== 'attack-order-bonus') continue;
-				bonusLevels += effect.amount * structure.stacks;
-			}
-		}
-		// Diminishing returns: one order per two levels, hard-capped.
-		const bonus = Math.min(
-			BARRACKS_MAX_BONUS_ORDERS,
-			Math.ceil(bonusLevels / BARRACKS_LEVELS_PER_ORDER)
-		);
-		return 1 + bonus;
 	}
 
 	get totalLand(): number {
@@ -1685,11 +1757,9 @@ export class TerritorySimulation {
 		});
 		for (const seed of unique) frontier.push(seed);
 
-		const orders = this.getAttackOrderStrength(attackerId);
-		const bonus = orders - 1;
-		const supplyCost = ATTACK_SUPPLY_COST_BASE + bonus * ATTACK_SUPPLY_COST_BONUS;
-		if (!this.spendSupply(attackerId, supplyCost)) return false;
-		const strength = ATTACK_STRENGTH_BASE + bonus * ATTACK_STRENGTH_BONUS;
+		const stats = this.getAttackStats(attackerId, defenderId);
+		if (!this.spendSupply(attackerId, stats.cost)) return false;
+		const orders = stats.logTier + 1;
 		this.attacks.push({
 			id,
 			attackerId,
@@ -1704,11 +1774,11 @@ export class TerritorySimulation {
 			lifetimeTicks: 0,
 			orders,
 			initialOrders: orders,
-			strength,
-			initialStrength: strength,
-			supplyCost,
-			power: ATTACK_DAMAGE_PER_TICK + bonus * ATTACK_ORDER_DAMAGE_BONUS,
-			pierce: bonus * ATTACK_ORDER_DEFENSE_PIERCE,
+			strength: stats.strength,
+			initialStrength: stats.strength,
+			supplyCost: stats.cost,
+			power: stats.power,
+			pierce: stats.pierce,
 			idleTicks: 0,
 			captures: 0,
 			done: false
@@ -2041,7 +2111,8 @@ export class TerritorySimulation {
 		const preferred: Array<[BuildableStructureType, number]> = [
 			['artillery', 16 + economy + Math.floor(aggression / 2) + (hash32(playerId, 10, seed) % 25)],
 			['barracks', 12 + aggression + (hash32(playerId, 11, seed) % 25)],
-			['defense-post', 12 + fortification + (hash32(playerId, 12, seed) % 25)],
+			['fortification', 12 + fortification + (hash32(playerId, 12, seed) % 25)],
+			['jammer', 8 + Math.floor((fortification + command) / 2) + (hash32(playerId, 15, seed) % 25)],
 			['command-post', 8 + command + (hash32(playerId, 13, seed) % 25)],
 			[
 				'war-academy',
@@ -2160,15 +2231,15 @@ export class TerritorySimulation {
 	private runBotDefense(player: PlayerState): boolean {
 		const goldIndex = player.id - 1;
 
-		const defensePost = this.structures.forOwnerType(player.id, 'defense-post');
-		if (!defensePost) {
-			const cost = STRUCTURE_DEFINITIONS['defense-post'].cost;
+		const fortificationStructure = this.structures.forOwnerType(player.id, 'fortification');
+		if (!fortificationStructure) {
+			const cost = STRUCTURE_DEFINITIONS['fortification'].cost;
 			if (this.botGold[goldIndex] < cost) return false;
 			const cell = this.findBotDefenseCell(player);
 			if (cell < 0) return false;
 			this.botGold[goldIndex] -= cost;
 			const structure = this.structures.create(
-				'defense-post',
+				'fortification',
 				player.id,
 				cell % this.width,
 				Math.floor(cell / this.width),
@@ -2202,7 +2273,10 @@ export class TerritorySimulation {
 
 		// Raise the lower of the two defensive structures. This spending is
 		// defence itself, so it is allowed to consume the reserve.
-		const target = barracks && barracks.stacks < defensePost.stacks ? barracks : defensePost;
+		const target =
+			barracks && barracks.stacks < fortificationStructure.stacks
+				? barracks
+				: fortificationStructure;
 		const cost = STRUCTURE_DEFINITIONS[target.type].cost + target.stacks;
 		if (this.botGold[goldIndex] < cost) return false;
 		this.botGold[goldIndex] -= cost;
@@ -2218,10 +2292,10 @@ export class TerritorySimulation {
 	 * reserve from deadlocking plan spending.
 	 */
 	private defenseReserveTarget(player: PlayerState): number {
-		const defensePost = this.structures.forOwnerType(player.id, 'defense-post');
-		if (!defensePost) {
+		const fortificationStructure = this.structures.forOwnerType(player.id, 'fortification');
+		if (!fortificationStructure) {
 			if (this.findBotDefenseCell(player) < 0) return 0;
-			return STRUCTURE_DEFINITIONS['defense-post'].cost;
+			return STRUCTURE_DEFINITIONS['fortification'].cost;
 		}
 		const barracks = this.structures.forOwnerType(player.id, 'barracks');
 		if (!barracks) {
@@ -2229,7 +2303,7 @@ export class TerritorySimulation {
 			return Math.min(STRUCTURE_DEFINITIONS['barracks'].cost, BOT_DEFENSE_RESERVE_MAX);
 		}
 		const upgradeCost = Math.min(
-			STRUCTURE_DEFINITIONS['defense-post'].cost + defensePost.stacks,
+			STRUCTURE_DEFINITIONS['fortification'].cost + fortificationStructure.stacks,
 			STRUCTURE_DEFINITIONS['barracks'].cost + barracks.stacks
 		);
 		return Math.min(upgradeCost, BOT_DEFENSE_RESERVE_MAX);
@@ -2399,7 +2473,7 @@ export class TerritorySimulation {
 
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
-			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id)) continue;
+			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id, 0)) continue;
 			if (player.border.size === 0) continue;
 			const profile = this.botProfiles[player.id - 1];
 			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
@@ -2432,6 +2506,7 @@ export class TerritorySimulation {
 			let bestScore = Number.NEGATIVE_INFINITY;
 			for (const structure of this.structures.all) {
 				if (structure.ownerId === player.id) continue;
+				if (structure.type === 'state') continue;
 				let nearest = Number.POSITIVE_INFINITY;
 				for (const battery of ready) {
 					const dx = battery.x - structure.x;
@@ -2466,8 +2541,10 @@ export class TerritorySimulation {
 	private estimatePlayerStrength(playerId: number): number {
 		const player = this.players[playerId - 1];
 		if (!player) return 0;
+		this.ensureStructureCache();
 		let levels = 0;
-		for (const structure of this.structures.forOwner(playerId)) levels += structure.stacks;
+		const base = (playerId - 1) * 8;
+		for (let index = 0; index < 8; index++) levels += this.structureStacksByType[base + index];
 		return Math.floor(player.territory / 4) + levels * 300 + this.supplyOf(playerId) * 2;
 	}
 
@@ -2539,7 +2616,7 @@ export class TerritorySimulation {
 		} else if (targetStrength < Math.floor(selfStrength * 0.85)) {
 			score += 10 + Math.floor(profile.opportunist * 0.15);
 		}
-		if (this.supplyOf(defenderId) >= this.attackSupplyCost(defenderId)) {
+		if (this.supplyOf(defenderId) >= this.attackSupplyCost(defenderId, attackerId)) {
 			score -= Math.floor(profile.cautious * 0.4);
 		}
 

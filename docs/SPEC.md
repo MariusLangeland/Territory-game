@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.32.0 (Frontage v1 + Artillery)  
+**Version:** 0.33.0 (Frontage v1 + infinite scaling)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.32.0, map version 4, protocol draft 34
+**Last synchronized with:** application 0.33.0, map version 4, protocol draft 35
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -83,7 +83,7 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
 | Coordinated bot strategy/team play                      | Bots use individual profiles only              |
-| Structure construction beyond cards, ownership transfer | State + five buildables; design pending        |
+| Structure construction beyond cards, ownership transfer | State + six buildables; design pending         |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
 | Accounts, progression, persistence                      | [ROADMAP.md](ROADMAP.md)                       |
@@ -140,11 +140,11 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
-7. Launching costs **supply**: `30 + 15 × Barracks bonus steps`, where bonus steps are `min(5, ceil(Barracks levels / 2))`. Supply is the only resource and also pays for cards and upgrades. Multiple active fronts are allowed while supply remains.
-8. Each front buys a durable strength pool `1500 + 450 × bonus steps`, per-tick power `30 + 15 × bonus steps`, and defense piercing equal to bonus steps. Repeated clicks create separate fronts; they never reinforce an existing one.
+7. Launching costs **supply** `30 + 15 × effective Barracks levels`. Effective levels are the attacker's live Barracks stacks minus the defender's live Jammer stacks (floor 0). Supply is the only resource and also pays for cards and upgrades.
+8. Each front buys durable strength `1500 + 450 × effective levels`. Speed and defense piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Scaling is infinite, with logarithmic fall-off for speed/piercing. Repeated clicks create separate fronts; they never reinforce an existing one.
 9. Each tick, the growth layer nominates candidates up to the front's power budget. Each capture costs `max(1, defense − piercing)` from **both** the per-tick power and the durable strength. The sampler takes the cheapest of up to 10 candidates; ties keep growth priority.
 10. Before every capture, the cell must still share a land edge with territory owned by the attacker. A front can never create a detached enclave.
-11. Mutual fronts trade strength simultaneously: each loses `100 + 50 × opponent bonus steps`, once per pair per tick. A front at 0 strength dies; the survivor pauses on the contact line. See section 4.13.
+11. Mutual fronts trade strength simultaneously: each loses `100 + 50 × opponent logTier`, once per pair per tick. A front at 0 strength dies; the survivor pauses on the contact line. See section 4.13.
 12. Capturing claims the cell for the attacker and pushes its four neighbours onto the growth layer if they remain target-owned land. If the cheapest sampled cell is unaffordable for either power or strength, all sampled cells requeue and the front pauses.
 13. **No fixed lifetime:** fronts persist while they have strength and remain active. A front that captures nothing for 20 consecutive ticks dies. A clash pause resets the idle counter.
 14. A front also ends when its strength reaches zero or its frontier is exhausted long enough to idle out.
@@ -200,17 +200,17 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - **caution** (retaliation fear),
   - **conciliation** (avoid stronger opponents),
   - **opportunism** (join existing wars).
-- Every bot also gets a five-type **build plan** sorted by its preferences, with a per-type hash jitter. The first entry is its opening focus; later entries become placeable as territory expands outside existing districts.
+- Every bot also gets a six-type **build plan** sorted by its preferences, with a per-type hash jitter. The first entry is its opening focus; later entries become placeable as territory expands outside existing districts.
 - Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Aggression gates how often they attempt an attack.
 - Bots start with **90 supply** and follow the same income/cap rules, evaluating construction every 3 seconds (`BOT_BUILD_INTERVAL = 30`). Build ticks are staggered by player id, so only about two bots act per tick.
-- Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Artillery/Command Posts/War Academies prefer capital-adjacent sites; Defense Posts/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
+- Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Artillery/Command Posts/War Academies/Jammers prefer capital-adjacent sites; Fortifications/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
 - **Threat posture:** once per decision tick, each bot computes an integer threat score:
   - `25` per active hostile front, capped at `50`;
   - `1` per hostile pixel touching its border, capped at `8`;
   - `2` per grievance captured since the previous refresh, capped at `20`.
   - A bot enters defensive posture at threat `≥20` and leaves at `≤10` (hysteresis).
-- **Defensive reserve:** a threatened bot withholds up to **12 supply** from non-defence plan spending while saving for a missing Defense Post, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
-- **Defensive spending:** while threatened, the bot first builds a missing Defense Post on a border cell touching an enemy, then a Barracks, then upgrades the lower of the two. These actions may consume the reserve; non-defence spending cannot.
+- **Defensive reserve:** a threatened bot withholds up to **12 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
+- **Defensive spending:** while threatened, the bot first builds a missing Fortification on a border cell touching an enemy, then a Barracks, then upgrades the lower of the two. These actions may consume the reserve; non-defence spending cannot.
 - **Rebuilding:** a destroyed plan structure is simply missing from the plan and is rebuilt when affordable and placeable; destroyed defensive structures are rebuilt first under threat.
 - **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available supply.
   - Vengeful bots strongly favor owners that have captured their land.
@@ -239,7 +239,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 ### 4.10 Frontage caveats
 
 - Every launch costs supply; there is no refund unless the player cancels the front.
-- Supply is hard-capped. War Academies raise the cap; gains are clamped and excess is lost.
+- Supply has no global maximum. Territory and War Academies raise the cap without an upper bound; gains clamp to the current cap.
 - A front flood-fills connected target-owned land; the growth layer selects circular, smoothed, or organic shape.
 - A front ends at zero strength or after 20 captureless ticks. There is no fixed lifetime.
 - Mutual fronts trade strength; the survivor pauses on the contact line.
@@ -276,8 +276,8 @@ The HUD growth switcher selects the layer for new orders. It has no effect on or
 
 Each captured cell records the attack id that claimed it. When an attack is about to capture a cell adjacent to a cell claimed by an **opposing active attack**, and the two attacks target each other's owners, the pair is in direct conflict:
 
-- the defender's attack strength is `1 + min(5, ceil(live Barracks levels / 2))`;
-- both fronts lose `100 + 50 × opponent bonus steps` durable strength simultaneously;
+- both fronts use their launch-time `logTier` for contact strength;
+- both fronts lose `100 + 50 × opponent logTier` durable strength simultaneously;
 - damage applies once per pair per tick;
 - if the incoming attack reaches 0, it halts;
 - otherwise the clash pauses the incoming front for this tick.
@@ -313,11 +313,11 @@ This removes the small unclaimed specks and coastal slivers that organic growth 
 - Every land component connected to a live State structure is protected from annexation.
 - A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
-- Only State structures anchor protection. Artillery, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- Only State structures anchor protection. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies do not prevent annexation.
+- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, teal jammer rings, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
-State is the permanent anchor structure. Artillery, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
+State is the permanent anchor structure. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
 
 ### 4.16 Elevation and defense
 
@@ -327,17 +327,19 @@ State is the permanent anchor structure. Artillery, Barracks, Defense Posts, Com
 | Base defense             | `1 + elevation`                                                 |
 | Occupied bonus           | `+1` when the pixel has a nonzero owner                         |
 | State aura               | `+20` within 16 px; overlapping auras do not stack              |
-| Supply launch cost       | `30 + 15 × Barracks bonus steps`                                |
-| Durable strength         | `1500 + 450 × bonus steps`                                      |
-| Power per front per tick | `30 + 15 × bonus steps`                                         |
-| Capture cost             | `max(1, defense − bonus steps)` from power and strength         |
-| Contact attrition        | `100 + 50 × opponent bonus steps` per pair per tick             |
+| Effective levels         | `max(0, attacker Barracks stacks − defender Jammer stacks)`     |
+| Supply launch cost       | `30 + 15 × effective levels`                                    |
+| Durable strength         | `1500 + 450 × effective levels`                                 |
+| Speed tier               | `logTier = floor(log2(effective levels + 1))`                   |
+| Power per front per tick | `30 + 15 × logTier`                                             |
+| Capture cost             | `max(1, defense − logTier)` from power and strength             |
+| Contact attrition        | `100 + 50 × opponent logTier` per pair per tick                 |
 | Idle expiry              | 20 consecutive ticks without a capture                          |
 | Defense range            | 1–6 unowned, 2–7 occupied, up to 27 in a State aura; posts add  |
 
 - Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
 - Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
-- A base front has 30 power and 1500 strength per launch; each bonus step adds 15 power, 450 strength, and one point of defense piercing. Cheap neutral lowland with a base front can capture 30 points per tick; defended peaks and aura-covered high ground consume more power and strength.
+- A base front has 30 power and 1500 strength per launch. Each effective Barracks level adds 450 strength and 15 launch cost; each doubling tier adds 15 power and 1 piercing. Scaling never caps. Cheap neutral lowland with a base front can capture 30 points per tick; defended peaks and aura-covered high ground consume more power and strength.
 - The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 - Aura circles are not rendered; district tint and boundaries communicate territorial structure.
@@ -346,29 +348,30 @@ State is the permanent anchor structure. Artillery, Barracks, Defense Posts, Com
 
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
-- Start with **90 supply** and **all five buildable cards** always available in the hand.
+- Start with **90 supply** and **all six buildable cards** always available in the hand.
 - Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Command Post stacks add **+2/s**.
-- Supply cap is `min(600, 120 + floor(territory/1000) + 40 × War Academy stacks)`.
+- Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
 - Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + current level` (projected through queued upgrades). No card is consumed.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll.
-- Costs: Artillery **30**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6** supply.
+- Costs: Artillery **30**, Barracks **12**, Fortification **2**, Jammer **8**, Command Post **4**, War Academy **6** supply.
 - Captured buildable structures are razed and their effects disappear.
-- **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells owned by the structure's owner.
+- **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
 
-| Card         | Cost | Effect                                                           |
-| ------------ | ---- | ---------------------------------------------------------------- |
-| Artillery    | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range         |
-| Barracks     | 12   | +1 front bonus step per 2 levels, capped at +5                   |
-| Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
-| Command Post | 4    | +2 supply per second                                             |
-| War Academy  | 6    | +40 supply cap                                                   |
+| Card          | Cost | Effect                                                           |
+| ------------- | ---- | ---------------------------------------------------------------- |
+| Artillery     | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range         |
+| Barracks      | 12   | +1 effective attack level; cost +15, strength +450 per level     |
+| Fortification | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
+| Jammer        | 8    | Global aura: −1 effective enemy Barracks level per stack         |
+| Command Post  | 4    | +2 supply per second                                             |
+| War Academy   | 6    | +40 supply cap                                                   |
 
-Every two live Barracks levels add one bonus step to the owner's fronts, rounded up and capped at +5. Bonus steps increase power, defense piercing, and contact damage.
+Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 
 ### 4.17b Artillery active ability
 
@@ -388,17 +391,18 @@ Every two live Barracks levels add one bonus step to the owner's fronts, rounded
 - District edges are perturbed by deterministic integer noise: coherent 8 px value noise plus a faint per-pixel jitter. This makes the outer edge grow or shrink by roughly 2 px and makes Voronoi split lines irregular. It is purely visual/geometric; all captures and auras still use the resulting district map.
 - Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
 - A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
-- Defensive auras apply to every owned cell in the owning structure's district; the old effect-radius clipping does not shrink a Defense Post's area. State auras use their radius around the capital. Barracks is not an aura: its order bonus applies globally to the owner's attacks.
-- Each stack increases the structure's effect: supply income, aura defense, front bonus steps, or supply cap.
+- Defensive auras apply to every owned cell in the owning structure's district; Fortifications cover their whole district. State auras use their radius around the capital. Barracks and Jammers are global attacker/defender modifiers, not pixel auras.
+- Each stack increases the structure's effect: supply income, aura defense, attack levels, suppression, or supply cap.
 - Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
 
-| Structure    | District range | Stack effect                       |
-| ------------ | -------------: | ---------------------------------- |
-| Artillery    |          32 px | active siege, no passive income    |
-| Barracks     |          44 px | +1 front step per 2 levels, max +5 |
-| Defense Post |          40 px | +5 defense per stack               |
-| Command Post |          32 px | +1 order per 60s per stack         |
-| War Academy  |          32 px | +1 cap per stack                   |
+| Structure     | District range | Stack effect                       |
+| ------------- | -------------: | ---------------------------------- |
+| Artillery     |          32 px | active siege, no passive income    |
+| Barracks      |          44 px | +1 front step per 2 levels, max +5 |
+| Fortification |          40 px | +5 defense per stack               |
+| Jammer        |          32 px | −1 enemy attack level per stack    |
+| Command Post  |          32 px | +2 supply/s per stack              |
+| War Academy   |          32 px | +40 supply cap per stack           |
 
 District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code.
 
@@ -622,10 +626,10 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Small neutral pockets and coastal slivers are filled into the dominant adjacent owner every 10 seconds.
 - [x] Each state has a capturable State structure anchoring its annexation-protected territory.
 - [x] Six elevation tiers color the map and add base defense.
-- [x] Occupied pixels add one defense; Barracks bonus steps scale power, piercing, strength, and contact damage.
+- [x] Occupied pixels add one defense; effective Barracks levels scale cost/strength linearly and power/piercing logarithmically.
 - [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
-- [x] The human starts with all five cards and 90 supply, earns supply income, can build repeatedly, and never loses a card from the hand.
-- [x] Artillery, Barracks, Defense Post, Command Post, and War Academy apply their active/economy/combat effects.
+- [x] The human starts with all six cards and 90 supply, earns supply income, can build repeatedly, and never loses a card from the hand.
+- [x] Artillery, Barracks, Fortification, Jammer, Command Post, and War Academy apply their active/economy/combat effects.
 - [x] Fronts cost supply and buy durable strength; cancellation refunds the remaining strength share; holding 70% of land wins instantly.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.

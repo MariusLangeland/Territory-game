@@ -147,6 +147,32 @@
 			context.stroke();
 		}
 
+		function drawJammer(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.arc(x, y + radius * 0.45, radius * 0.16, 0, Math.PI * 2);
+			context.fill();
+			for (let ring = 0; ring < 3; ring++) {
+				context.beginPath();
+				context.arc(
+					x,
+					y + radius * 0.45,
+					radius * (0.34 + ring * 0.22),
+					-Math.PI * 0.82,
+					-Math.PI * 0.18
+				);
+				context.stroke();
+			}
+			context.beginPath();
+			context.moveTo(x, y + radius * 0.28);
+			context.lineTo(x, y - radius * 0.5);
+			context.stroke();
+		}
+
 		function drawCommandPost(
 			context: CanvasRenderingContext2D,
 			x: number,
@@ -283,8 +309,10 @@
 					drawArtillery(context, x, y, radius);
 				} else if (structure.type === 'barracks') {
 					drawCrossedSwords(context, x, y, radius);
-				} else if (structure.type === 'defense-post') {
+				} else if (structure.type === 'fortification') {
 					drawShield(context, x, y, radius);
+				} else if (structure.type === 'jammer') {
+					drawJammer(context, x, y, radius);
 				} else if (structure.type === 'command-post') {
 					drawCommandPost(context, x, y, radius);
 				} else {

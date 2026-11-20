@@ -1,7 +1,8 @@
 import { ARTILLERY_DEFINITION } from './artillery';
 import { BARRACKS_DEFINITION } from './barracks';
 import { COMMAND_POST_DEFINITION } from './command-post';
-import { DEFENSE_POST_DEFINITION } from './defense-post';
+import { FORTIFICATION_DEFINITION } from './fortification';
+import { JAMMER_DEFINITION } from './jammer';
 import { STATE_DEFINITION } from './state';
 import { WAR_ACADEMY_DEFINITION } from './war-academy';
 import type {
@@ -15,35 +16,40 @@ export const STRUCTURE_TYPES = [
 	'state',
 	'artillery',
 	'barracks',
-	'defense-post',
+	'fortification',
 	'command-post',
-	'war-academy'
+	'war-academy',
+	'jammer'
 ] as const satisfies readonly StructureType[];
 
+/** Hand order is ascending card cost. */
 export const BUILDABLE_STRUCTURE_TYPES = [
-	'artillery',
-	'barracks',
-	'defense-post',
+	'fortification',
 	'command-post',
-	'war-academy'
+	'war-academy',
+	'jammer',
+	'barracks',
+	'artillery'
 ] as const satisfies readonly BuildableStructureType[];
 
 export const STRUCTURE_DEFINITIONS: Record<StructureType, StructureDefinition> = {
 	state: STATE_DEFINITION,
 	artillery: ARTILLERY_DEFINITION,
 	barracks: BARRACKS_DEFINITION,
-	'defense-post': DEFENSE_POST_DEFINITION,
+	fortification: FORTIFICATION_DEFINITION,
 	'command-post': COMMAND_POST_DEFINITION,
-	'war-academy': WAR_ACADEMY_DEFINITION
+	'war-academy': WAR_ACADEMY_DEFINITION,
+	jammer: JAMMER_DEFINITION
 };
 
 export const STRUCTURE_TYPE_CODES: Record<StructureType, number> = {
 	state: 1,
 	artillery: 2,
 	barracks: 3,
-	'defense-post': 4,
+	fortification: 4,
 	'command-post': 5,
-	'war-academy': 6
+	'war-academy': 6,
+	jammer: 7
 };
 
 export function structureTypeFromCode(code: number): StructureType | null {
@@ -55,11 +61,13 @@ export function structureTypeFromCode(code: number): StructureType | null {
 		case 3:
 			return 'barracks';
 		case 4:
-			return 'defense-post';
+			return 'fortification';
 		case 5:
 			return 'command-post';
 		case 6:
 			return 'war-academy';
+		case 7:
+			return 'jammer';
 		default:
 			return null;
 	}
@@ -69,9 +77,10 @@ export const STRUCTURE_ACCENTS: Record<StructureType, string> = {
 	state: STATE_DEFINITION.accent,
 	artillery: ARTILLERY_DEFINITION.accent,
 	barracks: BARRACKS_DEFINITION.accent,
-	'defense-post': DEFENSE_POST_DEFINITION.accent,
+	fortification: FORTIFICATION_DEFINITION.accent,
 	'command-post': COMMAND_POST_DEFINITION.accent,
-	'war-academy': WAR_ACADEMY_DEFINITION.accent
+	'war-academy': WAR_ACADEMY_DEFINITION.accent,
+	jammer: JAMMER_DEFINITION.accent
 };
 
 export function effectsForType(type: StructureType): readonly StructureEffect[] {

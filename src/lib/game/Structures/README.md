@@ -5,7 +5,8 @@ Each structure type owns one file:
 - `state.ts`
 - `artillery.ts`
 - `barracks.ts`
-- `defense-post.ts`
+- `fortification.ts`
+- `jammer.ts`
 - `command-post.ts`
 - `war-academy.ts`
 

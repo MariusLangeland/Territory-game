@@ -14,6 +14,7 @@ export * from './registry';
 export * from './state';
 export * from './artillery';
 export * from './barracks';
-export * from './defense-post';
+export * from './fortification';
+export * from './jammer';
 export * from './command-post';
 export * from './war-academy';

@@ -7,6 +7,8 @@ export class StructureRegistry {
 	private readonly byStructureId = new Map<number, Structure>();
 	private readonly byOwner = new Map<number, Structure[]>();
 	private nextId = 1;
+	/** Increments on every create/reinforce/destroy so derived caches can refresh lazily. */
+	private mutationVersion = 0;
 
 	create(type: StructureType, ownerId: number, x: number, y: number, width: number): Structure {
 		const index = y * width + x;
@@ -20,6 +22,7 @@ export class StructureRegistry {
 			stacks: 1,
 			effects: effectsForType(type)
 		};
+		this.mutationVersion++;
 		this.items.push(structure);
 		this.byIndex.set(index, structure);
 		this.byStructureId.set(structure.id, structure);
@@ -62,12 +65,22 @@ export class StructureRegistry {
 
 	reinforce(structure: Structure): number {
 		structure.stacks++;
+		this.mutationVersion++;
+		return structure.stacks;
+	}
+
+	/** Test/setup helper; real progression must use `reinforce`. */
+	setStacks(structure: Structure, stacks: number): number {
+		if (stacks < 1) throw new Error('structure stacks must be positive');
+		structure.stacks = stacks;
+		this.mutationVersion++;
 		return structure.stacks;
 	}
 
 	destroy(structure: Structure): boolean {
 		const position = this.items.indexOf(structure);
 		if (position < 0) return false;
+		this.mutationVersion++;
 		this.items.splice(position, 1);
 		this.byIndex.delete(structure.index);
 		this.byStructureId.delete(structure.id);
@@ -94,5 +107,9 @@ export class StructureRegistry {
 
 	get count(): number {
 		return this.items.length;
+	}
+
+	get version(): number {
+		return this.mutationVersion;
 	}
 }

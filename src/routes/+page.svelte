@@ -4,6 +4,7 @@
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import { formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
 		ARTILLERY_SUPPLY_COST_PER_SHELL,
@@ -547,8 +548,10 @@
 				return 'SIEGE';
 			case 'barracks':
 				return 'MILITARY';
-			case 'defense-post':
+			case 'fortification':
 				return 'FORTIFICATION';
+			case 'jammer':
+				return 'SUPPRESSION';
 			case 'command-post':
 				return 'COMMAND';
 			case 'war-academy':
@@ -1090,11 +1093,13 @@
 			<div class="economy-readout">
 				<div class="economy-row">
 					<span>SUPPLY</span>
-					<strong>{snapshot.supply}</strong>
+					<strong title={String(snapshot.supply)}>{formatSupply(snapshot.supply)}</strong>
 				</div>
 				<div class="economy-row economy-orders">
 					<span>CAP</span>
-					<b>{snapshot.supply}/{snapshot.supplyCap}</b>
+					<b title={`${snapshot.supply} / ${snapshot.supplyCap}`}>
+						{formatSupply(snapshot.supply)}/{formatSupply(snapshot.supplyCap)}
+					</b>
 				</div>
 				<div class="economy-row economy-orders">
 					<span>FRONTS</span>
@@ -1117,7 +1122,7 @@
 					>
 						{artilleryTargeting
 							? 'SELECT TARGET'
-							: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${artilleryVolleyCost}S`}
+							: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${formatSupply(artilleryVolleyCost)}S`}
 					</button>
 				{/if}
 				<div
@@ -1162,7 +1167,11 @@
 							<div class="card-face">
 								<div class="card-banner">
 									<span>BUILD CARD</span>
-									<div class="card-cost"><b>{definition.cost}</b><small>S</small></div>
+									<div class="card-cost">
+										<b title={String(definition.cost)}>{formatSupply(definition.cost)}</b><small>
+											S
+										</small>
+									</div>
 								</div>
 								<h3 class="card-title">{definition.label}</h3>
 								<div class="card-art" aria-hidden="true">
@@ -1177,9 +1186,15 @@
 											<svg viewBox="0 0 24 24">
 												<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
 											</svg>
-										{:else if card.type === 'defense-post'}
+										{:else if card.type === 'fortification'}
 											<svg viewBox="0 0 24 24">
 												<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+											</svg>
+										{:else if card.type === 'jammer'}
+											<svg viewBox="0 0 24 24">
+												<path
+													d="M12 12v9M4 8a11 11 0 0 1 16 0M7 11a7 7 0 0 1 10 0M10 14a3 3 0 0 1 4 0"
+												/>
 											</svg>
 										{:else if card.type === 'command-post'}
 											<svg viewBox="0 0 24 24">
@@ -1325,8 +1340,8 @@
 						<li>
 							<span>02</span>
 							<p>
-								Each front buys durable strength. Barracks add power and defense piercing; fronts
-								spend strength on captures and mutual attrition.
+								Each front buys durable strength. Barracks add attack strength and logarithmic speed
+								and piercing; fronts spend strength on captures and mutual attrition.
 							</p>
 						</li>
 						<li>
@@ -1342,7 +1357,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.32.0 / PROTOCOL 34</span>
+				<span>BUILD 0.33.0 / PROTOCOL 35</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1498,12 +1513,13 @@
 						<h3>One supply. Durable fronts.</h3>
 						<p>
 							Supply is the only resource. It accrues from territory and structures, pays for cards,
-							upgrades, and front launches, and is capped by territory plus War Academies. Command
-							Posts add supply income; Artillery is an active siege structure. Cards are permanent.
-							Click a district, or drop its matching card inside it, to upgrade; cost is the card
-							price plus current level. Terrain defense is 1 plus elevation, plus occupied and aura
-							bonuses. Each capture spends both the front's per-tick power and its durable strength.
-							Hold 70% of the land to win immediately.
+							upgrades, and front launches, and has no global maximum; territory and War Academies
+							raise the cap. Command Posts add supply income; Artillery is an active siege
+							structure. Fortifications add district defense. Jammers project a global aura that
+							subtracts one effective Barracks level from every enemy attacking you, without raising
+							pixel defense. Cards are permanent. Click a district, or drop its matching card inside
+							it, to upgrade; cost is the card price plus current level. Each capture spends both
+							per-tick power and durable strength. Hold 70% of the land to win immediately.
 						</p>
 					</section>
 					<section>
@@ -1511,15 +1527,15 @@
 						<h3>Buy strength. Cancel for a refund.</h3>
 						<p>
 							Click neutral ground or a rival's border near your territory to launch a front. A
-							launch costs 30 supply plus 15 per Barracks bonus step. The front gains a strength
-							pool and per-tick power; Barracks add power and defense piercing. Repeated clicks
-							create separate fronts. When mutual fronts touch, both sides lose strength
-							simultaneously; a front at zero dies and the survivor holds the contact line. Use
-							CANCEL LAST or press X to refund the remaining strength share. Each state's State
-							structure anchors its mainland and adds 20 defense. The growth switch selects
-							circular, smooth, or organic for new fronts. Artillery costs 30 supply to build and
-							fires on command: <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
-							one shell at 12 supply per shell; shells that hit a structure remove one level.
+							launch costs 30 supply plus 15 per effective Barracks level. Barracks add attack
+							strength linearly, while speed and defense piercing grow by floor(log2(levels + 1)) —
+							infinite scaling with diminishing returns. Repeated clicks create separate fronts.
+							When mutual fronts touch, both sides lose strength simultaneously; a front at zero
+							dies and the survivor holds the contact line. Use CANCEL LAST or press X to refund the
+							remaining strength share. Each State structure anchors its mainland and adds 20
+							defense. Artillery costs 30 supply to build and fires on command: <kbd>A</kbd> or FIRE,
+							then click an aim point in range. Each level fires one shell at 12 supply per shell; shells
+							that hit a structure remove one level.
 						</p>
 					</section>
 					<section>
@@ -2339,7 +2355,7 @@
 	.hand-row {
 		display: flex;
 		align-items: flex-end;
-		gap: 10px;
+		gap: 8px;
 		padding: 0 4px 10px;
 		pointer-events: none;
 		transform: translateY(0);
@@ -2358,8 +2374,8 @@
 		position: relative;
 		z-index: 1;
 		flex: none;
-		width: 156px;
-		height: 224px;
+		width: 136px;
+		height: 204px;
 		cursor: grab;
 		user-select: none;
 		transform: translateY(0) rotate(var(--card-tilt));
@@ -2670,7 +2686,7 @@
 
 	.growth-switcher {
 		left: 22px;
-		bottom: 210px;
+		bottom: 240px;
 		transform: none;
 		display: flex;
 		align-items: center;

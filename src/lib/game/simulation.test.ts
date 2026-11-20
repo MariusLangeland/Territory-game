@@ -449,8 +449,8 @@ describe('attack stress mode', () => {
 		const focuses = new Set(profiles.map((profile) => profile.focus));
 		expect(focuses.size).toBeGreaterThan(1);
 		for (const profile of profiles) {
-			expect(profile.buildPlan).toHaveLength(5);
-			expect(new Set(profile.buildPlan).size).toBe(5);
+			expect(profile.buildPlan).toHaveLength(6);
+			expect(new Set(profile.buildPlan).size).toBe(6);
 			expect(profile.buildPlan[0]).toBe(profile.focus);
 		}
 		const aggressions = profiles.map((profile) => profile.aggression);
@@ -514,7 +514,7 @@ describe('attack stress mode', () => {
 		expect(score({ opportunist: 100 })).toBeGreaterThan(score({ opportunist: 0 }));
 	});
 
-	it('issues extra barracks orders into each attack without merging clicks', () => {
+	it('scales attacks from live Barracks levels without merging clicks', () => {
 		const sim = new TerritorySimulation({ seed: 864212 });
 		let barracksIndex = -1;
 		for (let i = 0; i < sim.owners.length; i++) {
@@ -528,7 +528,7 @@ describe('attack stress mode', () => {
 		const barracksX = barracksIndex % sim.width;
 		const barracksY = (barracksIndex - barracksX) / sim.width;
 		sim.structures.create('barracks', 1, barracksX, barracksY, sim.width);
-		expect(sim.getAttackOrderStrength(1)).toBe(2);
+		expect(sim.getBarracksLevels(1)).toBe(1);
 
 		const target = findAttackablePixel(sim, 1);
 		expect(target).not.toBeNull();
@@ -1196,7 +1196,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		if (cells.length < 2) return;
 		const [postCell, barracksCell] = cells;
 		const post = sim.structures.create(
-			'defense-post',
+			'fortification',
 			2,
 			postCell % sim.width,
 			Math.floor(postCell / sim.width),
@@ -1236,7 +1236,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(planStructures.length).toBeGreaterThan(0);
 	});
 
-	it('builds a defense post before the build plan when threatened', () => {
+	it('builds a fortification before the build plan when threatened', () => {
 		const sim = new TerritorySimulation({ seed: 246810 });
 		const internals = sim as unknown as BotDefenseInternals;
 		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
@@ -1249,12 +1249,12 @@ describe('bot threat detection and defensive behaviour', () => {
 
 		expect(internals.botDefensive[1]).toBe(1);
 		expect(internals.botReserve[1]).toBeGreaterThan(0);
-		expect(sim.structures.forOwnerType(2, 'defense-post')).toBeDefined();
+		expect(sim.structures.forOwnerType(2, 'fortification')).toBeDefined();
 		const buildables = sim.structures
 			.forOwner(2)
 			.filter((entry) => entry.type !== 'state')
 			.map((entry) => entry.type);
-		expect(buildables).toEqual(['defense-post']);
+		expect(buildables).toEqual(['fortification']);
 	});
 
 	it('upgrades a defensive structure before unrelated plan steps when threatened', () => {
@@ -1267,7 +1267,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		if (cells.length < 2) return;
 		const [postCell, barracksCell] = cells;
 		const post = sim.structures.create(
-			'defense-post',
+			'fortification',
 			2,
 			postCell % sim.width,
 			Math.floor(postCell / sim.width),
@@ -1295,7 +1295,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(built).toHaveLength(0);
 	});
 
-	it('rebuilds a destroyed defense post when threatened', () => {
+	it('rebuilds a destroyed fortification when threatened', () => {
 		const sim = new TerritorySimulation({ seed: 553311 });
 		const internals = sim as unknown as BotDefenseInternals;
 		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
@@ -1304,19 +1304,19 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(cell).toBeDefined();
 		if (cell === undefined) return;
 		const destroyed = sim.structures.create(
-			'defense-post',
+			'fortification',
 			2,
 			cell % sim.width,
 			Math.floor(cell / sim.width),
 			sim.width
 		);
 		expect(sim.structures.destroy(destroyed)).toBe(true);
-		expect(sim.structures.forOwnerType(2, 'defense-post')).toBeUndefined();
+		expect(sim.structures.forOwnerType(2, 'fortification')).toBeUndefined();
 
 		internals.botGrievance[(2 - 1) * PLAYER_COUNT + (3 - 1)] += 10;
 		sim.step();
 
-		const rebuilt = sim.structures.forOwnerType(2, 'defense-post');
+		const rebuilt = sim.structures.forOwnerType(2, 'fortification');
 		expect(rebuilt).toBeDefined();
 		expect(rebuilt?.id).not.toBe(destroyed.id);
 	});

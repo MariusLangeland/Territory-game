@@ -194,7 +194,7 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 | `hello`       | Protocol version, display name                                |
 | `join`        | Enter a room/match                                            |
 | `intent`      | One attack/build/upgrade intent with target tick and sequence |
-| `growth-mode` | Select the growth layer for new orders (host/test policy)     |
+| `growth-mode` | Select the growth layer for new fronts (host/test policy)     |
 | `ping`        | RTT probe                                                     |
 | `leave`       | Voluntary departure                                           |
 
@@ -252,8 +252,8 @@ Player economy and cards:
 - supply, cap, income, and hand are authoritative snapshot fields (`supply`, `supplyCap`, `supplyIncome`, `hand`; `gold`/`income` remain legacy aliases);
 - builds are tick-stamped commands, validated server-side against permanent-hand membership, supply, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility; a matching district build pays base cost + current level, while a new structure pays base cost;
 - upgrades are tick-stamped commands targeting an owned district; the server resolves the district's structure, spends `base card cost + projected current level`, and increments stacks without consuming a card;
-- the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
-- continuous supply income, artillery cooldowns, shells, and War Academy caps are server-authoritative; clients only display the snapshot;
+- the hand is the fixed six-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
+- continuous supply income, uncapped cap growth, Artillery cooldowns/shells, Barracks/Jammer attack stats, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
 - bots use the same supply economy but their balances are omitted from the public player snapshot.
 

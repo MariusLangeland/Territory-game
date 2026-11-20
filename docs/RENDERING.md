@@ -45,7 +45,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - uses the same `MapCamera.mapToScreen` transform as the map;
 - draws a dark halo, cream ring, and owner-colored disc for every structure; placement exclusion is simulation state, not rendered as a persistent ring;
 - aura circles are no longer drawn; district tint and boundaries carry the territorial read instead;
-- uses a cream five-point capital star for State structures, a firing cannon for Artillery, crossed swords for Barracks, a shield for Defense Posts, a command mast for Command Posts, and layered chevrons for War Academies. Active artillery targeting draws range rings, and in-flight shells render as owner-ringed projectiles with a fading trail.
+- uses a cream five-point capital star for State structures, a firing cannon for Artillery, crossed swords for Barracks, a shield for Fortifications, radar rings for Jammers, a command mast for Command Posts, and layered chevrons for War Academies. Active artillery targeting draws range rings, and in-flight shells render as owner-ringed projectiles with a fading trail.
 - renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
 - culls offscreen markers;
@@ -75,7 +75,7 @@ The control texture is created as `rgba8unorm`, with usage `TEXTURE_BINDING | CO
 
 ### Elevation rendering
 
-The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is no longer normalized. Palette codes are grouped four-per-structure-type (`1–4` State, `5–8` Artillery, `9–12` Barracks, `13–16` Defense Post, `17–20` Command Post, `21–24` War Academy), with a near-identical brightness variation inside each group. The fill is only a 14% type wash so districts cannot be mistaken for separate state territories. The fragment shader decodes both and:
+The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is no longer normalized. Palette codes are grouped four-per-structure-type (`1–4` State, `5–8` Artillery, `9–12` Barracks, `13–16` Fortification, `17–20` Command Post, `21–24` War Academy, `25–28` Jammer), with a near-identical brightness variation inside each group. The fill is only a 14% type wash so districts cannot be mistaken for separate state territories. The fragment shader decodes both and:
 
 - mixes an elevation palette into land color — green lowland, olive plains, ochre hills, brown highlands, grey mountains, pale peaks;
 - keeps owner colors dominant (18% terrain mix) while unclaimed land shows the terrain palette more strongly (52%);

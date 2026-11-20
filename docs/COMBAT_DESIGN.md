@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.32.0 / protocol 34.  
+**Status:** IMPLEMENTED in application 0.33.0 / protocol 35.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -128,7 +128,7 @@ Derived per tick from live territory and structures (same derived-stat style as 
 `defenseAt` — never a mutable per-cell array):
 
 ```text
-supplyCap(player)    = min(600, 120 + floor(territory / 1000) + 40 × WarAcademyStacks)
+supplyCap(player)    = 120 + floor(territory / 1000) + 40 × WarAcademyStacks   // no maximum
 supplyIncome(player) = min(60,  3  + floor(territory / 10000) +  2 × CommandPostStacks)   // per second
 ```
 
@@ -159,12 +159,13 @@ A click is valid under the same geometry rules as today (§4.4 of [SPEC.md](SPEC
 On the next tick the command is applied in `(sequence, playerId)` order:
 
 ```text
-bonusSteps  = min(5, ceil(live Barracks levels / 2))     // same scaling as ADR-026
-launchCost  = 30 + 15 × bonusSteps                       // 30..105 supply
-strength    = 1500 + 450 × bonusSteps                    // 1500..3750 points
-powerPerTick= 30 + 15 × bonusSteps                       // 30..120 points/tick
-pierce      = bonusSteps                                 // 0..5 defense piercing
-supply     -= launchCost
+effectiveLevels = max(0, attacker Barracks stacks − defender Jammer stacks)
+logTier         = 31 - clz32(effectiveLevels + 1)        // floor(log2(levels + 1))
+launchCost      = 30 + 15 × effectiveLevels              // no cap
+strength        = 1500 + 450 × effectiveLevels           // no cap
+powerPerTick    = 30 + 15 × logTier
+pierce          = logTier
+supply         -= launchCost
 ```
 
 - The front starts with `strength` points and the same border-contact seed set, anchor, and growth
@@ -174,7 +175,7 @@ supply     -= launchCost
 - The order inventory, order cap, and 10-second order grant are removed. Command Post and War Academy
   are repurposed (§3.5).
 
-**Worked example — base front vs neutral lowland.** `bonusSteps = 0`, launch cost 30, strength 1500,
+**Worked example — base front vs neutral lowland.** `effectiveLevels = 0`, launch cost 30, strength 1500,
 power 30/tick, pierce 0. Lowland neutral defense = `1 + 0 + 0 = 1`; occupied defense = 2. The front
 spends 30 points/tick and can capture at least `1500 / 2 = 750` occupied/lowland pixels, spread over
 as many ticks as its frontier allows (minimum 50 ticks at full spend). That is the same total point
@@ -232,36 +233,38 @@ Defense is unchanged from the implemented model and remains fully derived:
 
 ```text
 defense(cell) = 1 + elevationTier + (owner != 0 ? 1 : 0) + friendlyAuraDefense
-captureCost   = max(1, defense − bonusSteps)          // per capture, paid from strength
+captureCost   = max(1, defense − logTier)             // per capture, paid from strength
 ```
 
 - `elevationTier` is the versioned 6-tier map data (`MAP_VERSION` unchanged).
 - State aura: +20 within 16 px (max-stacking, friendly-owned land only).
-- Defense Post: +5 per stack over every cell of its own district (additive, friendly-only).
+- Fortification: +5 per stack over every cell of its own district (additive, friendly-only).
+- Jammer: global enemy suppression, −1 effective Barracks level per stack; never alters pixel defense.
 - Districts, structure spacing (8 px), stacking, and razing rules are unchanged.
-- Barracks is the only offensive scaler: every two levels adds one `bonusSteps` up to +5, which raises
-  power by +15, strength by +450, pierce by +1, and clash attrition damage by +50, at +15 launch supply
+- Barracks is the offensive scaler: each level adds +450 strength and +15 launch cost; each log2 tier
+  adds +15 power and +1 piercing. Scaling never caps
   cost (see 3.6).
-- Example: State-aura highland occupied pixel with `bonusSteps = 0` costs `max(1, 1+3+1+20) = 25`
+- Example: State-aura highland occupied pixel with `logTier = 0` costs `max(1, 1+3+1+20) = 25`
   strength; a base front of 1500 strength can take 60 such pixels — a real, readable price.
 - Because strength is finite, a high-defense wall can outlast a front. This is intentional; whether
-  Defense Post stacking needs a cap or a siege rule is an open decision (§8).
+  Fortification stacking needs a cap or a siege rule is an open decision (§8).
 
 ### 3.5 Structures and cards under Frontage v1
 
-Supply costs and the permanent five-card hand are unchanged. Effect reinterpretation:
+Supply costs and the permanent six-card hand:
 
-| Card         | Cost | Implemented effect                                                             |
-| ------------ | ---- | ------------------------------------------------------------------------------ |
-| Artillery    | 30   | Active: 12 supply/shell, 140 px range, 6 s cooldown, 12 px blast.              |
-| Barracks     | 12   | `bonusSteps` as above; scales power, pierce, strength, launch cost, attrition. |
-| Defense Post | 2    | Unchanged: +5 defense per stack across its district.                           |
-| Command Post | 4    | +2 supply per second per stack.                                                |
-| War Academy  | 6    | +40 supply cap per stack.                                                      |
+| Card          | Cost | Implemented effect                                                       |
+| ------------- | ---- | ------------------------------------------------------------------------ |
+| Artillery     | 30   | Active: 12 supply/shell, 140 px range, 6 s cooldown, 12 px blast.        |
+| Barracks      | 12   | +1 effective level; +450 strength/+15 cost per level, log2 power/pierce. |
+| Fortification | 2    | +5 defense per stack across its district.                                |
+| Jammer        | 8    | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
+| Command Post  | 4    | +2 supply per second per stack.                                          |
+| War Academy   | 6    | +40 supply cap per stack; no global maximum.                             |
 
-- `supply-income` and `supply-cap` are derived from live structures.
+- `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is
-  clamped to the new cap on the next accrual tick (same pattern as `clampAttackOrders`).
+  clamped to the new cap on the next accrual tick.
 - Structure districts, auras, razing, and annexation are untouched.
 
 ### 3.6 Attrition between fronts
@@ -273,8 +276,8 @@ current front's.
 At contact, resolve **one exchange per unordered front pair per tick**:
 
 ```text
-lossToA = min(A.strength, 100 + 50 × B.bonusSteps)
-lossToB = min(B.strength, 100 + 50 × A.bonusSteps)
+lossToA = min(A.strength, 100 + 50 × B.logTier)
+lossToB = min(B.strength, 100 + 50 × A.logTier)
 apply both simultaneously using pre-exchange strengths
 mark both fronts contactHeldThisTick = true
 if A.strength == 0 -> remove A after exchange
@@ -288,7 +291,7 @@ if B.strength == 0 -> remove B after exchange
   strength elsewhere. A max-Barracks front (3750 strength, 350 damage) beats a base front in about
   5 exchanges and survives with ~3250 strength. That asymmetry is the point.
 - A defender with no counter-front is not helpless: it pays no attrition, but the attacker pays
-  capture cost from its own finite strength. Terrain, State auras, and Defense Posts are the passive
+  capture cost from its own finite strength. Terrain, State auras, and Fortifications are the passive
   defense.
 - Third-party attacks and attacks against a common target are unaffected (unchanged rule).
 - No inventory orders are spent; the "defender order bank" defense is deleted.
@@ -343,7 +346,7 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 - `scoreBotTarget` additionally penalizes targets with large total active front strength
   (caution/conciliation) and rewards targets already under front pressure (opportunism). Grievances
   are unchanged.
-- Bot build plans keep the five-type ordering; Command Post/War Academy weights must be retuned
+- Bot build plans keep the six-type ordering; Command Post/War Academy weights must be retuned
   because their effects changed.
 - No new RNG: all bot decisions remain `hash32`/existing shared-PRNG draws with the same ordering
   discipline. Supply gating is a pure integer comparison.
@@ -364,18 +367,15 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `SUPPLY_TICKS_PER_UNIT`          | 10    | Ticks of accrual per supply                            |
 | `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |
 | `LAUNCH_COST_BASE`               | 30    | Supply cost of a base front                            |
-| `LAUNCH_COST_PER_BONUS`          | 15    | Extra cost per `bonusSteps`                            |
+| `LAUNCH_COST_PER_LEVEL`          | 15    | Extra cost per effective level                         |
 | `FRONT_STRENGTH_BASE`            | 1500  | Base strength pool                                     |
-| `FRONT_STRENGTH_PER_BONUS`       | 450   | Extra strength per `bonusSteps`                        |
+| `FRONT_STRENGTH_PER_LEVEL`       | 450   | Extra strength per effective level                     |
 | `FRONT_POWER_BASE`               | 30    | Base points/tick spending cap                          |
-| `FRONT_POWER_PER_BONUS`          | 15    | Extra power per `bonusSteps`                           |
-| `FRONT_MAX_LIFETIME_TICKS`       | 300   | Hygiene cap                                            |
+| `FRONT_POWER_PER_LOG_TIER`       | 15    | Extra power per log2 tier                              |
 | `FRONT_IDLE_TICKS`               | 20    | Consecutive non-contact zero-capture ticks before exit |
 | `CLASH_ATTRITION_BASE`           | 100   | Strength loss per contact tick                         |
-| `CLASH_ATTRITION_PER_BONUS`      | 50    | Extra loss per opponent `bonusSteps`                   |
-| `VICTORY_HOLD_SHARE_BP`          | 6000  | 60.00% of land                                         |
-| `VICTORY_HOLD_TICKS`             | 600   | 60 s hold                                              |
-| `MATCH_TIME_LIMIT_TICKS`         | 9000  | 15 min score finish                                    |
+| `CLASH_ATTRITION_PER_LOG_TIER`   | 50    | Extra loss per opponent log2 tier                      |
+| `VICTORY_SHARE_BP`               | 7000  | 70.00% of land wins immediately                        |
 
 ---
 
@@ -393,7 +393,7 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 5. The unaffordable-candidate path must requeue **all** sampled cells (including the cheapest) and end
    the tick. This matches SPEC §4.3.12, ARCHITECTURE, and DETERMINISM; the current code does not, and
    the fix is a prerequisite (Appendix B item 4).
-6. Per-front state (`strength`, `bonusSteps`, `powerPerTick`, `idleTicks`, contact flag, growth-layer
+6. Per-front state (`strength`, `effectiveLevels`, `logTier`, `power`, `idleTicks`, contact flag, growth-layer
    frontier/PRNG state) is checksummed. Structurally removed fields (`orders`, `initialOrders`,
    `lifetimeTicks`) are removed from the new checksum path.
 7. Bots must not use the shared RNG for supply decisions; supply affordability is a comparison.
@@ -401,7 +401,7 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 ### 4.2 Snapshot and wire additions
 
 `GameSnapshot` gains `supply`, `supplyCap`, `supplyIncome`, `combatRules`. `PublicAttack` gains
-`strength`, `powerPerTick`, `bonusSteps`, `idleTicks`. `PublicPlayer` may gain supply only in the
+`strength`, `power`, `effectiveLevels`, `logTier`, `idleTicks`. `PublicPlayer` may gain supply only in the
 human snapshot, or for all players if the server wants a readable scoreboard — open decision.
 
 ### 4.3 Versioning
@@ -431,7 +431,7 @@ the decision record. No code.
 **Phase 1 — non-breaking correctness prep.** The unaffordable-candidate requeue fix shipped in v0.24
 (ADR-031). Reserve pending attack commands in
 `resolveOpposingClash` via `availableAttackOrders` instead of reading the raw array. Extract helpers
-`getBarracksBonusSteps(playerId)` and `getFrontStrength(...)`. Add `combatRules` to
+`getAttackStats(playerId, defenderId)` and the derived structure-stack cache. Add `combatRules` to
 `SimulationOptions` and the snapshot. Tests: requeue invariant, pending-order reservation.
 
 **Phase 2 — supply economy.** Add constants, `supply`/`supplyAccrual`/`holdTicks` state, accrual,
@@ -440,7 +440,7 @@ Keep the old order path intact for `'stress'`. Tests: accrual exactness over 600
 expectation, cap clamping, determinism fixture.
 
 **Phase 3 — frontage combat.** Replace `AttackState.orders/initialOrders/lifetimeTicks` with
-`strength/powerPerTick/bonusSteps/idleTicks`. Launch cost/cap. Capture spends strength. Replace
+`strength/power/effectiveLevels/logTier/idleTicks`. Launch cost/cap. Capture spends strength. Replace
 `resolveOpposingClash` with the simultaneous attrition exchange. Implement expiry causes and failure
 reasons. Rewrite the old clash acceptance tests; add invariant tests (strength never negative, no
 capture without cost, front cap, no interpenetration, deterministic attrition order).
@@ -517,7 +517,7 @@ Run the same seeds and bot profiles under `'stress'` and `'frontage'`:
 | Two-resource complexity                        | Gold + supply adds HUD and decision load.                          | Keep the readout compact; supply is only launches; open decision to merge later.                                                            |
 | Front churn / click fatigue                    | More launches than the current 3-order tempo.                      | Front cap 8, early supply scarcity, long front lifetime, no reinforcement spam; revisit with playtests.                                     |
 | Symmetric attrition feels like nothing happens | Both fronts may die together.                                      | Barracks advantage is real (strength + damage); terrain decides the rest; tune `CLASH_ATTRITION_*` from telemetry.                          |
-| Unbreakable defensive walls                    | State aura + stacked Defense Posts can outlast finite strength.    | Pierce, strength scaling, optional Defense Post stack cap; telemetry counter "stalled fronts".                                              |
+| Unbreakable defensive walls                    | State aura + stacked Fortifications can outlast finite strength.   | Pierce, strength scaling, optional Fortification stack cap; telemetry counter "stalled fronts".                                             |
 | Bot quality regression                         | Bots currently reason about attack orders; supply/strength is new. | Phase 4 retune, deterministic strength estimate, A/B win rates; keep bot decisions hash-based.                                              |
 | Perf under more fronts                         | Up to 8 per player vs current order caps.                          | Stress mode keeps a lower cap; measure with the 51-state benchmark; pair-once-per-tick attrition.                                           |
 | Protocol/checksum break                        | Snapshot, replay, and wire change.                                 | `COMBAT_RULES_VERSION`, protocol bump, dual fixtures for stress/frontage, staged flag.                                                      |
@@ -531,22 +531,22 @@ Run the same seeds and bot profiles under `'stress'` and `'frontage'`:
 
 The user approved these on 2026-11-20. This table records the shipped choices; earlier recommendations were superseded.
 
-| #   | Decision                 | Approved choice                                                                                          |
-| --- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| 1   | Shipping player count    | **51 states** (1 human + 50 bots).                                                                       |
-| 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                             |
-| 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                     |
-| 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                           |
-| 5   | Supply constants         | Income `min(60, 3 + territory/10000 + structures)/s`; cap `min(600, 120 + territory/1000 + 40×Academy)`. |
-| 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                         |
-| 7   | Reinforcement            | **No reinforcement** in v1.                                                                              |
-| 8   | Defense Post stacking    | Unbounded stacks (as before).                                                                            |
-| 9   | Capital capture          | Keep ADR-012: capture destroys State; territory remains but unanchored.                                  |
-| 10  | Growth layer             | In-match switch remains available for testing.                                                           |
-| 11  | Front cap                | No explicit cap; supply and idle expiry bound fronts.                                                    |
-| 12  | Attrition constants      | `100 + 50 × opponent steps` per pair per tick.                                                           |
-| 13  | Unaffordable requeue fix | Landed: cheapest candidate requeues instead of killing the front.                                        |
-| 14  | Bot supply rules         | Same supply/launch rules as the human, with personality weights.                                         |
+| #   | Decision                 | Approved choice                                                                                            |
+| --- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 1   | Shipping player count    | **51 states** (1 human + 50 bots).                                                                         |
+| 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                               |
+| 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                       |
+| 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                             |
+| 5   | Supply constants         | Income `min(60, 3 + territory/10000 + structures)/s`; cap `120 + territory/1000 + 40×Academy`, no maximum. |
+| 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                           |
+| 7   | Reinforcement            | **No reinforcement** in v1.                                                                                |
+| 8   | Fortification stacking   | Unbounded stacks (as before).                                                                              |
+| 9   | Capital capture          | Keep ADR-012: capture destroys State; territory remains but unanchored.                                    |
+| 10  | Growth layer             | In-match switch remains available for testing.                                                             |
+| 11  | Front cap                | No explicit cap; supply and idle expiry bound fronts.                                                      |
+| 12  | Attrition constants      | `100 + 50 × opponent steps` per pair per tick.                                                             |
+| 13  | Unaffordable requeue fix | Landed: cheapest candidate requeues instead of killing the front.                                          |
+| 14  | Bot supply rules         | Same supply/launch rules as the human, with personality weights.                                           |
 
 ---
 
@@ -555,10 +555,10 @@ The user approved these on 2026-11-20. This table records the shipped choices; e
 | Current (implemented)                                                                                          | Proposed (Frontage v1)                                                                           |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Attack-order inventory (`BASE_HUMAN_ATTACK_ORDERS = 3`, `BASE_BOT_ATTACK_ORDERS = 2`), +1 per 100 ticks to cap | Supply stock; continuous income from territory + Command Posts; cap from territory + War Academy |
-| Launch cost 1 order                                                                                            | Launch cost `30 + 15 × bonusSteps` supply                                                        |
-| Embedded orders `1 + min(5, ceil(Barracks/2))`                                                                 | `bonusSteps` scaler; same Barracks scaling, no order inventory                                   |
-| Points/tick `30 + 15 × (orders − 1)`                                                                           | `powerPerTick = 30 + 15 × bonusSteps` spending cap                                               |
-| Capture cost `max(1, defense − (orders − 1))`                                                                  | `max(1, defense − bonusSteps)`, paid from durable strength                                       |
+| Launch cost 1 order                                                                                            | Launch cost `30 + 15 × effective levels` supply                                                  |
+| Embedded orders `1 + min(5, ceil(Barracks/2))`                                                                 | Effective levels = Barracks stacks minus defender Jammer stacks                                  |
+| Points/tick `30 + 15 × (orders − 1)`                                                                           | `power = 30 + 15 × logTier` spending cap                                                         |
+| Capture cost `max(1, defense − (orders − 1))`                                                                  | `max(1, defense − logTier)`, paid from durable strength                                          |
 | Lifetime `50 + 10 × (initial orders − 1)` ticks                                                                | Durable strength pool + 20-tick idle + 300-tick hygiene                                          |
 | Defender spends inventory orders to strip embedded orders                                                      | Simultaneous strength attrition on mutual contact                                                |
 | War Academy: +1 order cap                                                                                      | War Academy: +40 supply cap                                                                      |
@@ -591,7 +591,7 @@ item). They are documentation defects, not proposed changes.
    "Resource-free" is accurate; "free" is not.
 7. **Capture-cost descriptions omit aura and piercing.** ARCHITECTURE §3.5 says a capture spends
    `1 + elevation` (+1 occupied), and DETERMINISM §6 says `1 + elevation + occupied`; neither mentions
-   Defense Post/State auras or embedded-order piercing, which SPEC §4.13/4.16 and ADR-019/024 include.
+   Fortification/State auras or Barracks log-tier piercing, which SPEC §4.13/4.16 and ADR-019/024 include.
 8. **SPEC §4.6 says a zero-capture tick removes the front** without the clash-pause exception stated
    in §4.3 step 14 (and implemented). Minor wording conflict.
 9. **SPEC §4.3 step 7 states fixed caps** ("human 3 / bots 2") without saying these are base caps that

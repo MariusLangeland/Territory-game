@@ -12,7 +12,7 @@ import {
 import { TerritorySimulation } from './simulation';
 import {
 	BUILDABLE_STRUCTURE_TYPES,
-	DEFENSE_POST_DEFENSE,
+	FORTIFICATION_DEFENSE,
 	STRUCTURE_DEFINITIONS,
 	STRUCTURE_TYPE_CODES,
 	type BuildableStructureType
@@ -253,7 +253,7 @@ describe('player economy and cards', () => {
 		if (other < 0) return;
 		const x = other % sim.width;
 		const y = (other - x) / sim.width;
-		sim.hand = [{ id: 8802, type: 'defense-post' }];
+		sim.hand = [{ id: 8802, type: 'fortification' }];
 		sim.gold = 10;
 		const blocked = sim.playCard(HUMAN_PLAYER_ID, 8802, x, y);
 		expect(blocked.ok).toBe(false);
@@ -280,23 +280,23 @@ describe('player economy and cards', () => {
 		expect(sim.hand).toHaveLength(BUILDABLE_STRUCTURE_TYPES.length);
 	});
 
-	it('builds a defense post and adds its aura defense', () => {
+	it('builds a fortification and adds its aura defense', () => {
 		const sim = new TerritorySimulation({ seed: 642087 });
 		const index = findBuildCell(sim);
 		const x = index % sim.width;
 		const y = (index - x) / sim.width;
 		const before = sim.getAuraDefense(x, y);
-		sim.hand = [{ id: 4567, type: 'defense-post' }];
+		sim.hand = [{ id: 4567, type: 'fortification' }];
 		sim.gold = 2;
 		expect(sim.playCard(HUMAN_PLAYER_ID, 4567, x, y).ok).toBe(true);
 		sim.step();
-		expect(sim.structures.at(index)?.type).toBe('defense-post');
-		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
+		expect(sim.structures.at(index)?.type).toBe('fortification');
+		expect(sim.getAuraDefense(x, y)).toBe(before + FORTIFICATION_DEFENSE);
 	});
 
-	it('applies a Defense Post aura across its entire district', () => {
+	it('applies a Fortification aura across its entire district', () => {
 		const sim = new TerritorySimulation({ seed: 642088 });
-		const { index: postIndex } = buildCard(sim, 'defense-post');
+		const { index: postIndex } = buildCard(sim, 'fortification');
 		const postX = postIndex % sim.width;
 		const postY = (postIndex - postX) / sim.width;
 		let target = -1;
@@ -323,7 +323,7 @@ describe('player economy and cards', () => {
 		const x = target % sim.width;
 		const y = (target - x) / sim.width;
 		expect(sim.getDistrictStructureId(x, y)).toBe(sim.structures.at(postIndex)?.id);
-		expect(sim.getAuraDefense(x, y)).toBe(DEFENSE_POST_DEFENSE);
+		expect(sim.getAuraDefense(x, y)).toBe(FORTIFICATION_DEFENSE);
 
 		let outside = -1;
 		for (let dy = -50; dy <= 50 && outside < 0; dy++) {
@@ -347,18 +347,18 @@ describe('player economy and cards', () => {
 		expect(sim.getAuraDefense(outsideX, outsideY)).toBe(0);
 	});
 
-	it('multiplies a Defense Post aura when stacked', () => {
+	it('multiplies a Fortification aura when stacked', () => {
 		const sim = new TerritorySimulation({ seed: 727272 });
-		const { index } = buildCard(sim, 'defense-post');
+		const { index } = buildCard(sim, 'fortification');
 		const x = index % sim.width;
 		const y = (index - x) / sim.width;
 		const before = sim.getAuraDefense(x, y);
-		sim.hand = [{ id: 9901, type: 'defense-post' }];
+		sim.hand = [{ id: 9901, type: 'fortification' }];
 		sim.gold = 10;
 		expect(sim.playCard(HUMAN_PLAYER_ID, 9901, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.getAuraDefense(x, y)).toBe(before + DEFENSE_POST_DEFENSE);
+		expect(sim.getAuraDefense(x, y)).toBe(before + FORTIFICATION_DEFENSE);
 	});
 
 	it('rejects a different structure inside an existing district', () => {
@@ -367,7 +367,7 @@ describe('player economy and cards', () => {
 		const blocked = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
 		expect(blocked).toBeGreaterThan(-1);
 		if (blocked < 0) return;
-		sim.hand = [{ id: 7001, type: 'defense-post' }];
+		sim.hand = [{ id: 7001, type: 'fortification' }];
 		sim.gold = 2;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
@@ -430,32 +430,80 @@ describe('player economy and cards', () => {
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 	});
 
-	it('builds a barracks that adds an extra order to attacks', () => {
+	it('scales Barracks attack strength, cost, speed, and piercing infinitely', () => {
 		const sim = new TerritorySimulation({ seed: 753198 });
-		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(1);
+		const base = sim.getAttackStats(HUMAN_PLAYER_ID, 0);
+		expect(base).toMatchObject({
+			levels: 0,
+			effectiveLevels: 0,
+			cost: 30,
+			power: 30,
+			pierce: 0,
+			strength: 1500
+		});
+
 		const { index } = buildCard(sim, 'barracks');
-		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(2);
-		sim.gold = 30;
-		expect(
-			sim.upgradeDistrict(HUMAN_PLAYER_ID, index % sim.width, Math.floor(index / sim.width)).ok
-		).toBe(true);
-		sim.step();
-		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(2);
-		sim.gold = 30;
-		expect(
-			sim.upgradeDistrict(HUMAN_PLAYER_ID, index % sim.width, Math.floor(index / sim.width)).ok
-		).toBe(true);
-		sim.step();
-		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(3);
+		expect(sim.getAttackStats(HUMAN_PLAYER_ID, 0)).toMatchObject({
+			levels: 1,
+			cost: 45,
+			power: 45,
+			pierce: 1,
+			strength: 1950
+		});
 
 		const structure = sim.structures.at(index);
-		if (structure) structure.stacks = 20;
-		expect(sim.getAttackOrderStrength(HUMAN_PLAYER_ID)).toBe(6);
+		expect(structure).toBeDefined();
+		if (!structure) return;
+		sim.structures.setStacks(structure, 20);
+		const infinite = sim.getAttackStats(HUMAN_PLAYER_ID, 0);
+		expect(infinite.levels).toBe(20);
+		expect(infinite.cost).toBe(330);
+		expect(infinite.power).toBe(90);
+		expect(infinite.pierce).toBe(4);
+		expect(infinite.strength).toBe(10_500);
 	});
 
-	it('does not let a Defense Post buff enemy-owned pixels', () => {
+	it('jammers suppress enemy Barracks scaling without adding pixel defense', () => {
+		const sim = new TerritorySimulation({ seed: 753199 });
+		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
+		expect(capital).toBeDefined();
+		if (!capital) return;
+		const x = capital.x;
+		const y = capital.y;
+		const defenseBefore = sim.getDefense(x, y);
+
+		const enemyBarracks = sim.structures.create(
+			'barracks',
+			2,
+			capital.x + 20,
+			capital.y,
+			sim.width
+		);
+		sim.structures.setStacks(enemyBarracks, 5);
+		const unsuppressed = sim.getAttackStats(2, 0);
+		expect(unsuppressed.effectiveLevels).toBe(5);
+		expect(unsuppressed.cost).toBe(105);
+		expect(unsuppressed.strength).toBe(3750);
+
+		const jammer = sim.structures.create(
+			'jammer',
+			HUMAN_PLAYER_ID,
+			capital.x + 10,
+			capital.y,
+			sim.width
+		);
+		sim.structures.setStacks(jammer, 2);
+		const suppressed = sim.getAttackStats(2, HUMAN_PLAYER_ID);
+		expect(suppressed.levels).toBe(5);
+		expect(suppressed.effectiveLevels).toBe(3);
+		expect(suppressed.cost).toBe(75);
+		expect(suppressed.strength).toBe(2850);
+		expect(sim.getDefense(x, y)).toBe(defenseBefore);
+	});
+
+	it('does not let a Fortification buff enemy-owned pixels', () => {
 		const sim = new TerritorySimulation({ seed: 808080 });
-		const { index: postIndex } = buildCard(sim, 'defense-post');
+		const { index: postIndex } = buildCard(sim, 'fortification');
 		const postX = postIndex % sim.width;
 		const postY = (postIndex - postX) / sim.width;
 		let target = -1;
@@ -467,7 +515,7 @@ describe('player economy and cards', () => {
 				if (index === postIndex) continue;
 				if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
 				if (sim.terrain[index] === 0 || sim.structures.at(index)) continue;
-				if (sim.getDistrictType(x, y) !== STRUCTURE_TYPE_CODES['defense-post']) continue;
+				if (sim.getDistrictType(x, y) !== STRUCTURE_TYPE_CODES['fortification']) continue;
 				target = index;
 				break;
 			}

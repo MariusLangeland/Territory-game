@@ -33,7 +33,10 @@ export const START_RADIUS = 16;
  * Attack points spent by one front per tick. A capture costs the target
  * pixel's defense, so defended or elevated pixels are captured more slowly.
  */
-/** Frontage v1: durable strength and per-tick capture budget. */
+/**
+ * Frontage v1: durable strength and per-tick capture budget. Barracks levels
+ * scale strength/cost linearly and speed/piercing by floor(log2(levels + 1)).
+ */
 export const ATTACK_DAMAGE_PER_TICK = 30;
 export const ATTACK_ORDER_DAMAGE_BONUS = 15;
 export const ATTACK_ORDER_DEFENSE_PIERCE = 1;
@@ -92,8 +95,6 @@ export const BASE_GOLD_INCOME = 3;
 export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
 export const SUPPLY_CAP_BASE = 120;
 export const SUPPLY_CAP_TERRITORY_DIVISOR = 1000;
-export const SUPPLY_CAP_WAR_ACADEMY = 40;
-export const SUPPLY_CAP_MAX = 600;
 export const SUPPLY_INCOME_TERRITORY_DIVISOR = 10000;
 export const SUPPLY_INCOME_MAX = 60;
 export const SUPPLY_WIN_SHARE = 70;
@@ -102,15 +103,17 @@ export const SUPPLY_WIN_SHARE = 70;
 export const ATTACK_SEARCH_RADIUS = 34;
 
 /** Active artillery: one shell per structure level per volley. */
-export const ARTILLERY_SUPPLY_COST_PER_SHELL = 12;
+export const ARTILLERY_SUPPLY_COST_PER_LEVEL = 150;
 export const ARTILLERY_RANGE = 140;
+/** Artillery needs this much district-free ground around its centre. */
+export const ARTILLERY_BUILD_CLEARANCE = 16;
 export const ARTILLERY_COOLDOWN_TICKS = TICK_RATE * 6;
 export const ARTILLERY_SHELL_TRAVEL_TICKS = TICK_RATE * 2;
 export const ARTILLERY_BLAST_RADIUS = 12;
 /** Clicks near a hostile structure snap to it so targeting stays usable when zoomed out. */
-export const ARTILLERY_TARGET_SNAP_RADIUS = 28;
-/** Deterministic impact spread around the aim point. */
-export const ARTILLERY_SHELL_SPREAD = 7;
+export const ARTILLERY_TARGET_SNAP_RADIUS = 0;
+/** Deterministic impact spread around the aim point; intentionally inaccurate. */
+export const ARTILLERY_SHELL_SPREAD = 36;
 
 /** Bots act once per second. */
 export const BOT_DECISION_INTERVAL = TICK_RATE;
@@ -150,7 +153,7 @@ export const BOT_THREAT_COUNTER_BONUS = 40;
 export const BOT_THREAT_UNRELATED_PENALTY = 30;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
-export const PROTOCOL_VERSION = 34;
+export const PROTOCOL_VERSION = 35;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

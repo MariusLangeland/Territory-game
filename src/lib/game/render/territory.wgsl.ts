@@ -63,7 +63,8 @@ fn districtColor(code: u32) -> vec3<f32> {
     case 2u: { base = vec3<f32>(0.96, 0.40, 0.34); }
     case 3u: { base = vec3<f32>(0.34, 0.76, 0.82); }
     case 4u: { base = vec3<f32>(0.52, 0.86, 0.45); }
-    default: { base = vec3<f32>(0.72, 0.58, 0.96); }
+    case 5u: { base = vec3<f32>(0.72, 0.58, 0.96); }
+    default: { base = vec3<f32>(0.40, 0.86, 0.72); }
   }
   // Variants keep same-type districts separable without turning each structure
   // into a differently colored patch.

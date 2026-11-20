@@ -13,9 +13,9 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.32.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.33.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
-> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a five-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
+> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
 > The current build runs **51 states** (1 human + 50 AI) with three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 >
@@ -25,22 +25,22 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frontage v1     | 51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, instant 70% victory                              |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks bonus steps scale power and piercing             |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                         |
-| Supply economy  | 90 starting supply, territory/structure income and cap, all five cards always available, repeatable level-scaled builds/upgrades           |
-| Bot commanders  | 50 deterministic bots with personalities, build plans, threat detection, defensive reserves, rebuilding, retaliation, and opportunism      |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking    |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                         |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input   |
-| UI scale        | Virtualized 51-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
-| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                   |
-| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                |
-| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                    |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                  |
+| Area            | Implementation                                                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontage v1     | 51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, instant 70% victory                                                  |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                     |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                             |
+| Supply economy  | 90 starting supply, uncapped maximum, six cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                 |
+| Bot commanders  | 50 deterministic bots with personalities, build plans, threat detection, defensive reserves, rebuilding, retaliation, and opportunism                          |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                        |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
+| UI scale        | Virtualized 51-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                     |
+| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                       |
+| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                    |
+| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                        |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                                      |
 
 ## Quick start
 
@@ -96,15 +96,15 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
-3. A launch costs **30 supply + 15 per Barracks bonus step**. Bonus steps are `min(5, ceil(Barracks levels / 2))`.
-4. Each front gains durable strength `1500 + 450 × bonus steps`, per-tick power `30 + 15 × bonus steps`, and defense piercing equal to bonus steps. Repeated clicks create separate fronts.
-5. Each capture costs `max(1, defense − bonus steps)` from both the per-tick power and the durable strength pool.
+3. Effective levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs **30 supply + 15 per effective level**.
+4. Each front gains durable strength `1500 + 450 × effective levels`. Speed and piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Repeated clicks create separate fronts.
+5. Each capture costs `max(1, defense − logTier)` from both the per-tick power and the durable strength pool.
 6. A front captures connected target-owned pixels while it has power and strength. High ground and occupied land fall more slowly.
 7. Every captured pixel must still touch the attacker's territory at capture time. Cut connections discard queued pixels.
 8. If a front captures nothing for 20 consecutive ticks, it dies. A clash pause resets the idle counter.
 9. **Least resistance:** each capture samples 10 high-priority frontier cells and takes the cheapest local defense.
 10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
-11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent bonus steps` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
+11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent logTier` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
 12. **Artillery:** costs 30 supply to build. `A` or FIRE, then click an aim point. Every ready battery in 140 px fires one shell per level at 12 supply per shell; after 2 s each shell removes one level from a hostile structure within 12 px. Batteries reload for 6 s.
 13. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
 14. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
@@ -115,18 +115,20 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 
 The map has six discrete elevation tiers: **lowland, plains, hills, highlands, mountains, peaks**. Elevation is part of the generated map, rendered as a green-to-ochre-to-grey-to-snow palette and marked with subtle contour boundaries.
 
-| Property                 | Value                                      |
-| ------------------------ | ------------------------------------------ |
-| Base defense             | `1 + elevation tier` (1–6)                 |
-| Occupied bonus           | `+1`                                       |
-| State aura               | `+20` within 16 px, max once               |
-| Supply launch cost       | `30 + 15 × Barracks bonus steps`           |
-| Durable strength         | `1500 + 450 × bonus steps`                 |
-| Power per front per tick | `30 + 15 × bonus steps`                    |
-| Capture cost             | `max(1, defense − bonus steps)`            |
-| Contact attrition        | `100 + 50 × opponent bonus steps` per tick |
-| Command Post             | +2 supply per second                       |
-| War Academy              | +40 supply cap                             |
+| Property                 | Value                                     |
+| ------------------------ | ----------------------------------------- |
+| Base defense             | `1 + elevation tier` (1–6)                |
+| Occupied bonus           | `+1`                                      |
+| State aura               | `+20` within 16 px, max once              |
+| Supply launch cost       | `30 + 15 × effective levels`              |
+| Durable strength         | `1500 + 450 × effective levels`           |
+| Speed / piercing tier    | `floor(log2(effective levels + 1))`       |
+| Power per front per tick | `30 + 15 × logTier`                       |
+| Capture cost             | `max(1, defense − logTier)`               |
+| Contact attrition        | `100 + 50 × opponent logTier` per tick    |
+| Command Post             | +2 supply per second                      |
+| War Academy              | +40 supply cap; cap has no global maximum |
+| Jammer                   | Global −1 enemy effective attack level    |
 
 Hovering a land cell updates the compact defense readout beside the card hand; its tooltip shows elevation, base defense, and aura details. Grid reference and target-description panels were removed to keep vertical space clear.
 
@@ -152,19 +154,20 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **90 supply** and **all five build cards** permanently available. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `min(600, 120 + floor(territory/1000) + 40 × War Academy stacks)`. Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
+The human commander starts with **90 supply** and **all six build cards** permanently available. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + current level**:
 
-| Card         | Cost | Effect                                                     |
-| ------------ | ---- | ---------------------------------------------------------- |
-| Artillery    | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range   |
-| Barracks     | 12   | +1 front bonus step per 2 levels, up to +5                 |
-| Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
-| Command Post | 4    | +2 supply per second                                       |
-| War Academy  | 6    | +40 supply cap                                             |
+| Card          | Cost | Effect                                                       |
+| ------------- | ---- | ------------------------------------------------------------ |
+| Artillery     | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range     |
+| Barracks      | 12   | +1 effective attack level; +15 cost, +450 strength per level |
+| Fortification | 2    | +5 defense to every friendly pixel in its district; stacks   |
+| Jammer        | 8    | Global −1 enemy effective Barracks level per stack           |
+| Command Post  | 4    | +2 supply per second                                         |
+| War Academy   | 6    | +40 supply cap                                               |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 
-Defensive auras only protect land owned by the structure's owner. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every two levels add one bonus step, capped at +5, to all of that owner's fronts.
+Defensive auras only protect land owned by the structure's owner. A Fortification covers its **entire district**. Barracks adds attack strength/cost linearly and speed/piercing by log2 tiers, with no cap. Jammers reduce every enemy attacker's effective Barracks levels by their stack count, without adding pixel defense.
 
 ### Districts
 
@@ -179,13 +182,14 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - dropping the same type outside all districts creates another structure/district;
 - a different type cannot be dropped inside any existing district.
 
-| Structure    | District range | Stack effect     |
-| ------------ | -------------: | ---------------- |
-| Artillery    |             32 | active siege     |
-| Barracks     |             44 | +1 order / 2 Lv. |
-| Defense Post |             40 | +5 defense       |
-| Command Post |             32 | +1 order per 60s |
-| War Academy  |             32 | +1 order cap     |
+| Structure     | District range | Stack effect    |
+| ------------- | -------------: | --------------- |
+| Artillery     |             32 | active siege    |
+| Barracks      |             44 | +1 attack level |
+| Fortification |             40 | +5 defense      |
+| Jammer        |             32 | −1 enemy level  |
+| Command Post  |             32 | +2 supply/s     |
+| War Academy   |             32 | +40 supply cap  |
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
@@ -195,7 +199,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Supply, cap, active fronts, cancellation, and hovered defense share a compact panel beside the hand.
 
-The HUD shows **supply / cap**, active fronts, and an artillery `FIRE` control. Supply accrues from territory and structures; Command Posts add +2/s, War Academies +40 cap. Barracks levels add one front bonus step per two levels (max +5). Artillery fires one shell per level at structures within 140 px.
+The HUD shows **supply / cap** in compact three-digit form, active fronts, and an artillery `FIRE` control. Supply accrues from territory and structures; Command Posts add +2/s, War Academies +40 cap with no maximum. Barracks levels add +15 launch cost and +450 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires one shell per level at structures within 140 px.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -224,7 +228,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~231 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~232 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -232,9 +236,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~300 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~295 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 3.6–4.4% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 3.3–3.6% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

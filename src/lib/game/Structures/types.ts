@@ -5,7 +5,7 @@
  */
 
 export type StructureType =
-	'state' | 'artillery' | 'barracks' | 'defense-post' | 'command-post' | 'war-academy';
+	'state' | 'artillery' | 'barracks' | 'fortification' | 'command-post' | 'war-academy' | 'jammer';
 
 export type BuildableStructureType = Exclude<StructureType, 'state'>;
 
@@ -19,9 +19,9 @@ export interface DefenseAuraEffect {
 	stacking: 'max' | 'add';
 }
 
-export interface AttackOrderBonusEffect {
-	kind: 'attack-order-bonus';
-	/** Extra orders embedded in every attack the owner launches. */
+export interface BarracksPowerEffect {
+	kind: 'barracks-power';
+	/** Attack-strength levels added per structure stack. */
 	amount: number;
 }
 
@@ -42,16 +42,23 @@ export interface ArtilleryEffect {
 	range: number;
 	cooldownTicks: number;
 	shellsPerLevel: number;
-	supplyCostPerShell: number;
+	supplyCostPerLevel: number;
 	cooldownSeconds: number;
+}
+
+/** Global suppression of enemy Barracks scaling; no pixel defense is added. */
+export interface BarracksSuppressionEffect {
+	kind: 'barracks-suppression';
+	amount: number;
 }
 
 export type StructureEffect =
 	| DefenseAuraEffect
-	| AttackOrderBonusEffect
+	| BarracksPowerEffect
 	| SupplyIncomeEffect
 	| SupplyCapEffect
-	| ArtilleryEffect;
+	| ArtilleryEffect
+	| BarracksSuppressionEffect;
 
 export interface StructureDefinition {
 	label: string;

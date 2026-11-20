@@ -1,21 +1,23 @@
 import type { StructureDefinition } from './types';
 
-export const BARRACKS_ORDER_BONUS = 1;
-/** Every two Barracks levels grant one embedded order, capped at five. */
-export const BARRACKS_LEVELS_PER_ORDER = 2;
-export const BARRACKS_MAX_BONUS_ORDERS = 5;
+/**
+ * Each Barracks level adds attack strength and launch cost linearly, while
+ * speed and defense piercing use an integer log2 curve (`logTier`).
+ */
+export const BARRACKS_POWER_PER_LEVEL = 1;
 
 export const BARRACKS_DEFINITION: StructureDefinition = {
 	label: 'BARRACKS',
-	description: '+1 front bonus step per two levels, up to +5.',
+	description:
+		'+1 attack strength level. Attack cost rises by 15; speed and piercing use log2 scaling.',
 	cost: 12,
 	buildable: true,
 	accent: '#ff7868',
 	districtRange: 44,
 	effects: [
 		{
-			kind: 'attack-order-bonus',
-			amount: BARRACKS_ORDER_BONUS
+			kind: 'barracks-power',
+			amount: BARRACKS_POWER_PER_LEVEL
 		}
 	]
 };
