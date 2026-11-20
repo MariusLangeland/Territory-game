@@ -495,7 +495,7 @@ describe('attack stress mode', () => {
 			cautious: 0,
 			conciliatory: 0,
 			opportunist: 0,
-			focus: 'mine',
+			focus: 'artillery',
 			buildPlan: []
 		};
 		const strengths = new Uint32Array(PLAYER_COUNT);

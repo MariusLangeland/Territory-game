@@ -65,7 +65,9 @@ fn districtColor(code: u32) -> vec3<f32> {
     case 4u: { base = vec3<f32>(0.52, 0.86, 0.45); }
     default: { base = vec3<f32>(0.72, 0.58, 0.96); }
   }
-  let variantScale = 0.88 + f32(variant) * 0.07;
+  // Variants keep same-type districts separable without turning each structure
+  // into a differently colored patch.
+  let variantScale = 0.975 + f32(variant) * 0.006;
   return clamp(base * variantScale, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
@@ -155,14 +157,15 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
     // Districts are a subtle structure-type wash plus a soft shared boundary.
     if (owner > 0u && district > 0u) {
-      color = mix(color, districtColor(district), 0.33);
+      color = mix(color, districtColor(district), 0.14);
       let districtEdge =
         districtOf(west) != district ||
         districtOf(east) != district ||
         districtOf(north) != district ||
         districtOf(south) != district;
       if (districtEdge) {
-        color = mix(color, color * 0.4, 0.7);
+        // A faint seam, not a state border.
+        color = mix(color, color * 0.82, 0.45);
       }
     }
 

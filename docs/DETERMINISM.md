@@ -63,7 +63,7 @@ All authoritative quantities are integers:
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
-There are no troop or production-cap values. Supply, supply accrual, fixed card ids, front strength, initial strength, power, piercing, initial bonus steps, and idle ticks are integer authoritative state.
+There are no troop or production-cap values. Supply, supply accrual, fixed card ids, front strength, initial strength, power, piercing, initial bonus steps, idle ticks, artillery cooldowns, and in-flight shell ticks are integer authoritative state. Shell impact spread uses `hash32` of seed, battery id, and shell index — never the shared PRNG.
 
 Pixel positions are integer; clicks are floored to cell coordinates before commands are queued.
 
@@ -115,10 +115,11 @@ Bots are processed in ascending player id order. Economy/build checks run every 
 
 ### 5.1 Current local model
 
-- `enqueueAttack` validates against current orders minus queued attack commands and appends to `pendingCommands`.
+- `enqueueAttack` validates available supply minus queued front commands and appends to `pendingCommands`.
+- `enqueueArtillery` validates the snapped point, ready batteries, range, and pending barrage, then appends an artillery command.
 - `step()` increments the tick, accrues supply from territory and structures for this tick, drains pending commands, and sorts by `(sequence, playerId)`.
 - Sequence numbers are assigned monotonically by the local simulation instance.
-- Applying an attack command spends one order. Build commands are then applied before bot decisions and attack processing.
+- Applying a front command spends launch supply; applying an artillery command spawns shells and starts per-battery cooldowns. Build and upgrade commands share the same queue.
 - A command that fails validation when applied is dropped. This can happen if the world changed between click and tick; the immediate UI validation is advisory, not authoritative.
 
 ### 5.2 Online requirement
@@ -218,7 +219,8 @@ Border set membership has no outcome effect by itself, but bot target selection 
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
 9. human and bot supply plus their accrual remainders, the capped per-defender grievance matrix, and bot threat/posture/reserve/stall/grievance-mark state;
-10. each active front's id, attacker, defender, target/anchor, growth mode, creation tick, strength/initial strength, power, pierce, idle ticks, bonus steps, capture count, and growth-layer frontier state.
+10. each active front's id, attacker, defender, target/anchor, growth mode, creation tick, strength/initial strength, power, pierce, idle ticks, bonus steps, capture count, and growth-layer frontier state;
+11. each structure's artillery cooldown (`readyAtTick`) and each in-flight shell's id, owner, source, impact point, launch tick, and arrival tick.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
 

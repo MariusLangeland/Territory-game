@@ -51,6 +51,7 @@ Work completed:
 - Added attack stress tests, an all-bot benchmark, and honest experiment documentation.
 - Added deterministic headless match telemetry ([TELEMETRY.md](TELEMETRY.md)).
 - Added threat-aware bot defense, supply reserves, and structure rebuilding.
+- Replaced passive Mine with active Artillery: one shell per level, structure-level damage, bot use, and range/shell visuals.
 
 Acceptance criteria:
 

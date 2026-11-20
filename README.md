@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 (v0.30.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.31.1).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a five-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
@@ -73,21 +73,22 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                |
-| --------------------------- | ----------------------------------------------------- |
-| Click / tap a shared border | Buy a durable front with supply                       |
-| Click / tap your district   | Upgrade that district's structure with supply         |
-| Drag                        | Pan the map                                           |
-| Scroll                      | Zoom at the pointer                                   |
-| Two-finger pinch            | Zoom on touch                                         |
-| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade              |
-| `X`                         | Cancel latest front                                   |
-| `Space`                     | Pause / resume the simulation                         |
-| `F` / `C`                   | Fit atlas / return to beachhead                       |
-| `H`                         | Open the field manual                                 |
-| Minimap click               | Jump the camera                                       |
-| Growth switcher             | Select circular / smooth / organic for **new** fronts |
-| Drag a build card           | Drop on controlled land to buy/build that structure   |
+| Input                       | Action                                                 |
+| --------------------------- | ------------------------------------------------------ |
+| Click / tap a shared border | Buy a durable front with supply                        |
+| Click / tap your district   | Upgrade that district's structure with supply          |
+| Drag                        | Pan the map                                            |
+| Scroll                      | Zoom at the pointer                                    |
+| Two-finger pinch            | Zoom on touch                                          |
+| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade               |
+| `X`                         | Cancel latest front                                    |
+| `A` / FIRE                  | Enter artillery targeting; click an aim point in range |
+| `Space`                     | Pause / resume the simulation                          |
+| `F` / `C`                   | Fit atlas / return to beachhead                        |
+| `H`                         | Open the field manual                                  |
+| Minimap click               | Jump the camera                                        |
+| Growth switcher             | Select circular / smooth / organic for **new** fronts  |
+| Drag a build card           | Drop on controlled land to buy/build that structure    |
 
 A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and insufficient-supply failures.
 
@@ -104,10 +105,11 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 9. **Least resistance:** each capture samples 10 high-priority frontier cells and takes the cheapest local defense.
 10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
 11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent bonus steps` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
-12. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
-13. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
-14. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
-15. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
+12. **Artillery:** `A` or FIRE, then click an aim point. Every ready battery in 140 px fires one shell per level; after 2 s each shell removes one level from a hostile structure within 12 px. Batteries reload for 6 s.
+13. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
+14. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
+15. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
+16. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
 
 ### Terrain and defense
 
@@ -154,7 +156,7 @@ The human commander starts with **90 supply** and **all five build cards** perma
 
 | Card         | Cost | Effect                                                     |
 | ------------ | ---- | ---------------------------------------------------------- |
-| Mine         | 3    | +1 supply per second                                       |
+| Artillery    | 6    | Active: 1 shell per level, 140 px range, 6 s cooldown      |
 | Barracks     | 12   | +1 front bonus step per 2 levels, up to +5                 |
 | Defense Post | 2    | +5 defense to every friendly pixel in its district; stacks |
 | Command Post | 4    | +2 supply per second                                       |
@@ -179,7 +181,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 
 | Structure    | District range | Stack effect     |
 | ------------ | -------------: | ---------------- |
-| Mine         |             32 | +1 income        |
+| Artillery    |             32 | active siege     |
 | Barracks     |             44 | +1 order / 2 Lv. |
 | Defense Post |             40 | +5 defense       |
 | Command Post |             32 | +1 order per 60s |
@@ -193,7 +195,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Supply, cap, active fronts, cancellation, and hovered defense share a compact panel beside the hand.
 
-The HUD shows **supply / cap** and active fronts. Supply accrues from territory and structures; Mines add +1/s, Command Posts +2/s, War Academies +40 cap. Barracks levels add one front bonus step per two levels (max +5).
+The HUD shows **supply / cap**, active fronts, and an artillery `FIRE` control. Supply accrues from territory and structures; Command Posts add +2/s, War Academies +40 cap. Barracks levels add one front bonus step per two levels (max +5). Artillery fires one shell per level at structures within 140 px.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 
@@ -222,7 +224,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~235 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~231 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -230,9 +232,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~303 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~300 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 3.7–4.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 3.6–4.4% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

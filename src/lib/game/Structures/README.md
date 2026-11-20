@@ -3,7 +3,7 @@
 Each structure type owns one file:
 
 - `state.ts`
-- `mine.ts`
+- `artillery.ts`
 - `barracks.ts`
 - `defense-post.ts`
 - `command-post.ts`

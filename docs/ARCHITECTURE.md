@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.30.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.31.1. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.30.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.31.1. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -74,6 +74,8 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `elevation: Uint8Array` — six discrete terrain tiers; base defense = `1 + elevation`.
 - `players: PlayerState[]` — alive flag, territory count, derived frontier sets.
 - `attacks: AttackState[]` — per-front growth layer, anchor, durable strength, power, pierce, idle counter, bonus steps, and captures.
+- `artilleryShells: ArtilleryShell[]` — in-flight shells with source, impact point, launch tick, and arrival tick.
+- `artilleryCooldownUntil: Map<structureId, tick>` — per-battery active-ability cooldown.
 - `claimedBy: Uint32Array` — id of the attack that most recently captured each cell; used to detect mutual front contact. Starting territory is 0.
 - `structures: StructureRegistry` — live structures. One State structure is created at each state's start cell; `at(index)` is the capture lookup and `forOwner()` feeds Barracks bonus steps.
 - `auraDefense: Uint16Array` — derived per-cell defense bonus. Defense auras with `max` stacking (State) are applied first, then additive auras (Defense Posts), only on cells owned by the structure owner and covered by that structure's district. State auras use their fixed radius. Rebuilt on structure changes; captured cells are locally recomputed.
@@ -145,11 +147,13 @@ step()
  ├─ if ended: emit snapshot only
  ├─ tick += 1
  ├─ apply pending growth-mode switch
- ├─ accrue supply from territory/Mines/Command Posts every tick
+ ├─ accrue supply from territory/Command Posts every tick
  ├─ applyPendingCommands()
  │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds
  ├─ runBotEconomy() every 30 ticks (save, build/upgrade focus structure)
  ├─ runBotDecisions() every 10 ticks (requires launch supply)
+ ├─ runBotArtillery() every 10 ticks (ready batteries target hostile structures)
+ ├─ processArtilleryShells() (2-second flight; blast damages one structure level)
  ├─ processAttacks()
  │    ├─ drop fronts at zero strength or after 20 idle ticks
  │    ├─ for each attack id: sample up to 10 top growth-layer candidates
@@ -175,7 +179,7 @@ No rendering, DOM, timers, or promises are present in this path.
 Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and a five-type `buildPlan`. No new RNG stream is introduced.
 
 - At every `BOT_DECISION_INTERVAL` (10 ticks), `updateBotThreat` refreshes active-attacker pressure and a per-bot integer threat score: active fronts (25 each, cap 50), hostile border contact (1 each, cap 8), and recent grievance deltas (2 each, cap 20). Posture enters at 20 and leaves at 10, with a supply reserve up to 12 for the next missing/cheapest defensive structure and a 3-interval stall release.
-- Each bot evaluates construction once per `BOT_BUILD_INTERVAL` (30 ticks), staggered by player id (about two bots per tick). A threatened bot first tries a defensive build/upgrade (Defense Post, then Barracks, then the lower-level one, preferring a border cell touching an enemy). Otherwise it accrues supply from territory and structures and tries the next unbuilt plan type on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If no new type is placeable/affordable, it upgrades the lowest-level existing plan structure. Destroyed structures are rebuilt by the same passes. Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
+- Each bot evaluates construction once per `BOT_BUILD_INTERVAL` (30 ticks), staggered by player id (about two bots per tick). A threatened bot first tries a defensive build/upgrade (Defense Post, then Barracks, then the lower-level one, preferring a border cell touching an enemy). Otherwise it accrues supply from territory and structures and tries the next unbuilt plan type on valid owned land outside districts; Artillery/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If no new type is placeable/affordable, it upgrades the lowest-level existing plan structure. Destroyed structures are rebuilt by the same passes. Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
 - `runBotDecisions` computes player strength (`territory/4 + structure levels*300 + supply*2`), samples border neighbours, and uses `scoreBotTarget`. Threat biases retaliation: a grudge holder gains a large bonus, an active attacker a counter bonus, and unrelated neighbours a penalty.
 - `scoreBotTarget` combines neutral-expansion score, aggression, stored grievances, opportunism × target pressure, and caution/conciliation penalties against stronger targets or targets holding launch supply. Vengeful bots retaliate, cautious bots avoid retaliation-capable targets, conciliatory bots avoid stronger neighbours, and opportunistic bots pile onto contested or weak targets.
 - Captures increment `botGrievance[defender * PLAYER_COUNT + attacker]`, capped at 65,535.
@@ -210,7 +214,7 @@ The simulation validates every candidate identically. The layer never claims own
 
 ### Territory integrity
 
-`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Mines, Barracks, Defense Posts, Command Posts, or War Academies — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Artillery, Barracks, Defense Posts, Command Posts, or War Academies — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
 
 `cleanupUnclaimedPockets` is a second labeling pass over neutral land. It fills components of at most `UNCLAIMED_POCKET_MAX_AREA` (96) that directly border an owner, assigning the pocket to the owner with the largest shared border (lowest id tie-break). Ocean contact is intentionally allowed so thin coastal slivers left by organic fronts are removed; ownerless islands and larger neutral regions are skipped. It runs every 100 ticks and also applies claims through `claim(..., 0)`.
 
@@ -218,12 +222,12 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 ### Structure effects and State auras
 
-`Structures/` keeps each structure definition in its own file: `state.ts`, `mine.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
+`Structures/` keeps each structure definition in its own file: `state.ts`, `artillery.ts`, `barracks.ts`, `defense-post.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
 
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
 - Barracks: `attack-order-bonus`, +1 bonus step per two levels (up to +5) for every front.
-- Mine: `supply-income`, +1 supply per second.
+- Artillery: `artillery`, active 140 px range, 6-second cooldown, one shell per level; shells remove one level from the nearest hostile structure in a 12 px blast.
 - Command Post: `supply-income`, +2 supply per second.
 - War Academy: `supply-cap`, +40.
 

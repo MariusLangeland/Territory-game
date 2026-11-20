@@ -5,7 +5,7 @@
  */
 
 export type StructureType =
-	'state' | 'mine' | 'barracks' | 'defense-post' | 'command-post' | 'war-academy';
+	'state' | 'artillery' | 'barracks' | 'defense-post' | 'command-post' | 'war-academy';
 
 export type BuildableStructureType = Exclude<StructureType, 'state'>;
 
@@ -36,8 +36,21 @@ export interface SupplyCapEffect {
 	amount: number;
 }
 
+/** Declarative active-ability data for UI and deterministic simulation validation. */
+export interface ArtilleryEffect {
+	kind: 'artillery';
+	range: number;
+	cooldownTicks: number;
+	shellsPerLevel: number;
+	cooldownSeconds: number;
+}
+
 export type StructureEffect =
-	DefenseAuraEffect | AttackOrderBonusEffect | SupplyIncomeEffect | SupplyCapEffect;
+	| DefenseAuraEffect
+	| AttackOrderBonusEffect
+	| SupplyIncomeEffect
+	| SupplyCapEffect
+	| ArtilleryEffect;
 
 export interface StructureDefinition {
 	label: string;
@@ -82,4 +95,6 @@ export interface PublicStructure {
 	y: number;
 	stacks: number;
 	effects: readonly StructureEffect[];
+	/** Tick at which this structure's active ability is ready; 0 for passive types. */
+	readyAtTick: number;
 }

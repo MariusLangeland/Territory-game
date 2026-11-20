@@ -7,10 +7,16 @@
  */
 
 import type { GrowthMode } from '../growth';
-import type { AttackFailure, PublicAttack, PublicPlayer, SimEventKind } from '../simulation';
+import type {
+	AttackFailure,
+	PublicArtilleryShell,
+	PublicAttack,
+	PublicPlayer,
+	SimEventKind
+} from '../simulation';
 import type { PublicCard, PublicStructure } from '../Structures';
 
-export const NET_PROTOCOL_VERSION = 33;
+export const NET_PROTOCOL_VERSION = 34;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -20,6 +26,13 @@ export type Tick = number;
 export interface AttackIntent {
 	type: 'attack';
 	/** Monotonic per client, used for acknowledgement and ordering. */
+	sequence: number;
+	x: number;
+	y: number;
+}
+
+export interface ArtilleryIntent {
+	type: 'artillery';
 	sequence: number;
 	x: number;
 	y: number;
@@ -39,7 +52,7 @@ export type ClientMessage =
 			t: 'intent';
 			/** Client's best estimate; the server decides the authoritative tick. */
 			targetTick: Tick;
-			intent: AttackIntent;
+			intent: AttackIntent | ArtilleryIntent;
 	  }
 	| {
 			/** Host-controlled test mode; server must accept and broadcast it. */
@@ -68,6 +81,7 @@ export interface WireSnapshot {
 	tick: Tick;
 	players: WirePlayer[];
 	attacks: PublicAttack[];
+	shells: PublicArtilleryShell[];
 	structures: PublicStructure[];
 	supply: number;
 	supplyCap: number;
@@ -160,6 +174,20 @@ export function isAttackIntent(value: unknown): value is AttackIntent {
 	const intent = value as Record<string, unknown>;
 	return (
 		intent.type === 'attack' &&
+		typeof intent.sequence === 'number' &&
+		Number.isSafeInteger(intent.sequence) &&
+		typeof intent.x === 'number' &&
+		Number.isFinite(intent.x) &&
+		typeof intent.y === 'number' &&
+		Number.isFinite(intent.y)
+	);
+}
+
+export function isArtilleryIntent(value: unknown): value is ArtilleryIntent {
+	if (!value || typeof value !== 'object') return false;
+	const intent = value as Record<string, unknown>;
+	return (
+		intent.type === 'artillery' &&
 		typeof intent.sequence === 'number' &&
 		Number.isSafeInteger(intent.sequence) &&
 		typeof intent.x === 'number' &&

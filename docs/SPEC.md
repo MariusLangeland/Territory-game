@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.30.0 (Frontage v1)  
+**Version:** 0.31.1 (Frontage v1 + Artillery)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.30.0, map version 4, protocol draft 33
+**Last synchronized with:** application 0.31.1, map version 4, protocol draft 34
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -121,7 +121,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 33`.
+- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 34`.
 
 ### 4.2 Starting positions
 
@@ -203,7 +203,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Every bot also gets a five-type **build plan** sorted by its preferences, with a per-type hash jitter. The first entry is its opening focus; later entries become placeable as territory expands outside existing districts.
 - Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Aggression gates how often they attempt an attack.
 - Bots start with **90 supply** and follow the same income/cap rules, evaluating construction every 3 seconds (`BOT_BUILD_INTERVAL = 30`). Build ticks are staggered by player id, so only about two bots act per tick.
-- Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Mines/Command Posts/War Academies prefer capital-adjacent sites; Defense Posts/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
+- Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Artillery/Command Posts/War Academies prefer capital-adjacent sites; Defense Posts/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
 - **Threat posture:** once per decision tick, each bot computes an integer threat score:
   - `25` per active hostile front, capped at `50`;
   - `1` per hostile pixel touching its border, capped at `8`;
@@ -313,11 +313,11 @@ This removes the small unclaimed specks and coastal slivers that organic growth 
 - Every land component connected to a live State structure is protected from annexation.
 - A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
-- Only State structures anchor protection. Mines, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
+- Only State structures anchor protection. Artillery, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
 - State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
-State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
+State is the permanent anchor structure. Artillery, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
 
 ### 4.16 Elevation and defense
 
@@ -347,7 +347,7 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
 - Start with **90 supply** and **all five buildable cards** always available in the hand.
-- Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Mine stacks add **+1/s**; Command Post stacks add **+2/s**.
+- Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Command Post stacks add **+2/s**.
 - Supply cap is `min(600, 120 + floor(territory/1000) + 40 × War Academy stacks)`.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
 - Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + current level` (projected through queued upgrades). No card is consumed.
@@ -355,20 +355,30 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll.
-- Costs: Mine **3**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6** supply.
+- Costs: Artillery **6**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6** supply.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells owned by the structure's owner.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
 
 | Card         | Cost | Effect                                                           |
 | ------------ | ---- | ---------------------------------------------------------------- |
-| Mine         | 3    | +1 supply per second                                             |
+| Artillery    | 6    | Active: 1 shell per level, 140 px range, 6 s cooldown            |
 | Barracks     | 12   | +1 front bonus step per 2 levels, capped at +5                   |
 | Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
 | Command Post | 4    | +2 supply per second                                             |
 | War Academy  | 6    | +40 supply cap                                                   |
 
 Every two live Barracks levels add one bonus step to the owner's fronts, rounded up and capped at +5. Bonus steps increase power, defense piercing, and contact damage.
+
+### 4.17b Artillery active ability
+
+- The human toggles targeting with the HUD `FIRE` button or `A`, then clicks an aim point.
+- A click snaps to the nearest hostile structure within **28 px**, then requires at least one ready battery whose centre is within **140 px**.
+- Every ready battery in range fires **one shell per structure level**. A battery then reloads for **6 seconds**.
+- Shells take **2 seconds** to land, with deterministic spread up to ±7 px around the aim point.
+- On impact, the nearest hostile structure within **12 px** loses one level. A level-1 structure is destroyed; State destruction removes annexation protection.
+- Artillery has no passive income, no supply cost per volley, and no front cap interaction.
+- Bots use the same cooldown and shell rules, targeting the strongest hostile structure in range.
 
 ### 4.18 Districts and structure stacking
 
@@ -382,13 +392,13 @@ Every two live Barracks levels add one bonus step to the owner's fronts, rounded
 - Each stack increases the structure's effect: supply income, aura defense, front bonus steps, or supply cap.
 - Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
 
-| Structure    | District range | Stack effect                     |
-| ------------ | -------------: | -------------------------------- |
-| Mine         |          32 px | +1 income per interval per stack |
-| Barracks     |          44 px | +1 order per 2 levels, max +5    |
-| Defense Post |          40 px | +5 defense per stack             |
-| Command Post |          32 px | +1 order per 60s per stack       |
-| War Academy  |          32 px | +1 cap per stack                 |
+| Structure    | District range | Stack effect                    |
+| ------------ | -------------: | ------------------------------- |
+| Artillery    |          32 px | active siege, no passive income |
+| Barracks     |          44 px | +1 order per 2 levels, max +5   |
+| Defense Post |          40 px | +5 defense per stack            |
+| Command Post |          32 px | +1 order per 60s per stack      |
+| War Academy  |          32 px | +1 cap per stack                |
 
 District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code.
 
@@ -615,7 +625,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Occupied pixels add one defense; Barracks bonus steps scale power, piercing, strength, and contact damage.
 - [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
 - [x] The human starts with all five cards and 90 supply, earns supply income, can build repeatedly, and never loses a card from the hand.
-- [x] Mine, Barracks, Defense Post, Command Post, and War Academy apply their economy/combat effects.
+- [x] Artillery, Barracks, Defense Post, Command Post, and War Academy apply their active/economy/combat effects.
 - [x] Fronts cost supply and buy durable strength; cancellation refunds the remaining strength share; holding 70% of land wins instantly.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.

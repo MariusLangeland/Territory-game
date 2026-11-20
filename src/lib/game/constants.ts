@@ -101,6 +101,16 @@ export const SUPPLY_WIN_SHARE = 70;
 /** How far from a click the simulation looks for a shared border. */
 export const ATTACK_SEARCH_RADIUS = 34;
 
+/** Active artillery: one shell per structure level per volley. */
+export const ARTILLERY_RANGE = 140;
+export const ARTILLERY_COOLDOWN_TICKS = TICK_RATE * 6;
+export const ARTILLERY_SHELL_TRAVEL_TICKS = TICK_RATE * 2;
+export const ARTILLERY_BLAST_RADIUS = 12;
+/** Clicks near a hostile structure snap to it so targeting stays usable when zoomed out. */
+export const ARTILLERY_TARGET_SNAP_RADIUS = 28;
+/** Deterministic impact spread around the aim point. */
+export const ARTILLERY_SHELL_SPREAD = 7;
+
 /** Bots act once per second. */
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
@@ -139,7 +149,7 @@ export const BOT_THREAT_COUNTER_BONUS = 40;
 export const BOT_THREAT_UNRELATED_PENALTY = 30;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

@@ -200,15 +200,15 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Server → client
 
-| Message      | Purpose                                                                                                                                                   |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                                  |
-| `tick`       | Owner changes, public players, live structures, active attacks (including embedded/current orders and growth mode), current growth mode, events, checksum |
-| `ack`        | Intent accepted                                                                                                                                           |
-| `reject`     | Intent rejected with reason                                                                                                                               |
-| `match-over` | Winner and final snapshot                                                                                                                                 |
-| `pong`       | RTT response                                                                                                                                              |
-| `error`      | Room/protocol/rate-limit errors                                                                                                                           |
+| Message      | Purpose                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                            |
+| `tick`       | Owner changes, public players, live structures, active fronts (strength/power/pierce/idle), in-flight shells, current growth mode, events, checksum |
+| `ack`        | Intent accepted                                                                                                                                     |
+| `reject`     | Intent rejected with reason                                                                                                                         |
+| `match-over` | Winner and final snapshot                                                                                                                           |
+| `pong`       | RTT response                                                                                                                                        |
+| `error`      | Room/protocol/rate-limit errors                                                                                                                     |
 
 ### Encoding
 
@@ -227,22 +227,23 @@ Owner changes:
 
 Growth mode:
 
-- the current mode used for new orders must be server-authoritative, either fixed at match creation or changed by an accepted, tick-stamped command;
-- each active attack carries the layer it was created with;
-- client prediction must use the same per-attack layer and deterministic frontier ordering;
+- the current mode used for new fronts must be server-authoritative, either fixed at match creation or changed by an accepted, tick-stamped command;
+- each active front carries the layer it was created with;
+- client prediction must use the same per-front layer and deterministic frontier ordering;
 - mode changes must be replayed and checksummed like other commands.
 
 Conflict and integrity state:
 
-- per-cell attack-claim provenance determines when mutual fronts clash; clients must derive the defender spend and incoming embedded-order reduction identically from replayed attacks;
-- detached-territory annexation is authoritative tick logic and must run on the same tick boundaries (every 10 ticks, plus the post-cancellation cooldown) on server and clients;
+- per-cell attack-claim provenance determines when mutual fronts clash; clients must derive the simultaneous strength attrition identically from replayed fronts;
+- detached-territory annexation is authoritative tick logic and must run on the same tick boundaries on server and clients;
 - claim provenance and cleanup scheduling are included in checksums, not sent as optional client visuals.
 
-Structures:
+Structures and artillery:
 
-- live structure ids, types, owners, map cells, stack counts, and effect descriptors are part of the authoritative snapshot (`structures`);
-- capturing a structure cell destroys it at the same tick, removes its aura, and changes annexation protection immediately;
-- clients may draw structures and auras from the snapshot, but the server owns placement, destruction, effects, and protection;
+- live structure ids, types, owners, map cells, stack counts, effect descriptors, and `readyAtTick` are part of the authoritative snapshot (`structures`);
+- capturing or shelling a structure destroys it at the same tick, removes its aura, and changes annexation protection immediately;
+- in-flight shells (`shells`) carry id, owner, source, impact point, and launch/arrival ticks; clients interpolate them but do not resolve impacts;
+- clients may draw structures, range rings, auras, and shells from the snapshot, but the server owns targeting validation, cooldowns, placement, destruction, effects, and protection;
 - aura defense and district assignment are derived from live structure effects/positions and are not sent as per-pixel authoritative state; clients recompute them with the same Voronoi and ownership rules;
 - future transfer commands must be tick-stamped and authorized.
 
@@ -252,13 +253,13 @@ Player economy and cards:
 - builds are tick-stamped commands, validated server-side against permanent-hand membership, supply, territory, occupied structure cells, the 8 px exclusion radius, district placement, and stack eligibility; a matching district build pays base cost + current level, while a new structure pays base cost;
 - upgrades are tick-stamped commands targeting an owned district; the server resolves the district's structure, spends `base card cost + projected current level`, and increments stacks without consuming a card;
 - the hand is the fixed five-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
-- base order grants, continuous Command Post order accrual, continuous Mine income, and War Academy caps are server-authoritative; clients only display the snapshot;
-- a captured buildable is razed at the tick of capture and its aura/income/order effect disappears immediately;
-- bots do not participate in the card economy in this build, so their snapshot economy is omitted.
+- continuous supply income, artillery cooldowns, shells, and War Academy caps are server-authoritative; clients only display the snapshot;
+- a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
+- bots use the same supply economy but their balances are omitted from the public player snapshot.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);
-- attack costs are server-authoritative tick logic, so clients predicting a front must apply the same embedded-order budget, piercing, lifetime, and requeue rule;
+- attack costs are server-authoritative tick logic, so clients predicting a front must apply the same supply launch cost, power, strength, piercing, attrition, and requeue rules;
 - the handshake must reject mismatched map versions, not just protocol versions.
 
 ### Versioning

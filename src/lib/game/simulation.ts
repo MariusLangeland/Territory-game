@@ -1,5 +1,11 @@
 import {
 	ANNEX_INTERVAL_TICKS,
+	ARTILLERY_BLAST_RADIUS,
+	ARTILLERY_COOLDOWN_TICKS,
+	ARTILLERY_RANGE,
+	ARTILLERY_SHELL_SPREAD,
+	ARTILLERY_SHELL_TRAVEL_TICKS,
+	ARTILLERY_TARGET_SNAP_RADIUS,
 	ATTACK_ATTRITION_BASE,
 	ATTACK_ATTRITION_BONUS,
 	ATTACK_DAMAGE_PER_TICK,
@@ -156,6 +162,22 @@ export interface PublicAttack {
 	growthMode: GrowthMode;
 }
 
+export interface ArtilleryShell {
+	id: number;
+	ownerId: number;
+	fromX: number;
+	fromY: number;
+	targetX: number;
+	targetY: number;
+	launchedAtTick: number;
+	arriveAtTick: number;
+}
+
+export interface PublicArtilleryShell extends ArtilleryShell {
+	/** Render-only interpolation in `[0, 1]`; not checksummed. */
+	progress: number;
+}
+
 export interface GameSnapshot {
 	tick: number;
 	seed: number;
@@ -163,6 +185,7 @@ export interface GameSnapshot {
 	claimedLand: number;
 	players: PublicPlayer[];
 	attacks: PublicAttack[];
+	shells: PublicArtilleryShell[];
 	structures: PublicStructure[];
 	/** Human state's economy. Bots do not build cards yet. */
 	gold: number;
@@ -180,7 +203,8 @@ export interface GameSnapshot {
 	growthMode: GrowthMode;
 }
 
-export type SimEventKind = 'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'system';
+export type SimEventKind =
+	'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'artillery' | 'system';
 
 export interface SimEvent {
 	id: number;
@@ -191,7 +215,16 @@ export interface SimEvent {
 }
 
 export type AttackFailure =
-	'ended' | 'eliminated' | 'ocean' | 'own-territory' | 'no-shared-border' | 'no-orders' | 'invalid';
+	| 'ended'
+	| 'eliminated'
+	| 'ocean'
+	| 'own-territory'
+	| 'no-shared-border'
+	| 'no-orders'
+	| 'invalid'
+	| 'no-artillery'
+	| 'cooling'
+	| 'out-of-range';
 
 export interface AttackOrderResult {
 	ok: boolean;
@@ -201,6 +234,14 @@ export interface AttackOrderResult {
 
 export interface AttackCommand {
 	type: 'attack';
+	playerId: number;
+	x: number;
+	y: number;
+	sequence: number;
+}
+
+export interface ArtilleryFireCommand {
+	type: 'artillery';
 	playerId: number;
 	x: number;
 	y: number;
@@ -226,7 +267,7 @@ export interface UpgradeCommand {
 	sequence: number;
 }
 
-export type GameCommand = AttackCommand | BuildCommand | UpgradeCommand;
+export type GameCommand = AttackCommand | ArtilleryFireCommand | BuildCommand | UpgradeCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -307,6 +348,10 @@ export class TerritorySimulation {
 	private pendingGrowthMode: GrowthMode | null = null;
 	private goldAccrual = 0;
 	private attackOrders: number[] = [];
+	private artilleryShells: ArtilleryShell[] = [];
+	private nextShellId = 1;
+	/** structure id -> earliest tick it may fire again. */
+	private readonly artilleryCooldownUntil = new Map<number, number>();
 	private readonly botGold: number[];
 	private readonly botGoldAccrual: Uint16Array;
 	private readonly botProfiles: BotProfile[];
@@ -565,6 +610,208 @@ export class TerritorySimulation {
 		return this.cancelAttack(playerId, latest.id);
 	}
 
+	private artilleryReadyAt(structure: Structure): number {
+		return this.artilleryCooldownUntil.get(structure.id) ?? 0;
+	}
+
+	private artilleryBatteries(playerId: number, targetX: number, targetY: number): Structure[] {
+		const rangeSq = ARTILLERY_RANGE * ARTILLERY_RANGE;
+		const batteries: Structure[] = [];
+		for (const structure of this.structures.forOwner(playerId)) {
+			if (structure.type !== 'artillery') continue;
+			if (this.artilleryReadyAt(structure) > this.tick) continue;
+			const dx = structure.x - targetX;
+			const dy = structure.y - targetY;
+			if (dx * dx + dy * dy > rangeSq) continue;
+			batteries.push(structure);
+		}
+		batteries.sort((a, b) => a.id - b.id);
+		return batteries;
+	}
+
+	/** Snap a click to a nearby hostile structure so artillery targeting stays usable. */
+	private snapArtilleryTarget(playerId: number, x: number, y: number): { x: number; y: number } {
+		const radiusSq = ARTILLERY_TARGET_SNAP_RADIUS * ARTILLERY_TARGET_SNAP_RADIUS;
+		let best: Structure | null = null;
+		let bestDistance = radiusSq + 1;
+		for (const structure of this.structures.all) {
+			if (structure.ownerId === playerId) continue;
+			const dx = structure.x - x;
+			const dy = structure.y - y;
+			const distance = dx * dx + dy * dy;
+			if (distance > radiusSq) continue;
+			if (
+				distance < bestDistance ||
+				(distance === bestDistance && structure.id < (best?.id ?? 0))
+			) {
+				best = structure;
+				bestDistance = distance;
+			}
+		}
+		return best ? { x: best.x, y: best.y } : { x, y };
+	}
+
+	/** Queue one active artillery volley. It resolves at the start of the next tick. */
+	enqueueArtillery(playerId: number, x: number, y: number): AttackOrderResult {
+		const validation = this.validateArtillery(playerId, x, y);
+		if (!validation.ok) return validation;
+		const target = this.snapArtilleryTarget(playerId, Math.floor(x), Math.floor(y));
+		this.pendingCommands.push({
+			type: 'artillery',
+			playerId,
+			x: target.x,
+			y: target.y,
+			sequence: this.nextCommandSequence++
+		});
+		return validation;
+	}
+
+	validateArtillery(playerId: number, x: number, y: number): AttackOrderResult {
+		if (this.ended) return fail('ended', 'The conflict is over.');
+		const player = this.players[playerId - 1];
+		if (!player || !player.alive) return fail('eliminated', 'Your state has been eliminated.');
+		const roundedX = Math.floor(x);
+		const roundedY = Math.floor(y);
+		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
+			return fail('invalid', 'Outside the map.');
+		}
+		for (const command of this.pendingCommands) {
+			if (command.type === 'artillery' && command.playerId === playerId) {
+				return fail('cooling', 'An artillery barrage is already queued.');
+			}
+		}
+
+		const target = this.snapArtilleryTarget(playerId, roundedX, roundedY);
+		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
+		if (batteries.length > 0) {
+			return {
+				ok: true,
+				message: `${batteries.length} artillery ${batteries.length === 1 ? 'battery' : 'batteries'} ready.`
+			};
+		}
+
+		let hasArtillery = false;
+		let hasReady = false;
+		for (const structure of this.structures.forOwner(playerId)) {
+			if (structure.type !== 'artillery') continue;
+			hasArtillery = true;
+			if (this.artilleryReadyAt(structure) <= this.tick) hasReady = true;
+		}
+		if (!hasArtillery) return fail('no-artillery', 'Build an Artillery card first.');
+		if (!hasReady) return fail('cooling', 'All artillery is reloading.');
+		return fail('out-of-range', 'No ready artillery can reach that point.');
+	}
+
+	private fireArtilleryVolley(playerId: number, x: number, y: number): number {
+		const player = this.players[playerId - 1];
+		if (!player?.alive) return 0;
+		const target = this.snapArtilleryTarget(playerId, x, y);
+		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
+		if (batteries.length === 0) return 0;
+
+		let shellsFired = 0;
+		for (const battery of batteries) {
+			this.artilleryCooldownUntil.set(battery.id, this.tick + ARTILLERY_COOLDOWN_TICKS);
+			for (let shell = 0; shell < battery.stacks; shell++) {
+				const hashX = hash32(this.seed ^ 0x9e3779b9, battery.id, shell);
+				const hashY = hash32(this.seed ^ 0x85ebca6b, battery.id, shell);
+				const spread = ARTILLERY_SHELL_SPREAD * 2 + 1;
+				const targetX = Math.max(
+					0,
+					Math.min(this.width - 1, target.x + (hashX % spread) - ARTILLERY_SHELL_SPREAD)
+				);
+				const targetY = Math.max(
+					0,
+					Math.min(this.height - 1, target.y + (hashY % spread) - ARTILLERY_SHELL_SPREAD)
+				);
+				this.artilleryShells.push({
+					id: this.nextShellId++,
+					ownerId: playerId,
+					fromX: battery.x,
+					fromY: battery.y,
+					targetX,
+					targetY,
+					launchedAtTick: this.tick,
+					arriveAtTick: this.tick + ARTILLERY_SHELL_TRAVEL_TICKS
+				});
+				shellsFired++;
+			}
+		}
+		if (playerId === HUMAN_PLAYER_ID) {
+			this.pushEvent(
+				'artillery',
+				`Artillery fired ${shellsFired} ${shellsFired === 1 ? 'shell' : 'shells'} from ${batteries.length} ${
+					batteries.length === 1 ? 'battery' : 'batteries'
+				}.`,
+				playerId
+			);
+		}
+		return shellsFired;
+	}
+
+	private processArtilleryShells(): void {
+		if (this.artilleryShells.length === 0) return;
+		const remaining: ArtilleryShell[] = [];
+		for (const shell of this.artilleryShells) {
+			if (this.tick < shell.arriveAtTick) {
+				remaining.push(shell);
+				continue;
+			}
+			this.resolveArtilleryImpact(shell);
+		}
+		this.artilleryShells = remaining;
+	}
+
+	private resolveArtilleryImpact(shell: ArtilleryShell): void {
+		const radiusSq = ARTILLERY_BLAST_RADIUS * ARTILLERY_BLAST_RADIUS;
+		let target: Structure | null = null;
+		let bestDistance = radiusSq + 1;
+		for (const structure of this.structures.all) {
+			if (structure.ownerId === shell.ownerId) continue;
+			const dx = structure.x - shell.targetX;
+			const dy = structure.y - shell.targetY;
+			const distance = dx * dx + dy * dy;
+			if (distance > radiusSq) continue;
+			if (
+				distance < bestDistance ||
+				(distance === bestDistance && structure.id < (target?.id ?? 0))
+			) {
+				target = structure;
+				bestDistance = distance;
+			}
+		}
+		if (target) this.damageStructureWithArtillery(target);
+	}
+
+	private damageStructureWithArtillery(structure: Structure): void {
+		const owner = this.players[structure.ownerId - 1];
+		const label = STRUCTURE_DEFINITIONS[structure.type].label;
+		if (structure.stacks > 1) {
+			structure.stacks--;
+			this.rebuildAuraDefense();
+			this.pushEvent(
+				'artillery',
+				`${owner?.name ?? 'A state'}'s ${label} hit; now Lv.${structure.stacks}.`,
+				structure.ownerId
+			);
+			return;
+		}
+
+		this.structures.destroy(structure);
+		this.artilleryCooldownUntil.delete(structure.id);
+		this.refreshDistrictsAround(structure);
+		this.rebuildAuraDefense();
+		this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
+		if (structure.type === 'state') this.annexRequested = true;
+		this.pushEvent(
+			'structure',
+			structure.type === 'state'
+				? `${owner?.name ?? 'A state'}'s State structure was destroyed by artillery. Its territory is no longer protected from annexation.`
+				: `${owner?.name ?? 'A state'}'s ${label} was destroyed by artillery.`,
+			structure.ownerId
+		);
+	}
+
 	/** Validate a click against current state for immediate UI feedback. */
 	validateAttack(playerId: number, x: number, y: number): AttackOrderResult {
 		if (this.ended) return fail('ended', 'The conflict is over.');
@@ -809,6 +1056,8 @@ export class TerritorySimulation {
 			this.updateBotThreat();
 			this.runBotEconomy();
 			this.runBotDecisions();
+			this.runBotArtillery();
+			this.processArtilleryShells();
 			this.processAttacks();
 			const annexDue =
 				this.tick % ANNEX_INTERVAL_TICKS === 0 ||
@@ -967,6 +1216,18 @@ export class TerritorySimulation {
 			mix(structure.ownerId);
 			mix(structure.index);
 			mix(structure.stacks);
+			mix(this.artilleryReadyAt(structure));
+		}
+		mix(this.nextShellId);
+		for (const shell of this.artilleryShells) {
+			mix(shell.id);
+			mix(shell.ownerId);
+			mix(shell.fromX);
+			mix(shell.fromY);
+			mix(shell.targetX);
+			mix(shell.targetY);
+			mix(shell.launchedAtTick);
+			mix(shell.arriveAtTick);
 		}
 
 		for (const attack of this.attacks) {
@@ -1059,6 +1320,11 @@ export class TerritorySimulation {
 					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
 					command.playerId
 				);
+				continue;
+			}
+
+			if (command.type === 'artillery') {
+				this.fireArtilleryVolley(command.playerId, command.x, command.y);
 				continue;
 			}
 
@@ -1178,6 +1444,7 @@ export class TerritorySimulation {
 		const owned = this.structures.forOwner(ownerId);
 		for (const structure of owned) {
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			if (range <= 0) continue;
 			const distance = this.districtDistance(structure, x, y, range);
 			if (distance > range * range) continue;
 			const code = STRUCTURE_TYPE_CODES[structure.type];
@@ -1762,7 +2029,7 @@ export class TerritorySimulation {
 		const opportunist = hash32(playerId, 9, seed ^ 0x165667b1) % 101;
 
 		const preferred: Array<[BuildableStructureType, number]> = [
-			['mine', 20 + economy + (hash32(playerId, 10, seed) % 25)],
+			['artillery', 16 + economy + Math.floor(aggression / 2) + (hash32(playerId, 10, seed) % 25)],
 			['barracks', 12 + aggression + (hash32(playerId, 11, seed) % 25)],
 			['defense-post', 12 + fortification + (hash32(playerId, 12, seed) % 25)],
 			['command-post', 8 + command + (hash32(playerId, 13, seed) % 25)],
@@ -1820,7 +2087,7 @@ export class TerritorySimulation {
 
 			const plan = this.botProfiles[goldIndex].buildPlan;
 			// Non-defence spending must leave the reserve intact; a bot that is
-			// saving for a fortification should not burn its last gold on a mine.
+			// saving for a fortification should not burn its last supply on artillery.
 			const reserve = stalled ? 0 : this.botReserve[goldIndex];
 			const budget = this.botGold[goldIndex] - reserve;
 			let acted = false;
@@ -2074,7 +2341,7 @@ export class TerritorySimulation {
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
-		if (type === 'mine' || type === 'command-post' || type === 'war-academy') {
+		if (type === 'artillery' || type === 'command-post' || type === 'war-academy') {
 			const state = this.structures.forOwnerType(player.id, 'state');
 			if (state) {
 				for (let radius = STRUCTURE_MIN_SPACING; radius <= 80; radius++) {
@@ -2136,6 +2403,53 @@ export class TerritorySimulation {
 			);
 			if (target === null) continue;
 			this.createAttack(player.id, target, [target]);
+		}
+	}
+
+	private runBotArtillery(): void {
+		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
+		for (const player of this.players) {
+			if (!player.alive || !player.isBot) continue;
+			const ready = this.structures
+				.forOwner(player.id)
+				.filter(
+					(structure) =>
+						structure.type === 'artillery' && this.artilleryReadyAt(structure) <= this.tick
+				);
+			if (ready.length === 0) continue;
+
+			let best: Structure | null = null;
+			let bestScore = Number.NEGATIVE_INFINITY;
+			for (const structure of this.structures.all) {
+				if (structure.ownerId === player.id) continue;
+				let nearest = Number.POSITIVE_INFINITY;
+				for (const battery of ready) {
+					const dx = battery.x - structure.x;
+					const dy = battery.y - structure.y;
+					const distance = dx * dx + dy * dy;
+					if (distance < nearest) nearest = distance;
+				}
+				if (nearest > ARTILLERY_RANGE * ARTILLERY_RANGE) continue;
+				const priority =
+					structure.type === 'state'
+						? 100
+						: structure.type === 'war-academy'
+							? 70
+							: structure.type === 'artillery'
+								? 60
+								: structure.type === 'barracks'
+									? 50
+									: structure.type === 'command-post'
+										? 40
+										: 30;
+				const score = structure.stacks * 1000 + priority * 5 - nearest;
+				if (score > bestScore || (score === bestScore && structure.id < (best?.id ?? 0))) {
+					best = structure;
+					bestScore = score;
+				}
+			}
+			if (!best) continue;
+			this.fireArtilleryVolley(player.id, best.x, best.y);
 		}
 	}
 
@@ -2352,6 +2666,7 @@ export class TerritorySimulation {
 			claimedLand,
 			players,
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
+			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
 			gold: this.gold,
 			income: this.income,
@@ -2393,8 +2708,20 @@ export class TerritorySimulation {
 			x: structure.x,
 			y: structure.y,
 			stacks: structure.stacks,
-			effects: structure.effects
+			effects: structure.effects,
+			readyAtTick: this.artilleryReadyAt(structure)
 		};
+	}
+
+	private toPublicShell(shell: ArtilleryShell): PublicArtilleryShell {
+		const span = Math.max(1, shell.arriveAtTick - shell.launchedAtTick);
+		const elapsed = Math.max(0, Math.min(span, this.tick - shell.launchedAtTick));
+		return { ...shell, progress: elapsed / span };
+	}
+
+	/** Read-only shell view for the 2D structure overlay. */
+	get activeShells(): readonly ArtilleryShell[] {
+		return this.artilleryShells;
 	}
 
 	private pushEvent(kind: SimEventKind, message: string, playerId?: number): void {

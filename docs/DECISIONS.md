@@ -1085,3 +1085,38 @@ The approved product decisions replaced EXP-001's attack-order inventory and fix
 - **Fixed front lifetime:** rejected in favour of strength and idle expiry.
 - **No refunds:** rejected by the approved cancellation decision.
 - **60% held for 60s:** rejected in favour of instant 70% victory.
+
+---
+
+## ADR-034 — Replace Mine with active Artillery
+
+**Status:** accepted and implemented in 0.31.0  
+**Date:** 2026-11-20
+
+### Context
+
+Mine was redundant after supply became the only resource: base territory income and Command Posts already covered economy needs, so the Mine card had no distinct decision niche. The requested replacement is an active ability structure that bombards structures within a large radius, firing one shell per level and removing one level per structure hit.
+
+### Decision
+
+- Remove `mine`; add `artillery` in the same card slot at **6 supply**.
+- Artillery has no passive effect. It has a **140 px** target range and a **6 s** per-battery cooldown.
+- The human activates targeting with `A` or the HUD `FIRE` control, then clicks an aim point. Clicks snap to a hostile structure within 28 px; at least one ready battery must be within range.
+- Every ready battery in range fires **one shell per structure level**. Shells fly for **2 s**, spread deterministically by up to ±7 px, and remove one level from the nearest hostile structure within a **12 px** blast.
+- A level-1 structure is destroyed. Destroying a State removes annexation protection.
+- Bots use the same ability, choosing the strongest hostile structure reachable by a ready battery.
+- Protocol 34 / app 0.31.0. Frontage supply/front rules are otherwise unchanged.
+
+### Consequences
+
+- The five-card hand remains permanent, but the economy card becomes a siege tool.
+- Artillery strongly rewards leveling but competes with Barracks and War Academy for supply.
+- Active use needs a targeting mode; range rings and shells are rendered in the 2D overlay.
+- Shells, cooldowns, and 70% victory remain checksummed and deterministic.
+
+### Alternatives considered
+
+- **Auto-fire artillery:** rejected because the request specifies an active ability.
+- **Single-target click on battery then target:** more clicks and harder on touch than a FIRE mode.
+- **Supply cost per volley:** rejected; cooldown alone bounds output and keeps the card affordable.
+- **Damage structures with splash only:** would make aiming at empty ground meaningless; a 12 px blast still requires deliberate targeting.

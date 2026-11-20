@@ -12,7 +12,7 @@ export * from './types';
 export * from './definitions';
 export * from './registry';
 export * from './state';
-export * from './mine';
+export * from './artillery';
 export * from './barracks';
 export * from './defense-post';
 export * from './command-post';

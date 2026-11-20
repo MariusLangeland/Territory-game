@@ -99,8 +99,9 @@
 		const ownerId = sim.getOwner(x, y);
 		const owner = snapshot.players.find((player) => player.id === ownerId);
 		const defense = sim.getDefense(x, y);
-		const action =
-			ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
+		const action = artilleryTargeting
+			? 'Enter fires artillery'
+			: ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
 				? 'Enter upgrades'
 				: 'Enter attacks';
 		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;
@@ -131,6 +132,15 @@
 	let humanFronts = $derived(
 		snapshot?.attacks.filter((attack) => attack.attackerId === HUMAN_PLAYER_ID) ?? []
 	);
+	let humanArtillery = $derived(
+		snapshot?.structures.filter(
+			(structure) => structure.type === 'artillery' && structure.ownerId === HUMAN_PLAYER_ID
+		) ?? []
+	);
+	let readyArtillery = $derived(
+		humanArtillery.filter((structure) => structure.readyAtTick <= (snapshot?.tick ?? 0))
+	);
+	let artilleryTargeting = $state(false);
 	let human = $derived.by(() => {
 		if (!snapshot) return null;
 		const humanId = snapshot.humanId;
@@ -313,6 +323,7 @@
 		phase = 'loading';
 		errorMessage = '';
 		rendererReady = false;
+		artilleryTargeting = false;
 		sim = null;
 		snapshot = null;
 		gameStarted = false;
@@ -358,6 +369,7 @@
 		if (!canDeploy) return;
 		showIntro = false;
 		gameStarted = true;
+		artilleryTargeting = false;
 		paused = false;
 		beginOnboarding();
 	}
@@ -431,7 +443,16 @@
 		if (!sim || !snapshot || !gameStarted || showIntro) return;
 		if (snapshot.ended || defeatOpen) return;
 		if (paused) {
-			showToast('Simulation paused. Resume to launch fronts.', 'warn');
+			showToast('Simulation paused. Resume to fire.', 'warn');
+			return;
+		}
+		if (artilleryTargeting) {
+			const barrage = sim.enqueueArtillery(HUMAN_PLAYER_ID, x, y);
+			showToast(
+				barrage.ok ? 'Artillery barrage queued.' : barrage.message,
+				barrage.ok ? 'success' : 'error'
+			);
+			if (barrage.ok) artilleryTargeting = false;
 			return;
 		}
 		if (
@@ -446,6 +467,25 @@
 		const result = sim.enqueueAttack(HUMAN_PLAYER_ID, x, y);
 		showToast(result.message, result.ok ? 'success' : 'error');
 		if (result.ok) advanceOnboarding(1, 2);
+	}
+
+	function toggleArtilleryTargeting(): void {
+		if (!sim || !snapshot || snapshot.ended) return;
+		if (humanArtillery.length === 0) {
+			showToast('Build an Artillery card first.', 'warn');
+			return;
+		}
+		if (!artilleryTargeting && readyArtillery.length === 0) {
+			showToast('All artillery is reloading.', 'warn');
+			return;
+		}
+		artilleryTargeting = !artilleryTargeting;
+		showToast(
+			artilleryTargeting
+				? 'Artillery selected. Click a hostile structure or aim point in range.'
+				: 'Artillery targeting cancelled.',
+			artilleryTargeting ? 'success' : 'warn'
+		);
 	}
 
 	function cancelLatestFront(): void {
@@ -494,8 +534,8 @@
 
 	function cardCategory(type: BuildableStructureType): string {
 		switch (type) {
-			case 'mine':
-				return 'ECONOMY';
+			case 'artillery':
+				return 'SIEGE';
 			case 'barracks':
 				return 'MILITARY';
 			case 'defense-post':
@@ -687,7 +727,8 @@
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
 		if (event.key === 'Escape') {
-			if (keyboardCursor) keyboardCursor = null;
+			if (artilleryTargeting) artilleryTargeting = false;
+			else if (keyboardCursor) keyboardCursor = null;
 			else if (showHelp) showHelp = false;
 			else if (defeatOpen) return;
 			return;
@@ -755,6 +796,9 @@
 			case 'x':
 				cancelLatestFront();
 				break;
+			case 'a':
+				toggleArtilleryTargeting();
+				break;
 		}
 	}
 
@@ -788,6 +832,7 @@
 			<GameCanvas
 				simulation={sim}
 				{paused}
+				targeting={artilleryTargeting}
 				{cameraBridge}
 				onTick={handleTick}
 				onHover={handleHover}
@@ -1051,6 +1096,19 @@
 						CANCEL LAST
 					</button>
 				{/if}
+				{#if humanArtillery.length > 0}
+					<button
+						class="fire-artillery"
+						class:active={artilleryTargeting}
+						type="button"
+						onclick={toggleArtilleryTargeting}
+						title="Fire every ready artillery battery at a point within range"
+					>
+						{artilleryTargeting
+							? 'SELECT TARGET'
+							: `FIRE ${readyArtillery.length}/${humanArtillery.length}`}
+					</button>
+				{/if}
 				<div
 					class="economy-row economy-defense"
 					title={hover?.land
@@ -1098,9 +1156,11 @@
 								<h3 class="card-title">{definition.label}</h3>
 								<div class="card-art" aria-hidden="true">
 									<span class="card-art-icon">
-										{#if card.type === 'mine'}
+										{#if card.type === 'artillery'}
 											<svg viewBox="0 0 24 24">
-												<path d="M4 20 16 8M12 4c3 0 6 1 8 4M8 8c2-2 6-3 9-2" />
+												<path
+													d="M3 19h8M5 19a3 3 0 0 1 6 0M11 18 20 7M17 5l3 2-2 3M4 12c3-5 8-7 16-7"
+												/>
 											</svg>
 										{:else if card.type === 'barracks'}
 											<svg viewBox="0 0 24 24">
@@ -1271,7 +1331,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.30.0 / PROTOCOL 33</span>
+				<span>BUILD 0.31.1 / PROTOCOL 34</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1427,12 +1487,12 @@
 						<h3>One supply. Durable fronts.</h3>
 						<p>
 							Supply is the only resource. It accrues from territory and structures, pays for cards,
-							upgrades, and front launches, and is capped by territory plus War Academies. Mines and
-							Command Posts add supply income. Cards are permanent. Click a district, or drop its
-							matching card inside it, to upgrade; cost is the card price plus current level.
-							Terrain defense is 1 plus elevation, plus occupied and aura bonuses. Each capture
-							spends both the front's per-tick power and its durable strength. Hold 70% of the land
-							to win immediately.
+							upgrades, and front launches, and is capped by territory plus War Academies. Command
+							Posts add supply income; Artillery is an active siege structure. Cards are permanent.
+							Click a district, or drop its matching card inside it, to upgrade; cost is the card
+							price plus current level. Terrain defense is 1 plus elevation, plus occupied and aura
+							bonuses. Each capture spends both the front's per-tick power and its durable strength.
+							Hold 70% of the land to win immediately.
 						</p>
 					</section>
 					<section>
@@ -1446,7 +1506,9 @@
 							simultaneously; a front at zero dies and the survivor holds the contact line. Use
 							CANCEL LAST or press X to refund the remaining strength share. Each state's State
 							structure anchors its mainland and adds 20 defense. The growth switch selects
-							circular, smooth, or organic for new fronts.
+							circular, smooth, or organic for new fronts. Artillery fires on command:
+							<kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires one shell; shells
+							that hit a structure remove one level.
 						</p>
 					</section>
 					<section>
@@ -2228,6 +2290,27 @@
 
 	.cancel-front:hover {
 		background: rgba(255, 120, 103, 0.16);
+	}
+
+	.fire-artillery {
+		margin-top: 4px;
+		padding: 4px 5px;
+		border: 1px solid rgba(255, 155, 90, 0.45);
+		background: rgba(255, 155, 90, 0.08);
+		color: #ffc48a;
+		font-family: var(--font-mono);
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		cursor: pointer;
+	}
+
+	.fire-artillery:hover,
+	.fire-artillery.active {
+		background: rgba(255, 155, 90, 0.2);
+	}
+
+	.fire-artillery.active {
+		box-shadow: 0 0 0 1px rgba(255, 155, 90, 0.25);
 	}
 
 	.hand-shell {

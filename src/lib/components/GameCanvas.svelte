@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
+	import { ARTILLERY_RANGE, HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
 	import { STRUCTURE_ACCENTS } from '#lib/game/Structures';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
@@ -26,6 +26,7 @@
 	interface Props {
 		simulation: TerritorySimulation;
 		paused: boolean;
+		targeting?: boolean;
 		cameraBridge: GameCameraBridge;
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;
@@ -38,6 +39,7 @@
 	let {
 		simulation,
 		paused,
+		targeting = false,
 		cameraBridge,
 		onTick,
 		onHover,
@@ -94,18 +96,24 @@
 			context.closePath();
 		}
 
-		function drawPickaxe(
+		function drawArtillery(
 			context: CanvasRenderingContext2D,
 			x: number,
 			y: number,
 			radius: number
 		): void {
 			context.beginPath();
-			context.moveTo(x - radius * 0.5, y + radius * 0.55);
-			context.lineTo(x + radius * 0.35, y - radius * 0.45);
+			context.moveTo(x - radius * 0.58, y + radius * 0.16);
+			context.lineTo(x + radius * 0.46, y - radius * 0.34);
+			context.moveTo(x - radius * 0.62, y + radius * 0.42);
+			context.lineTo(x + radius * 0.1, y + radius * 0.52);
 			context.stroke();
 			context.beginPath();
-			context.arc(x + radius * 0.2, y - radius * 0.3, radius * 0.5, -Math.PI * 0.8, Math.PI * 0.1);
+			context.arc(x - radius * 0.28, y + radius * 0.5, radius * 0.2, 0, Math.PI * 2);
+			context.arc(x + radius * 0.12, y + radius * 0.5, radius * 0.2, 0, Math.PI * 2);
+			context.stroke();
+			context.beginPath();
+			context.arc(x + radius * 0.44, y - radius * 0.34, radius * 0.18, 0, Math.PI * 2);
 			context.stroke();
 		}
 
@@ -196,6 +204,24 @@
 			context.clearRect(0, 0, structureCanvas.width, structureCanvas.height);
 			context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+			if (targeting) {
+				for (const structure of simulation.structures.forOwner(HUMAN_PLAYER_ID)) {
+					if (structure.type !== 'artillery') continue;
+					const center = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
+					const edge = camera.mapToScreen(structure.x + 0.5 + ARTILLERY_RANGE, structure.y + 0.5);
+					const screenRadius = Math.abs(edge.x - center.x);
+					context.beginPath();
+					context.arc(center.x, center.y, screenRadius, 0, Math.PI * 2);
+					context.fillStyle = 'rgba(255, 155, 90, 0.035)';
+					context.fill();
+					context.lineWidth = 1;
+					context.strokeStyle = 'rgba(255, 155, 90, 0.28)';
+					context.setLineDash([4, 6]);
+					context.stroke();
+					context.setLineDash([]);
+				}
+			}
+
 			for (const structure of simulation.structures.all) {
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
 				if (point.x < -18 || point.y < -18 || point.x > width + 18 || point.y > height + 18) {
@@ -253,8 +279,8 @@
 					context.lineWidth = 1;
 					context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
 					context.stroke();
-				} else if (structure.type === 'mine') {
-					drawPickaxe(context, x, y, radius);
+				} else if (structure.type === 'artillery') {
+					drawArtillery(context, x, y, radius);
 				} else if (structure.type === 'barracks') {
 					drawCrossedSwords(context, x, y, radius);
 				} else if (structure.type === 'defense-post') {
@@ -281,6 +307,32 @@
 					context.textBaseline = 'middle';
 					context.fillText(String(structure.stacks), badgeX, badgeY + 0.5);
 				}
+			}
+
+			for (const shell of simulation.activeShells) {
+				const span = Math.max(1, shell.arriveAtTick - shell.launchedAtTick);
+				const progress = Math.max(0, Math.min(1, (simulation.tick - shell.launchedAtTick) / span));
+				const trailProgress = Math.max(0, progress - Math.min(0.35, 7 / span));
+				const x = shell.fromX + (shell.targetX - shell.fromX) * progress + 0.5;
+				const y = shell.fromY + (shell.targetY - shell.fromY) * progress + 0.5;
+				const trailX = shell.fromX + (shell.targetX - shell.fromX) * trailProgress + 0.5;
+				const trailY = shell.fromY + (shell.targetY - shell.fromY) * trailProgress + 0.5;
+				const point = camera.mapToScreen(x, y);
+				const trail = camera.mapToScreen(trailX, trailY);
+				const ownerColor = colorForPlayer(shell.ownerId);
+				context.beginPath();
+				context.moveTo(trail.x, trail.y);
+				context.lineTo(point.x, point.y);
+				context.lineWidth = 2.2;
+				context.strokeStyle = 'rgba(255, 190, 120, 0.55)';
+				context.stroke();
+				context.beginPath();
+				context.arc(point.x, point.y, 4.4, 0, Math.PI * 2);
+				context.fillStyle = '#ffd9a2';
+				context.fill();
+				context.lineWidth = 1.2;
+				context.strokeStyle = ownerColor.hex;
+				context.stroke();
 			}
 		}
 
@@ -584,7 +636,10 @@
 	bind:this={canvas}
 	class:grabbing={dragging}
 	class="territory-canvas"
-	aria-label="Territory map. Drag to pan, scroll to zoom, click to attack."
+	class:targeting
+	aria-label={targeting
+		? 'Artillery targeting. Click a hostile structure near the aim point to fire.'
+		: 'Territory map. Drag to pan, scroll to zoom, click to attack.'}
 ></canvas>
 
 <canvas bind:this={structureCanvas} class="structure-canvas" aria-hidden="true"></canvas>
@@ -599,6 +654,10 @@
 		touch-action: none;
 		cursor: crosshair;
 		outline: none;
+	}
+
+	.territory-canvas.targeting {
+		cursor: cell;
 	}
 
 	.territory-canvas.grabbing {

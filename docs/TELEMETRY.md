@@ -71,41 +71,41 @@ growth switching, card play, and human clicks are not simulated.
 
 ### Per-seed record
 
-| Field                      | Definition                                                                                            |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `seed`                     | Unsigned 32-bit seed passed to `TerritorySimulation`.                                                 |
-| `growthMode`               | Growth layer used for all attacks in the run.                                                         |
-| `humanId`                  | `snapshot.humanId` (currently 1 / `SABLE`).                                                           |
-| `endTick`                  | `snapshot.tick` of the final simulated tick. For a timeout this equals `maxTicks`.                    |
-| `ended` / `timeout`        | Whether the match ended by last-state-standing; `timeout === !ended`.                                 |
-| `winnerId` / `winnerName`  | Winner of a finished match; `null` when the tick ceiling was reached.                                 |
-| `humanVictory`             | `winnerId === humanId`.                                                                               |
-| `aliveCount`               | States still alive in the final snapshot.                                                             |
-| `eliminatedCount`          | `players.length - aliveCount`.                                                                        |
-| `human.id/name/alive`      | Final human identity and survival state.                                                              |
-| `human.territory`          | Final owned land cells.                                                                               |
-| `human.landShare`          | `territory / landCount` at the final tick (fraction, rounded to 6 dp).                                |
-| `human.rank`               | Final leaderboard rank: alive first, then territory descending, then id ascending.                    |
-| `human.peakTerritory`      | Highest human territory observed, including the tick-0 snapshot.                                      |
-| `human.troughTerritory`    | Lowest human territory observed, including the tick-0 snapshot. Elimination reports `0`.              |
-| `human.peakRank`           | Best (numerically lowest) human rank observed.                                                        |
-| `fronts.active`            | Active attack fronts in the final snapshot.                                                           |
-| `fronts.peak`              | Highest active-front count observed while stepping.                                                   |
-| `activity.attacksLaunched` | Attacks created by every player over the run (final `nextAttackId - 1`).                              |
-| `activity.eliminations`    | Elimination events emitted over the run.                                                              |
-| `activity.structuresRazed` | Structure-destroyed events emitted over the run (captured structures).                                |
-| `structures.total`         | Live structures in the final snapshot, including one State per living state.                          |
-| `structures.byType`        | Live structure counts for `state`, `mine`, `barracks`, `defense-post`, `command-post`, `war-academy`. |
-| `structures.levels[type]`  | `{ count, max, median }` of `stacks` (structure level) for that type; `0` max/median when empty.      |
-| `districts`                | Live buildable structures that own at least one district coverage cell. States have no district.      |
-| `grievances.total`         | Sum of per-defender grievance counters (one per captured cell, capped per pair).                      |
-| `grievances.records`       | Number of nonzero defender → attacker grievance pairs.                                                |
-| `grievances.max`           | Largest single grievance counter.                                                                     |
-| `grievances.top`           | Pair holding the largest counter; ties resolve to the lowest defender id, then attacker id.           |
-| `checksum`                 | `simulation.checksum()` at the final tick. Identical inputs must produce an identical value.          |
+| Field                      | Definition                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `seed`                     | Unsigned 32-bit seed passed to `TerritorySimulation`.                                                      |
+| `growthMode`               | Growth layer used for all attacks in the run.                                                              |
+| `humanId`                  | `snapshot.humanId` (currently 1 / `SABLE`).                                                                |
+| `endTick`                  | `snapshot.tick` of the final simulated tick. For a timeout this equals `maxTicks`.                         |
+| `ended` / `timeout`        | Whether the match ended by last-state-standing; `timeout === !ended`.                                      |
+| `winnerId` / `winnerName`  | Winner of a finished match; `null` when the tick ceiling was reached.                                      |
+| `humanVictory`             | `winnerId === humanId`.                                                                                    |
+| `aliveCount`               | States still alive in the final snapshot.                                                                  |
+| `eliminatedCount`          | `players.length - aliveCount`.                                                                             |
+| `human.id/name/alive`      | Final human identity and survival state.                                                                   |
+| `human.territory`          | Final owned land cells.                                                                                    |
+| `human.landShare`          | `territory / landCount` at the final tick (fraction, rounded to 6 dp).                                     |
+| `human.rank`               | Final leaderboard rank: alive first, then territory descending, then id ascending.                         |
+| `human.peakTerritory`      | Highest human territory observed, including the tick-0 snapshot.                                           |
+| `human.troughTerritory`    | Lowest human territory observed, including the tick-0 snapshot. Elimination reports `0`.                   |
+| `human.peakRank`           | Best (numerically lowest) human rank observed.                                                             |
+| `fronts.active`            | Active attack fronts in the final snapshot.                                                                |
+| `fronts.peak`              | Highest active-front count observed while stepping.                                                        |
+| `activity.attacksLaunched` | Attacks created by every player over the run (final `nextAttackId - 1`).                                   |
+| `activity.eliminations`    | Elimination events emitted over the run.                                                                   |
+| `activity.structuresRazed` | Structure-destroyed events emitted over the run (captured structures).                                     |
+| `structures.total`         | Live structures in the final snapshot, including one State per living state.                               |
+| `structures.byType`        | Live structure counts for `state`, `artillery`, `barracks`, `defense-post`, `command-post`, `war-academy`. |
+| `structures.levels[type]`  | `{ count, max, median }` of `stacks` (structure level) for that type; `0` max/median when empty.           |
+| `districts`                | Live buildable structures that own at least one district coverage cell. States have no district.           |
+| `grievances.total`         | Sum of per-defender grievance counters (one per captured cell, capped per pair).                           |
+| `grievances.records`       | Number of nonzero defender → attacker grievance pairs.                                                     |
+| `grievances.max`           | Largest single grievance counter.                                                                          |
+| `grievances.top`           | Pair holding the largest counter; ties resolve to the lowest defender id, then attacker id.                |
+| `checksum`                 | `simulation.checksum()` at the final tick. Identical inputs must produce an identical value.               |
 
 All structure types are always present in `byType`/`levels` in the fixed
-declaration order `state`, `mine`, `barracks`, `defense-post`, `command-post`,
+declaration order `state`, `artillery`, `barracks`, `defense-post`, `command-post`,
 `war-academy`, even when the count is zero. This keeps JSON stable across runs.
 
 ### Aggregate record
@@ -195,7 +195,7 @@ seed             end winner              alive  elim    fronts  rank    share   
 1235             300 TIMEOUT                51     0     28/66    51    0.09%     691     684 -
 
 STRUCTURES BY SEED (count max/median level)
-seed         state          mine           barracks       defense        command        academy        districts
+seed         state          artillery      barracks       defense        command        academy        districts
 1234         51 1/1         40 3/1         9 1/1          49 3/2         32 2/1         21 1/1               151
 1235         51 1/1         41 3/1         7 1/1          48 3/2         34 2/1         20 1/1               150
 
@@ -210,7 +210,7 @@ end tick: avg 300  median 300  min 300  max 300
 alive: avg 51  min 51  max 51  eliminations: avg 0  total 0
 active fronts: avg 27.5  peak 66  districts: avg 150.5  total 301
 human: avg rank 51  avg share 0.09%  avg peak territory 685.5
-structures: total 403  state 102  mine 81  barracks 16  defense-post 97  command-post 66  war-academy 41
+structures: total 403  state 102  artillery 81  barracks 16  defense-post 97  command-post 66  war-academy 41
 war: launched 445  razed 4  grievances: total 4842  pairs 13  max 869
 ```
 
