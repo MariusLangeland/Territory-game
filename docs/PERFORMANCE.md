@@ -4,27 +4,27 @@ Territory exists because a huge pixel map is only fun if it stays fast. This doc
 
 All numbers are from the development machine unless stated otherwise. They are directional, not guarantees.
 
-> The current build is `EXP-001`: 108 states, free attacks, no economy. This is intentionally harsher than the target game. See [EXPERIMENTS.md](EXPERIMENTS.md).
+> The current build is `EXP-001`: 51 states, free attacks, and light human/bot build economies. This is intentionally harsher than the target game. See [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ---
 
 ## 1. Targets
 
-| Area                                          | Target                                  | Hard fail                     |
-| --------------------------------------------- | --------------------------------------- | ----------------------------- |
-| Simulation tick, circular/organic, 108 states | < 5 ms p95                              | > 10 ms p95                   |
-| Simulation tick, smooth, 108 states           | < 7 ms p95                              | > 10 ms p95                   |
-| Time to interactive                           | < 1.5 s after assets on desktop         | > 3 s                         |
-| Map generation + 108 starts                   | < 500 ms                                | > 1 s                         |
-| Render loop                                   | 60 fps at 1600 × 1000 integrated GPU    | < 45 fps                      |
-| Full-frame GPU time                           | < 4 ms at 1440p mid-range               | > 8 ms                        |
-| Tick-boundary upload work                     | < 2 ms main-thread; full resync chunked | one synchronous full-map call |
-| Panning under 200+ fronts                     | p99 <8 ms; isolated spikes ≤15 ms       | periodic 10 Hz hitches        |
-| Checksum                                      | < 25 ms on demand                       | run per tick                  |
-| Browser JS/GPU memory                         | < 300 MiB for stress build              | > 500 MiB                     |
-| Click-to-visible update                       | ≤ 2 ticks                               | > 4 ticks                     |
+| Area                                         | Target                                  | Hard fail                     |
+| -------------------------------------------- | --------------------------------------- | ----------------------------- |
+| Simulation tick, circular/organic, 51 states | < 5 ms p95                              | > 10 ms p95                   |
+| Simulation tick, smooth, 51 states           | < 7 ms p95                              | > 10 ms p95                   |
+| Time to interactive                          | < 1.5 s after assets on desktop         | > 3 s                         |
+| Map generation + 51 starts                   | < 500 ms                                | > 1 s                         |
+| Render loop                                  | 60 fps at 1600 × 1000 integrated GPU    | < 45 fps                      |
+| Full-frame GPU time                          | < 4 ms at 1440p mid-range               | > 8 ms                        |
+| Tick-boundary upload work                    | < 2 ms main-thread; full resync chunked | one synchronous full-map call |
+| Panning under 200+ fronts                    | p99 <8 ms; isolated spikes ≤15 ms       | periodic 10 Hz hitches        |
+| Checksum                                     | < 25 ms on demand                       | run per tick                  |
+| Browser JS/GPU memory                        | < 300 MiB for stress build              | > 500 MiB                     |
+| Click-to-visible update                      | ≤ 2 ticks                               | > 4 ticks                     |
 
-The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.6–2.9% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second.
+The 10 Hz simulation has a 100 ms budget per tick. It uses ~1.3–2.4% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second.
 
 ---
 
@@ -42,17 +42,17 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 
 | Operation                                               | Result          |
 | ------------------------------------------------------- | --------------- |
-| Generate 2048 × 1024 map + 108 starts                   | **~292 ms/op**  |
-| Sustained all-bot attack tick                           | **~1.9 ms/op**  |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.6 ms/op**  |
-| Circular layer comparison tick                          | **~1.7 ms/op**  |
-| Smooth layer comparison tick                            | **~2.9 ms/op**  |
-| Organic layer comparison tick                           | **~1.8 ms/op**  |
-| Full-state checksum                                     | **~17.1 ms/op** |
-| Active attacks after sustained run                      | ~80–85 fronts   |
-| Node RSS (all benchmark simulations)                    | ~338 MiB        |
+| Generate 2048 × 1024 map + 51 starts                    | **~247 ms/op**  |
+| Sustained all-bot attack tick                           | **~1.5 ms/op**  |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~1.3 ms/op**  |
+| Circular layer comparison tick                          | **~1.4 ms/op**  |
+| Smooth layer comparison tick                            | **~2.4 ms/op**  |
+| Organic layer comparison tick                           | **~1.6 ms/op**  |
+| Full-state checksum                                     | **~18.0 ms/op** |
+| Active attacks after sustained run                      | ~22–29 fronts   |
+| Node RSS (all benchmark simulations)                    | ~276 MiB        |
 
-At 10 Hz, 1.6–2.9 ms per tick is roughly **1.6–2.9% of a 100 ms tick budget**. The least-resistance sampler adds 10 frontier operations per capture; smooth remains the most expensive layer. The exact number varies with active fronts, mode, how much of the map is contested, and how many states still hold a State structure. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count. Attack orders reduce active fronts relative to the old free-front model; defense, capital auras, conflict cancellation, and structure loss further reduce capture volume.
+At 10 Hz, 1.3–2.4 ms per tick is roughly **1.3–2.4% of a 100 ms tick budget**. The least-resistance sampler adds 10 frontier operations per capture; smooth remains the most expensive layer. The exact number varies with active fronts, mode, how much of the map is contested, and how many states still hold a State structure. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count. Attack orders reduce active fronts relative to the old free-front model; defense, capital auras, conflict cancellation, and structure loss further reduce capture volume.
 
 ### 2.2 Browser baseline
 
@@ -65,13 +65,13 @@ Measured in headless Chrome with hardware acceleration, 1600 × 1000, devicePixe
 | 4 s cards + auras + markers + organic    | 574 frames, 143 fps, p99 7.1 ms, max 14.0 ms, 2 frames >10 ms          |
 | Map uploads under full stress            | ~21M pixels/s, ~80 writeTexture calls/s (adaptive chunked full resync) |
 | HUD snapshots                            | 5 Hz (territory still renders at 10 Hz)                                |
-| Leaderboard                              | 108 logical rows; only ~19 visible DOM rows are mounted (virtualized)  |
+| Leaderboard                              | 51 logical rows; only ~19 visible DOM rows are mounted (virtualized)   |
 | Failed WebGPU initialization             | 0 in supported test browser                                            |
 | Console/page errors during sustained run | 0                                                                      |
 
 The upload strategy intentionally trades bandwidth for input smoothness under extreme load: once dirty tiles exceed 96, the renderer schedules a full-texture resync split into 8 horizontal chunks, at most 2 chunks per frame. Uploading one contiguous 8 MiB texture is far cheaper for the main thread than hundreds of tiny texture writes. At lower action, the normal 32 × 32 dirty-tile path is used.
 
-The leaderboard virtualization is just as important: updating 108 Svelte rows at 5 Hz produced ~14 ms tick-boundary frames; mounting only the visible slice removed those. The HUD clock/values update at 5 Hz while map rendering remains per-tick.
+The leaderboard virtualization is just as important: updating 51 Svelte rows at 5 Hz produced ~14 ms tick-boundary frames; mounting only the visible slice removed those. The HUD clock/values update at 5 Hz while map rendering remains per-tick.
 
 ### 2.3 What these numbers do not cover
 
@@ -94,7 +94,7 @@ Add measurements before claiming these are solved.
 - 2.1M elevation computations with five noise octaves.
 - Land histogram threshold plus a second land-height histogram for six elevation quantiles.
 - 2.1M land/shade/elevation writes.
-- Sampling ~6,900 candidate starts, farthest-point selection for 108 starts, initial paint, and full border rebuild.
+- Sampling ~6,900 candidate starts, farthest-point selection for 51 starts, initial paint, and full border rebuild.
 
 It runs once on world creation and is hidden by the loading screen. Do not run it during a live tick.
 
@@ -104,10 +104,10 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~1.6–2.9 ms)
+### Simulation tick (~1.3–2.4 ms)
 
-- Bots: up to 107 decisions every 10 ticks; frontier sampling.
-- Attacks: ~80–85 active fronts × embedded-order point budgets, least-resistance sampling, and stale-cell skipping.
+- Bots: up to 50 decisions every 10 ticks; frontier sampling.
+- Attacks: ~22–29 active fronts × embedded-order point budgets, least-resistance sampling, and stale-cell skipping.
 - Growth-layer selection: heap operations for circular, radial-band scanning and neighbour scoring for smooth, RNG array swaps for organic.
 - Border maintenance: constant work per captured cell.
 - Change packing: one `Uint32Array` write per change.
@@ -132,7 +132,7 @@ Potential hot spots if attack density rises:
 - frontier growth and duplicates;
 - smooth-layer neighbour scoring across many candidates;
 - frontier iteration for bot target selection;
-- snapshot construction for 108 players.
+- snapshot construction for 51 players.
 
 ### Rendering
 
@@ -170,12 +170,12 @@ Replacing per-attack Set bookkeeping with flat frontier structures also cut memo
 | CPU control shadow                      | 8 MiB                               |
 | GPU map texture                         | 8 MiB                               |
 | Canvas backing buffer                   | width × height × 4, capped by DPR 2 |
-| Frontier sets (108 states)              | map-dependent                       |
+| Frontier sets (51 states)               | map-dependent                       |
 | Growth frontier candidates              | layer-dependent, lifetime-bounded   |
 | Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (five worlds)        | ~338 MiB                            |
+| Node benchmark RSS (five worlds)        | ~276 MiB                            |
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~338 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~276 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
 
 ---
 
@@ -221,7 +221,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 9. **Keep rendering and simulation decoupled.**
 10. **Do not mistake this stress baseline for the shipping performance target.**
 11. **Measure the browser, not only Node.** Upload/GPU cost dominates here.
-12. **Keep leaderboard DOM small.** Virtualize long lists; do not mount all 108 rows if only ~19 are visible.
+12. **Keep leaderboard DOM small.** Virtualize long lists; do not mount all 51 rows if only ~19 are visible.
 
 ---
 
@@ -236,7 +236,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 
 ### More players
 
-- Public player list and leaderboard DOM grow linearly; 108 is still small.
+- Public player list and leaderboard DOM grow linearly; 51 is still small.
 - Frontier sets/attacks grow.
 - The owner grid does not grow.
 - Leaderboard virtualization may become worthwhile above ~100 rows.
@@ -271,7 +271,7 @@ Before merging a performance-sensitive change:
 - [ ] At 1600 × 1000, gameplay is smooth while panning/zooming under attack load.
 - [ ] Pausing does not leave a busy simulation loop.
 - [ ] Memory does not grow per tick (frontiers, marks, frontier sets).
-- [ ] 108 leaderboard rows remain usable.
+- [ ] 51 leaderboard rows remain usable.
 - [ ] The build still clearly identifies itself as an attack experiment.
 - [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
 - [ ] All three growth layers were sampled in `pnpm bench`.
@@ -287,6 +287,6 @@ Before merging a performance-sensitive change:
 4. Render-on-demand idle mode.
 5. Adaptive DPR/resolution.
 6. Pre-baked maps to remove generation cost and portability risk.
-7. Virtualize/harden the 108-state leaderboard.
+7. Virtualize/harden the 51-state leaderboard.
 8. GPU timestamp queries and automated performance gates.
 9. WebGL2 fallback only if support data justifies it.

@@ -47,7 +47,7 @@ All authoritative quantities are integers:
 | Quantity                   | Representation                                 |
 | -------------------------- | ---------------------------------------------- |
 | Territory count            | JS number, integer                             |
-| Owner id                   | uint16 (`1..108` in the stress build)          |
+| Owner id                   | uint16 (`1..51` in the stress build)           |
 | Tick                       | integer                                        |
 | PRNG state                 | uint32                                         |
 | Growth layer               | one of `circular`, `smooth`, `organic`         |
@@ -103,11 +103,11 @@ Bots use the PRNG for:
 - choosing a frontier cell,
 - choosing the attack target among available neutral/hostile neighbours.
 
-The stress-build bot policy always chooses neutral when available, so removing that rule changes PRNG draw counts and results.
+Bot profiles — aggression, economy, fortification, command, and focus type — are derived from `hash32` of the player id and world seed, not from the bot PRNG. Removing or changing that derivation changes which structures bots build and when they attack. Target selection still consumes the shared PRNG, and deleting that neutral-preference rule changes draw counts and results.
 
 Changing the number or order of these draws changes all subsequent bot behavior. A refactor that "just moves a random call" is a simulation change.
 
-Bots are processed in ascending player id order, every 10 ticks. The random draws performed inside an earlier bot's decision affect later bots.
+Bots are processed in ascending player id order. Economy/build checks run every 30 ticks before attack decisions every 10 ticks; the random draws performed inside an earlier bot's attack decision affect later bots.
 
 ---
 
@@ -215,7 +215,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
-9. human gold and gold accrual, every player's attack orders, the base order grant timer, and command-post accrual;
+9. human and bot gold plus their accrual remainders, every player's attack orders, the base order grant timer, and command-post accrual;
 10. each active attack's id, attacker, defender, target/anchor, growth mode, creation tick, lifetime, current/initial embedded orders, capture count, and growth-layer frontier state.
 
 It excludes frontier sets because they are derived. It excludes renderer/UI/camera state.
@@ -271,10 +271,10 @@ It is deterministic on conforming JS engines for a fixed build. Because floating
 
 ### Start selection and paint
 
-- 108 starts are selected by deterministic farthest-point sampling from a seeded candidate pool.
+- 51 starts are selected by deterministic farthest-point sampling from a seeded candidate pool.
 - A preferred 34-cell spacing keeps initial beachheads from overlapping.
 - Start boundaries use an integer hash of `(x, y, seed ^ playerOffset)` and integer squared distance.
-- The start count, candidate count, spacing, selection order, land threshold, shade, and elevation-tier quantiles are part of map version 3.
+- The start count, candidate count, spacing, selection order, land threshold, shade, and elevation-tier quantiles are part of map version 4.
 
 These do not add non-determinism to gameplay; they shape the initial territory. Changing any of them requires a `MAP_VERSION` bump.
 
@@ -285,12 +285,12 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 `src/lib/game/simulation.test.ts` covers:
 
 1. Map generation is repeatable and lands near the target fraction.
-2. Each `PLAYER_COUNT` (108) start is unique and on land across multiple seeds.
+2. Each `PLAYER_COUNT` (51) start is unique and on land across multiple seeds.
 3. Every state spawns with nonzero territory and claimed land matches territory totals.
 4. Identical seeds + commands produce identical checksums and player snapshots after 120 ticks.
 5. Different commands diverge.
 6. No ocean cell receives an owner after combat; ownership counts remain valid.
-7. Frontier sets match a brute-force scan after combat under 108-bot load.
+7. Frontier sets match a brute-force scan after combat under 51-bot load.
 8. Free attacks resolve without any troop economy, and a sustained 80-tick multi-front run produces no buffer overflow or invalid ownership.
 9. A fabricated attack frontier candidate that is not edge-connected to the attacker is neither captured nor kept as an active front.
 10. An attack whose creation tick is at or beyond its embedded-order lifetime is removed before it can capture.

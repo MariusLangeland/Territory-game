@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.20.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.21.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.20.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.21.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -84,7 +84,9 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `defenseAt` = `1 + elevation + occupied + aura`. Attack capture cost is `max(1, defenseAt − (embeddedOrders − 1))`.
 - Human economy: `gold`, `goldAccrual`, and a permanent five-card `hand`. Income is `1 + mine stacks` per 100 ticks and is accrued every tick through an integer remainder.
 - Attack orders: one charge per player, base cap 3 human / 2 bot. Each living player gains 1 order every 100 ticks, clamped to cap. `commandPostAccrual` drips order-gain effects over 600 ticks; `nextAttackOrderGrantTick` schedules the base grant.
-- Permanent hand: all five buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll. Bots do not build cards yet.
+- Permanent hand: all five buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
+- Bot economy: `botGold`, `botGoldAccrual`, and deterministic `botProfiles` (aggression, economy, fortification, command, focus type). Bots save and spend on their focus structure without cards.
+- Bot budgets and profiles affect checksums through their gold and the structures they create.
 - Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies income, aura defense, attack strength, order gain, and order cap. Stacking does not change its district.
 - `rng: DeterministicRng` — simulation PRNG.
 - `tick`, `winnerId`, `ended`.
@@ -94,7 +96,7 @@ The public arrays are exposed read-only-by-convention for the renderer and minim
 
 ### 3.2 Ownership representation and packing
 
-- Owner values are `1..108`; `Uint16Array` allows headroom for future player counts.
+- Owner values are `1..51`; `Uint16Array` allows headroom for future player counts.
 - The renderer only needs a byte per owner. It packs changed cells as:
 
 ```text
@@ -147,6 +149,7 @@ step()
  ├─ accrue Mine gold and Command Post orders every tick
  ├─ applyPendingCommands()
  │    └─ sort by (sequence, playerId), validate, spend orders, create attacks/builds
+ ├─ runBotEconomy() every 30 ticks (save, build/upgrade focus structure)
  ├─ runBotDecisions() every 10 ticks (requires an attack order)
  ├─ processAttacks()
  │    ├─ drop fronts after their embedded-order lifetime
@@ -166,6 +169,14 @@ step()
 ```
 
 No rendering, DOM, timers, or promises are present in this path.
+
+### Bot strategy layer
+
+Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, and a focus buildable type. No new RNG stream is introduced.
+
+- At every `BOT_BUILD_INTERVAL` (30 ticks), a living bot accrues gold (`1 + Mine levels` per 100 ticks) and evaluates its focus. If it has no focus structure, it places one on valid owned land outside districts; Mines/Command Posts/War Academies search near the capital, while Defense Posts/Barracks prefer border cells. If the structure exists, it upgrades it at the usual level-scaled cost.
+- At every `BOT_DECISION_INTERVAL` (10 ticks), aggression modulates whether the bot attempts an attack and whether it prefers neutral or hostile neighbours. High-aggression bots more often strike rivals; passive bots skip more opportunities.
+- Profiles and build choices are deterministic hash-derived state; bot gold and accrual are checksummed.
 
 ### Conflicting fronts
 
@@ -258,7 +269,7 @@ The UI never receives frontier sets, queue internals, or the PRNG.
 - tick, RNG state, next attack id, ended/winner;
 - every owner cell;
 - each player's alive flag and territory;
-- current/pending growth mode, annex scheduling, gold/gold accrual, attack orders and their timers, command-post accrual, districts, and structures;
+- current/pending growth mode, annex scheduling, human and bot gold/accrual, attack orders and their timers, command-post accrual, districts, and structures;
 - every player's attack orders, order grant timer, command-post accrual, and live order-cap effects;
 - every active attack's embedded/current orders, initial orders, and lifetime;
 - live structures and per-cell claim provenance;
@@ -277,12 +288,12 @@ It intentionally excludes renderer state, camera, UI, and border sets (derived).
 2. Builds a 1024-bin elevation histogram and picks the threshold that yields the target 38% land.
 3. Quantises land height into six tiers at fixed land-quantiles (45/65/80/92/98%), keeping most land lowland and peaks rare.
 4. Writes the land mask, terrain shade, elevation tiers, and starts.
-5. Chooses 108 start points with optimized farthest-point sampling from candidate land cells, enforcing a 34-cell preferred spacing.
+5. Chooses 51 start points with optimized farthest-point sampling from candidate land cells, enforcing a 34-cell preferred spacing.
 6. Returns `{ width, height, land, shade, elevation, landCount, starts }`.
 
 Start paint uses a ragged disc of radius ~16: a per-cell integer hash perturbs the radius, then cells outside land or already owned are ignored. A fallback ensures every state receives at least one land pixel. The initial frontiers are rebuilt afterward by one full scan.
 
-Map generation with 108 starts is the slowest CPU operation (~220–230 ms) and happens once per world during the loading screen. It is not part of the tick budget.
+Map generation with 51 starts is the slowest CPU operation (~220–230 ms) and happens once per world during the loading screen. It is not part of the tick budget.
 
 ### Attack frontier representation
 
@@ -294,7 +305,7 @@ Frontier storage is layer-specific:
 
 The simulation still performs ownership and border checks at pop time. Duplicates are tolerated. The old single FIFO queue was replaced by modules so growth selection can be swapped without touching capture, connectivity, cost, or UI logic.
 
-The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~338 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
+The benchmark now runs all three layers. Together with the benchmark's additional simulations, Node RSS is ~276 MiB; this is not the browser working set. The integrity planner preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and district arrays add 14 MiB per simulation.
 
 ---
 
@@ -324,7 +335,7 @@ The renderer keeps references to the simulation so it can rebuild the shadow aft
 | A       | Normalized elevation tier 0–255   |
 | A       | Unused (`255`)                    |
 
-The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indices 1–108 are player colors. The first eight colors are hand-picked and the rest are generated on a golden-angle hue wheel.
+The palette is a 256 × 1 `rgba8unorm` texture. Index 0 is unclaimed land; indices 1–51 are player colors. The first eight colors are hand-picked and the rest are generated on a golden-angle hue wheel.
 
 ### 5.3 Dirty uploads
 
@@ -403,7 +414,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 ### Reactivity boundary
 
 - Svelte state receives immutable snapshots at a throttled 5 Hz; the actual map updates at 10 Hz.
-- The leaderboard is virtualized to the visible row window (~19 rows), so 108 logical states do not become 108 live DOM rows.
+- The leaderboard is virtualized to the visible row window (~19 rows), so 51 logical states do not become 51 live DOM rows.
 - The simulation object is not deeply reactive.
 - The renderer mutates its own control texture/GPU resources outside Svelte reactivity.
 - This avoids proxy overhead on multi-megabyte typed arrays.
@@ -422,11 +433,11 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 | Palette texture                          | 1 KiB                                |
 | Elevation scratch during map gen         | 4 MiB + histogram (transient)        |
 | Start candidate land indices             | not retained; temp during generation |
-| Frontier sets (108 states)               | map-dependent                        |
+| Frontier sets (51 states)                | map-dependent                        |
 | Growth frontier candidates               | layer-dependent, bounded by lifetime |
 | Svelte DOM/HUD (virtualized leaderboard) | small                                |
 
-The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~338 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
+The measured Node RSS for all benchmark worlds (five stress simulations plus tooling) is ~276 MiB. That includes the Node runtime and five worlds and is not the browser working set. Earlier per-attack `Set` bookkeeping produced ~529 MiB for a two-world benchmark; packed/array frontiers and ownership-based duplicate handling removed most of that overhead.
 
 ---
 
@@ -490,7 +501,7 @@ The current constructor rejects non-standard dimensions. Supporting more maps re
 - Mobile pinch zoom missing.
 - One map style and fixed dimensions.
 - The minimap samples independently and can lag the main renderer slightly.
-- Bot behavior is intentionally simple: no strategic target selection, no coordinated attacks, no defense logic.
-- The 108-state free-attack mode is an experiment. Economy and final attack semantics are intentionally absent.
+- Bot behavior is profile-driven but still simple: one focus structure, local placement, and no coordinated team attacks or defensive alliances.
+- The 51-state free-attack mode is an experiment. Economy and final attack semantics remain provisional.
 - The virtualized leaderboard mounts only the visible window plus overscan; rank numbers remain absolute.
-- Upload volume in a fully active 108-state map is intentionally higher in exchange for smooth input under saturation.
+- Upload volume in a fully active 51-state map is intentionally higher in exchange for smooth input under saturation.

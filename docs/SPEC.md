@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.20.0 (attack stress experiment)  
+**Version:** 0.21.0 (attack stress experiment)  
 **Status:** Local attack-focused stress build; online design target  
-**Last synchronized with:** application 0.20.0, map version 3, protocol draft 27
+**Last synchronized with:** application 0.21.0, map version 4, protocol draft 28
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -45,13 +45,13 @@ OpenFront is the closest genre reference: a browser strategy game with a huge pi
 
 Exercise the attack pipeline in isolation:
 
-- 107 AI states + one human all attacking continuously.
+- 50 AI states + one human all attacking continuously.
 - Dense territory collision and simultaneous fronts.
 - Hundreds of ownership changes per tick.
 - Many dispersed texture upload regions.
 - Large frontier-set and attack-queue workloads.
 
-The user explicitly requested removing troops and adding 100 AI opponents, then iteratively added terrain defense, structures, and a light human gold/card economy. This build is an engineering experiment, not a balance proposal.
+The user explicitly requested removing troops and adding 50 AI opponents, then iteratively added terrain defense, structures, and a light human gold/card economy. This build is an engineering experiment, not a balance proposal.
 
 ### 2.2 Implemented
 
@@ -59,7 +59,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | --------------------------------------------------------- | ------------------------ |
 | 2048 × 1024 seeded procedural atlas                       | ✅                       |
 | Land/ocean mask and terrain relief                        | ✅                       |
-| 108 states (1 human + 107 AI)                             | ✅                       |
+| 51 states (1 human + 50 AI)                               | ✅                       |
 | Pixel ownership and incremental frontier tracking         | ✅                       |
 | Resource-free local-front attacks (BFS)                   | ✅                       |
 | Attack orders: 3 human / 2 bots, +1 per 10 s up to cap    | ✅                       |
@@ -70,7 +70,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | Circular / smooth / organic selectable growth layers      | ✅                       |
 | State structures anchoring territory and projecting auras | ✅                       |
 | Human gold income and drag-and-drop build cards           | ✅                       |
-| Minimap, virtualized 108-state leaderboard, perf readout  | ✅                       |
+| Minimap, virtualized 51-state leaderboard, perf readout   | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
 | Deterministic tests + attack stress tests + benchmark     | ✅                       |
@@ -82,7 +82,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | Area                                                    | Target                                         |
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
-| Bot card economy/build AI                               | Human-only card loop for now                   |
+| Coordinated bot strategy/team play                      | Bots use individual profiles only              |
 | Structure construction beyond cards, ownership transfer | State + five buildables; design pending        |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
@@ -97,7 +97,7 @@ The user explicitly requested removing troops and adding 100 AI opponents, then 
 | Term                 | Meaning                                                                                |
 | -------------------- | -------------------------------------------------------------------------------------- |
 | **Cell / map pixel** | One element of the 2048 × 1024 ownership grid                                          |
-| **Owner**            | State id `1..108`; `0` means unclaimed                                                 |
+| **Owner**            | State id `1..51`; `0` means unclaimed                                                  |
 | **Territory**        | Count of land cells owned by a state                                                   |
 | **Frontier**         | An owned land cell with an adjacent land cell owned by someone else (unclaimed counts) |
 | **Front / attack**   | A deterministic BFS flood that captures connected target-owned cells                   |
@@ -121,11 +121,11 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 3`; `PROTOCOL_VERSION = 27`.
+- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 28`.
 
 ### 4.2 Starting positions
 
-- 108 start points are selected by farthest-point sampling over high-density land candidates, seeded deterministically.
+- 51 start points are selected by farthest-point sampling over high-density land candidates, seeded deterministically.
 - A preferred minimum spacing of 34 cells prevents initial beachheads from overlapping.
 - The first start is near the map centre; subsequent starts maximize distance from existing starts.
 - Starting territory is a ragged disc of radius approximately **16 cells**, clipped to land, with deterministic per-cell frontier wobble.
@@ -190,13 +190,14 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 
 ### 4.8 Bots
 
-- 107 AI states.
-- Bots act once per second (`BOT_DECISION_INTERVAL = 10`).
-- A bot with at least one available attack order samples its frontier deterministically up to 8 times and launches one attack when it finds a valid adjacent target. Applying it spends one order.
-- It attacks neutral neighbours whenever its sampled frontier has one, and only attacks a rival when no neutral option exists. This is a provisional stress-build policy, not final AI.
-- Bots use the same attack-order rules, with a base cap of 2 and no cards.
-- Bots share one seeded PRNG, processed in ascending player-id order, so behavior is replayable.
-- With no troop economy, bots attack from the first decision tick; terrain defense, capital auras, and human build cards slow, but do not stop, expansion.
+- 50 AI states.
+- Each bot derives a deterministic profile from the world seed: aggression, economy, fortification, command, and a focus structure type. Profiles vary from passive to aggressive.
+- Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Low-aggression bots skip more attack opportunities; high-aggression bots more often choose rivals even when neutral land is adjacent.
+- Bots accrue gold continuously (`BOT_STARTING_GOLD = 12`, 1 base + Mine income per 10s) and evaluate their focus build every 3 seconds (`BOT_BUILD_INTERVAL = 30`).
+- Bot build focus is one of Mine, Barracks, Defense Post, Command Post, or War Academy. Economy-focused bots save for and upgrade Mines near the capital; defensive bots place posts on the border; aggressive bots favor Barracks/Command Posts; command-focused bots favor War Academies.
+- The first focus structure is placed on valid owned land outside districts. Once it exists, the bot keeps upgrading that district at the normal level-scaled cost.
+- Bots use the same attack-order, structure, district, aura, and clash rules as the human.
+- Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles and build choices are derived from hashes of the seed and player id. Behavior is replayable.
 
 ### 4.9 Tick order
 
@@ -205,7 +206,7 @@ There is no troop/resource check. Failure reasons: ocean, own territory, no shar
 3. Grant each living player +1 attack order, clamped to cap, on a 10-second boundary.
 4. Accrue Mine gold and Command Post orders continuously for this tick.
 5. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
-6. Run bot decisions (only on every 10th tick).
+6. Run bot economy/build decisions every 30 ticks, then bot attack decisions every 10 ticks.
 7. Process active attacks in creation-id order.
 8. Every 10 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands.
 9. Eliminate states with no territory and remove their attacks.
@@ -220,8 +221,8 @@ This attack model is intentionally provisional:
 - The order cap is a hard cap. Command Post grants are clamped to it; War Academies raise the cap.
 - It flood-fills through an arbitrarily large connected region; the chosen growth layer controls whether the shape is circular, radially smoothed, or organic.
 - It ends when its frontier is exhausted, its embedded orders reach 0, its land connection is severed (zero legal captures on a non-clash tick), or its lifetime expires.
-- Bots do not coordinate or defend strategically.
-- The 108-state match may become a near-even patchwork.
+- Bots use simple profile-driven focus strategies rather than coordinated team play.
+- The 51-state match may become a near-even patchwork.
 - Attack-order limits are now part of the experimental economy, not only a stress guardrail.
 
 The final design may introduce costs, supply, attack duration, cancellation, target selection, and different propagation rules. Do not build balance or progression on the current semantics. See [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -308,7 +309,7 @@ State is the permanent anchor structure. Mines, Barracks, Defense Posts, Command
 
 ### 4.17 Player economy and build cards
 
-The human commander has a small card economy; bots do not build cards yet.
+The human commander has a small card economy. Bots have a parallel gold economy but build their focus structure directly rather than using cards.
 
 - Start with **3 gold** and **all five buildable cards** always available in the hand.
 - Earn **1 gold per 10 seconds** (`INCOME_INTERVAL_TICKS = 100`), plus **1 per live Mine stack**.
@@ -368,7 +369,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
 2. **Intro:** seed load, deploy. Simulation paused. Copy identifies the attack stress build.
-3. **Live match:** 108-state HUD, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
+3. **Live match:** 51-state HUD, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
 6. **Result:** last state wins; final standings.
@@ -377,11 +378,11 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.2 HUD
 
-- Brand with attack-stress identification and 108 states.
+- Brand with attack-stress identification and 51 states.
 - Human name/color, land share, rank, living-state count.
 - War clock.
 - Pause/resume, field manual, new world.
-- World-control leaderboard: 108 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
+- World-control leaderboard: 51 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.
 - War feed for eliminations/victory.
 - World claimed meter.
@@ -390,7 +391,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
-- A free-floating CCG-style hand at the bottom center; gold and Refresh float at its sides with no enclosing tray and no empty-card placeholders.
+- A free-floating CCG-style hand at the bottom center; gold and defense float beside it with no enclosing tray and no empty-card placeholders.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
 - The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.
 - The bottom center is reserved for the hand; the growth selector lives in the left rail above the minimap.
@@ -430,7 +431,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
 - Available human attack orders in the compact economy readout.
-- 108-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
+- 51-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
 - Paused clicks do not issue orders.
 
 ### 5.6 Accessibility/responsive
@@ -478,7 +479,7 @@ Current public player fields:
 }
 ```
 
-No troop or production-cap economy exists. The human snapshot carries gold, income, and hand cards; bots have no economy yet.
+No troop or production-cap economy exists. The human snapshot carries gold, income, and hand cards. Bots carry parallel gold/accrual state internally and spend it on their focus structure; bot balances are not exposed in the public player payload yet.
 
 ---
 
@@ -528,17 +529,17 @@ Full detail: [NETWORKING.md](NETWORKING.md).
 
 ## 10. Performance requirements
 
-| Area                                          | Target                                         |
-| --------------------------------------------- | ---------------------------------------------- |
-| Simulation tick, circular/organic, 108 states | < 4 ms p95 (10 Hz budget = 100 ms)             |
-| Simulation tick, smooth, 108 states           | < 6 ms p95                                     |
-| Render loop                                   | 60 fps at 1600 × 1000 under stress             |
-| Input smoothness under full attack load       | no recurring 10 Hz hitch; p99 <8 ms at 144 fps |
-| Tick-boundary upload work                     | < 2 ms; full resync must be chunked            |
-| Map generation + 108 starts                   | < 500 ms                                       |
-| Checksum                                      | On demand, < 25 ms (includes claim provenance) |
-| Browser JS/GPU memory                         | < 300 MiB total for the stress build           |
-| Input latency                                 | Click-to-frontier update ≤ 2 ticks             |
+| Area                                         | Target                                         |
+| -------------------------------------------- | ---------------------------------------------- |
+| Simulation tick, circular/organic, 51 states | < 4 ms p95 (10 Hz budget = 100 ms)             |
+| Simulation tick, smooth, 51 states           | < 6 ms p95                                     |
+| Render loop                                  | 60 fps at 1600 × 1000 under stress             |
+| Input smoothness under full attack load      | no recurring 10 Hz hitch; p99 <8 ms at 144 fps |
+| Tick-boundary upload work                    | < 2 ms; full resync must be chunked            |
+| Map generation + 51 starts                   | < 500 ms                                       |
+| Checksum                                     | On demand, < 25 ms (includes claim provenance) |
+| Browser JS/GPU memory                        | < 300 MiB total for the stress build           |
+| Input latency                                | Click-to-frontier update ≤ 2 ticks             |
 
 See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 
@@ -561,7 +562,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 
 ## 12. Acceptance criteria — v0.2 attack stress
 
-- [x] All 108 states spawn with nonzero territory.
+- [x] All 51 states spawn with nonzero territory.
 - [x] Same seed and commands produce identical checksums with all bots attacking.
 - [x] Ownership is always land-only; territory totals match owner counts.
 - [x] Fronts resolve without corrupting frontier sets.
@@ -584,9 +585,9 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts accrue orders continuously, and War Academies raise the cap.
 - [x] Clicking an owned district upgrades its structure without consuming a card.
-- [x] HUD and leaderboard scale to 108 logical rows and active counts, with DOM virtualization.
+- [x] HUD and leaderboard scale to 51 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
-- [x] 108-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.
+- [x] 51-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.
 - [x] `pnpm check`, `pnpm test`, `pnpm build` pass.
 - [x] Docs clearly state that current attack semantics are experimental.
 - [ ] Final attack model decided and implemented.
@@ -598,7 +599,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 
 1. **Final attack model:** cost/resource, duration, cancellation, targeting, propagation shape, and limits?
 2. **Economy:** what resource and generation model returns, and how it throttles attacks?
-3. **Match size:** 108 is a stress mode. What is the shipping player/state count?
+3. **Match size:** 51 is a stress mode. What is the shipping player/state count?
 4. **Match duration/pacing:** unthrottled attacks saturate the map in ~10 seconds.
 5. **Leaderboard scale:** scroll, pagination, or top-N with pinned player?
 6. **Growth layer:** should shipping play use circular, smooth, organic, or a blend? Keep the test switch?

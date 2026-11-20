@@ -20,7 +20,7 @@ Delivered:
 - Specification and architecture docs.
 - Responsive layout and WebGPU error handling.
 
-> Phase 0 initially shipped with troops/income and 8 states. That economy is currently removed and the state count is 108 for the attack stress experiment below.
+> Phase 0 initially shipped with troops/income and 8 states. That economy is currently removed and the state count is 51 for the attack stress experiment below.
 
 Acceptance criteria met:
 
@@ -36,23 +36,23 @@ Acceptance criteria met:
 
 ## Phase 0.5 — Attack stress experiment (current)
 
-**Outcome:** Prove the attack pipeline stays deterministic and interactive with no economy and 108 attacking states, then decide what the real attack model should be.
+**Outcome:** Prove the attack pipeline stays deterministic and interactive with no economy and 51 attacking states, then decide what the real attack model should be.
 
 Status: implemented; final attack design still open. See [EXPERIMENTS.md](EXPERIMENTS.md).
 
 Work completed:
 
 - Removed troops, income, caps, launch costs, and capture costs.
-- Added 100 AI states (108 total).
+- Added 50 AI states (51 total).
 - Implemented spaced start placement for every state, with fallback.
 - Replaced per-attack Sets/arrays with packed `Uint32Array` queues and ownership-based dedup.
 - Reduced dirty tiles to 32 × 32 for dispersed fronts.
-- Made the leaderboard virtualized and scrollable for 108 logical states.
+- Made the leaderboard virtualized and scrollable for 51 logical states.
 - Added attack stress tests, an all-bot benchmark, and honest experiment documentation.
 
 Acceptance criteria:
 
-- [x] All 108 states spawn with non-zero territory.
+- [x] All 51 states spawn with non-zero territory.
 - [x] Deterministic with all bots attacking.
 - [x] No ownership/border invariant failures under sustained load.
 - [x] Browser stays interactive under sustained attack load.
@@ -240,7 +240,7 @@ Prioritize by retention and fairness data, not by feature count.
 - Unit upgrades or leader abilities.
 - Terrain effects (mountains, rivers).
 - Naval traversal.
-- Shipping state count/mode after the 108-state stress experiment.
+- Shipping state count/mode after the 51-state stress experiment.
 - Map editor and shareable custom maps.
 - Deterministic daily challenges.
 - Spectator UI with timelines.

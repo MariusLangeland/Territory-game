@@ -6,9 +6,9 @@ Temporary builds that intentionally diverge from the main game design. They exis
 
 ## EXP-001 — Attack stress test with attack orders and light economy
 
-**Status:** active in application `0.20.x`  
+**Status:** active in application `0.21.x`  
 **Started:** 2026-11-19  
-**Question:** Does the attack pipeline stay correct, deterministic, and fast with 108 states, +1 attack-order grants every 10 seconds, and a light human card economy?
+**Question:** Does the attack pipeline stay correct, deterministic, and fast with 51 states, +1 attack-order grants every 10 seconds, and a light human card economy?
 
 ### Motivation
 
@@ -18,7 +18,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 - dense territory collision,
 - hundreds of ownership changes per tick,
 - many dispersed dirty texture regions,
-- 108 frontier sets and bot decisions.
+- 51 frontier sets and bot decisions.
 
 **This is not the intended final combat model.** Attack orders, cards, and structures are experimental layers on the attack stress test.
 
@@ -26,7 +26,7 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 
 | Rule                     | Value                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------- |
-| States                   | 108 (1 human + 107 AI)                                                          |
+| States                   | 51 (1 human + 50 AI)                                                            |
 | Troops / production caps | removed                                                                         |
 | Gold / cards             | light human economy; 3 starting gold, +1/10s                                    |
 | Attack launch cost       | 1 attack order                                                                  |
@@ -41,7 +41,8 @@ The normal economy (troops, production caps, launch costs) limits how many attac
 | Extra order gain         | Command Post: +1 per 60 seconds, accrued continuously                           |
 | District upgrades        | Click a district or drop its card for base cost + current level                 |
 | Order cap growth         | War Academy: +1 cap                                                             |
-| Bot decisions            | once per second                                                                 |
+| Bot decisions            | attack check 1/s; focus build check every 3s                                    |
+| Bot economy              | 12 starting gold; 1 + Mine levels per 10s, accrued continuously                 |
 | Starting territory       | radius ~16, ragged, spaced across the map                                       |
 | Structures               | one capturable State structure per state at its capital                         |
 | Structure spacing        | 8 px centre-to-centre exclusion radius for all builds                           |
@@ -70,8 +71,8 @@ Two cleanup rules plus the first structure are always active:
 - **Mutual front attrition:** if two states attack each other and a front touches land claimed by the opposing attack, the defender spends available orders up to its issued attack strength, stripping incoming embedded orders one-for-one. A 2-order attack needs two 1-order clashes unless Barracks strength strips both; a defender with no orders lets the attack through.
 - **State structure anchoring:** each state starts with one State structure at its capital. Every territory component connected to a live State structure is protected from annexation. Capturing the structure destroys it and removes protection.
 - **State aura:** a live State projects +20 defense over a 16 px radius on land it owns; overlapping friendly auras take the maximum. Capturing the structure removes the aura immediately. Aura circles are no longer drawn.
-- **Human card economy:** start with 3 gold and all five cards; cards are never consumed, so any affordable card can be bought repeatedly. Base income is 1 gold/10s plus 1 per Mine level, accrued continuously across the interval. Drag a card onto controlled, structure-free land to build it; click any pixel of an owned district to upgrade its structure without a card. There is no deck, draw, or reroll. Bots do not build yet.
-- **Districts and stacking:** every buildable structure seeds a district of at least 32 px, bounded by owner territory and its range; districts split by nearest structure. Different types cannot enter an occupied district. The same type stacks inside a district and can create another district outside all districts. State capitals are aura anchors without districts. Defensive auras fill their district; State auras use radius 16. Barracks is not an aura: each stack adds one embedded order to every attack.
+- **Human card economy:** start with 3 gold and all five cards; cards are never consumed, so any affordable card can be bought repeatedly. Base income is 1 gold/10s plus 1 per Mine level, accrued continuously across the interval. Drag a card onto controlled, structure-free land to build it; click any pixel of an owned district to upgrade its structure without a card. There is no deck, draw, or reroll. Bots have their own gold economy and build/upgrade a deterministic profile focus structure.
+- **Districts and stacking:** every buildable structure seeds a district of at least 32 px, bounded by owner territory and its range; districts split by nearest structure. Different types cannot enter an occupied district. The same type stacks inside a district and can create another district outside all districts. State capitals are aura anchors without districts. Defensive auras fill their district; State auras use radius 16. Barracks is not an aura: every two levels add one embedded order (max +5) to every attack.
 - **Attack orders:** start at 3 for the human and 2 for bots. Gain +1 every 10 seconds, clamped to the cap. Command Posts accrue +1 per 60 seconds continuously; War Academies add +1 live cap. Caps are hard limits.
 - **Detached-land annexation:** once per second, and immediately after a clash halts a front, components without a live State structure are transferred to the owner of the adjacent protected mainland with the largest shared border.
 
@@ -80,17 +81,17 @@ This is the current attack-shape test surface, not a final gameplay choice.
 ### Intentional deviations
 
 - There is no economy HUD.
-- AI states attack automatically from tick 10 and prefer neutral land while it exists, so the experiment stresses attack throughput before rival dogpiling.
+- AI profiles vary aggression from passive to highly aggressive. Passive bots attack less often and prefer neutral land; aggressive bots more often strike rivals.
 - Attack orders are now a gameplay constraint; the +1 order per 10 seconds is part of the experiment.
 - The match may end quickly or settle into a patchwork; balance is not validated in this build.
-- The leaderboard is scrollable because 108 states are alive at the start.
+- The leaderboard is scrollable because 51 states are alive at the start.
 - Attack-order caps, the 10-second grant cadence, and the two order cards may change as stress findings demand.
 
 ### Success criteria
 
-- [x] All 108 states spawn with at least one owned land pixel.
+- [x] All 51 states spawn with at least one owned land pixel.
 - [x] Ownership is always land-only and territory totals remain consistent.
-- [x] Same seed + commands ⇒ same checksum with all 108 bots active.
+- [x] Same seed + commands ⇒ same checksum with all 51 bots active.
 - [x] Hundreds of simultaneous fronts run without corrupting borders.
 - [x] Change buffer does not overflow during normal stress runs.
 - [x] Browser stays interactive at 1600 × 1000; panning under ~209 fronts measured 144 fps with zero frames >10 ms.
@@ -117,14 +118,14 @@ This is the current attack-shape test surface, not a final gameplay choice.
 
 ### Findings so far
 
-- 108 starts are feasible on the fixed atlas with a 16 px start radius and spacing enforcement.
+- 51 starts are feasible on the fixed atlas with a 16 px start radius and spacing enforcement.
 - Bot fronts saturate the map in roughly 10 seconds when unthrottled; the resulting leaderboard is nearly tied and visually becomes a patchwork.
 - A single global dirty rectangle would be catastrophic with this many fronts; 32 × 32 tile uploads are the normal path. At high front counts, tiles alone caused ~2,169 texture calls/s and panning stalls. The renderer now switches to an adaptive full-texture resync chunked across frames: ~21M pixels/s, ~80 calls/s, no measured frame above 10 ms while panning.
-- 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (108-row updates produced ~14 ms frames).
+- 5 Hz HUD snapshots plus a virtualized leaderboard were required to remove the remaining tick-boundary DOM stalls (51-row updates produced ~14 ms frames).
 - Replacing per-attack `Set<number>` + JS number arrays with an ownership-checked `Uint32Array` queue reduced benchmark RSS from ~529 MiB to ~189 MiB for two simulated worlds in the connectivity- and lifetime-checked build.
 - Full-state checksum is ~18.1 ms (claim provenance doubles the owner-map pass) and is not run per tick.
-- Growth-layer tick cost at 108 states: circular ~1.1 ms, smooth ~1.3 ms, organic ~1.1 ms (Node benchmark; includes throttled integrity scans, structure effects, defense spending, and attack-order grants).
-- Attack orders, capital auras, and defense costs reduce capture volume; the benchmark ended around 73–95 fronts.
+- Growth-layer tick cost at 51 states: circular ~1.1 ms, smooth ~1.3 ms, organic ~1.1 ms (Node benchmark; includes throttled integrity scans, structure effects, defense spending, and attack-order grants).
+- Attack orders, bot aggression profiles, capital auras, and defense costs reduce capture volume; the benchmark ended around 22–29 fronts.
 - One-second integrity scans cost ~8.5 ms and are capped by a cooldown.
 - The attack queue can grow large while consuming a connected neutral region; compaction and ownership-based deduplication keep it bounded in practice, but final attack targeting needs a design review.
 
@@ -137,7 +138,7 @@ When the attack design is ready:
 3. Restore or replace the economy with the intended resource model.
 4. Remove stress-only guards or make them part of the real rules.
 5. Restore a normal player count / matchmaking model.
-6. Remove or repurpose the 108-state HUD and instrumentation.
+6. Remove or repurpose the 51-state HUD and instrumentation.
 7. Add regression tests for the new attack rules.
 8. Update [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DETERMINISM.md](DETERMINISM.md), [PERFORMANCE.md](PERFORMANCE.md), and this document.
 9. Keep or archive the stress benchmark as a load-test harness.
@@ -146,5 +147,5 @@ When the attack design is ready:
 
 - Build balance, progression, or monetization on top of this attack model.
 - Treat attack-order caps or the 10-second grant as final design.
-- Assume the 108-state spawn/leaderboard is the shipping experience.
+- Assume the 51-state spawn/leaderboard is the shipping experience.
 - Remove determinism or attack invariants while stress-testing.

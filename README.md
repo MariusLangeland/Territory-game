@@ -13,26 +13,29 @@
 
 </details>
 
-> **Status: attack stress experiment (v0.20.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+> **Status: attack stress experiment (v0.21.0).** Troops, production caps, and launch costs remain removed, but attack orders recover on a timer and a light human gold/card economy drives buildable structures and terrain defense. **This is not the intended final combat model.** See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 >
-> The current build runs **108 states** (1 human + 107 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
+> **AI commanders:** 50 bots receive deterministic profiles for aggression, economy, fortification, and command. Each bot saves gold and builds/upgrades a focus structure — Mines near its capital, defense on its border, or military/command structures depending on profile.
+>
+> The current build runs **51 states** (1 human + 50 AI) to stress-test free attacks, territory flood fill, frontier bookkeeping, dirty-tile rendering, and the HUD. It includes three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 
 ---
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack stress   | 108 states, State structures, three growth layers, 3 human / 2 bot attack orders with embedded-order attacks, terrain defense               |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail  |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; embedded attack orders scale points and piercing           |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                          |
-| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable drag/drop builds, click-to-upgrade districts      |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking     |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                          |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input    |
-| UI scale        | Virtualized 108-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                         |
+| Area            | Implementation                                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Attack stress   | 51 states, State structures, three growth layers, 3 human / 2 bot attack orders with embedded-order attacks, terrain defense               |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; embedded attack orders scale points and piercing          |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                         |
+| Build economy   | 3 starting gold, continuously accrued income, all five cards always available, repeatable level-scaled builds/upgrades                     |
+| Bot commanders  | 50 deterministic bots with varied aggression and build focuses; bots generate gold, build, and upgrade                                     |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking    |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                         |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input   |
+| UI scale        | Virtualized 51-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark script, CI workflow                                        |
 
 ## Quick start
 
@@ -54,7 +57,7 @@ http://localhost:5173/?seed=1234
 ```sh
 pnpm dev        # Vite dev server (HMR)
 pnpm check      # svelte-check + TypeScript
-pnpm test       # deterministic + 108-state stress tests
+pnpm test       # deterministic + 50-bot stress tests
 pnpm bench      # map/tick/checksum benchmark
 pnpm build      # production build via adapter-node
 pnpm preview    # preview the production build
@@ -149,7 +152,7 @@ The human commander starts with **3 gold** and **all five build cards** permanen
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 
-Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every stack adds one embedded order to all of that owner's attacks.
+Defensive auras only protect land owned by the structure's owner, so a Defense Post never raises the defense of neutral or enemy pixels and cannot slow that owner's attacks. A Defense Post covers its **entire district**, not just a small radius. Barracks is not an aura: every two levels add one embedded order, capped at +5, to all of that owner's attacks.
 
 ### Districts
 
@@ -190,7 +193,7 @@ This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
 Svelte UI (+page.svelte)
   └── GameCanvas.svelte ......... fixed-step driver, pointer input, camera bridge
         ├── TerritorySimulation .. pure deterministic game core
-        │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 108 starts
+        │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 51 starts
         │     ├── TerritoryRng ... mulberry32
         │     ├── growth/ ........ circular / smooth / organic frontier layers
         │     ├── Structures/ .... one file per structure type + registry
@@ -209,7 +212,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 108 starts               | ~292 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~247 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -217,9 +220,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~338 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~276 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 1.6–2.9% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 108-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 1.3–2.4% of a 100 ms tick budget depending on growth layer. Territory-integrity scans are limited to once per second and average under 1 ms/tick. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 
@@ -245,9 +248,9 @@ src/
       GameCanvas.svelte          canvas lifecycle, fixed loop, pointer handling
       Minimap.svelte             throttled 2D overview
     game/
-      constants.ts               attack stress rules, 108-state palette/names
+      constants.ts               attack stress rules, 51-state palette/names
       rng.ts                     deterministic PRNG
-      map.ts                     map generation and 108 start placement
+      map.ts                     map generation and 51 start placement
       simulation.ts              world state, free attacks, bots, checksums
       simulation.test.ts         determinism, ownership, frontier, stress tests
       growth/                    switchable circular/smooth/organic frontier layers
@@ -276,7 +279,7 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - The economy and final attack semantics are intentionally missing; this build is not game-balanced.
-- The 108-state leaderboard and AI load are a stress mode, not the shipping match format.
+- The 51-state leaderboard and AI load are a stress mode, not the shipping match format.
 - Online play, accounts, matchmaking, and persistence are specified but not implemented.
 - No audio, fog of war, diplomacy, or spectator camera UI.
 - Touch pan/tap works; pinch-to-zoom is not implemented yet.

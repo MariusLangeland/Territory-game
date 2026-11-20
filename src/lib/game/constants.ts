@@ -2,10 +2,9 @@
  * Rules that both the simulation and the presentation layer agree on.
  *
  * EXPERIMENTAL ATTACK BUILD:
- * The economy (troops, income, caps, attack costs) has been removed so the
- * attack pipeline can be exercised in isolation. This is NOT the intended final
- * combat model. Attack limits are a temporary safety valve for the 108-state
- * stress test, not a game-design decision.
+ * Troops and production caps are removed so the attack pipeline can be
+ * exercised in isolation. This is NOT the intended final combat model.
+ * Attack limits and the 50-bot field are temporary stress-test choices.
  *
  * Anything that changes simulation outcomes is a versioned protocol concern:
  * bump PROTOCOL_VERSION and the map version whenever a value here changes.
@@ -13,13 +12,13 @@
 
 export const MAP_WIDTH = 2048;
 export const MAP_HEIGHT = 1024;
-export const MAP_VERSION = 3;
+export const MAP_VERSION = 4;
 
 export const TICK_RATE = 10;
 export const TICK_MS = 1000 / TICK_RATE;
 
-/** One human + 107 AI states for the attack stress test. */
-export const PLAYER_COUNT = 108;
+/** One human + 50 AI states for the attack stress test. */
+export const PLAYER_COUNT = 51;
 export const HUMAN_PLAYER_ID = 1;
 
 /** Fraction of map pixels that should become land, targeting a 62/38 ocean/land split. */
@@ -96,8 +95,11 @@ export const ATTACK_SEARCH_RADIUS = 34;
 /** Bots act once per second. */
 export const BOT_DECISION_INTERVAL = TICK_RATE;
 export const BOT_SEARCH_TRIES = 8;
+/** Bots evaluate their focus build every 3 seconds. */
+export const BOT_BUILD_INTERVAL = TICK_RATE * 3;
+export const BOT_STARTING_GOLD = 12;
 
-export const PROTOCOL_VERSION = 27;
+export const PROTOCOL_VERSION = 28;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

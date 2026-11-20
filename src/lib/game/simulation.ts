@@ -10,7 +10,9 @@ import {
 	BASE_DEFENSE_OFFSET,
 	BASE_GOLD_INCOME,
 	BASE_HUMAN_ATTACK_ORDERS,
+	BOT_BUILD_INTERVAL,
 	BOT_DECISION_INTERVAL,
+	BOT_STARTING_GOLD,
 	DISTRICT_NOISE_CELL,
 	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
@@ -47,7 +49,8 @@ import {
 	type Card,
 	type PublicCard,
 	type PublicStructure,
-	type Structure
+	type Structure,
+	type StructureType
 } from './Structures';
 import { DeterministicRng } from './rng';
 
@@ -87,6 +90,14 @@ export interface PublicPlayer {
 	alive: boolean;
 	territory: number;
 	landShare: number;
+}
+
+interface BotProfile {
+	aggression: number;
+	economy: number;
+	fortification: number;
+	command: number;
+	focus: BuildableStructureType;
 }
 
 export interface PublicAttack {
@@ -247,6 +258,9 @@ export class TerritorySimulation {
 	private nextAttackOrderGrantTick = ATTACK_ORDER_GAIN_TICKS;
 	private attackOrders: number[] = [];
 	private readonly commandPostAccrual: Uint32Array;
+	private readonly botGold: number[];
+	private readonly botGoldAccrual: Uint16Array;
+	private readonly botProfiles: BotProfile[];
 	private readonly rng: DeterministicRng;
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
@@ -309,6 +323,14 @@ export class TerritorySimulation {
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
 		this.commandPostAccrual = new Uint32Array(PLAYER_COUNT);
+		this.botGold = new Array<number>(PLAYER_COUNT).fill(0);
+		this.botGoldAccrual = new Uint16Array(PLAYER_COUNT);
+		this.botProfiles = Array.from({ length: PLAYER_COUNT }, (_, index) =>
+			this.createBotProfile(index + 1)
+		);
+		for (const player of this.players) {
+			if (player.isBot) this.botGold[player.id - 1] = BOT_STARTING_GOLD;
+		}
 
 		this.placeStartingTerritories(this.map.starts);
 		this.ensureEveryStateHasLand();
@@ -400,6 +422,31 @@ export class TerritorySimulation {
 
 		for (const player of this.players) {
 			if (!player.alive) continue;
+			if (player.isBot) {
+				let goldRate = 1;
+				let orderRate = 0;
+				for (const structure of this.structures.forOwner(player.id)) {
+					for (const effect of structure.effects) {
+						if (effect.kind === 'income') goldRate += effect.goldPerInterval * structure.stacks;
+						else if (effect.kind === 'order-gain') {
+							orderRate += effect.amount * structure.stacks;
+						}
+					}
+				}
+				this.botGoldAccrual[player.id - 1] += goldRate;
+				const earned = Math.floor(this.botGoldAccrual[player.id - 1] / INCOME_INTERVAL_TICKS);
+				if (earned > 0) {
+					this.botGold[player.id - 1] += earned;
+					this.botGoldAccrual[player.id - 1] -= earned * INCOME_INTERVAL_TICKS;
+				}
+				if (orderRate > 0) {
+					const next = this.commandPostAccrual[player.id - 1] + orderRate;
+					const earnedOrders = Math.floor(next / COMMAND_POST_ORDER_TICKS);
+					this.commandPostAccrual[player.id - 1] = next - earnedOrders * COMMAND_POST_ORDER_TICKS;
+					if (earnedOrders > 0) this.addAttackOrders(player.id, earnedOrders);
+				}
+				continue;
+			}
 			let orderRate = 0;
 			for (const structure of this.structures.forOwner(player.id)) {
 				for (const effect of structure.effects) {
@@ -672,6 +719,7 @@ export class TerritorySimulation {
 			this.accrueResources();
 			this.applyPendingCommands();
 
+			this.runBotEconomy();
 			this.runBotDecisions();
 			this.processAttacks();
 			const annexDue =
@@ -800,6 +848,8 @@ export class TerritorySimulation {
 		mix(this.lastAnnexTick);
 		mix(this.gold);
 		mix(this.goldAccrual);
+		for (const botGold of this.botGold) mix(botGold);
+		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
 		mix(this.nextAttackOrderGrantTick);
 		for (const accrual of this.commandPostAccrual) mix(accrual);
 		for (const orders of this.attackOrders) mix(orders);
@@ -1536,6 +1586,109 @@ export class TerritorySimulation {
 		this.changes[this.changeCount++] = ((owner & 0xffff) << 21) | index;
 	}
 
+	private createBotProfile(playerId: number): BotProfile {
+		const seed = this.seed;
+		const aggression = hash32(playerId, 1, seed ^ 0x1b56c4e9) % 101;
+		const economy = hash32(playerId, 2, seed ^ 0x7f4a7c15) % 101;
+		const fortification = hash32(playerId, 3, seed ^ 0x9e3779b9) % 101;
+		const command = hash32(playerId, 4, seed ^ 0x85ebca6b) % 101;
+		const options: Array<[BuildableStructureType, number]> = [
+			['mine', 15 + economy],
+			['barracks', 10 + aggression],
+			['defense-post', 10 + fortification],
+			['command-post', 8 + command],
+			['war-academy', 5 + Math.floor((aggression + command) / 2)]
+		];
+		const total = options.reduce((sum, entry) => sum + entry[1], 0);
+		let pick = hash32(playerId, 5, seed ^ 0xc2b2ae35) % total;
+		let focus: BuildableStructureType = 'mine';
+		for (const [type, weight] of options) {
+			if (pick < weight) {
+				focus = type;
+				break;
+			}
+			pick -= weight;
+		}
+		return { aggression, economy, fortification, command, focus };
+	}
+
+	private runBotEconomy(): void {
+		if (this.tick % BOT_BUILD_INTERVAL !== 0) return;
+
+		let districtChanged = false;
+		let auraChanged = false;
+		for (const player of this.players) {
+			if (!player.alive || !player.isBot) continue;
+			const focus = this.botProfiles[player.id - 1].focus;
+			const existing = this.structures.forOwnerType(player.id, focus);
+			if (existing) {
+				const cost = STRUCTURE_DEFINITIONS[focus].cost + existing.stacks;
+				if (this.botGold[player.id - 1] < cost) continue;
+				this.botGold[player.id - 1] -= cost;
+				this.structures.reinforce(existing);
+				auraChanged = true;
+				continue;
+			}
+
+			const cost = STRUCTURE_DEFINITIONS[focus].cost;
+			if (this.botGold[player.id - 1] < cost) continue;
+			const cell = this.findBotBuildCell(player, focus);
+			if (cell < 0) continue;
+			this.botGold[player.id - 1] -= cost;
+			this.structures.create(
+				focus,
+				player.id,
+				cell % this.width,
+				Math.floor(cell / this.width),
+				this.width
+			);
+			districtChanged = true;
+			auraChanged = true;
+		}
+		// Defer the O(map) derived rebuilds until all bot builds for this
+		// decision tick are in place; otherwise up to 50 full rebuilds land in
+		// one simulation tick.
+		if (districtChanged) this.rebuildDistricts();
+		if (auraChanged) this.rebuildAuraDefense();
+	}
+
+	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
+		if (type === 'mine' || type === 'command-post' || type === 'war-academy') {
+			const state = this.structures.forOwnerType(player.id, 'state');
+			if (state) {
+				for (let radius = STRUCTURE_MIN_SPACING; radius <= 80; radius++) {
+					for (let dy = -radius; dy <= radius; dy++) {
+						for (let dx = -radius; dx <= radius; dx++) {
+							if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+							const x = state.x + dx;
+							const y = state.y + dy;
+							if (x < 0 || y < 0 || x >= this.width || y >= this.height) continue;
+							const index = y * this.width + x;
+							if (this.isBotBuildCellValid(player, index)) return index;
+						}
+					}
+				}
+			}
+		}
+
+		const candidates: number[] = [];
+		for (const index of player.border) {
+			if (!this.isBotBuildCellValid(player, index)) continue;
+			candidates.push(index);
+			if (candidates.length >= 32) break;
+		}
+		if (candidates.length === 0) return -1;
+		return candidates[hash32(this.tick, player.id, this.seed ^ 0x51ed270b) % candidates.length];
+	}
+
+	private isBotBuildCellValid(player: PlayerState, index: number): boolean {
+		if (!this.land[index] || this.owners[index] !== player.id) return false;
+		if (this.structures.at(index) || this.districtStructureIds[index] !== 0) return false;
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		return !this.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING);
+	}
+
 	private runBotDecisions(): void {
 		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 
@@ -1543,12 +1696,15 @@ export class TerritorySimulation {
 			if (!player.alive || !player.isBot) continue;
 			if (this.attackOrders[player.id - 1] <= 0) continue;
 			if (player.border.size === 0) continue;
+			const profile = this.botProfiles[player.id - 1];
+			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
+			if (attackRoll > 15 + Math.floor(profile.aggression * 0.85)) continue;
 
 			for (let attempt = 0; attempt < BOT_SEARCH_TRIES; attempt++) {
 				const borderIndex = this.pickBorderCell(player);
 				if (borderIndex === null) break;
 
-				const target = this.pickAttackTarget(player, borderIndex);
+				const target = this.pickAttackTarget(player, borderIndex, profile.aggression);
 				if (target === null) continue;
 				if (this.createAttack(player.id, target, [target])) {
 					this.attackOrders[player.id - 1]--;
@@ -1569,7 +1725,11 @@ export class TerritorySimulation {
 		return null;
 	}
 
-	private pickAttackTarget(player: PlayerState, borderIndex: number): number | null {
+	private pickAttackTarget(
+		player: PlayerState,
+		borderIndex: number,
+		aggression: number
+	): number | null {
 		const width = this.width;
 		const x = borderIndex % width;
 		const y = (borderIndex - x) / width;
@@ -1588,12 +1748,12 @@ export class TerritorySimulation {
 
 		if (candidates.length === 0) return null;
 
-		// Stress-build bot policy: expand into neutral land whenever that option
-		// exists. Only fight a rival once the sampled frontier has no neutral
-		// neighbour. This keeps the 108-state experiment about attack throughput
-		// rather than immediate dogpiling, and is deliberately provisional.
 		const neutral = candidates.filter((index) => this.owners[index] === 0);
-		if (neutral.length > 0) return this.rng.pick(neutral);
+		const hostile = candidates.filter((index) => this.owners[index] > 0);
+		if (neutral.length > 0 && (aggression < 55 || hostile.length === 0)) {
+			return this.rng.pick(neutral);
+		}
+		if (hostile.length > 0) return this.rng.pick(hostile);
 		return this.rng.pick(candidates);
 	}
 

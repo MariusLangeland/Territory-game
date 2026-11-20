@@ -63,8 +63,8 @@ Suggested room configuration:
 
 | Field                | Default                         | Notes                                      |
 | -------------------- | ------------------------------- | ------------------------------------------ |
-| `maxHumans`          | 8                               | Online target; stress mode uses 108 states |
-| `totalStates`        | 8                               | Configurable; 108 for stress tests         |
+| `maxHumans`          | 8                               | Online target; stress mode uses 51 states  |
+| `totalStates`        | 8                               | Configurable; 51 for stress tests          |
 | `fillWithBots`       | true                            | Bots fill empty states                     |
 | `tickRate`           | 10                              | Must equal `TICK_RATE`                     |
 | `minPlayersToStart`  | 1                               | Bots allow immediate start                 |
@@ -217,7 +217,7 @@ Start with JSON over WebSocket for development visibility. Before production sca
 - encode ticks/deltas as binary frames (MessagePack, custom binary, or protobuf);
 - compress baseline owner maps;
 - avoid sending unchanged pixel data;
-- send public player state every tick (small even at 108 stress states) or only on change with sequence numbers.
+- send public player state every tick (small even at 51 stress states) or only on change with sequence numbers.
 
 Owner changes:
 
@@ -431,7 +431,7 @@ A room's simulation is small (~0.1 ms/tick measured). Do not create one OS proce
 
 ### Load
 
-- 100 rooms × target player count; also stress 108-state rooms with unthrottled attack load to measure tick time p95, event-loop lag, and memory growth.
+- 100 rooms × target player count; also stress 51-state rooms with unthrottled attack load to measure tick time p95, event-loop lag, and memory growth.
 - Simulate heavy attack activity to stress change batches and broadcast size.
 
 ### Security

@@ -40,7 +40,7 @@ There is exactly one WebGPU draw call per frame for territory.
 
 ### Structure overlay
 
-Structures are not encoded in the ownership texture. A transparent 2D canvas sits above the WebGPU canvas and draws up to 108 owner-colored capital-star circles at structure cells each frame:
+Structures are not encoded in the ownership texture. A transparent 2D canvas sits above the WebGPU canvas and draws up to 51 owner-colored capital-star circles at structure cells each frame:
 
 - uses the same `MapCamera.mapToScreen` transform as the map;
 - draws a dark halo, cream ring, and owner-colored disc for every structure; placement exclusion is simulation state, not rendered as a persistent ring;
@@ -68,7 +68,7 @@ The control texture is created as `rgba8unorm`, with usage `TEXTURE_BINDING | CO
 
 | Channel | Value                  | Used by                                                       |
 | ------- | ---------------------- | ------------------------------------------------------------- |
-| R       | Owner id 0–108         | Player color, border comparison                               |
+| R       | Owner id 0–51          | Player color, border comparison                               |
 | G       | `0` ocean / `255` land | Ocean styling, coastlines                                     |
 | B       | Terrain shade 0–255    | Relief brightness and grain                                   |
 | A       | Packed bits            | Low 3 bits elevation tier; upper 5 bits district palette code |
@@ -94,7 +94,7 @@ The CPU shadow is `Uint8Array(2048 * 1024 * 4) = 8 MiB`. The GPU texture is anot
 `PALETTE` in `constants.ts` is index-aligned with owner ids:
 
 - index 0 = unclaimed land,
-- indices 1–108 = player colors (eight hand-picked, the rest generated on a golden-angle hue wheel).
+- indices 1–51 = player colors (eight hand-picked, the rest generated on a golden-angle hue wheel).
 
 The palette texture is 256 × 1. Unused indices remain black. The shader looks up `(owner + 0.5) / 256`.
 
@@ -104,7 +104,7 @@ The palette texture is 256 × 1. Unused indices remain black. The shader looks u
 
 ### The problem
 
-A single dirty rectangle is wrong for this game. With 108 states attacking simultaneously, the union of all changed pixels becomes almost the whole map, and the renderer would upload ~2.1M pixels per tick (21M px/s at 10 Hz).
+A single dirty rectangle is wrong for this game. With 51 states attacking simultaneously, the union of all changed pixels becomes almost the whole map, and the renderer would upload ~2.1M pixels per tick (21M px/s at 10 Hz).
 
 A pure 32 × 32 tile strategy fixes the upload volume, but not the input latency: ~200 dispersed fronts produced **~2,169 `writeTexture` calls/s**, and panning stuttered with frames up to ~28 ms.
 

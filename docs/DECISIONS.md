@@ -126,7 +126,7 @@ Simulate at exactly 10 ticks per second, driven by a fixed-step accumulator. Use
 
 ### Context
 
-A single dirty bounding box across bot attacks spanning different continents uploads nearly the full 8 MiB texture each tick (~21M pixels/s measured). With 108 attacking states the problem is worse and changes are scattered across hundreds of fronts.
+A single dirty bounding box across bot attacks spanning different continents uploads nearly the full 8 MiB texture each tick (~21M pixels/s measured). With 51 attacking states the problem is worse and changes are scattered across hundreds of fronts.
 
 ### Decision
 
@@ -136,7 +136,7 @@ Divide the control texture into 32 × 32 tiles. Mark dirty tiles with a generati
 
 - Under ~209 fronts, tile-only uploads produced ~2,169 `writeTexture` calls/s and panning frames up to ~28 ms.
 - Above a 96-dirty-tile threshold, the renderer now queues an adaptive full-texture resync in eight horizontal chunks, max two chunks per frame. Upload traffic rises to ~21M pixels/s and ~80 calls/s, but panning reached 144 fps with zero frames >10 ms in the verification run.
-- HUD snapshots are throttled to 5 Hz and the 108-row leaderboard is virtualized; otherwise DOM updates still produced ~14 ms tick-boundary frames.
+- HUD snapshots are throttled to 5 Hz and the 51-row leaderboard is virtualized; otherwise DOM updates still produced ~14 ms tick-boundary frames.
 - Tile bookkeeping memory is negligible (2,048 marks + 32 row flags).
 - Tile size is a tuning knob; 32 favors precision for dispersed fronts. Larger tiles reduce API calls for compact normal-play changes.
 - Renderer needs a chunked full-resync path for dense changes, overflow, and device recovery.
@@ -214,7 +214,7 @@ Generate the map on the client/server from a 32-bit seed with deterministic hash
 
 ### Context
 
-A 10 Hz simulation measured at ~1.4 ms/tick under the 108-state stress load (and far less in the earlier 8-state build) is cheap on the main thread. A worker adds serialization and rendering synchronization complexity.
+A 10 Hz simulation measured at ~1.4 ms/tick under the 51-state stress load (and far less in the earlier 8-state build) is cheap on the main thread. A worker adds serialization and rendering synchronization complexity.
 
 ### Decision
 
@@ -234,7 +234,7 @@ Run simulation and rendering on the main thread in v0.1. Revisit when online pre
 
 ---
 
-## ADR-009 — Temporarily remove the economy and stress 108 states
+## ADR-009 — Temporarily remove the economy and stress 51 states
 
 **Status:** superseded by ADR-013 through ADR-016  
 **Date:** 2026-11-19
@@ -245,13 +245,13 @@ Attack correctness and performance were entangled with troops, income, caps, att
 
 ### Decision
 
-Temporarily remove all economy and resource gating, add 100 AI states (108 total), make attacks free, keep only technical active-front caps, and use 32 × 32 dirty uploads plus packed attack queues to survive the load. Track the deviation explicitly in [EXPERIMENTS.md](EXPERIMENTS.md).
+Temporarily remove all economy and resource gating, add 50 AI states (51 total), make attacks free, keep only technical active-front caps, and use 32 × 32 dirty uploads plus packed attack queues to survive the load. Track the deviation explicitly in [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ### Consequences
 
 - The attack flood-fill and renderer are exercised far beyond normal intended load.
 - AI states saturate the map quickly; balance and match pacing are not meaningful in this build.
-- The UI must handle 108 logical leaderboard states (virtualized to the visible window) and generated colors/names.
+- The UI must handle 51 logical leaderboard states (virtualized to the visible window) and generated colors/names.
 - Attack limits are a technical safety valve, not a design rule.
 - The economy must be redesigned/restored after the final attack model is chosen.
 - Do not build progression or balance on this build.
@@ -289,7 +289,7 @@ The simulation remains responsible for ownership, edge connectivity, capture lim
 
 ### Consequences
 
-- Attack shapes can be compared live under the same 108-state load.
+- Attack shapes can be compared live under the same 51-state load.
 - Validation, connectivity, and order termination are shared and cannot silently diverge by mode.
 - Per-attack growth state and RNG are included in checksums.
 - Smooth costs more CPU (~4.5 ms/tick vs ~3.1 ms for circular/organic after cleanup passes were added).
@@ -434,7 +434,7 @@ Structures were static anchors with no gameplay effect. The next step is effects
 
 - Capitals strongly protect their immediate surroundings: max defense rises from 7 to 27, so one aura pixel costs at least 21 points and usually captures one pixel per tick.
 - The aura is a zone effect, so captured ground inside it remains defensively strong for either side.
-- Rebuild cost is ~48k writes for all 108 capitals and only occurs at creation or destruction.
+- Rebuild cost is ~48k writes for all 51 capitals and only occurs at creation or destruction.
 - Effects are derived from type definitions; if effect numbers change, protocol/version and docs must change.
 - Future structures can reuse the effect list for healing, production, or other area effects.
 
@@ -443,7 +443,7 @@ Structures were static anchors with no gameplay effect. The next step is effects
 - Aura only on friendly territory: more intuitive ownership-wise, but requires ownership-dependent recomputation and lets attackers bypass the structure's protective field.
 - Stacking overlapping auras: can push defense above the 30-point attack budget and stall fronts permanently.
 - Per-cell mutable defense: unnecessary; aura defense is already derived from live structures.
-- A separate aura map texture: unnecessary; the overlay is small and only 108 circles.
+- A separate aura map texture: unnecessary; the overlay is small and only 51 circles.
 
 ---
 
@@ -799,6 +799,39 @@ Barracks gave +1 embedded order per level with no cap. At high levels this produ
 - **Keep linear growth and reduce point/pierce constants:** still allows unbounded clash strength and lifetime.
 - **Cap levels only:** level-ups would give no benefit without warning and would not address early exponential effect.
 - **Quadratic/square-root scaling:** harder to communicate; two-level steps plus a hard cap are transparent.
+
+---
+
+## ADR-027 — 50 bots with deterministic strategy profiles and a build economy
+
+**Status:** accepted for EXP-001  
+**Date:** 2026-11-20
+
+### Context
+
+The stress build had 107 bots, all following the same neutral-first attack policy with no economy or structures. That made the field uniform and prevented testing bot construction, district contention, or varied pressure.
+
+### Decision
+
+- Reduce the field to **50 bots + 1 human = 51 states**; `MAP_VERSION` becomes 4.
+- Give every bot a deterministic profile derived from `hash32(player id, seed)`: aggression, economy, fortification, command, and one focus structure type. Profiles are not drawn from the shared PRNG.
+- Bots start with 12 gold and accrue `1 + Mine levels` per 10 seconds continuously.
+- Every 3 seconds a bot saves toward or upgrades its focus structure. Mines/Command Posts/War Academies prefer capital-adjacent placement; Defense Posts/Barracks prefer border placement.
+- Every second, aggression modulates attack frequency and target choice. Passive bots skip more attacks and prefer neutral land; aggressive bots attack more and can choose rival territory even when neutral land is adjacent.
+- Defer district/aura rebuilds until all bot builds in a decision batch finish, preventing up to 50 full rebuilds in one tick.
+
+### Consequences
+
+- Each bot has a visibly different investment pattern and attack tempo.
+- Bot gold, accrual, profiles, and focus types are simulation state; gold and accrual are checksummed, while profiles are derived deterministically from seed/id.
+- Bots do not use the human card hand and do not coordinate with each other.
+- The smaller field lowers benchmark tick cost and memory while increasing per-bot strategic variety.
+
+### Alternatives considered
+
+- **Random profiles from the shared PRNG:** would perturb all attack draws and obscure determinism reasoning; hashing is isolated and replayable.
+- **Let bots use cards:** the hand is a human UI concept; a direct gold/build decision is simpler and testable.
+- **Rebuild districts after every bot build:** causes a large periodic spike; batching is safe because each bot's first district is owner-local.
 
 ---
 

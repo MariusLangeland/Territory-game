@@ -306,7 +306,7 @@
 				}
 				if (steps >= 4) accumulator = 0;
 
-				// Territory rendering updates every tick, but rebuilding 108 HUD
+				// Territory rendering updates every tick, but rebuilding 51 HUD
 				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
 				// to Svelte at 5 Hz, or immediately on elimination/victory events.
 				if (

@@ -425,6 +425,22 @@ describe('attack stress mode', () => {
 		}
 	});
 
+	it('gives bots varied strategies and lets them build', () => {
+		const sim = new TerritorySimulation({ seed: 581321 });
+		const internals = sim as unknown as {
+			botProfiles: Array<{ aggression: number; focus: string }>;
+		};
+		const focuses = new Set(internals.botProfiles.slice(1).map((profile) => profile.focus));
+		expect(focuses.size).toBeGreaterThan(1);
+		const aggressions = internals.botProfiles.slice(1).map((profile) => profile.aggression);
+		expect(Math.max(...aggressions) - Math.min(...aggressions)).toBeGreaterThan(30);
+
+		for (let i = 0; i < 60; i++) sim.step();
+		const built = sim.structures.all.filter((structure) => structure.type !== 'state');
+		expect(built.length).toBeGreaterThan(0);
+		expect(new Set(built.map((structure) => structure.type)).size).toBeGreaterThan(1);
+	});
+
 	it('issues extra barracks orders into each attack without merging clicks', () => {
 		const sim = new TerritorySimulation({ seed: 864212 });
 		let barracksIndex = -1;

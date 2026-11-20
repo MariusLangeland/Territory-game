@@ -11,7 +11,7 @@ function controlAlpha(elevation: number, districtColor: number): number {
 	return ((districtColor & 31) << 3) | (elevation & 7);
 }
 /**
- * Smaller tiles matter in the 108-state stress build: hundreds of attack
+ * Smaller tiles matter in the 51-state stress build: hundreds of attack
  * fronts can change scattered pixels in one tick. 64×64 tiles would upload
  * 4× more unchanged pixels per local front.
  */

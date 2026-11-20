@@ -173,7 +173,7 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 		nearestDistance[i] = dx * dx + dy * dy;
 	}
 
-	// Keep 108 beachheads from interpenetrating. The map has far more than
+	// Keep 51 beachheads from interpenetrating. The map has far more than
 	// enough land for this packing; the fallback exists only for pathological
 	// seeds and still produces a deterministic set of starts.
 	const preferredSpacing = (START_RADIUS * 2 + 2) ** 2;
