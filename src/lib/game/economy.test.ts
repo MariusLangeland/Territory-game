@@ -48,7 +48,7 @@ function buildCard(
 	const x = index % sim.width;
 	const y = (index - x) / sim.width;
 	sim.hand = [{ id: 900 + index, type }];
-	sim.gold = Math.max(10, STRUCTURE_DEFINITIONS[type].cost);
+	sim.gold = STRUCTURE_DEFINITIONS[type].cost + 20;
 	const result = sim.playCard(HUMAN_PLAYER_ID, 900 + index, x, y);
 	expect(result.ok).toBe(true);
 	sim.step();
@@ -122,7 +122,7 @@ describe('player economy and cards', () => {
 		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
-		sim.gold = 10;
+		sim.gold = 100;
 		const result = sim.upgradeDistrict(
 			HUMAN_PLAYER_ID,
 			target % sim.width,
@@ -131,15 +131,15 @@ describe('player economy and cards', () => {
 		expect(result.ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(3);
+		expect(sim.gold).toBe(69);
 
-		sim.gold = 20;
+		sim.gold = 100;
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width)).ok
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(3);
-		expect(sim.gold).toBeGreaterThanOrEqual(12);
+		expect(sim.gold).toBeGreaterThanOrEqual(68);
 	});
 
 	it('reserves the projected cost of multiple queued upgrades', () => {
@@ -150,12 +150,12 @@ describe('player economy and cards', () => {
 		if (target < 0) return;
 		const x = target % sim.width;
 		const y = Math.floor(target / sim.width);
-		sim.gold = 8;
+		sim.gold = 40;
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(true);
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(false);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(1);
+		expect(sim.gold).toBe(9);
 	});
 
 	it('reports district dirty tiles instead of forcing a full rebuild', () => {
@@ -163,7 +163,7 @@ describe('player economy and cards', () => {
 		const cell = findBuildCell(sim);
 		const x = cell % sim.width;
 		const y = (cell - x) / sim.width;
-		sim.gold = 10;
+		sim.gold = 40;
 		const artilleryCard = sim.hand.find((card) => card.type === 'artillery');
 		expect(artilleryCard).toBeDefined();
 		if (!artilleryCard) return;
@@ -184,7 +184,7 @@ describe('player economy and cards', () => {
 		const { index } = buildCard(sim, 'artillery');
 		const structure = sim.structures.at(index);
 		expect(structure?.type).toBe('artillery');
-		expect(sim.gold).toBe(4);
+		expect(sim.gold).toBe(20);
 		expect(sim.hand).toHaveLength(1);
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 	});
@@ -230,7 +230,7 @@ describe('player economy and cards', () => {
 		expect(tooPoor.ok).toBe(false);
 		expect(tooPoor.reason).toBe('no-gold');
 
-		sim.gold = 10;
+		sim.gold = 40;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
 			8801,
@@ -245,7 +245,7 @@ describe('player economy and cards', () => {
 			)
 		).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(3);
+		expect(sim.gold).toBe(9);
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 
 		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.artillery);
@@ -268,12 +268,12 @@ describe('player economy and cards', () => {
 		const cell = findBuildCell(sim);
 		const x = cell % sim.width;
 		const y = (cell - x) / sim.width;
-		sim.gold = 10;
+		sim.gold = 40;
 		expect(sim.playCard(HUMAN_PLAYER_ID, artilleryCard.id, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.hand.map((card) => card.id)).toContain(artilleryCard.id);
-		expect(sim.gold).toBe(4);
-		sim.gold = 10;
+		expect(sim.gold).toBe(10);
+		sim.gold = 40;
 		expect(sim.playCard(HUMAN_PLAYER_ID, artilleryCard.id, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(cell)?.stacks).toBe(2);
@@ -401,7 +401,7 @@ describe('player economy and cards', () => {
 		expect(secondIndex).toBeGreaterThan(-1);
 		if (secondIndex < 0) return;
 		sim.hand = [{ id: 8803, type: 'artillery' }];
-		sim.gold = 10;
+		sim.gold = 40;
 		const result = sim.playCard(
 			HUMAN_PLAYER_ID,
 			8803,

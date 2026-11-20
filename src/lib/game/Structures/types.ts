@@ -42,6 +42,7 @@ export interface ArtilleryEffect {
 	range: number;
 	cooldownTicks: number;
 	shellsPerLevel: number;
+	supplyCostPerShell: number;
 	cooldownSeconds: number;
 }
 

@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.31.1 / protocol 34.  
+**Status:** IMPLEMENTED in application 0.32.0 / protocol 34.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -253,7 +253,7 @@ Supply costs and the permanent five-card hand are unchanged. Effect reinterpreta
 
 | Card         | Cost | Implemented effect                                                             |
 | ------------ | ---- | ------------------------------------------------------------------------------ |
-| Artillery    | 6    | Active: one shell per level, 140 px range, 6 s cooldown, 12 px blast.          |
+| Artillery    | 30   | Active: 12 supply/shell, 140 px range, 6 s cooldown, 12 px blast.              |
 | Barracks     | 12   | `bonusSteps` as above; scales power, pierce, strength, launch cost, attrition. |
 | Defense Post | 2    | Unchanged: +5 defense per stack across its district.                           |
 | Command Post | 4    | +2 supply per second per stack.                                                |

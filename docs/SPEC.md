@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.31.1 (Frontage v1 + Artillery)  
+**Version:** 0.32.0 (Frontage v1 + Artillery)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.31.1, map version 4, protocol draft 34
+**Last synchronized with:** application 0.32.0, map version 4, protocol draft 34
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -314,7 +314,7 @@ This removes the small unclaimed specks and coastal slivers that organic growth 
 - A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - Only State structures anchor protection. Artillery, Barracks, Defense Posts, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (amber pickaxe, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 State is the permanent anchor structure. Artillery, Barracks, Defense Posts, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
@@ -355,14 +355,14 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll.
-- Costs: Artillery **6**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6** supply.
+- Costs: Artillery **30**, Barracks **12**, Defense Post **2**, Command Post **4**, War Academy **6** supply.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Defense Post or State aura modifies defense only on cells owned by the structure's owner.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
 
 | Card         | Cost | Effect                                                           |
 | ------------ | ---- | ---------------------------------------------------------------- |
-| Artillery    | 6    | Active: 1 shell per level, 140 px range, 6 s cooldown            |
+| Artillery    | 30   | Active: 1 shell per level, 12 supply/shell, 140 px range         |
 | Barracks     | 12   | +1 front bonus step per 2 levels, capped at +5                   |
 | Defense Post | 2    | +5 defense to every friendly pixel in its 40 px district; stacks |
 | Command Post | 4    | +2 supply per second                                             |
@@ -374,10 +374,10 @@ Every two live Barracks levels add one bonus step to the owner's fronts, rounded
 
 - The human toggles targeting with the HUD `FIRE` button or `A`, then clicks an aim point.
 - A click snaps to the nearest hostile structure within **28 px**, then requires at least one ready battery whose centre is within **140 px**.
-- Every ready battery in range fires **one shell per structure level**. A battery then reloads for **6 seconds**.
+- Every ready battery in range fires **one shell per structure level**, costing **12 supply per shell**. A battery then reloads for **6 seconds**.
 - Shells take **2 seconds** to land, with deterministic spread up to ±7 px around the aim point.
 - On impact, the nearest hostile structure within **12 px** loses one level. A level-1 structure is destroyed; State destruction removes annexation protection.
-- Artillery has no passive income, no supply cost per volley, and no front cap interaction.
+- Artillery has no passive income. A volley costs **12 supply per shell**; firing is rejected if the total cannot be paid. It has no front-cap interaction.
 - Bots use the same cooldown and shell rules, targeting the strongest hostile structure in range.
 
 ### 4.18 Districts and structure stacking
@@ -392,13 +392,13 @@ Every two live Barracks levels add one bonus step to the owner's fronts, rounded
 - Each stack increases the structure's effect: supply income, aura defense, front bonus steps, or supply cap.
 - Capturing a structure destroys it and recomputes districts; capturing an ordinary cell reassigns just that cell.
 
-| Structure    | District range | Stack effect                    |
-| ------------ | -------------: | ------------------------------- |
-| Artillery    |          32 px | active siege, no passive income |
-| Barracks     |          44 px | +1 order per 2 levels, max +5   |
-| Defense Post |          40 px | +5 defense per stack            |
-| Command Post |          32 px | +1 order per 60s per stack      |
-| War Academy  |          32 px | +1 cap per stack                |
+| Structure    | District range | Stack effect                       |
+| ------------ | -------------: | ---------------------------------- |
+| Artillery    |          32 px | active siege, no passive income    |
+| Barracks     |          44 px | +1 front step per 2 levels, max +5 |
+| Defense Post |          40 px | +5 defense per stack               |
+| Command Post |          32 px | +1 order per 60s per stack         |
+| War Academy  |          32 px | +1 cap per stack                   |
 
 District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code.
 

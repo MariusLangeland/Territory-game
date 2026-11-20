@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.31.1. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.32.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.31.1. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.32.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -227,7 +227,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Defense Post: `defense-aura`, +5, additive stacking, friendly-owned land only, covers the full 40 px district.
 - Barracks: `attack-order-bonus`, +1 bonus step per two levels (up to +5) for every front.
-- Artillery: `artillery`, active 140 px range, 6-second cooldown, one shell per level; shells remove one level from the nearest hostile structure in a 12 px blast.
+- Artillery: `artillery`, cost 30, active 140 px range, 6-second cooldown, one shell per level at 12 supply/shell; shells remove one level from the nearest hostile structure in a 12 px blast.
 - Command Post: `supply-income`, +2 supply per second.
 - War Academy: `supply-cap`, +40.
 

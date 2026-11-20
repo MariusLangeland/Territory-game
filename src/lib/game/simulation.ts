@@ -5,6 +5,7 @@ import {
 	ARTILLERY_RANGE,
 	ARTILLERY_SHELL_SPREAD,
 	ARTILLERY_SHELL_TRAVEL_TICKS,
+	ARTILLERY_SUPPLY_COST_PER_SHELL,
 	ARTILLERY_TARGET_SNAP_RADIUS,
 	ATTACK_ATTRITION_BASE,
 	ATTACK_ATTRITION_BONUS,
@@ -224,6 +225,7 @@ export type AttackFailure =
 	| 'invalid'
 	| 'no-artillery'
 	| 'cooling'
+	| 'no-supply'
 	| 'out-of-range';
 
 export interface AttackOrderResult {
@@ -684,9 +686,14 @@ export class TerritorySimulation {
 		const target = this.snapArtilleryTarget(playerId, roundedX, roundedY);
 		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
 		if (batteries.length > 0) {
+			const shells = batteries.reduce((total, battery) => total + battery.stacks, 0);
+			const cost = shells * ARTILLERY_SUPPLY_COST_PER_SHELL;
+			if (this.supplyOf(playerId) < cost) {
+				return fail('no-supply', `Need ${cost} supply to fire ${shells} shells.`);
+			}
 			return {
 				ok: true,
-				message: `${batteries.length} artillery ${batteries.length === 1 ? 'battery' : 'batteries'} ready.`
+				message: `${batteries.length} artillery ${batteries.length === 1 ? 'battery' : 'batteries'} ready: ${shells} shells for ${cost} supply.`
 			};
 		}
 
@@ -708,6 +715,9 @@ export class TerritorySimulation {
 		const target = this.snapArtilleryTarget(playerId, x, y);
 		const batteries = this.artilleryBatteries(playerId, target.x, target.y);
 		if (batteries.length === 0) return 0;
+		const totalShells = batteries.reduce((total, battery) => total + battery.stacks, 0);
+		const totalCost = totalShells * ARTILLERY_SUPPLY_COST_PER_SHELL;
+		if (!this.spendSupply(playerId, totalCost)) return 0;
 
 		let shellsFired = 0;
 		for (const battery of batteries) {
@@ -742,7 +752,7 @@ export class TerritorySimulation {
 				'artillery',
 				`Artillery fired ${shellsFired} ${shellsFired === 1 ? 'shell' : 'shells'} from ${batteries.length} ${
 					batteries.length === 1 ? 'battery' : 'batteries'
-				}.`,
+				} for ${totalCost} supply.`,
 				playerId
 			);
 		}

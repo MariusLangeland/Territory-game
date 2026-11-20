@@ -102,6 +102,7 @@ export const SUPPLY_WIN_SHARE = 70;
 export const ATTACK_SEARCH_RADIUS = 34;
 
 /** Active artillery: one shell per structure level per volley. */
+export const ARTILLERY_SUPPLY_COST_PER_SHELL = 12;
 export const ARTILLERY_RANGE = 140;
 export const ARTILLERY_COOLDOWN_TICKS = TICK_RATE * 6;
 export const ARTILLERY_SHELL_TRAVEL_TICKS = TICK_RATE * 2;

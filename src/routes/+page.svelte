@@ -6,6 +6,7 @@
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
+		ARTILLERY_SUPPLY_COST_PER_SHELL,
 		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
 		MAP_HEIGHT,
@@ -140,6 +141,10 @@
 	let readyArtillery = $derived(
 		humanArtillery.filter((structure) => structure.readyAtTick <= (snapshot?.tick ?? 0))
 	);
+	let readyArtilleryShells = $derived(
+		readyArtillery.reduce((total, structure) => total + structure.stacks, 0)
+	);
+	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_SHELL);
 	let artilleryTargeting = $state(false);
 	let human = $derived.by(() => {
 		if (!snapshot) return null;
@@ -477,6 +482,10 @@
 		}
 		if (!artilleryTargeting && readyArtillery.length === 0) {
 			showToast('All artillery is reloading.', 'warn');
+			return;
+		}
+		if (!artilleryTargeting && snapshot.supply < artilleryVolleyCost) {
+			showToast(`Need ${artilleryVolleyCost} supply to fire this volley.`, 'warn');
 			return;
 		}
 		artilleryTargeting = !artilleryTargeting;
@@ -1100,13 +1109,15 @@
 					<button
 						class="fire-artillery"
 						class:active={artilleryTargeting}
+						class:unaffordable={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
 						type="button"
 						onclick={toggleArtilleryTargeting}
-						title="Fire every ready artillery battery at a point within range"
+						disabled={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
+						title={`Fire every ready battery (${readyArtilleryShells} shells, ${artilleryVolleyCost} supply) at a point within range`}
 					>
 						{artilleryTargeting
 							? 'SELECT TARGET'
-							: `FIRE ${readyArtillery.length}/${humanArtillery.length}`}
+							: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${artilleryVolleyCost}S`}
 					</button>
 				{/if}
 				<div
@@ -1331,7 +1342,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.31.1 / PROTOCOL 34</span>
+				<span>BUILD 0.32.0 / PROTOCOL 34</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1506,9 +1517,9 @@
 							simultaneously; a front at zero dies and the survivor holds the contact line. Use
 							CANCEL LAST or press X to refund the remaining strength share. Each state's State
 							structure anchors its mainland and adds 20 defense. The growth switch selects
-							circular, smooth, or organic for new fronts. Artillery fires on command:
-							<kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires one shell; shells
-							that hit a structure remove one level.
+							circular, smooth, or organic for new fronts. Artillery costs 30 supply to build and
+							fires on command: <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
+							one shell at 12 supply per shell; shells that hit a structure remove one level.
 						</p>
 					</section>
 					<section>
@@ -2311,6 +2322,12 @@
 
 	.fire-artillery.active {
 		box-shadow: 0 0 0 1px rgba(255, 155, 90, 0.25);
+	}
+
+	.fire-artillery.unaffordable {
+		border-color: rgba(255, 120, 103, 0.28);
+		color: rgba(255, 196, 138, 0.4);
+		cursor: not-allowed;
 	}
 
 	.hand-shell {

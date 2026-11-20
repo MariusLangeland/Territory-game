@@ -1120,3 +1120,36 @@ Mine was redundant after supply became the only resource: base territory income 
 - **Single-target click on battery then target:** more clicks and harder on touch than a FIRE mode.
 - **Supply cost per volley:** rejected; cooldown alone bounds output and keeps the card affordable.
 - **Damage structures with splash only:** would make aiming at empty ground meaningless; a 12 px blast still requires deliberate targeting.
+
+---
+
+## ADR-035 — Artillery build and fire costs
+
+**Status:** accepted and implemented in 0.32.0  
+**Date:** 2026-11-20
+
+### Context
+
+Artillery at 6 supply with free volleys was too efficient: it replaced the Mine slot, was easy to spam, and turned every structure into cheap siege fodder. The request was to make the structure much more expensive to build and to fire.
+
+### Decision
+
+- Raise the Artillery build cost from **6 to 30 supply**.
+- Charge **12 supply per shell** fired, so a level-N battery spends `N × 12` supply per volley.
+- Validate the full volley cost before the command is accepted and spend it when the volley resolves. If the player cannot pay, no cooldown starts and no shells are created.
+- Show the current volley cost on the HUD `FIRE` control and disable it when unaffordable.
+- Bots use the same build and fire costs.
+- Protocol stays 34; app version becomes 0.32.0.
+
+### Consequences
+
+- Artillery is now a major economic commitment, comparable to a front launch just to build.
+- High-level artillery has a real operating cost; sustained bombardment competes directly with cards and fronts.
+- No partial volleys: the player pays for every ready shell or fires nothing.
+- Upgrades are also much more expensive because upgrade cost is base cost plus current level.
+
+### Alternatives considered
+
+- **Flat cost per volley:** simpler, but ignored the one-shell-per-level scaling.
+- **Supply per battery rather than per shell:** undercharged high-level batteries.
+- **Keep build at 6 and only add fire cost:** still too easy to spam batteries.

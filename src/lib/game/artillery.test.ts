@@ -3,9 +3,10 @@ import {
 	ARTILLERY_COOLDOWN_TICKS,
 	ARTILLERY_RANGE,
 	ARTILLERY_SHELL_TRAVEL_TICKS,
+	ARTILLERY_SUPPLY_COST_PER_SHELL,
 	HUMAN_PLAYER_ID
 } from './constants';
-import type { Structure } from './Structures';
+import { ARTILLERY_DEFINITION, type Structure } from './Structures';
 import { TerritorySimulation, type ArtilleryShell } from './simulation';
 
 function createBattery(sim: TerritorySimulation): {
@@ -23,6 +24,23 @@ function createBattery(sim: TerritorySimulation): {
 }
 
 describe('artillery active ability', () => {
+	it('is expensive to build and fire', () => {
+		expect(ARTILLERY_DEFINITION.cost).toBe(30);
+		expect(ARTILLERY_SUPPLY_COST_PER_SHELL).toBe(12);
+
+		const sim = new TerritorySimulation({ seed: 700001 });
+		const { target } = createBattery(sim);
+		sim.gold = ARTILLERY_SUPPLY_COST_PER_SHELL - 1;
+		const poor = sim.enqueueArtillery(HUMAN_PLAYER_ID, target.x, target.y);
+		expect(poor.ok).toBe(false);
+		expect(poor.reason).toBe('no-supply');
+
+		sim.gold = ARTILLERY_SUPPLY_COST_PER_SHELL;
+		expect(sim.enqueueArtillery(HUMAN_PLAYER_ID, target.x, target.y).ok).toBe(true);
+		sim.step();
+		expect(sim.gold).toBe(0);
+	});
+
 	it('rejects firing without a battery', () => {
 		const sim = new TerritorySimulation({ seed: 700001 });
 		const result = sim.enqueueArtillery(HUMAN_PLAYER_ID, 10, 10);
