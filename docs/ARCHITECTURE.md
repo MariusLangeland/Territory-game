@@ -389,6 +389,8 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - Physical GPU space: CSS multiplied by DPR (capped at 2).
 - `MapCamera` owns center, zoom, fit scale, screen-to-map and map-to-screen. There is no edge pan clamp: edge states can be dragged toward the viewport center to escape HUD occlusion, showing ocean/void beyond the map.
 - `generateMap(seed, options)` supports runtime state count and map dimensions while preserving the default 2048×1024/51-state output. `TerritorySimulation` stores `playerCount`; per-player arrays and grievance/attacker matrices are sized from it.
+- `ai/genome.ts` defines evolvable bot genomes: traits, per-type affinities, and six behaviour-module weights, with deterministic creation/mutation/crossover.
+- `ai/evolution.ts` runs deterministic all-bot selection rounds, fitness scoring, pruning/reproduction, and poor/good/top buckets. `ai/evolution-csv.ts` round-trips genomes through the spreadsheet format; `ai/buckets.ts` persists selected buckets for match difficulty.
 - `naval.ts` labels static 4-connected sea components once and provides deterministic 4-neighbour A* for boat routes. `TerritorySimulation` queues naval commands, spends launch supply, advances boats by arrival tick, claims the beachhead, auto-builds a Port, and opens a normal inward front. Port protection adds `IntegrityAnchor`s for Ports whose friendly land reaches the State, plus same-owner Ports sharing a sea component with one.
 - Pointer events are converted to map cells using CSS space.
 - The renderer writes physical resolution and physical scale into uniforms.

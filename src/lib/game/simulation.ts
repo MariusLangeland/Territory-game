@@ -118,6 +118,7 @@ import {
 	type StructureType
 } from './Structures';
 import { DeterministicRng } from './rng';
+import { BOT_MODULE_IDS, scaledBonus, type BotGenome, type BotModules } from './ai/genome';
 
 export interface PlayerState {
 	id: number;
@@ -181,7 +182,19 @@ interface BotProfile {
 	buildPlan: BuildableStructureType[];
 	/** Persistent per-type affinity; dynamic utility layers situational value on top. */
 	structureBias: Record<BuildableStructureType, number>;
+	/** Evolvable behaviour-module weights, neutral at 50. */
+	modules: BotModules;
+	genomeId: string | null;
 }
+
+const DEFAULT_BOT_MODULES: BotModules = {
+	income: 50,
+	defense: 50,
+	deterrence: 50,
+	opportunity: 50,
+	expansion: 50,
+	retaliation: 50
+};
 
 interface BotEconomicAction {
 	type: BuildableStructureType;
@@ -413,6 +426,10 @@ export interface SimulationOptions {
 	botDifficulty?: BotDifficulty;
 	/** 0 disables the timer. At expiry the largest alive state wins. */
 	matchDurationTicks?: number;
+	/** Optional evolved genomes per player id-1; null keeps the default profile. */
+	botGenomes?: readonly (BotGenome | null)[];
+	/** Evolution/spectator mode: make every seat, including the human seat, a bot. */
+	allPlayersBots?: boolean;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -563,7 +580,7 @@ export class TerritorySimulation {
 		this.players = Array.from({ length: this.playerCount }, (_, i) => ({
 			id: i + 1,
 			name: PLAYER_NAMES[i] ?? `State ${i + 1}`,
-			isBot: i !== HUMAN_PLAYER_ID - 1,
+			isBot: options.allPlayersBots === true || i !== HUMAN_PLAYER_ID - 1,
 			alive: true,
 			territory: 0,
 			border: new Set<number>()
@@ -582,9 +599,10 @@ export class TerritorySimulation {
 		this.botDeterrence = new Uint16Array(this.playerCount);
 		this.botGrievanceMark = new Uint32Array(this.playerCount);
 		this.botAttackers = new Uint8Array(this.playerCount * this.playerCount);
-		this.botProfiles = Array.from({ length: this.playerCount }, (_, index) =>
-			this.createBotProfile(index + 1)
-		);
+		this.botProfiles = Array.from({ length: this.playerCount }, (_, index) => {
+			const genome = options.botGenomes?.[index] ?? null;
+			return genome ? this.createProfileFromGenome(genome) : this.createBotProfile(index + 1);
+		});
 		for (const player of this.players) {
 			if (player.isBot) this.botGold[player.id - 1] = BOT_STARTING_GOLD;
 		}
@@ -664,6 +682,11 @@ export class TerritorySimulation {
 			}
 		}
 		return income;
+	}
+
+	/** Public economy read for telemetry and the evolution fitness function. */
+	incomeOf(playerId: number): number {
+		return this.supplyIncomeFor(playerId);
 	}
 
 	supplyCap(playerId: number): number {
@@ -2845,7 +2868,34 @@ export class TerritorySimulation {
 			opportunist,
 			focus: buildPlan[0],
 			buildPlan,
-			structureBias
+			structureBias,
+			modules: { ...DEFAULT_BOT_MODULES },
+			genomeId: null
+		};
+	}
+
+	private createProfileFromGenome(genome: BotGenome): BotProfile {
+		const structureBias = {} as Record<BuildableStructureType, number>;
+		for (const type of BUILDABLE_STRUCTURE_TYPES) structureBias[type] = genome.structureBias[type];
+		const preferred = BUILDABLE_STRUCTURE_TYPES.map((type) => [type, structureBias[type]] as const);
+		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+		const buildPlan = preferred.map((entry) => entry[0]);
+		const modules = {} as BotModules;
+		for (const id of BOT_MODULE_IDS) modules[id] = genome.modules[id];
+		return {
+			aggression: genome.aggression,
+			economy: genome.economy,
+			fortification: genome.fortification,
+			command: genome.command,
+			vengeful: genome.vengeful,
+			cautious: genome.cautious,
+			conciliatory: genome.conciliatory,
+			opportunist: genome.opportunist,
+			focus: buildPlan[0],
+			buildPlan,
+			structureBias,
+			modules,
+			genomeId: genome.id
 		};
 	}
 
@@ -2982,6 +3032,7 @@ export class TerritorySimulation {
 		const earlyType = this.botEarlyEconomyType(player);
 		const incomeGap = this.botIncomeGap[player.id - 1];
 		const deterrence = this.botDeterrence[player.id - 1];
+		const modules = profile.modules ?? DEFAULT_BOT_MODULES;
 		const owned = this.structures.forOwner(player.id);
 		const candidates: BotEconomicAction[] = [];
 		const order = new Map(BUILDABLE_STRUCTURE_TYPES.map((type, index) => [type, index] as const));
@@ -3030,7 +3081,7 @@ export class TerritorySimulation {
 						(threat * (1 + Math.floor(profile.fortification / 50)) + (defensive ? 20 : 0)) /
 							(1 + totalStacks)
 					);
-					buildScore += deterrence * BOT_DETERRENCE_FORT_UTILITY;
+					buildScore += scaledBonus(deterrence * BOT_DETERRENCE_FORT_UTILITY, modules.deterrence);
 					break;
 				case 'barracks':
 					buildScore +=
@@ -3052,15 +3103,15 @@ export class TerritorySimulation {
 					buildScore +=
 						Math.max(0, 12 - income) * 2 +
 						(supplyRatio > 0.85 ? 8 : 0) +
-						BOT_INCOME_UTILITY +
-						incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT;
+						scaledBonus(BOT_INCOME_UTILITY, modules.income) +
+						scaledBonus(incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT, modules.income);
 					break;
 				case 'war-academy':
 					buildScore +=
 						(capGap ? 100 : 0) +
 						(supplyRatio > 0.8 ? 18 : 0) +
 						(cap < 400 ? 6 : 0) +
-						incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT;
+						scaledBonus(incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT, modules.income);
 					break;
 				case 'artillery':
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
@@ -3077,7 +3128,7 @@ export class TerritorySimulation {
 			// the opening ramp or cap growth to win instead.
 			if (type === earlyType && !defensive) buildScore += BOT_EARLY_ECONOMY_UTILITY;
 			if (defensive && type === 'fortification' && count === 0) {
-				buildScore += BOT_DEFENSE_FIRST_UTILITY;
+				buildScore += scaledBonus(BOT_DEFENSE_FIRST_UTILITY, modules.defense);
 			}
 			// Cheap actions get a small efficiency nudge without making them
 			// dominate expensive strategic choices.
@@ -3111,15 +3162,20 @@ export class TerritorySimulation {
 				// Pixel defense is the fastest way to blunt an active front, but
 				// heavily stacked forts stop crowding out other investments.
 				upgradeScore += Math.floor((threat * 3 + (defensive ? 20 : 0) + 10) / (1 + lowest.stacks));
-				upgradeScore += deterrence * BOT_DETERRENCE_FORT_UTILITY;
-				if (defensive) upgradeScore += BOT_DEFENSE_FIRST_UTILITY;
+				upgradeScore += scaledBonus(deterrence * BOT_DETERRENCE_FORT_UTILITY, modules.deterrence);
+				if (defensive) {
+					upgradeScore += scaledBonus(BOT_DEFENSE_FIRST_UTILITY, modules.defense);
+				}
 			} else if (type === 'barracks' || type === 'jammer') {
 				upgradeScore += Math.floor((threat * 2 + (defensive ? 12 : 0)) / (1 + lowest.stacks));
 			} else if (type === 'command-post') {
-				upgradeScore += BOT_INCOME_UTILITY + incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT;
+				upgradeScore += scaledBonus(
+					BOT_INCOME_UTILITY + incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT,
+					modules.income
+				);
 			} else if (type === 'war-academy') {
 				if (capGap) upgradeScore += 80;
-				upgradeScore += incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT;
+				upgradeScore += scaledBonus(incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT, modules.income);
 			}
 			if (
 				(!isDefensive || lowest.stacks < maxLevel) &&
@@ -3719,11 +3775,15 @@ export class TerritorySimulation {
 		strengths: Uint32Array
 	): { score: number; opportunity: boolean } {
 		const threatened = this.botDefensive[attackerId - 1] === 1;
+		const modules = profile.modules ?? DEFAULT_BOT_MODULES;
 		if (defenderId === 0) {
 			// With a war at home, quiet neutral expansion beats opening a new front.
 			return {
 				score:
-					45 + Math.floor(profile.aggression * 0.15) + (threatened ? BOT_THREAT_NEUTRAL_BIAS : 0),
+					45 +
+					Math.floor(profile.aggression * 0.15) +
+					(threatened ? BOT_THREAT_NEUTRAL_BIAS : 0) +
+					Math.floor((modules.expansion - 50) / 5),
 				opportunity: false
 			};
 		}
@@ -3758,7 +3818,10 @@ export class TerritorySimulation {
 			score += 10 + Math.floor(profile.opportunist * 0.15);
 		}
 		if (lowSupply) {
-			score += BOT_OPPORTUNITY_STRONGER_BONUS + Math.floor(profile.opportunist * 0.6);
+			score += scaledBonus(
+				BOT_OPPORTUNITY_STRONGER_BONUS + Math.floor(profile.opportunist * 0.6),
+				modules.opportunity
+			);
 		} else if (defenderSupply >= this.attackSupplyCost(defenderId, attackerId)) {
 			score -= Math.floor(profile.cautious * 0.4);
 		}
@@ -3770,9 +3833,14 @@ export class TerritorySimulation {
 			const counterAttacking =
 				this.botAttackers[(defenderId - 1) * this.playerCount + (attackerId - 1)] === 1;
 			if (grudge > 0) {
-				score += BOT_THREAT_RETALIATE_BONUS + Math.floor(profile.vengeful * 0.5);
+				score += scaledBonus(
+					BOT_THREAT_RETALIATE_BONUS + Math.floor(profile.vengeful * 0.5),
+					modules.retaliation
+				);
 			}
-			if (counterAttacking) score += BOT_THREAT_COUNTER_BONUS;
+			if (counterAttacking) {
+				score += scaledBonus(BOT_THREAT_COUNTER_BONUS, modules.retaliation);
+			}
 			if (grudge === 0 && !counterAttacking) score -= BOT_THREAT_UNRELATED_PENALTY;
 		}
 		return { score, opportunity };

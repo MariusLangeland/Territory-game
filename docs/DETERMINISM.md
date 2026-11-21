@@ -78,7 +78,8 @@ Pixel positions are integer; clicks are floored to cell coordinates before comma
 - The map UI accepts 1–8 hex characters; URLs store the decimal equivalent.
 - `MAP_VERSION` is part of the map identity. Seed alone is insufficient across generator versions.
 - Match identity also includes map width/height, player count, growth mode, bot difficulty, and match timer.
-- Sea components and naval routes derive from the static land mask; landing ids, owners, source Ports, routes, launch/arrival ticks, and target beachheads are checksummed. Protocol 38 adds `navalLandings` to snapshots. Two matches with the same seed but different setup are different worlds.
+- Sea components and naval routes derive from the static land mask; landing ids, owners, source Ports, routes, launch/arrival ticks, and target beachheads are checksummed. Protocol 38 adds `navalLandings` to snapshots.
+- Evolution genomes are created, mutated, crossed, and matched only from `hash32`/seeded hashes in fixed order. Matches use all-bot simulations with fixed seat schedules and seeds; fitness and bucket ordering are integer/deterministic. The CSV round-trip does not introduce randomness. Two matches with the same seed but different setup are different worlds.
 - Default generation (2048×1024, 51 states) remains byte-for-byte identical to the pre-configuration generator.
 
 ### 4.2 Simulation PRNG

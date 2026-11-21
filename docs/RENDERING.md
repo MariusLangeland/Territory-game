@@ -50,6 +50,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
 - when district merging is enabled (Ctrl not held), draws one combined icon at the mean centre of each touching same-owner/same-type group, with the combined stack badge; individual icons return under Ctrl;
 - draws active naval landings as owner-ringed boats interpolated along their sea route with a short wake; Port markers use an anchor glyph;
+- supports a spectator camera that fits the whole map and a `speedMultiplier`/`maxStepsPerFrame` fast-forward path used by the Evolution Lab;
 - draws rival supply banners at capitals from the latest 5 Hz snapshot: transparent name plus compact supply with a text shadow but no plaque or border, size scaled by territory and capped to the state's on-screen footprint, smallest first, hidden when the state is too small to hold legible text, clamped to the viewport;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);

@@ -1970,3 +1970,30 @@ Bots defended reactively, under-invested in supply, and evaluated stronger oppon
 - Bots build more Fortifications, Command Posts, and War Academies and fewer fronts.
 - Deterministic telemetry and checksum coverage include the new income-gap and deterrence fields.
 - No wire-shape change; protocol remains 38.
+
+---
+
+## ADR-061 — Evolutionary AI sandbox and genome buckets
+
+**Status:** accepted and implemented in 0.54.0  
+**Date:** 2026-11-21
+
+### Context
+
+Bot behavior was hand-tuned through constants and personality hashes. Improving the AI required guessing which parameter combinations were better, and there was no repeatable way to compare many AI policies or feed successful ones back into matches.
+
+### Decision
+
+- Represent bot policy as a **genome**: eight personality traits, per-type structure affinities, and six modular behavior weights (income, defense, deterrence, opportunity, expansion, retaliation).
+- Module weights are neutral at 50. Default bots use 50 everywhere, so existing behavior is unchanged; evolved genomes scale the relevant bonus up or down.
+- Run deterministic all-bot matches. Fitness averages land share, final income, live attack strength, wins, and survival. Prune the bottom half, retain elites, and reproduce with seeded crossover + mutation.
+- Sort final genomes into poor/good/top buckets. Difficulty maps relaxed→poor, standard→good, ruthless→top. Buckets persist in localStorage and are passed into normal matches.
+- Provide a CSV spreadsheet as the interchange format: export includes traits, modules, affinities, bucket, and performance; import validates and reconstructs genomes.
+- Provide both a headless CLI (`pnpm evolution`) and an in-client WebGPU spectator at `/evolution` with 1×/4×/16×/48× fast-forward. Both use the same `EvolutionSandbox`.
+
+### Consequences
+
+- AI tuning becomes empirical and reproducible; successful genomes can directly populate difficulty buckets.
+- All-bot simulations add an option that makes the human seat a bot; normal matches are unaffected when no genomes are supplied.
+- Evolution behavior is deterministic and covered by tests for genome mutation/crossover, selection, buckets, CSV round-trip, and genome-derived profiles.
+- The spreadsheet is not a binary .xlsx workbook; CSV is used so the client can import it with no extra dependency.

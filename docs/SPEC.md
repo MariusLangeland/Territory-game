@@ -233,6 +233,16 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Bots use the same attack-order, structure, district, aura, and clash rules as the human.
 - Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, affinities, grievances, and utility decisions are deterministic. Behavior is replayable.
 
+### 4.8b Evolution lab
+
+- **Genomes** combine eight personality traits (`aggression`, `economy`, `fortification`, `command`, `vengeance`, `caution`, `conciliation`, `opportunism`), per-type structure affinities, and six evolvable behaviour modules: income, defence, deterrence, opportunity, expansion, and retaliation.
+- Module weights are neutral at 50 and scale the corresponding bonus; default bots use 50 for every module, preserving the non-evolved AI.
+- **Fitness** per match = land share (primary), final income, attack strength, win bonus, and survival bonus. Fitness is averaged across matches.
+- Each generation seats genomes in deterministic all-bot matches. The bottom half is pruned; elites survive; offspring are produced by crossover and mutation. A module can mutate wholesale so behaviour presets remain mixable.
+- Final genomes are bucketed into **poor**, **good**, and **top** (roughly 50/30/20%). Buckets persist locally and feed match difficulty: relaxed → poor, standard → good, ruthless → top.
+- The headless CLI (`pnpm evolution`) writes a CSV spreadsheet with genome traits, module weights, bucket, fitness, land, income, attack, and wins. The client can import that spreadsheet to rerun those genomes or combine selected bucket genomes.
+- **Spectator mode** at `/evolution` runs the same natural-selection loop in-client using paired bot-only simulations; `1×`/`4×`/`16×`/`48×` controls fast-forward. It reuses the WebGPU renderer and shows live genome performance and buckets.
+
 ### 4.9 Tick order
 
 1. Increment `tick`.

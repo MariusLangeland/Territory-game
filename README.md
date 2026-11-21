@@ -40,6 +40,7 @@
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
 | Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                               |
+| AI Evolution    | Genome traits + behaviour modules, deterministic selection/pruning/mutation, poor/good/top buckets, CSV, headless + WebGPU spectator lab                       |
 | Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                   |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                       |
@@ -72,6 +73,7 @@ pnpm bench      # map/tick/checksum benchmark
 pnpm telemetry  # headless multi-seed match telemetry
 pnpm balance    # personality/ramp/structure balance sweep
 pnpm soak       # 10k-tick deterministic soak test
+pnpm evolution  # headless natural-selection sandbox → CSV spreadsheet
 pnpm docs:reference # regenerate docs/REFERENCE.md from code
 pnpm docs:check     # fail if generated rules docs are stale
 pnpm build      # production build via adapter-node

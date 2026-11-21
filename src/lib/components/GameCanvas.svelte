@@ -35,6 +35,11 @@
 		mergeDistricts?: boolean;
 		highlightType?: StructureType | null;
 		cameraBridge: GameCameraBridge;
+		/** Spectator fast-forward; normal gameplay keeps 1× and the 4-step clamp. */
+		speedMultiplier?: number;
+		maxStepsPerFrame?: number;
+		/** Evolution spectators start with the whole map visible. */
+		cameraFocus?: 'human' | 'map';
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;
 		onAttack?: (x: number, y: number) => void;
@@ -50,6 +55,9 @@
 		mergeDistricts = true,
 		highlightType = null,
 		cameraBridge,
+		speedMultiplier = 1,
+		maxStepsPerFrame = 4,
+		cameraFocus = 'human',
 		onTick,
 		onHover,
 		onAttack,
@@ -596,12 +604,12 @@
 			if (paused || simulation.ended) {
 				accumulator = 0;
 			} else {
-				accumulator += delta;
+				accumulator += delta * speedMultiplier;
 				let steps = 0;
 				let latestSnapshot: GameSnapshot | null = null;
 				const pendingEvents: SimEvent[] = [];
 
-				while (accumulator >= TICK_MS && steps < 4 && !simulation.ended) {
+				while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
 					const result = simulation.step();
 					renderer.applyChanges(
 						result.changes,
@@ -615,7 +623,7 @@
 					accumulator -= TICK_MS;
 					steps++;
 				}
-				if (steps >= 4) accumulator = 0;
+				if (steps >= maxStepsPerFrame) accumulator = 0;
 
 				// Territory rendering updates every tick, but rebuilding 51 HUD
 				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
@@ -661,7 +669,11 @@
 
 				const camera = renderer.camera;
 				const humanStart = simulation.map.starts[HUMAN_PLAYER_ID - 1];
-				camera.focusOn(humanStart.x, humanStart.y, 3.8);
+				if (cameraFocus === 'map') {
+					camera.focusOn(simulation.width / 2, simulation.height / 2, 1);
+				} else {
+					camera.focusOn(humanStart.x, humanStart.y, 3.8);
+				}
 
 				renderer.onDeviceLost = (message) => {
 					onError?.(new Error(message));

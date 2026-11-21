@@ -41,6 +41,7 @@
 		type PublicCard
 	} from '#lib/game/Structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
+	import { difficultyGenomes, loadEvolutionBuckets } from '#lib/game/ai/buckets';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 
 	interface HoverState {
@@ -490,6 +491,13 @@
 		// Yield once so the loading screen paints before the CPU builds the map.
 		worldTimer = setTimeout(() => {
 			try {
+				const evolvedPool = difficultyGenomes(loadEvolutionBuckets(), normalized.difficulty);
+				const botGenomes =
+					evolvedPool.length > 0
+						? Array.from({ length: normalized.states }, (_, index) =>
+								index === 0 ? null : evolvedPool[(seed + index) % evolvedPool.length]
+							)
+						: undefined;
 				const next = new TerritorySimulation({
 					seed: seed >>> 0,
 					playerCount: normalized.states,
@@ -497,7 +505,8 @@
 					height: preset.height,
 					growthMode: normalized.growthMode,
 					botDifficulty: normalized.difficulty,
-					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE
+					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
+					botGenomes
 				});
 				sim = next;
 				snapshot = next.getSnapshot();
@@ -1196,6 +1205,9 @@
 					aria-label="Open field manual"
 				>
 					<span>?</span>
+				</button>
+				<button class="action-button" type="button" onclick={() => goto('/evolution')}>
+					AI LAB
 				</button>
 				<button class="action-button new-world-button" type="button" onclick={newWorld}>
 					NEW WORLD
