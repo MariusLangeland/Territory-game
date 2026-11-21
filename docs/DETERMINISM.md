@@ -104,7 +104,7 @@ Bots use the PRNG for:
 - choosing a frontier cell,
 - choosing the attack target among available neutral/hostile neighbours.
 
-Bot profiles — aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and the six-type build plan — are derived from `hash32` of the player id and world seed, not from the bot PRNG. Removing or changing that derivation changes which structures bots build and which targets they choose. Border sampling for target scoring still consumes the shared PRNG, so changing the sample count or order changes draw counts and results.
+Bot profiles — aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and the six per-type affinities (plus a display-only preference order) — are derived from `hash32` of the player id and world seed, not from the bot PRNG. Economy and attack utilities are integer/deterministic functions of profile, world state, reserves, and target scores. Removing or changing that derivation changes which structures bots build and which targets they choose. Border sampling for target scoring still consumes the shared PRNG, so changing the sample count or order changes draw counts and results.
 
 Changing the number or order of these draws changes all subsequent bot behavior. A refactor that "just moves a random call" is a simulation change.
 

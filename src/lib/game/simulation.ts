@@ -21,6 +21,15 @@ import {
 	ATTACK_SUPPLY_COST_BONUS,
 	BASE_DEFENSE_OFFSET,
 	BASE_GOLD_INCOME,
+	BOT_ACTION_MAX_PER_INTERVAL,
+	BOT_ACTION_NOVELTY_BONUS,
+	BOT_ACTION_REPEAT_PENALTY,
+	BOT_STRATEGIC_SAVE_MIN_STRUCTURES,
+	BOT_ATTACK_AGGRESSION_WEIGHT,
+	BOT_ATTACK_BASE_CHANCE,
+	BOT_ATTACK_SCORE_CENTER,
+	BOT_ATTACK_SCORE_WEIGHT,
+	BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT,
 	BOT_BUILD_INTERVAL,
 	BOT_DEFENSE_RESERVE_MAX,
 	BOT_DEFENSE_STALL_INTERVALS,
@@ -144,6 +153,17 @@ interface BotProfile {
 	opportunist: number;
 	focus: BuildableStructureType;
 	buildPlan: BuildableStructureType[];
+	/** Persistent per-type affinity; dynamic utility layers situational value on top. */
+	structureBias: Record<BuildableStructureType, number>;
+}
+
+interface BotEconomicAction {
+	type: BuildableStructureType;
+	kind: 'build' | 'upgrade';
+	cost: number;
+	score: number;
+	cell?: number;
+	structure?: Structure;
 }
 
 export interface PublicAttack {
@@ -2390,17 +2410,35 @@ export class TerritorySimulation {
 		const conciliatory = hash32(playerId, 8, seed ^ 0xb55a4f09) % 101;
 		const opportunist = hash32(playerId, 9, seed ^ 0x165667b1) % 101;
 
-		const preferred: Array<[BuildableStructureType, number]> = [
-			['artillery', 16 + economy + Math.floor(aggression / 2) + (hash32(playerId, 10, seed) % 25)],
-			['barracks', 12 + aggression + (hash32(playerId, 11, seed) % 25)],
-			['fortification', 12 + fortification + (hash32(playerId, 12, seed) % 25)],
-			['jammer', 8 + Math.floor((fortification + command) / 2) + (hash32(playerId, 15, seed) % 25)],
-			['command-post', 8 + command + (hash32(playerId, 13, seed) % 25)],
-			[
-				'war-academy',
-				5 + Math.floor((aggression + command) / 2) + (hash32(playerId, 14, seed) % 25)
-			]
-		];
+		const structureBias: Record<BuildableStructureType, number> = {
+			artillery:
+				15 +
+				Math.floor(economy * 0.35) +
+				Math.floor(aggression * 0.55) +
+				(hash32(playerId, 10, seed) % 20),
+			barracks:
+				12 +
+				Math.floor(aggression * 0.7) +
+				Math.floor(cautious * 0.15) +
+				(hash32(playerId, 11, seed) % 20),
+			fortification:
+				10 +
+				Math.floor(fortification * 0.8) +
+				Math.floor((100 - aggression) * 0.1) +
+				(hash32(playerId, 12, seed) % 20),
+			jammer: 8 + Math.floor((fortification + command) * 0.4) + (hash32(playerId, 15, seed) % 20),
+			'command-post':
+				10 +
+				Math.floor(economy * 0.65) +
+				Math.floor(command * 0.2) +
+				(hash32(playerId, 13, seed) % 20),
+			'war-academy':
+				5 +
+				Math.floor(command * 0.55) +
+				Math.floor(economy * 0.35) +
+				(hash32(playerId, 14, seed) % 20)
+		};
+		const preferred = BUILDABLE_STRUCTURE_TYPES.map((type) => [type, structureBias[type]] as const);
 		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 		const buildPlan = preferred.map((entry) => entry[0]);
 		return {
@@ -2413,8 +2451,271 @@ export class TerritorySimulation {
 			conciliatory,
 			opportunist,
 			focus: buildPlan[0],
-			buildPlan
+			buildPlan,
+			structureBias
 		};
+	}
+
+	/**
+	 * Supply a bot keeps back for its highest-affinity missing structure once it
+	 * has a basic economy. Without this, cheap affordable upgrades consume every
+	 * interval and expensive strategic types are never reached.
+	 */
+	private botAspiration(player: PlayerState): {
+		type: BuildableStructureType;
+		cost: number;
+	} | null {
+		const profile = this.botProfiles[player.id - 1];
+		const owned = this.structures
+			.forOwner(player.id)
+			.filter((structure) => structure.type !== 'state');
+		if (owned.length < BOT_STRATEGIC_SAVE_MIN_STRUCTURES) return null;
+		const built = new Set(owned.map((structure) => structure.type));
+		const cap = Math.max(1, this.supplyCap(player.id));
+		let bestType: BuildableStructureType | null = null;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		for (const type of BUILDABLE_STRUCTURE_TYPES) {
+			if (built.has(type)) continue;
+			const cost = STRUCTURE_DEFINITIONS[type].cost;
+			// Prefer aspirations that the current stock cap can actually fund;
+			// this stages cheap diversity before late-game artillery.
+			const capPenalty = Math.floor(Math.max(0, cost - cap) / 10);
+			const score = profile.structureBias[type] + BOT_ACTION_NOVELTY_BONUS - capPenalty;
+			if (score > bestScore) {
+				bestScore = score;
+				bestType = type;
+			}
+		}
+		return bestType ? { type: bestType, cost: STRUCTURE_DEFINITIONS[bestType].cost } : null;
+	}
+
+	/** A missing type with no legal build cell means expansion is the priority. */
+	private botNeedsExpansion(player: PlayerState): boolean {
+		const built = new Set(
+			this.structures
+				.forOwner(player.id)
+				.filter((structure) => structure.type !== 'state')
+				.map((structure) => structure.type)
+		);
+		for (const type of BUILDABLE_STRUCTURE_TYPES) {
+			if (built.has(type)) continue;
+			if (this.findBotBuildCell(player, type) < 0) return true;
+		}
+		return false;
+	}
+
+	/** Cheapest near-term economic purchase; attacks must not drain below it. */
+	private botEconomicBuffer(player: PlayerState): number {
+		let buffer = Number.POSITIVE_INFINITY;
+		for (const type of BUILDABLE_STRUCTURE_TYPES) {
+			const existing = this.structures.forOwnerType(player.id, type);
+			if (!existing) {
+				buffer = Math.min(buffer, STRUCTURE_DEFINITIONS[type].cost);
+			} else {
+				buffer = Math.min(
+					buffer,
+					STRUCTURE_DEFINITIONS[type].cost + existing.stacks * UPGRADE_LEVEL_COST_STEP
+				);
+			}
+		}
+		return Number.isFinite(buffer) ? buffer : 0;
+	}
+
+	private botStrategicReserve(player: PlayerState): number {
+		const aspiration = this.botAspiration(player);
+		if (!aspiration) return 0;
+		const gold = this.botGold[player.id - 1];
+		const cap = Math.max(1, this.supplyCap(player.id));
+		if (aspiration.cost > cap) {
+			// The stock cap, not income, is the bottleneck. Set the save target
+			// to the next War Academy level so the aspiration becomes reachable.
+			const academy = this.structures.forOwnerType(player.id, 'war-academy');
+			const capCost = academy
+				? STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP
+				: STRUCTURE_DEFINITIONS['war-academy'].cost;
+			return gold >= capCost ? 0 : capCost;
+		}
+		// Once the aspiration is affordable, release the reserve so the bot can
+		// actually buy it instead of saving forever.
+		return gold >= aspiration.cost ? 0 : aspiration.cost;
+	}
+
+	private chooseBotEconomicAction(
+		player: PlayerState,
+		budget: number,
+		defensiveBudget = budget
+	): BotEconomicAction | null {
+		const profile = this.botProfiles[player.id - 1];
+		const threat = this.botThreat[player.id - 1];
+		const defensive = this.botDefensive[player.id - 1] === 1;
+		const income = this.supplyIncomeFor(player.id);
+		const cap = Math.max(1, this.supplyCap(player.id));
+		const supplyRatio = this.supplyOf(player.id) / cap;
+		const aspiration = this.botAspiration(player);
+		const capGap = aspiration !== null && aspiration.cost > cap;
+		const owned = this.structures.forOwner(player.id);
+		const candidates: BotEconomicAction[] = [];
+		const order = new Map(BUILDABLE_STRUCTURE_TYPES.map((type, index) => [type, index] as const));
+
+		for (const type of BUILDABLE_STRUCTURE_TYPES) {
+			const definition = STRUCTURE_DEFINITIONS[type];
+			const structures = owned.filter((structure) => structure.type === type);
+			const count = structures.length;
+			const totalStacks = structures.reduce((sum, structure) => sum + structure.stacks, 0);
+			const isDefensive = type === 'fortification' || type === 'barracks' || type === 'jammer';
+			const maxCopies =
+				type === 'fortification'
+					? 1 + Math.floor(profile.fortification / 60) + (defensive ? 1 : 0)
+					: type === 'barracks'
+						? 1 + Math.floor(profile.aggression / 70)
+						: 1 + Math.floor(profile.command / 70);
+			const maxLevel =
+				type === 'fortification'
+					? 2 +
+						Math.floor(profile.fortification / 40) +
+						Math.floor(threat / 25) +
+						(defensive ? 1 : 0)
+					: type === 'barracks'
+						? 1 + Math.floor(profile.aggression / 50) + Math.floor(threat / 25)
+						: 1 + Math.floor(profile.command / 50) + Math.floor(threat / 25);
+
+			// Base affinity plus exploration/diminishing returns. These are
+			// utilities, not a fixed build order: the same bot can prefer cheap
+			// fortification when threatened and artillery when rich and aggressive.
+			let buildScore =
+				profile.structureBias[type] +
+				(count === 0 ? BOT_ACTION_NOVELTY_BONUS : -BOT_ACTION_REPEAT_PENALTY * count);
+			switch (type) {
+				case 'fortification':
+					// Threat value is personal and diluted by repeated copies: a
+					// defensive personality adds another fortification, while a
+					// warlike bot still invests elsewhere.
+					buildScore += Math.floor(
+						(threat * (1 + Math.floor(profile.fortification / 50)) + (defensive ? 20 : 0)) /
+							(1 + totalStacks)
+					);
+					break;
+				case 'barracks':
+					buildScore +=
+						Math.floor(profile.aggression * 0.15) +
+						Math.floor(
+							(threat * (1 + Math.floor(profile.aggression / 60)) + (defensive ? 8 : 0)) /
+								(1 + totalStacks)
+						);
+					break;
+				case 'jammer':
+					buildScore += Math.floor(
+						(threat * (1 + Math.floor(profile.command / 60)) + (defensive ? 6 : 0)) /
+							(1 + totalStacks)
+					);
+					break;
+				case 'command-post':
+					buildScore += Math.max(0, 12 - income) * 2 + (supplyRatio > 0.85 ? 8 : 0);
+					break;
+				case 'war-academy':
+					buildScore += (capGap ? 100 : 0) + (supplyRatio > 0.8 ? 18 : 0) + (cap < 400 ? 6 : 0);
+					break;
+				case 'artillery':
+					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
+					break;
+			}
+			// Cheap actions get a small efficiency nudge without making them
+			// dominate expensive strategic choices.
+			buildScore += Math.floor(1200 / (definition.cost + 100));
+			if (
+				(!isDefensive || count < maxCopies) &&
+				definition.cost <= (isDefensive ? defensiveBudget : budget)
+			) {
+				candidates.push({
+					type,
+					kind: 'build',
+					cost: definition.cost,
+					score: buildScore
+				});
+			}
+
+			if (count === 0) continue;
+			const lowest = structures.reduce((best, structure) =>
+				structure.stacks < best.stacks ||
+				(structure.stacks === best.stacks && structure.id < best.id)
+					? structure
+					: best
+			);
+			const upgradeCost = definition.cost + lowest.stacks * UPGRADE_LEVEL_COST_STEP;
+			let upgradeScore =
+				Math.floor(profile.structureBias[type] * 0.55) +
+				Math.max(0, 14 - Math.min(14, lowest.stacks)) * 2 -
+				Math.floor(totalStacks * 0.4) +
+				Math.floor(600 / (upgradeCost + 100));
+			if (type === 'fortification') {
+				// Pixel defense is the fastest way to blunt an active front, but
+				// heavily stacked forts stop crowding out other investments.
+				upgradeScore += Math.floor((threat * 3 + (defensive ? 20 : 0) + 10) / (1 + lowest.stacks));
+			} else if (type === 'barracks' || type === 'jammer') {
+				upgradeScore += Math.floor((threat * 2 + (defensive ? 12 : 0)) / (1 + lowest.stacks));
+			} else if (type === 'war-academy' && capGap) {
+				upgradeScore += 80;
+			}
+			if (
+				(!isDefensive || lowest.stacks < maxLevel) &&
+				upgradeCost <= (isDefensive ? defensiveBudget : budget)
+			) {
+				candidates.push({
+					type,
+					kind: 'upgrade',
+					cost: upgradeCost,
+					score: upgradeScore,
+					structure: lowest
+				});
+			}
+		}
+
+		if (capGap) {
+			// The cap blocks the aspiration; treat cap growth as the dominant
+			// utility rather than letting cheap upgrades consume the savings.
+			const academy = this.structures.forOwnerType(player.id, 'war-academy');
+			if (academy) {
+				const cost =
+					STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP;
+				if (cost <= budget) {
+					candidates.push({
+						type: 'war-academy',
+						kind: 'upgrade',
+						cost,
+						score: 10_000,
+						structure: academy
+					});
+				}
+			} else {
+				const cost = STRUCTURE_DEFINITIONS['war-academy'].cost;
+				if (cost <= budget) {
+					candidates.push({
+						type: 'war-academy',
+						kind: 'build',
+						cost,
+						score: 10_000
+					});
+				}
+			}
+		}
+
+		candidates.sort((left, right) => {
+			if (left.score !== right.score) return right.score - left.score;
+			const leftOrder = order.get(left.type) ?? 0;
+			const rightOrder = order.get(right.type) ?? 0;
+			if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+			return left.kind === right.kind ? 0 : left.kind === 'build' ? -1 : 1;
+		});
+
+		for (const candidate of candidates) {
+			if (candidate.kind === 'build') {
+				const cell = this.findBotBuildCell(player, candidate.type);
+				if (cell < 0) continue;
+				candidate.cell = cell;
+			}
+			return candidate;
+		}
+		return null;
 	}
 
 	private runBotEconomy(): void {
@@ -2427,16 +2728,7 @@ export class TerritorySimulation {
 			if ((this.tick + (player.id - 1)) % BOT_BUILD_INTERVAL !== 0) continue;
 			if (this.tick % BOT_DECISION_INTERVAL !== 0) this.refreshBotThreat(player);
 			const goldIndex = player.id - 1;
-
-			// A threatened bot fortifies before continuing its build plan. The
-			// defensive action may dip into the reserve because defence is the
-			// reason the reserve exists.
 			const defensive = this.botDefensive[goldIndex] === 1;
-			if (defensive && this.runBotDefense(player)) {
-				this.botDefenseStall[goldIndex] = 0;
-				auraChanged = true;
-				continue;
-			}
 
 			// If saving has made no defensive progress for several build
 			// intervals, release the reserve for this interval. Otherwise a
@@ -2447,57 +2739,56 @@ export class TerritorySimulation {
 				this.botDefenseStall[goldIndex] = 0;
 			}
 			const stalled = this.botDefenseStall[goldIndex] >= BOT_DEFENSE_STALL_INTERVALS;
-
-			const plan = this.botProfiles[goldIndex].buildPlan;
-			// Non-defence spending must leave the reserve intact; a bot that is
-			// saving for a fortification should not burn its last supply on artillery.
 			const reserve = stalled ? 0 : this.botReserve[goldIndex];
-			const budget = this.botGold[goldIndex] - reserve;
-			let acted = false;
+			const strategicReserve = stalled ? 0 : this.botStrategicReserve(player);
+			// One emergency defensive action per interval; otherwise a bot may
+			// dump its whole reserve into stacked fortifications in one visit.
+			const maxActions = defensive ? 1 : BOT_ACTION_MAX_PER_INTERVAL;
 
-			// Build the next affordable, placeable structure in the bot's
-			// strategy order. A destroyed plan structure is simply missing again,
-			// so this pass also rebuilds it. District geometry means a second type
-			// often waits until the bot expands beyond its first district.
-			for (const type of plan) {
-				if (this.structures.forOwnerType(player.id, type)) continue;
-				const cost = STRUCTURE_DEFINITIONS[type].cost;
-				if (budget < cost) continue;
-				const cell = this.findBotBuildCell(player, type);
-				if (cell < 0) continue;
-				this.botGold[goldIndex] -= cost;
-				const structure = this.structures.create(
-					type,
-					player.id,
-					cell % this.width,
-					Math.floor(cell / this.width),
-					this.width
-				);
-				this.refreshDistrictsAround(structure);
+			for (let action = 0; action < maxActions; action++) {
+				const budget = this.botGold[goldIndex] - reserve - strategicReserve;
+				if (budget <= 0 && !defensive) break;
+				const choice = this.chooseBotEconomicAction(player, budget, this.botGold[goldIndex]);
+				if (!choice) break;
+				const choiceIsDefensive =
+					choice.type === 'fortification' || choice.type === 'barracks' || choice.type === 'jammer';
+				if (
+					choice.cost >
+					(choiceIsDefensive
+						? this.botGold[goldIndex]
+						: this.botGold[goldIndex] - reserve - strategicReserve)
+				) {
+					break;
+				}
+
+				if (choice.kind === 'build') {
+					const cell = choice.cell;
+					if (cell === undefined || cell < 0) break;
+					this.botGold[goldIndex] -= choice.cost;
+					const structure = this.structures.create(
+						choice.type,
+						player.id,
+						cell % this.width,
+						Math.floor(cell / this.width),
+						this.width
+					);
+					this.refreshDistrictsAround(structure);
+				} else {
+					const structure = choice.structure;
+					if (!structure) break;
+					this.botGold[goldIndex] -= choice.cost;
+					this.structures.reinforce(structure);
+				}
 				auraChanged = true;
-				acted = true;
-				break;
-			}
-			if (acted) continue;
-
-			// Nothing new can be placed: raise the lowest-level structure in
-			// the plan, spreading investment instead of over-leveling one type.
-			let target: { type: BuildableStructureType; stacks: number; cost: number } | null = null;
-			for (const type of plan) {
-				const existing = this.structures.forOwnerType(player.id, type);
-				if (!existing) continue;
-				const cost = STRUCTURE_DEFINITIONS[type].cost + existing.stacks * UPGRADE_LEVEL_COST_STEP;
-				if (budget < cost) continue;
-				if (!target || existing.stacks < target.stacks) {
-					target = { type, stacks: existing.stacks, cost };
+				if (
+					defensive &&
+					(choice.type === 'fortification' ||
+						choice.type === 'barracks' ||
+						choice.type === 'jammer')
+				) {
+					this.botDefenseStall[goldIndex] = 0;
 				}
 			}
-			if (!target) continue;
-			const existing = this.structures.forOwnerType(player.id, target.type);
-			if (!existing) continue;
-			this.botGold[goldIndex] -= target.cost;
-			this.structures.reinforce(existing);
-			auraChanged = true;
 		}
 		// Aura rebuilds still batch once per decision tick; district refreshes
 		// are local to each new structure and already applied above.
@@ -2510,68 +2801,12 @@ export class TerritorySimulation {
 	 * interval. Defence posts come first because they are cheap and cover a
 	 * whole district; barracks come second because they raise clash strength.
 	 */
-	private runBotDefense(player: PlayerState): boolean {
-		const goldIndex = player.id - 1;
-
-		const fortificationStructure = this.structures.forOwnerType(player.id, 'fortification');
-		if (!fortificationStructure) {
-			const cost = STRUCTURE_DEFINITIONS['fortification'].cost;
-			if (this.botGold[goldIndex] < cost) return false;
-			const cell = this.findBotDefenseCell(player);
-			if (cell < 0) return false;
-			this.botGold[goldIndex] -= cost;
-			const structure = this.structures.create(
-				'fortification',
-				player.id,
-				cell % this.width,
-				Math.floor(cell / this.width),
-				this.width
-			);
-			this.refreshDistrictsAround(structure);
-			return true;
-		}
-
-		const barracks = this.structures.forOwnerType(player.id, 'barracks');
-		if (!barracks) {
-			const cost = STRUCTURE_DEFINITIONS['barracks'].cost;
-			if (this.botGold[goldIndex] >= cost) {
-				const cell = this.findBotBuildCell(player, 'barracks');
-				if (cell >= 0) {
-					this.botGold[goldIndex] -= cost;
-					const structure = this.structures.create(
-						'barracks',
-						player.id,
-						cell % this.width,
-						Math.floor(cell / this.width),
-						this.width
-					);
-					this.refreshDistrictsAround(structure);
-					return true;
-				}
-			}
-			// A barracks is out of reach (or has no site), but raising the
-			// existing defence post still beats an unrelated plan step.
-		}
-
-		// Raise the lower of the two defensive structures. This spending is
-		// defence itself, so it is allowed to consume the reserve.
-		const target =
-			barracks && barracks.stacks < fortificationStructure.stacks
-				? barracks
-				: fortificationStructure;
-		const cost = STRUCTURE_DEFINITIONS[target.type].cost + target.stacks * UPGRADE_LEVEL_COST_STEP;
-		if (this.botGold[goldIndex] < cost) return false;
-		this.botGold[goldIndex] -= cost;
-		this.structures.reinforce(target);
-		return true;
-	}
-
 	/**
-	 * Gold a threatened bot holds back from its build plan. It saves for the
-	 * next missing defensive structure, then for the cheaper next defensive
-	 * level, capped so it can never hoard without bound. A zero reserve is
-	 * returned when no defensive action is possible at all, which keeps the
-	 * reserve from deadlocking plan spending.
+	 * Gold a threatened bot holds back from non-defensive spending. It saves
+	 * for the next missing defensive structure, then for the cheaper next
+	 * defensive level, capped so it can never hoard without bound. A zero
+	 * reserve is returned when no defensive action is possible at all, which
+	 * keeps the reserve from deadlocking spending.
 	 */
 	private defenseReserveTarget(player: PlayerState): number {
 		const fortificationStructure = this.structures.forOwnerType(player.id, 'fortification');
@@ -2759,17 +2994,40 @@ export class TerritorySimulation {
 			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id, 0)) continue;
 			if (player.border.size === 0) continue;
 			const profile = this.botProfiles[player.id - 1];
-			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
-			if (attackRoll > 15 + Math.floor(profile.aggression * 0.85)) continue;
-
-			const target = this.chooseBotAttackTarget(
+			const choice = this.chooseBotAttackTarget(
 				player,
 				profile,
 				strengths[player.id - 1],
 				strengths
 			);
-			if (target === null) continue;
-			this.createAttack(player.id, target, [target]);
+			if (choice === null) continue;
+
+			// Attack frequency is a utility judgement, not a flat aggression
+			// roll: valuable targets attract attacks, poor/weak targets and
+			// threatened bots save supply instead.
+			const defenderId = this.owners[choice.index];
+			const supply = this.supplyOf(player.id);
+			const cost = this.attackSupplyCost(player.id, defenderId);
+			const expand = this.botNeedsExpansion(player);
+			const strategicReserve = expand ? 0 : this.botStrategicReserve(player);
+			const economicBuffer = expand ? 0 : this.botEconomicBuffer(player);
+			const available = supply - this.botReserve[player.id - 1] - strategicReserve - economicBuffer;
+			if (available < cost) continue;
+			const cap = Math.max(1, this.supplyCap(player.id));
+			const pressure = Math.floor((supply / cap) * BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT);
+			const chance = Math.max(
+				0,
+				Math.min(
+					75,
+					BOT_ATTACK_BASE_CHANCE +
+						Math.floor((choice.score - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
+						Math.floor(profile.aggression * BOT_ATTACK_AGGRESSION_WEIGHT) +
+						pressure
+				)
+			);
+			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
+			if (attackRoll >= chance) continue;
+			this.createAttack(player.id, choice.index, [choice.index]);
 		}
 	}
 
@@ -2834,7 +3092,7 @@ export class TerritorySimulation {
 		profile: BotProfile,
 		selfStrength: number,
 		strengths: Uint32Array
-	): number | null {
+	): { index: number; score: number } | null {
 		let bestIndex = -1;
 		let bestScore = Number.NEGATIVE_INFINITY;
 		const samples = BOT_SEARCH_TRIES * 3;
@@ -2861,7 +3119,7 @@ export class TerritorySimulation {
 				}
 			}
 		}
-		return bestIndex >= 0 ? bestIndex : null;
+		return bestIndex >= 0 ? { index: bestIndex, score: bestScore } : null;
 	}
 
 	private scoreBotTarget(

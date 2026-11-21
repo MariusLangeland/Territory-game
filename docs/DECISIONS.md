@@ -1449,3 +1449,46 @@ Territory contributed only +1 supply/s per 10,000 pixels, while structure econom
 
 - **Keep 10,000 and add a separate occupation term:** would double-count territory and complicate telemetry.
 - **Use a non-linear territory curve:** requires explicit diminishing-return design and more tuning data.
+
+---
+
+## ADR-045 — Utility-driven bot economy and target-aware attacks
+
+**Status:** accepted and implemented in 0.41.0  
+**Date:** 2026-11-21
+
+### Context
+
+Bots followed a fixed sorted `buildPlan`, then upgraded the lowest plan structure. A threatened bot was forced through Fortification → Barracks → cheaper defensive upgrade before anything else. Attacks fired when a flat aggression roll passed. Once a bot built its first three or four types, cheap affordable upgrades consumed every build interval, so it appeared to stop developing and only expand. This was hard-coded behavior, not emergent strategy.
+
+### Decision
+
+- Keep deterministic personality traits and derive a per-type `structureBias`; keep the sorted build plan only as a readable preference/display artifact.
+- Score economic actions every build interval:
+  - type affinity,
+  - first-copy novelty and repeat-count penalty,
+  - threat response, diluted by existing defensive stacks,
+  - income and supply-cap pressure,
+  - cost efficiency.
+- Apply strategic behavior:
+  - **Strategic reserve:** after two buildables, hold supply for the highest-affinity missing type.
+  - **Cap bottleneck:** if that type costs more than the current cap, save for/prioritize the next War Academy level instead.
+  - **Attack buffer:** attacks cannot consume the next economic purchase, except when expansion is required.
+  - **Expansion pressure:** if no missing type has a legal site, attacks may draw on the economic reserve to unlock land.
+  - Up to two non-defensive actions per interval; a threatened bot takes one emergency defensive action, which may use the defensive reserve.
+- Replace attack attempt probability's flat aggression roll with a target-aware probability from target score, aggression, supply pressure, and reserves.
+- Add a regression test that bots develop at least three structure types by tick 600.
+- App 0.41.0; protocol unchanged at 36.
+
+### Consequences
+
+- Bot behavior is no longer a fixed sequence; the same bot can defend in one phase, save for a cap, expand when boxed in, and later build artillery.
+- 3,000-tick telemetry shows all six buildable types, including artillery, with active fronts and eliminations.
+- Early-game economy still favors cheap early structures because expensive types need cap growth; 600-tick runs may not show the full mix.
+- Utility decisions use only integer state; profiles and utilities remain deterministic.
+
+### Alternatives considered
+
+- **Fully random action selection weighted by traits:** less legible and harder to balance than explicit utilities.
+- **Keep the fixed build plan but add random interruptions:** still hard-coded and does not respond to cap/site/threat bottlenecks.
+- **Give bots free supply/cap:** hides the structural problem and breaks the shared-rules model.

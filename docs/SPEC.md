@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.40.0 (Frontage v1 + siege rework)  
+**Version:** 0.41.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.40.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.41.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -200,8 +200,11 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - **caution** (retaliation fear),
   - **conciliation** (avoid stronger opponents),
   - **opportunism** (join existing wars).
-- Every bot also gets a six-type **build plan** sorted by its preferences, with a per-type hash jitter. The first entry is its opening focus; later entries become placeable as territory expands outside existing districts.
-- Bots act once per second (`BOT_DECISION_INTERVAL = 10`). Aggression gates how often they attempt an attack.
+- Every bot derives a **per-type affinity** (`structureBias`) with a per-type hash jitter, plus a display-oriented preference order. The order is not a fixed build script: economic actions are scored each build interval from affinity, threat response, income/cap pressure, novelty vs repeat penalty, efficiency, and affordability.
+- **Strategic savings:** after two buildables, a bot reserves supply for its highest-scoring missing type. If that type's cost exceeds the stock cap, it saves for and prioritizes War Academy cap growth instead; the reserve releases as soon as the target is affordable. Attacks respect this reserve and a cheapest-next-purchase buffer.
+- **Expansion pressure:** if a missing type has no legal site because existing districts cover the bot's owned cells, expansion becomes the priority and attacks may draw from the economic reserve.
+- **Utility attacks:** bots sample border targets, score them, then derive attack chance from target score, aggression, supply pressure, and held reserves. High-value retaliation/opportunity targets are attacked more often; low-value or expensive targets and threatened/saving bots hold supply.
+- Bots act once per second (`BOT_DECISION_INTERVAL = 10`); economy decisions run every 30 ticks and may take up to two non-defensive actions per interval. A threatened bot takes at most one defensive action.
 - Bots start with **90 supply** and follow the same income/cap rules, evaluating construction every 3 seconds (`BOT_BUILD_INTERVAL = 30`). Build ticks are staggered by player id, so only about two bots act per tick.
 - Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Artillery/Command Posts/War Academies/Jammers prefer capital-adjacent sites; Fortifications/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
 - **Threat posture:** once per decision tick, each bot computes an integer threat score:
@@ -221,7 +224,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - While threatened, a grudge holder gets a large retaliation bonus, an active attacker gets a counterattack bonus, and unrelated neighbours are penalized so the bot defends or counterattacks instead of opening a new war.
 - Capturing a pixel records one grievance for the defender against the attacking owner. Grievances persist, are capped, and are checksummed.
 - Bots use the same attack-order, structure, district, aura, and clash rules as the human.
-- Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, build plans, and grievances are derived/stored deterministically. Behavior is replayable.
+- Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, affinities, grievances, and utility decisions are deterministic. Behavior is replayable.
 
 ### 4.9 Tick order
 

@@ -13,9 +13,9 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.40.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.41.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
-> **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
+> **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
 > The current build runs **51 states** (1 human + 50 AI) with three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 >
@@ -32,7 +32,7 @@
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                             |
 | Supply economy  | 90 starting supply, uncapped maximum, six cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                 |
-| Bot commanders  | 50 deterministic bots with personalities, build plans, threat detection, defensive reserves, rebuilding, retaliation, and opportunism                          |
+| Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism         |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
@@ -233,7 +233,7 @@ Ballpark figures from the included benchmark on the development machine (Windows
 
 | Measurement                               | Result                                               |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~232 ms, one-time on world creation                  |
+| Map generation + 51 starts                | ~230 ms, one-time on world creation                  |
 | Default (circular) all-bot attack tick    | ~1.3 ms                                              |
 | Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
 | Organic-layer all-bot attack tick         | ~1.1 ms                                              |
@@ -241,9 +241,9 @@ Ballpark figures from the included benchmark on the development machine (Windows
 | Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
 | Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
 | Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~295 MiB                                             |
+| Node benchmark RSS (all benchmark worlds) | ~296 MiB                                             |
 
-At 10 Hz, the attack-heavy simulation uses roughly 3.3–3.6% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+At 10 Hz, the attack-heavy simulation uses roughly 2.6–3.3% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Determinism guarantees
 

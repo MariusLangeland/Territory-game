@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.40.0 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.41.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -339,17 +339,18 @@ Replace the `no-orders` reason with `no-supply`; add `front-cap`. Full list:
 Bots use exactly the same supply, front-cap, strength, and attrition rules. Only decisions change:
 
 - `runBotDecisions` requires the full `launchCost` in supply and a free front slot instead of an
-  order. Aggression still gates attempt frequency via the existing hash roll.
-- `estimatePlayerStrength` becomes
-  `floor(territory / 4) + structure levels × 300 + supply × 20 + floor(totalActiveFrontStrength / 10)`
-  (proposal; tune with telemetry). This replaces the `attackOrders × 150` term.
+  order. Attack chance is derived from target utility, aggression, supply pressure, and reserves, not
+  a flat aggression roll.
+- `estimatePlayerStrength` is `floor(territory / 4) + total structure levels × 300 + supply × 2`.
+- Economy actions are utility-scored builds/upgrades using per-type affinity, novelty and repeat
+  penalties, threat response, income/cap pressure, and efficiency. A strategic reserve funds the
+  highest-affinity missing type (or War Academy cap growth when the cap is the bottleneck), and
+  expansion becomes the priority when no legal build site exists.
 - `scoreBotTarget` additionally penalizes targets with large total active front strength
   (caution/conciliation) and rewards targets already under front pressure (opportunism). Grievances
   are unchanged.
-- Bot build plans keep the six-type ordering; Command Post/War Academy weights must be retuned
-  because their effects changed.
 - No new RNG: all bot decisions remain `hash32`/existing shared-PRNG draws with the same ordering
-  discipline. Supply gating is a pure integer comparison.
+  discipline. Utility/reserve comparisons are integer.
 
 ### 3.11 Complete constant table (proposed)
 

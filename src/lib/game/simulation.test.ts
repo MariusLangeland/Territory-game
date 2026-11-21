@@ -443,6 +443,7 @@ describe('attack stress mode', () => {
 				conciliatory: number;
 				opportunist: number;
 				buildPlan: string[];
+				structureBias: Record<string, number>;
 			}>;
 		};
 		const profiles = internals.botProfiles.slice(1);
@@ -452,7 +453,17 @@ describe('attack stress mode', () => {
 			expect(profile.buildPlan).toHaveLength(6);
 			expect(new Set(profile.buildPlan).size).toBe(6);
 			expect(profile.buildPlan[0]).toBe(profile.focus);
+			expect(Object.keys(profile.structureBias)).toHaveLength(6);
+			for (const value of Object.values(profile.structureBias)) {
+				expect(value).toBeGreaterThanOrEqual(0);
+				expect(value).toBeLessThanOrEqual(200);
+			}
 		}
+		const biasRanges = Object.keys(profiles[0].structureBias).map((type) => {
+			const values = profiles.map((profile) => profile.structureBias[type]);
+			return Math.max(...values) - Math.min(...values);
+		});
+		expect(Math.max(...biasRanges)).toBeGreaterThan(30);
 		const aggressions = profiles.map((profile) => profile.aggression);
 		expect(Math.max(...aggressions) - Math.min(...aggressions)).toBeGreaterThan(30);
 		for (const trait of ['vengeful', 'cautious', 'conciliatory', 'opportunist'] as const) {
@@ -471,6 +482,19 @@ describe('attack stress mode', () => {
 			expect(structure).toBeDefined();
 			expect(structure?.ownerId).toBe(sim.owners[index]);
 		}
+	});
+
+	it('lets utility bots diversify structures instead of following one fixed plan', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		for (let tick = 0; tick < 600; tick++) sim.step();
+		const builtTypes = new Set(
+			sim.structures.all
+				.filter((structure) => structure.type !== 'state')
+				.map((structure) => structure.type)
+		);
+		expect(builtTypes.size).toBeGreaterThanOrEqual(3);
+		const human = sim.players[HUMAN_PLAYER_ID - 1];
+		expect(human.alive).toBe(true);
 	});
 
 	it('weights grudges, caution, conciliation, and opportunity in bot targeting', () => {

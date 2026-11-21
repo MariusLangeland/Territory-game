@@ -121,6 +121,18 @@ export const BOT_SEARCH_TRIES = 8;
 /** Bots evaluate their focus build every 3 seconds. */
 export const BOT_BUILD_INTERVAL = TICK_RATE * 3;
 export const BOT_STARTING_GOLD = 90;
+/** Utility economy: exploration bonus for a first structure, diminishing repeats. */
+export const BOT_ACTION_NOVELTY_BONUS = 20;
+export const BOT_ACTION_REPEAT_PENALTY = 9;
+export const BOT_ACTION_MAX_PER_INTERVAL = 2;
+/** After this many buildables, bots keep a strategic reserve for their next aspiration. */
+export const BOT_STRATEGIC_SAVE_MIN_STRUCTURES = 2;
+/** Attack decision weights: target utility, not only a fixed aggression roll. */
+export const BOT_ATTACK_BASE_CHANCE = 3;
+export const BOT_ATTACK_SCORE_CENTER = 45;
+export const BOT_ATTACK_SCORE_WEIGHT = 0.9;
+export const BOT_ATTACK_AGGRESSION_WEIGHT = 0.4;
+export const BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT = 8;
 
 /**
  * Bot defence. A bot's threat score is an integer recomputed once per decision
