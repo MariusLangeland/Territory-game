@@ -111,6 +111,7 @@
 		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;
 	});
 	let draggingCardId = $state<number | null>(null);
+	let keyboardPlacement = $state(false);
 	let dragOrigin = $state<{ x: number; y: number } | null>(null);
 	let dragPointer = $state<{ x: number; y: number } | null>(null);
 	let dragLanding = $state<{
@@ -306,7 +307,7 @@
 				return {
 					index: '02 / 03',
 					title: 'BUILD SOMETHING',
-					body: 'Drag one of the six cards from the bottom hand into your territory. Cards stay in hand and can be bought again.'
+					body: 'Drag a card into your territory, or press its number key then left-click the map. Right-click cancels placement.'
 				};
 			case 3:
 				return {
@@ -547,6 +548,10 @@
 	function handleAttack(x: number, y: number): void {
 		if (!sim || !snapshot || !gameStarted || showIntro) return;
 		if (snapshot.ended || defeatOpen) return;
+		if (keyboardPlacement) {
+			buildKeyboardPlacement(x, y);
+			return;
+		}
 		if (paused) {
 			showToast('Simulation paused. Resume to fire.', 'warn');
 			return;
@@ -660,9 +665,73 @@
 
 	function clearDragState(): void {
 		draggingCardId = null;
+		keyboardPlacement = false;
 		dragOrigin = null;
 		dragPointer = null;
 		dragLanding = null;
+	}
+
+	function dragLandingAt(clientX: number, clientY: number, card: PublicCard) {
+		if (!sim || !cameraView) return null;
+		const mapX =
+			cameraView.centerX +
+			(clientX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
+		const mapY =
+			cameraView.centerY +
+			(clientY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
+		const cellX = Math.floor(mapX);
+		const cellY = Math.floor(mapY);
+		const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
+		return {
+			x: cameraView.viewportWidth / 2 + (cellX + 0.5 - cameraView.centerX) * cameraView.scale,
+			y: cameraView.viewportHeight / 2 + (cellY + 0.5 - cameraView.centerY) * cameraView.scale,
+			radius: STRUCTURE_MIN_SPACING * cameraView.scale,
+			ok: validation.ok
+		};
+	}
+
+	function beginKeyboardPlacement(index: number): void {
+		if (!snapshot || !gameStarted || showIntro || showResult || defeatOpen || showHelp) return;
+		const card = snapshot.hand[index];
+		if (!card) return;
+		if (artilleryTargeting) artilleryTargeting = false;
+		keyboardPlacement = true;
+		draggingCardId = card.id;
+		const element = document.querySelector<HTMLElement>(`[data-card-id="${card.id}"]`);
+		const rect = element?.getBoundingClientRect();
+		dragOrigin = rect
+			? { x: rect.left + rect.width / 2, y: rect.top + 28 }
+			: { x: window.innerWidth / 2, y: window.innerHeight - 120 };
+		const pointer = pointerScreen ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+		dragPointer = pointer;
+		dragLanding = dragLandingAt(pointer.x, pointer.y, card);
+		handRaised = true;
+	}
+
+	function cancelKeyboardPlacement(notify = true): void {
+		if (!keyboardPlacement) return;
+		clearDragState();
+		handRaised = false;
+		if (notify) showToast('Build cancelled.', 'warn');
+	}
+
+	function buildKeyboardPlacement(x: number, y: number): void {
+		if (!sim || !snapshot || !draggingCard) return;
+		if (paused || defeatOpen || snapshot.ended) {
+			showToast('Resume the simulation before building.', 'warn');
+			return;
+		}
+		const result = sim.playCard(HUMAN_PLAYER_ID, draggingCard.id, Math.floor(x), Math.floor(y));
+		showToast(result.message, result.ok ? 'success' : 'error');
+		if (result.ok) {
+			advanceOnboarding(2, 3);
+			clearDragState();
+		}
+	}
+
+	function handleContextMenu(event: MouseEvent): void {
+		event.preventDefault();
+		cancelKeyboardPlacement();
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -675,6 +744,7 @@
 	}
 
 	function startCardDrag(event: DragEvent, card: PublicCard): void {
+		keyboardPlacement = false;
 		draggingCardId = card.id;
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		dragOrigin = { x: rect.left + rect.width / 2, y: rect.top + 28 };
@@ -702,22 +772,7 @@
 			dragLanding = null;
 			return;
 		}
-
-		const mapX =
-			cameraView.centerX +
-			(event.clientX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
-		const mapY =
-			cameraView.centerY +
-			(event.clientY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
-		const cellX = Math.floor(mapX);
-		const cellY = Math.floor(mapY);
-		const validation = sim.validateBuild(HUMAN_PLAYER_ID, draggingCard.id, cellX, cellY);
-		dragLanding = {
-			x: cameraView.viewportWidth / 2 + (cellX + 0.5 - cameraView.centerX) * cameraView.scale,
-			y: cameraView.viewportHeight / 2 + (cellY + 0.5 - cameraView.centerY) * cameraView.scale,
-			radius: STRUCTURE_MIN_SPACING * cameraView.scale,
-			ok: validation.ok
-		};
+		dragLanding = dragLandingAt(event.clientX, event.clientY, draggingCard);
 	}
 
 	function handleDragOver(event: DragEvent): void {
@@ -759,6 +814,14 @@
 		shiftHeld = event.shiftKey;
 		ctrlHeld = event.ctrlKey;
 		if (!gameStarted || showIntro) return;
+		if (keyboardPlacement) {
+			if (draggingCard) {
+				dragPointer = { x: event.clientX, y: event.clientY };
+				dragLanding = dragLandingAt(event.clientX, event.clientY, draggingCard);
+			}
+			handRaised = true;
+			return;
+		}
 		if (draggingCardId !== null) {
 			handRaised = true;
 			return;
@@ -848,7 +911,8 @@
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
 		if (event.key === 'Escape') {
-			if (artilleryTargeting) artilleryTargeting = false;
+			if (keyboardPlacement) cancelKeyboardPlacement();
+			else if (artilleryTargeting) artilleryTargeting = false;
 			else if (keyboardCursor) keyboardCursor = null;
 			else if (showHelp) showHelp = false;
 			else if (defeatOpen) return;
@@ -864,6 +928,13 @@
 		}
 
 		if (showResult || defeatOpen || showHelp) return;
+
+		if (/^[1-6]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+			event.preventDefault();
+			beginKeyboardPlacement(Number(event.key) - 1);
+			return;
+		}
+
 		if (target?.closest('button, a')) return;
 
 		if (event.code === 'Space') {
@@ -949,7 +1020,12 @@
 	<title>TERRITORY — Frontage v1</title>
 </svelte:head>
 
-<main class="game-shell" ondragover={handleDragOver} ondrop={handleCardDrop}>
+<main
+	class="game-shell"
+	ondragover={handleDragOver}
+	ondrop={handleCardDrop}
+	oncontextmenu={handleContextMenu}
+>
 	{#if upgradeTooltip}
 		<div
 			class="upgrade-tooltip"
@@ -1308,6 +1384,7 @@
 						{@const accent = STRUCTURE_ACCENTS[card.type]}
 						<article
 							class="build-card"
+							data-card-id={card.id}
 							class:unaffordable={snapshot.supply < definition.cost}
 							class:dragging={draggingCardId === card.id}
 							style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
@@ -1324,6 +1401,7 @@
 							<div class="card-face">
 								<div class="card-banner">
 									<span>BUILD CARD</span>
+									<b class="card-hotkey" title={`Press ${index + 1} to place`}>{index + 1}</b>
 									<div class="card-cost">
 										<b title={String(definition.cost)}>{formatSupply(definition.cost)}</b><small>
 											S
@@ -1366,7 +1444,9 @@
 								</div>
 								<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
 								<p class="card-rules">{definition.description}</p>
-								<div class="card-footer"><span>DRAG TO BUILD</span><span>◆</span></div>
+								<div class="card-footer">
+									<span>DRAG OR {index + 1} TO BUILD</span><span>◆</span>
+								</div>
 							</div>
 						</article>
 					{/each}
@@ -1514,7 +1594,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.38.1 / PROTOCOL 36</span>
+				<span>BUILD 0.39.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1722,6 +1802,7 @@
 
 				<div class="manual-footer">
 					<span><kbd>SPACE</kbd> PAUSE / RESUME</span>
+					<span><kbd>1</kbd>–<kbd>6</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
 					<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
 					<span><kbd>H</kbd> FIELD MANUAL</span>
 					<span>WEBGPU / DETERMINISTIC CORE</span>
@@ -2667,6 +2748,22 @@
 		z-index: 6;
 		transform: translateY(-18px) rotate(0deg) scale(1.035);
 		filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55));
+	}
+
+	.card-hotkey {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 12px;
+		height: 12px;
+		padding: 0 2px;
+		border: 1px solid rgba(255, 248, 220, 0.35);
+		border-radius: 2px;
+		font-family: var(--font-mono);
+		font-size: 7px;
+		font-weight: 500;
+		line-height: 1;
+		color: var(--ink-dim);
 	}
 
 	.build-card.dragging {

@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.38.1. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.39.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.38.1. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.39.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -405,7 +405,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The free-floating card hand reads supply/cap/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues one upgrade command; Shift-click uses `getUpgradeQuote` to atomically queue five. Merged groups pick the lowest projected structure per level and pin `structureId`; Ctrl-click targets the clicked structure. A cursor tooltip above the pointer shows the quoted total for the current modifier and flags merged groups. A fixed horizontal supply bar above the hand fills by `supply/supplyCap` from snapshots and previews the hovered click cost (frontier launch, upgrade quote, or artillery volley) as an overlay segment plus a `-cost` chip; its action area hosts FIRE and CANCEL FRONT. The old supply/front/defense panel was removed. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
+- The free-floating card hand reads supply/cap/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Number keys 1-6 enter the same placement state without a native drag: the overlay shows the card arrow/landing circle, a map left-click queues `playCard`, and right-click/Escape clears the placement; the main shell suppresses the context menu. Clicking an owned district queues one upgrade command; Shift-click uses `getUpgradeQuote` to atomically queue five. Merged groups pick the lowest projected structure per level and pin `structureId`; Ctrl-click targets the clicked structure. A cursor tooltip above the pointer shows the quoted total for the current modifier and flags merged groups. A fixed horizontal supply bar above the hand fills by `supply/supplyCap` from snapshots and previews the hovered click cost (frontier launch, upgrade quote, or artillery volley) as an overlay segment plus a `-cost` chip; its action area hosts FIRE and CANCEL FRONT. The old supply/front/defense panel was removed. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
 - Growth-layer test switch; new fronts use the pending simulation mode while in-flight fronts keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.

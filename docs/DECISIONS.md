@@ -1388,3 +1388,35 @@ The economy now encourages several same-type structures, and their adjacent Voro
 
 - **Keep 60/s but show it in the HUD:** still a hard cap and contrary to the requirement.
 - **Diminishing income above a threshold:** softer than a hard cap but would require a new non-linear formula and explicit design review.
+
+---
+
+## ADR-043 — Number-key card placement and right-click cancel
+
+**Status:** accepted and implemented in 0.39.0  
+**Date:** 2026-11-21
+
+### Context
+
+Building required an HTML drag from the hand. That is awkward with a mouse, unavailable to keyboard-first players, and card costs now make repeated placement common.
+
+### Decision
+
+- Keys `1`–`6` select the corresponding hand card and enter the existing placement state without a native drag.
+- The selected card lifts/ghosts as during a drag; the curved arrow and landing-radius circle follow the pointer.
+- A left-click on the map queues `playCard` at the clicked cell. On success placement clears; on failure it stays active for retry.
+- Right-click cancels placement; the main shell calls `preventDefault` on `contextmenu`, removing the browser menu. Escape also cancels.
+- Each card banner shows its number hotkey.
+- App 0.39.0; protocol unchanged at 36 because build commands are unchanged.
+
+### Consequences
+
+- Placement is faster and fully keyboard-initiated.
+- No browser context menu appears over the game.
+- The existing native drag path is preserved; starting a real drag clears keyboard placement mode.
+
+### Alternatives considered
+
+- **Build immediately when a number is pressed:** impossible without a target cell; placement mode is required.
+- **Use Enter/arrow-key cursor only:** the request explicitly asks for left-click building.
+- **Suppress context menu with CSS only:** context menu is a browser default handled by JS.

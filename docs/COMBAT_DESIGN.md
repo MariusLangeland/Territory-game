@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.38.1 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.39.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.

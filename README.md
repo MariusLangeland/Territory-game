@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.38.1).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.39.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
@@ -73,24 +73,25 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                 |
-| --------------------------- | ------------------------------------------------------ |
-| Click / tap a shared border | Buy a durable front with supply                        |
-| Click / tap your district   | Upgrade that district's structure with supply          |
-| Shift + click your district | Queue 5 upgrades at once                               |
-| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure  |
-| Drag                        | Pan the map                                            |
-| Scroll                      | Zoom at the pointer                                    |
-| Two-finger pinch            | Zoom on touch                                          |
-| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade               |
-| `X`                         | Cancel latest front                                    |
-| `A` / FIRE                  | Enter artillery targeting; click an aim point in range |
-| `Space`                     | Pause / resume the simulation                          |
-| `F` / `C`                   | Fit atlas / return to beachhead                        |
-| `H`                         | Open the field manual                                  |
-| Minimap click               | Jump the camera                                        |
-| Growth switcher             | Select circular / smooth / organic for **new** fronts  |
-| Drag a build card           | Drop on controlled land to buy/build that structure    |
+| Input                       | Action                                                          |
+| --------------------------- | --------------------------------------------------------------- |
+| Click / tap a shared border | Buy a durable front with supply                                 |
+| Click / tap your district   | Upgrade that district's structure with supply                   |
+| Shift + click your district | Queue 5 upgrades at once                                        |
+| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
+| `1`–`6`                     | Start placing that card; left-click builds, right-click cancels |
+| Drag                        | Pan the map                                                     |
+| Scroll                      | Zoom at the pointer                                             |
+| Two-finger pinch            | Zoom on touch                                                   |
+| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade                        |
+| `X`                         | Cancel latest front                                             |
+| `A` / FIRE                  | Enter artillery targeting; click an aim point in range          |
+| `Space`                     | Pause / resume the simulation                                   |
+| `F` / `C`                   | Fit atlas / return to beachhead                                 |
+| `H`                         | Open the field manual                                           |
+| Minimap click               | Jump the camera                                                 |
+| Growth switcher             | Select circular / smooth / organic for **new** fronts           |
+| Drag a build card           | Drop on controlled land to buy/build that structure             |
 
 A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and insufficient-supply failures.
 
@@ -156,7 +157,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/10000) + structures` per second with **no income cap**; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 5 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
+The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/10000) + structures` per second with **no income cap**; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`6` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 5 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |

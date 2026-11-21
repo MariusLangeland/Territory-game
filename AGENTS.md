@@ -112,7 +112,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and attacks divert into cheaper frontier cells instead of stalling on a high-defense strongpoint.
 9. Confirm State structure capital-star circles are drawn at capitals, aura circles are absent, minimap ringed dots track them, and the commander readout says ANCHORED.
 10. Hover an aura pixel and confirm the defense readout includes `AURA +20` and the total is raised accordingly over the 16 px radius.
-11. Deploy, confirm all six CCG cards are free-floating at bottom center with no empty placeholders; move the pointer off the hand and confirm it sinks to a peeking strip, then re-enters to raise it.
+11. Deploy, confirm all six CCG cards are free-floating at bottom center with no empty placeholders; move the pointer off the hand and confirm it sinks to a peeking strip, then re-enters to raise it. Press `1`–`6` and confirm that card enters placement mode; left-click builds it and right-click cancels with no browser context menu.
 12. Drag a card and confirm there is no ghost card at the cursor: a curved arrow runs from the raised card, and the landing exclusion circle is green for legal cells and red for blocked cells.
 13. Confirm buildable districts have subtly irregular extents and borders, render with a type tint and per-district variation, and remain separable even when same-type.
 14. Drop a new type inside a district and confirm rejection with no cost. Drop the same type inside its district and confirm it stacks (marker count and stronger effect); drop the same type outside all districts and confirm it creates another district.
