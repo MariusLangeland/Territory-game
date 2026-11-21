@@ -8,7 +8,6 @@
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
 		ARTILLERY_SUPPLY_COST_PER_LEVEL,
-		ELEVATION_NAMES,
 		HUMAN_PLAYER_ID,
 		MAP_HEIGHT,
 		MAP_WIDTH,
@@ -149,6 +148,62 @@
 	);
 	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_LEVEL);
 	let artilleryTargeting = $state(false);
+	let supplyPreview: { label: string; cost: number; affordable: boolean } | null = $derived.by(
+		() => {
+			if (
+				!sim ||
+				!snapshot ||
+				!hover?.land ||
+				!gameStarted ||
+				showIntro ||
+				defeatOpen ||
+				snapshot.ended ||
+				paused
+			) {
+				return null;
+			}
+			const x = Math.floor(hover.x);
+			const y = Math.floor(hover.y);
+			if (artilleryTargeting) {
+				const barrage = sim.validateArtillery(HUMAN_PLAYER_ID, x, y);
+				if (!barrage.ok && barrage.reason !== 'no-supply') return null;
+				return {
+					label: 'ARTILLERY',
+					cost: artilleryVolleyCost,
+					affordable: snapshot.supply >= artilleryVolleyCost
+				};
+			}
+			if (hover.owner === HUMAN_PLAYER_ID) {
+				if (sim.getDistrictStructureId(x, y) === 0) return null;
+				const levels = shiftHeld ? 5 : 1;
+				const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels);
+				if (quote.currentLevel === 0) return null;
+				return {
+					label: levels === 5 ? 'UPGRADE ×5' : 'UPGRADE',
+					cost: quote.cost,
+					affordable: quote.ok
+				};
+			}
+			const attack = sim.validateAttack(HUMAN_PLAYER_ID, x, y);
+			if (!attack.ok && attack.reason !== 'no-orders') return null;
+			const cost = sim.getAttackStats(HUMAN_PLAYER_ID, hover.owner).cost;
+			return {
+				label: 'FRONT',
+				cost,
+				affordable: snapshot.supply >= cost
+			};
+		}
+	);
+
+	let supplyBar = $derived.by(() => {
+		const cap = Math.max(1, snapshot?.supplyCap ?? 1);
+		const supply = snapshot?.supply ?? 0;
+		const fill = Math.max(0, Math.min(100, (supply / cap) * 100));
+		const cost = supplyPreview?.cost ?? 0;
+		const costWidth = Math.min(fill, (cost / cap) * 100);
+		return { cap, supply, fill, costWidth, costStart: fill - costWidth };
+	});
+
 	let upgradeTooltip = $derived.by(() => {
 		if (
 			!sim ||
@@ -1149,56 +1204,81 @@
 			</div>
 		</div>
 
-		<div class="card-tray hud" aria-label="Build cards">
-			<div class="economy-readout">
-				<div class="economy-row">
+		<div
+			class="supply-dock hud"
+			class:previewing={!!supplyPreview}
+			class:short={supplyPreview ? !supplyPreview.affordable : false}
+			aria-label="Supply"
+		>
+			<div class="supply-row">
+				<div class="supply-edge supply-now">
 					<span>SUPPLY</span>
-					<strong title={String(snapshot.supply)}>{formatSupply(snapshot.supply)}</strong>
+					<strong title={`${supplyBar.supply} / ${supplyBar.cap}`}>
+						{formatSupply(supplyBar.supply)}
+					</strong>
 				</div>
-				<div class="economy-row economy-orders">
-					<span>CAP</span>
-					<b title={`${snapshot.supply} / ${snapshot.supplyCap}`}>
-						{formatSupply(snapshot.supply)}/{formatSupply(snapshot.supplyCap)}
-					</b>
-				</div>
-				<div class="economy-row economy-orders">
-					<span>FRONTS</span>
-					<b>{humanFronts.length}</b>
-				</div>
-				{#if humanFronts.length > 0}
-					<button class="cancel-front" type="button" onclick={cancelLatestFront}>
-						CANCEL LAST
-					</button>
-				{/if}
-				{#if humanArtillery.length > 0}
-					<button
-						class="fire-artillery"
-						class:active={artilleryTargeting}
-						class:unaffordable={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
-						type="button"
-						onclick={toggleArtilleryTargeting}
-						disabled={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
-						title={`Fire every ready battery (${readyArtilleryShells} shells, ${artilleryVolleyCost} supply) at a point within range`}
-					>
-						{artilleryTargeting
-							? 'SELECT TARGET'
-							: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${formatSupply(artilleryVolleyCost)}S`}
-					</button>
-				{/if}
 				<div
-					class="economy-row economy-defense"
-					title={hover?.land
-						? `${ELEVATION_NAMES[hover.elevation]} / B${hover.baseDefense}${
-								hover.auraDefense > 0 ? ` / AURA +${hover.auraDefense}` : ''
-							}`
-						: 'Hover land to inspect defense'}
+					class="supply-track"
+					role="progressbar"
+					aria-label="Supply"
+					aria-valuemin={0}
+					aria-valuemax={supplyBar.cap}
+					aria-valuenow={supplyBar.supply}
+					title={supplyPreview
+						? `${supplyPreview.label}: ${supplyPreview.cost} supply`
+						: `${supplyBar.supply} / ${supplyBar.cap} supply`}
 				>
-					<span>DEF</span>
-					<b>{hover?.land ? hover.defense : '—'}</b>
+					<div class="supply-fill" style={`width:${supplyBar.fill}%`}></div>
+					{#if supplyPreview && supplyBar.costWidth > 0}
+						<div
+							class="supply-cost-fill"
+							style={`left:${supplyBar.costStart}%;width:${supplyBar.costWidth}%`}
+						></div>
+					{/if}
+					<div class="supply-cap" style={`left:${supplyBar.fill}%`}></div>
 				</div>
-				<small>+{snapshot.supplyIncome}/s · cards & fronts</small>
+				<div class="supply-edge supply-max">
+					<span>MAX</span>
+					<strong title={`${supplyBar.supply} / ${supplyBar.cap}`}>
+						{formatSupply(supplyBar.cap)}
+					</strong>
+				</div>
 			</div>
+			<div class="supply-meta">
+				<em>+{snapshot.supplyIncome}/s</em>
+				{#if supplyPreview}
+					<div class="supply-cost" class:short={!supplyPreview.affordable}>
+						<span>{supplyPreview.label}</span>
+						<strong>-{formatSupply(supplyPreview.cost)}S</strong>
+						{#if !supplyPreview.affordable}<i>NEED</i>{/if}
+					</div>
+				{/if}
+				<div class="supply-actions">
+					{#if humanFronts.length > 0}
+						<button class="cancel-front" type="button" onclick={cancelLatestFront}>
+							CANCEL FRONT
+						</button>
+					{/if}
+					{#if humanArtillery.length > 0}
+						<button
+							class="fire-artillery"
+							class:active={artilleryTargeting}
+							class:unaffordable={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
+							type="button"
+							onclick={toggleArtilleryTargeting}
+							disabled={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
+							title={`Fire every ready battery (${readyArtilleryShells} shells, ${artilleryVolleyCost} supply) at a point within range`}
+						>
+							{artilleryTargeting
+								? 'SELECT TARGET'
+								: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${formatSupply(artilleryVolleyCost)}S`}
+						</button>
+					{/if}
+				</div>
+			</div>
+		</div>
 
+		<div class="card-tray hud" aria-label="Build cards">
 			<div
 				class="hand-shell"
 				class:collapsed={!handRaised}
@@ -1417,7 +1497,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.36.0 / PROTOCOL 36</span>
+				<span>BUILD 0.37.1 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -2299,70 +2379,186 @@
 		animation: hud-fade 600ms 200ms ease-out both;
 	}
 
-	.economy-readout {
+	.supply-dock {
+		position: fixed;
+		z-index: 18;
+		left: 50%;
+		bottom: 52px;
+		width: min(720px, calc(100vw - 32px));
+		transform: translateX(-50%);
 		display: flex;
 		flex-direction: column;
-		align-items: stretch;
-		justify-content: center;
-		gap: 4px;
-		width: 112px;
-		margin-bottom: 20px;
-		padding: 9px 10px;
+		gap: 5px;
+		padding: 7px 10px 9px;
 		border: 1px solid rgba(255, 214, 144, 0.28);
 		background:
-			linear-gradient(150deg, rgba(255, 214, 144, 0.1), transparent 55%), rgba(7, 16, 21, 0.86);
+			linear-gradient(150deg, rgba(255, 214, 144, 0.08), transparent 58%), rgba(6, 15, 20, 0.88);
 		box-shadow:
 			0 14px 34px rgba(0, 0, 0, 0.38),
 			inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+		backdrop-filter: blur(14px);
 		pointer-events: auto;
 	}
 
-	.economy-row {
+	.supply-row {
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 6px;
+		align-items: center;
+		gap: 10px;
 	}
 
-	.economy-readout span {
+	.supply-edge {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		flex: none;
+		min-width: 66px;
+		line-height: 0.9;
+	}
+
+	.supply-edge span {
 		font-family: var(--font-mono);
-		font-size: 6.5px;
-		letter-spacing: 0.12em;
+		font-size: 5.5px;
+		letter-spacing: 0.13em;
 		color: var(--ink-faint);
 	}
 
-	.economy-row strong {
+	.supply-edge strong {
 		font-family: var(--font-display);
-		font-size: 25px;
-		line-height: 0.8;
+		font-size: 22px;
+		line-height: 0.95;
 		color: #ffd690;
-		text-shadow: 0 0 18px rgba(255, 214, 144, 0.28);
+		text-shadow: 0 0 18px rgba(255, 214, 144, 0.26);
 	}
 
-	.economy-orders,
-	.economy-defense {
-		padding-top: 3px;
-		border-top: 1px solid rgba(255, 248, 220, 0.1);
+	.supply-max {
+		align-items: flex-end;
+		text-align: right;
 	}
 
-	.economy-orders b,
-	.economy-defense b {
+	.supply-max strong {
+		color: var(--ink-dim);
+		text-shadow: none;
+	}
+
+	.supply-meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 18px;
+	}
+
+	.supply-meta em {
 		font-family: var(--font-mono);
-		font-size: 11px;
-		font-weight: 500;
+		font-style: normal;
+		font-size: 6px;
+		letter-spacing: 0.06em;
 		color: var(--signal);
 	}
 
-	.economy-defense b {
+	.supply-cost {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		padding: 3px 7px;
+		border: 1px solid rgba(255, 214, 144, 0.36);
+		background: rgba(255, 214, 144, 0.08);
+		font-family: var(--font-mono);
+		animation: toast-in 160ms ease-out both;
+	}
+
+	.supply-cost span {
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--ink-faint);
+	}
+
+	.supply-cost strong {
+		font-size: 10px;
+		font-weight: 500;
 		color: #ffd690;
 	}
 
-	.economy-readout small {
-		font-family: var(--font-mono);
-		font-size: 6px;
-		line-height: 1.35;
-		color: var(--ink-dim);
+	.supply-cost i {
+		font-style: normal;
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--danger);
+	}
+
+	.supply-cost.short {
+		border-color: rgba(255, 120, 103, 0.5);
+		background: rgba(255, 120, 103, 0.1);
+	}
+
+	.supply-cost.short strong {
+		color: var(--danger);
+	}
+
+	.supply-actions {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		flex: none;
+		margin-left: auto;
+	}
+
+	.supply-actions .cancel-front,
+	.supply-actions .fire-artillery {
+		margin-top: 0;
+	}
+
+	.supply-track {
+		position: relative;
+		flex: 1;
+		height: 14px;
+		overflow: hidden;
+		border: 1px solid rgba(255, 214, 144, 0.25);
+		background:
+			repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 9px),
+			rgba(0, 0, 0, 0.42);
+	}
+
+	.supply-fill {
+		position: absolute;
+		inset: 0 auto 0 0;
+		background: linear-gradient(90deg, rgba(255, 214, 144, 0.72), #ffd690);
+		box-shadow: 0 0 14px rgba(255, 214, 144, 0.34);
+		transition: width 120ms linear;
+	}
+
+	.supply-cost-fill {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		background:
+			repeating-linear-gradient(
+				135deg,
+				rgba(255, 120, 103, 0.75) 0 3px,
+				rgba(255, 120, 103, 0.38) 3px 6px
+			),
+			rgba(160, 30, 24, 0.5);
+		box-shadow: inset 0 0 0 1px rgba(255, 170, 145, 0.45);
+		transition:
+			left 120ms linear,
+			width 120ms linear;
+	}
+
+	.supply-cap {
+		position: absolute;
+		top: -2px;
+		bottom: -2px;
+		width: 1px;
+		background: rgba(255, 248, 220, 0.7);
+		box-shadow: 0 0 6px rgba(255, 248, 220, 0.4);
+	}
+
+	.supply-dock.previewing {
+		border-color: rgba(255, 155, 90, 0.45);
+	}
+
+	.supply-dock.short .supply-track {
+		border-color: rgba(255, 120, 103, 0.55);
 	}
 
 	.cancel-front {
@@ -2748,7 +2944,7 @@
 
 	.growth-switcher {
 		left: 22px;
-		bottom: 240px;
+		bottom: 300px;
 		transform: none;
 		display: flex;
 		align-items: center;
@@ -3614,7 +3810,7 @@
 		position: fixed;
 		z-index: 120;
 		left: 50%;
-		bottom: 258px;
+		bottom: 300px;
 		transform: translateX(-50%);
 		display: flex;
 		align-items: center;
@@ -3778,8 +3974,8 @@
 			font-size: 8px;
 		}
 
-		.economy-readout {
-			width: 104px;
+		.supply-dock {
+			bottom: 52px;
 		}
 	}
 
@@ -3943,10 +4139,9 @@
 			font-size: 7.5px;
 		}
 
-		.economy-readout {
-			width: 96px;
-			margin-bottom: 18px;
-			padding: 8px 7px;
+		.supply-dock {
+			bottom: 50px;
+			padding: 6px 8px 8px;
 		}
 
 		.paused-flag {
@@ -4051,18 +4246,22 @@
 			display: none;
 		}
 
-		.economy-readout {
-			width: 88px;
-			margin-bottom: 14px;
-			padding: 7px 6px;
+		.supply-dock {
+			bottom: 48px;
+			width: calc(100vw - 16px);
+			padding: 6px 7px 8px;
 		}
 
-		.economy-row strong {
-			font-size: 21px;
+		.supply-edge {
+			min-width: 52px;
 		}
 
-		.toast {
-			bottom: 172px;
+		.supply-edge strong {
+			font-size: 18px;
+		}
+
+		.supply-meta em {
+			display: none;
 		}
 
 		.minimap-dock {
@@ -4099,7 +4298,7 @@
 		}
 
 		.toast {
-			bottom: 120px;
+			bottom: 226px;
 			width: calc(100vw - 40px);
 			justify-content: center;
 			text-align: center;
@@ -4171,27 +4370,38 @@
 			line-height: 1.18;
 		}
 
-		.economy-readout {
-			width: 68px;
-			padding: 6px 5px;
-			margin-bottom: 12px;
+		.supply-dock {
+			bottom: 48px;
+			padding: 5px 6px 7px;
 		}
 
-		.economy-row span {
-			font-size: 5.5px;
+		.supply-edge {
+			min-width: 44px;
 		}
 
-		.economy-row strong {
-			font-size: 18px;
+		.supply-edge span {
+			font-size: 5px;
 		}
 
-		.economy-orders b,
-		.economy-defense b {
+		.supply-edge strong {
+			font-size: 17px;
+		}
+
+		.supply-cost {
+			padding: 2px 5px;
+		}
+
+		.supply-cost span {
+			display: none;
+		}
+
+		.supply-cost strong {
 			font-size: 9px;
 		}
 
-		.economy-readout small {
+		.supply-actions button {
 			font-size: 5px;
+			padding: 3px 4px;
 		}
 	}
 

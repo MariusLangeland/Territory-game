@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.36.0 (Frontage v1 + siege rework)  
+**Version:** 0.37.1 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.36.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.37.1, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -340,7 +340,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 - Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
 - Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
 - A base front has 30 power and 1500 strength per launch. Each effective Barracks level adds 450 strength and 15 launch cost; each doubling tier adds 15 power and 1 piercing. Scaling never caps. Cheap neutral lowland with a base front can capture 30 points per tick; defended peaks and aura-covered high ground consume more power and strength.
-- The HUD hover readout exposes elevation tier, base defense, aura bonus, and total defense.
+- Pixel defense inspection was part of the old supply/front/defense panel; that panel is removed in favor of the supply bar.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 - Aura circles are not rendered; district tint and boundaries communicate territorial structure.
 
@@ -443,12 +443,13 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates and makes Enter queue a five-level upgrade, Enter attacks or upgrades the cursor cell, and Escape clears it. A visually hidden live region announces owner, defense, and available action.
 - Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
-- A free-floating CCG-style hand at the bottom center; supply, cap, fronts, and defense share a compact readout with a CANCEL LAST control.
+- A free-floating CCG-style hand at the bottom center.
+- A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
 - First-match onboarding shows three contextual hints: launch a front, drag a card into territory, then click a district to upgrade. Hints advance on success, can be skipped, and completion is stored locally.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
 - The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.
 - The bottom center is reserved for the hand; the growth selector lives in the left rail above the minimap.
-- The top-center status console was removed. Supply, cap, active fronts, and hovered defense share a compact readout beside the hand.
+- The top-center status console was removed. Supply and cap now live in a horizontal fill bar above the hand; cost previews overlay the bar on hover. The old supply/front/defense panel is gone.
 - While dragging, a curved accent arrow connects the raised card to the cursor, with no browser ghost card. The landing cell shows the 8 px exclusion radius: green when the build is legal, red when blocked.
 - The ORDERS value updates as orders are spent or granted.
 - HUD data refreshes at 5 Hz; territory rendering and simulation remain at 10 Hz.
@@ -483,7 +484,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Invalid order → specific reason toast.
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
-- Human supply, cap, active fronts, and cancellation in the compact readout.
+- Human supply/cap in the horizontal supply bar, with FIRE and CANCEL FRONT at its right edge.
 - 51-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
 - Paused clicks do not issue orders.
 

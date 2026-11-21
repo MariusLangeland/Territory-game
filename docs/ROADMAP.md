@@ -54,6 +54,7 @@ Work completed:
 - Replaced passive Mine with active Artillery: one shell per level, structure-level damage, bot use, and range/shell visuals.
 - Removed the supply ceiling; added compact HUD formatting, infinite Barracks scaling, Fortifications, and global Jammer suppression with a stack cache for high-frequency effects.
 - Scaled card economy ×20, raised Artillery to 1000/300, stepped upgrades to +5 per level, and reduced Fortifications to +1 defense per stack.
+- Replaced the supply/front/defense panel with a horizontal supply bar that previews the hovered click cost on its fill.
 
 Acceptance criteria:
 

@@ -1289,3 +1289,39 @@ The card economy had drifted down to single-digit costs while artillery carried 
 
 - **Keep Artillery at 300 while scaling other cards:** it would be comparatively cheap after the ×20 pass, so the explicit 1000/300 override was kept.
 - **+2 or +3 Fortification defense:** +1 matches the request and keeps pixel defense primary.
+
+---
+
+## ADR-040 — Horizontal supply bar with cost preview
+
+**Status:** accepted and implemented in 0.37.0  
+**Date:** 2026-11-21
+
+### Context
+
+The bottom-left economy panel duplicated map information in a cramped column and made it hard to see how close supply was to the cap. Click costs were only communicated after the click, through toasts.
+
+### Decision
+
+- Replace the supply/front/defense panel with a horizontal supply bar above the card hand.
+- The bar fill is `supply / cap`; current supply is labelled on the left and max supply on the right, inline with the track. Income sits in the meta row.
+- The bar sits just above the collapsed hand's peeking strip and uses a z-index below the card tray, so interacting with/raising the cards covers the bar.
+- On map hover, derive the supply cost the click would spend:
+  - valid frontier launch → launch cost,
+  - owned district upgrade → one-level or Shift five-level quote,
+  - artillery targeting → current volley cost.
+- Draw that cost as a striped red segment over the existing fill and a `-cost` chip; show `NEED` when supply is insufficient.
+- Move FIRE and CANCEL FRONT into the bar's action area. Front count and the old DEF readout are removed.
+- App 0.37.0; protocol unchanged at 36.
+
+### Consequences
+
+- Supply pressure is readable at a glance and cost previews appear before committing.
+- The bar is responsive: it slides above shrinking card hands at each breakpoint.
+- Defense inspection is no longer in the HUD; pixel defense remains visible through gameplay markers/attacks and the underlying simulation.
+
+### Alternatives considered
+
+- **Keep a numeric panel beside the bar:** defeats the requested single-line HUD.
+- **Show cost only after clicking:** no planning benefit.
+- **Draw cost as a shrinking fill before commit:** visually ambiguous with current supply; the overlay segment preserves the actual fill.
