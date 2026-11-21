@@ -472,6 +472,8 @@ export interface SimulationOptions {
 	allPlayersBots?: boolean;
 	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
 	teamIds?: readonly number[];
+	/** 1v1 duel spectators: put both starts close together near the map centre. */
+	duelStarts?: boolean;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -625,6 +627,9 @@ export class TerritorySimulation {
 		this.shade = this.map.shade;
 		this.elevation = this.map.elevation;
 		this.landCount = this.map.landCount;
+		if (options.duelStarts && this.playerCount === 2) {
+			this.map.starts = this.chooseDuelStarts();
+		}
 		this.seaComponents = computeSeaComponents(this.land, this.width, this.height);
 		this.seaRouter = new SeaRouter(this.land, this.width, this.height);
 		for (let index = 0; index < this.land.length; index++) {
@@ -4389,6 +4394,99 @@ export class TerritorySimulation {
 			skip--;
 		}
 		return null;
+	}
+
+	/**
+	 * Duel starts deliberately ignore the usual farthest-point spread. Both
+	 * states begin within a few start-radii of the map centre so every round
+	 * has contact potential instead of two isolated expansion races.
+	 */
+	private chooseDuelStarts(): StartPoint[] {
+		const cx = this.width / 2;
+		const cy = this.height / 2;
+		const searchRadius = Math.min(this.width, this.height) * 0.32;
+		const candidates: Array<StartPoint & { distance: number }> = [];
+		for (let y = 0; y < this.height; y++) {
+			const dy = y + 0.5 - cy;
+			for (let x = 0; x < this.width; x++) {
+				const dx = x + 0.5 - cx;
+				const distance = dx * dx + dy * dy;
+				if (distance > searchRadius * searchRadius) continue;
+				const index = y * this.width + x;
+				if (!this.land[index]) continue;
+				candidates.push({ index, x, y, distance });
+			}
+		}
+		candidates.sort((left, right) => left.distance - right.distance || left.index - right.index);
+		const first = candidates[0];
+		if (!first) return this.map.starts;
+		// Both starts must share a land component; a centre spawn pair on two
+		// islands would still be a no-interaction run.
+		const reachable = new Uint8Array(this.land.length);
+		const queue = new Int32Array(this.land.length);
+		let head = 0;
+		let tail = 0;
+		reachable[first.index] = 1;
+		queue[tail++] = first.index;
+		while (head < tail) {
+			const index = queue[head++];
+			const x = index % this.width;
+			const y = (index - x) / this.width;
+			if (x > 0) {
+				const next = index - 1;
+				if (this.land[next] && !reachable[next]) {
+					reachable[next] = 1;
+					queue[tail++] = next;
+				}
+			}
+			if (x + 1 < this.width) {
+				const next = index + 1;
+				if (this.land[next] && !reachable[next]) {
+					reachable[next] = 1;
+					queue[tail++] = next;
+				}
+			}
+			if (y > 0) {
+				const next = index - this.width;
+				if (this.land[next] && !reachable[next]) {
+					reachable[next] = 1;
+					queue[tail++] = next;
+				}
+			}
+			if (y + 1 < this.height) {
+				const next = index + this.width;
+				if (this.land[next] && !reachable[next]) {
+					reachable[next] = 1;
+					queue[tail++] = next;
+				}
+			}
+		}
+		const wanted = START_RADIUS * 6;
+		const minimum = START_RADIUS * 3;
+		const maximum = START_RADIUS * 11;
+		let second: StartPoint | null = null;
+		let bestScore = Number.POSITIVE_INFINITY;
+		for (const candidate of candidates) {
+			if (candidate.index === first.index || !reachable[candidate.index]) continue;
+			const dx = candidate.x + 0.5 - (first.x + 0.5);
+			const dy = candidate.y + 0.5 - (first.y + 0.5);
+			const separation = Math.sqrt(dx * dx + dy * dy);
+			if (separation < minimum || separation > maximum) continue;
+			const score = Math.abs(separation - wanted) * 1_000 + candidate.distance;
+			if (score < bestScore) {
+				bestScore = score;
+				second = candidate;
+			}
+		}
+		const fallback = candidates.find(
+			(candidate) => candidate.index !== first.index && reachable[candidate.index]
+		);
+		const chosenSecond = second ?? fallback;
+		if (!chosenSecond) return this.map.starts;
+		return [
+			{ index: first.index, x: first.x, y: first.y },
+			{ index: chosenSecond.index, x: chosenSecond.x, y: chosenSecond.y }
+		];
 	}
 
 	private placeStartingTerritories(starts: StartPoint[]): void {

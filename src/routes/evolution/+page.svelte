@@ -94,21 +94,6 @@
 		status = 'Generation 1 — natural selection in progress.';
 	}
 
-	function startOneVsOne(): void {
-		config = {
-			...config,
-			playerCount: 2,
-			populationSize: 8,
-			matchesPerRound: 4,
-			ticks: 800,
-			generations: Math.max(2, config.generations),
-			lineageDuels: true
-		};
-		speed = 1000;
-		notice = '1v1 preset: 8 genomes, mirrored ancestor duels at 1000×.';
-		start();
-	}
-
 	function stopTimer(): void {
 		if (pendingTimer !== null) {
 			clearTimeout(pendingTimer);
@@ -365,7 +350,7 @@
 				</div>
 				<div class="run-actions">
 					<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
-					<button class="preset" type="button" onclick={startOneVsOne}>1v1 GAUNTLET</button>
+					<a class="preset" href="/duel">DUEL LAB →</a>
 				</div>
 				<p class="hint">
 					Fitness = land + income + attack + wins + survival +
@@ -689,9 +674,16 @@
 	}
 
 	.preset {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		flex: none;
+		padding: 0 10px;
+		border: 1px solid rgba(88, 199, 232, 0.45);
 		color: #58c7e8;
-		border-color: rgba(88, 199, 232, 0.45);
+		text-decoration: none;
+		font-size: 9px;
+		letter-spacing: 0.08em;
 	}
 	.hint {
 		margin: 7px 0 0;

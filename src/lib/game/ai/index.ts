@@ -37,6 +37,15 @@ export {
 	serializeEvolutionCsv,
 	serializeGenomeRow
 } from './evolution-csv';
+export { DuelLab, DEFAULT_DUEL_CONFIG, normalizeDuelConfig } from './duel';
+export type {
+	DuelCharacter,
+	DuelConfig,
+	DuelNode,
+	DuelPhase,
+	DuelRoundResult,
+	MutationEvent
+} from './duel';
 export {
 	BOT_OPTION_CODES,
 	BOT_OPTION_IDS,

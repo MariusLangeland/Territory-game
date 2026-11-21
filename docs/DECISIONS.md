@@ -2081,3 +2081,30 @@ The lab originally scored each generation in mixed schedules and then kept the t
 - Direct losers are culled even if their absolute fitness looks acceptable; QD diversity is not allowed to rescue a genome that loses its lineage duel.
 - Same-seed mirroring removes map variance but not seat asymmetry, so a single split is treated as a draw.
 - This is still short-horizon incremental selection, not full coevolution or open-ended search; multi-parent crossover records one parent as the duel ancestor.
+
+---
+
+## ADR-065 — Explicit two-character Duel Lab
+
+**Status:** accepted and implemented in 0.58.0  
+**Date:** 2026-11-21
+
+### Context
+
+The population lab's 1v1 lineage mode was still a population algorithm with genome lists and culling. It was not a clear two-character experiment, and farthest-point starts often let two bots expand in isolation without contact.
+
+### Decision
+
+- Add a separate `/duel` mode built around exactly two persistent named characters. Both remain for the entire run; there is no culling.
+- Characters alternate seats every round to split any seat/spawn advantage.
+- Both starts are chosen within the central ~32% of the map, at a bounded separation, and on the same land component so interaction is possible.
+- Every configurable block of rounds, the character with the lower block fitness must mutate. Ties fall back to block wins, then lifetime average fitness.
+- Represent versions as a mutation graph with parent edges, a round log, and a mutation strip. The graph is the primary output instead of a genome table.
+- Population evolution remains at `/evolution`; its removed 1v1 preset links to the explicit Duel Lab.
+
+### Consequences
+
+- The mode answers a clean question: does a mutation of one named character improve against the other?
+- No benefit is extracted from culling; both lineages stay available and only the weaker side changes after each block.
+- Close centre spawns make contact likely, but do not force an artificial attack before the bots' normal economy/opening rules would allow one.
+- The lab is still local and deterministic; it does not introduce online play or full coevolution.
