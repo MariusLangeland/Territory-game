@@ -85,7 +85,7 @@ CREATED → WAITING → RUNNING → COMPLETED → ARCHIVED
 
 A player joining mid-match needs:
 
-- protocol version, map version, seed;
+- protocol version, map version, seed, and match configuration (state count, map dimensions, growth mode, bot difficulty, timer);
 - current tick;
 - full public player state, including each state's current supply for rival banners;
 - a baseline owner map at that tick;

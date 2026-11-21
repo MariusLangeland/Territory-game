@@ -13,13 +13,13 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.49.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.50.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
-> The current build runs **51 states** (1 human + 50 AI) with three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
+> The current build runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, three growth layers, optional match timers, and three bot difficulties. Online multiplayer remains specified but **not wired up**.
 >
-> **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
+> **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry`, `pnpm balance`, and `pnpm soak` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
 
 ---
 
@@ -27,7 +27,7 @@
 
 | Area            | Implementation                                                                                                                                                 |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontage v1     | 51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, instant 70% victory                                                  |
+| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                               |
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                     |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                             |
@@ -37,7 +37,8 @@
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
-| UI scale        | Virtualized 51-state leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                     |
+| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                   |
+| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                       |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                    |
 | Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                        |
@@ -66,6 +67,8 @@ pnpm check      # svelte-check + TypeScript
 pnpm test       # deterministic + 50-bot stress tests
 pnpm bench      # map/tick/checksum benchmark
 pnpm telemetry  # headless multi-seed match telemetry
+pnpm balance    # personality/ramp/structure balance sweep
+pnpm soak       # 10k-tick deterministic soak test
 pnpm build      # production build via adapter-node
 pnpm preview    # preview the production build
 pnpm lint       # Prettier check
@@ -217,7 +220,7 @@ This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
 Svelte UI (+page.svelte)
   └── GameCanvas.svelte ......... fixed-step driver, pointer input, camera bridge
         ├── TerritorySimulation .. pure deterministic game core
-        │     ├── generateMap .... seeded, versioned 2048 × 1024 atlas + 51 starts
+        │     ├── generateMap .... seeded, versioned configurable atlas + state starts
         │     ├── TerritoryRng ... mulberry32
         │     ├── growth/ ........ circular / smooth / organic frontier layers
         │     ├── Structures/ .... one file per structure type + registry
@@ -274,7 +277,7 @@ src/
     game/
       constants.ts               Frontage/supply rules, 51-state palette/names
       rng.ts                     deterministic PRNG
-      map.ts                     map generation and 51 start placement
+      map.ts                     configurable map generation and start placement
       simulation.ts              world state, fronts, bots, checksums
       simulation.test.ts         determinism, ownership, frontier, stress tests
       growth/                    switchable circular/smooth/organic frontier layers
@@ -303,9 +306,9 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - The economy and final attack semantics are intentionally missing; this build is not game-balanced.
-- The 51-state leaderboard and AI load are a stress mode, not the shipping match format.
+- Match setup chooses states/map/difficulty/growth/timer, but there is no server lobby yet.
 - Online play, accounts, matchmaking, and persistence are specified but not implemented.
-- No audio, fog of war, diplomacy, or spectator camera UI.
+- TODO: replay/post-match analysis; accessibility and 320–430px mobile validation; diplomacy/coordinated team AI. No audio/fog/spectator camera UI yet.
 - Touch pan/tap and two-finger pinch zoom are supported.
 - WebGPU is required. There is no WebGL/Canvas2D fallback.
 - The simulation runs on the main thread.

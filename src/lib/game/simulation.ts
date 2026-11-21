@@ -351,11 +351,17 @@ export interface StepResult {
 	snapshot: GameSnapshot;
 }
 
+export type BotDifficulty = 'relaxed' | 'standard' | 'ruthless';
+
 export interface SimulationOptions {
 	seed: number;
 	width?: number;
 	height?: number;
+	playerCount?: number;
 	growthMode?: GrowthMode;
+	botDifficulty?: BotDifficulty;
+	/** 0 disables the timer. At expiry the largest alive state wins. */
+	matchDurationTicks?: number;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -372,7 +378,10 @@ export class TerritorySimulation {
 	readonly seed: number;
 	readonly width: number;
 	readonly height: number;
+	readonly playerCount: number;
 	readonly map: GeneratedMap;
+	readonly botDifficulty: BotDifficulty;
+	readonly matchDurationTicks: number;
 	readonly owners: Uint16Array;
 	/** Attack id that most recently captured each cell; 0 for starting land. */
 	readonly claimedBy: Uint32Array;
@@ -440,29 +449,36 @@ export class TerritorySimulation {
 	private readonly integrity: TerritoryIntegrity;
 	readonly structures: StructureRegistry;
 	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
-	private readonly structureStacksByType = new Uint32Array(PLAYER_COUNT * 8);
+	private readonly structureStacksByType: Uint32Array;
 	private structureCacheVersion = -1;
 	private mergedGroupsCache: MergedDistrictGroup[] = [];
 	private mergedGroupsLayoutVersion = -1;
 	private mergedGroupsComputedTick = -1000;
 
 	constructor(options: SimulationOptions) {
-		const width = options.width ?? undefined;
-		const height = options.height ?? undefined;
-		if (width !== undefined || height !== undefined) {
-			throw new Error(
-				'Custom map dimensions are not supported by the versioned map generator yet.'
-			);
-		}
-
 		this.seed = options.seed >>> 0;
+		const playerCount = Math.trunc(options.playerCount ?? PLAYER_COUNT);
+		if (playerCount < 2 || playerCount > PLAYER_COUNT) {
+			throw new Error(`playerCount must be between 2 and ${PLAYER_COUNT}.`);
+		}
+		this.playerCount = playerCount;
+		this.botDifficulty = options.botDifficulty ?? 'standard';
+		this.matchDurationTicks =
+			options.matchDurationTicks === undefined
+				? 0
+				: Math.max(0, Math.trunc(options.matchDurationTicks));
 		this.growthMode =
 			options.growthMode && isGrowthMode(options.growthMode)
 				? options.growthMode
 				: DEFAULT_GROWTH_MODE;
-		this.map = generateMap(this.seed);
+		this.map = generateMap(this.seed, {
+			width: options.width,
+			height: options.height,
+			playerCount: this.playerCount
+		});
 		this.width = this.map.width;
 		this.height = this.map.height;
+		this.structureStacksByType = new Uint32Array(this.playerCount * 8);
 		this.land = this.map.land;
 		this.shade = this.map.shade;
 		this.elevation = this.map.elevation;
@@ -473,11 +489,11 @@ export class TerritorySimulation {
 		this.districtTypes = new Uint8Array(this.width * this.height);
 		this.districtStructureIds = new Uint32Array(this.width * this.height);
 		this.districtColorCodes = new Uint8Array(this.width * this.height);
-		this.integrity = new TerritoryIntegrity(this.width, this.height, PLAYER_COUNT);
+		this.integrity = new TerritoryIntegrity(this.width, this.height, this.playerCount);
 
 		if (this.landCount <= 0) throw new Error('Generated map has no land.');
 
-		this.players = Array.from({ length: PLAYER_COUNT }, (_, i) => ({
+		this.players = Array.from({ length: this.playerCount }, (_, i) => ({
 			id: i + 1,
 			name: PLAYER_NAMES[i] ?? `State ${i + 1}`,
 			isBot: i !== HUMAN_PLAYER_ID - 1,
@@ -487,17 +503,17 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
-		this.botGold = new Array<number>(PLAYER_COUNT).fill(0);
-		this.botGoldAccrual = new Uint16Array(PLAYER_COUNT);
-		this.botGrievance = new Uint16Array(PLAYER_COUNT * PLAYER_COUNT);
-		this.botPressure = new Uint16Array(PLAYER_COUNT);
-		this.botThreat = new Uint16Array(PLAYER_COUNT);
-		this.botDefensive = new Uint8Array(PLAYER_COUNT);
-		this.botReserve = new Uint8Array(PLAYER_COUNT);
-		this.botDefenseStall = new Uint8Array(PLAYER_COUNT);
-		this.botGrievanceMark = new Uint32Array(PLAYER_COUNT);
-		this.botAttackers = new Uint8Array(PLAYER_COUNT * PLAYER_COUNT);
-		this.botProfiles = Array.from({ length: PLAYER_COUNT }, (_, index) =>
+		this.botGold = new Array<number>(this.playerCount).fill(0);
+		this.botGoldAccrual = new Uint16Array(this.playerCount);
+		this.botGrievance = new Uint16Array(this.playerCount * this.playerCount);
+		this.botPressure = new Uint16Array(this.playerCount);
+		this.botThreat = new Uint16Array(this.playerCount);
+		this.botDefensive = new Uint8Array(this.playerCount);
+		this.botReserve = new Uint8Array(this.playerCount);
+		this.botDefenseStall = new Uint8Array(this.playerCount);
+		this.botGrievanceMark = new Uint32Array(this.playerCount);
+		this.botAttackers = new Uint8Array(this.playerCount * this.playerCount);
+		this.botProfiles = Array.from({ length: this.playerCount }, (_, index) =>
 			this.createBotProfile(index + 1)
 		);
 		for (const player of this.players) {
@@ -516,13 +532,13 @@ export class TerritorySimulation {
 		this.rebuildDistricts();
 		this.rebuildAuraDefense();
 		this.hand = BUILDABLE_STRUCTURE_TYPES.map((type, index) => ({ id: index + 1, type }));
-		this.attackOrders = new Array<number>(PLAYER_COUNT).fill(0);
+		this.attackOrders = new Array<number>(this.playerCount).fill(0);
 		this.setSupply(HUMAN_PLAYER_ID, STARTING_GOLD);
 		for (const player of this.players) {
 			if (player.isBot) this.setSupply(player.id, BOT_STARTING_GOLD);
 		}
 
-		this.pushEvent('system', `${PLAYER_COUNT} states deployed. Attack freely.`);
+		this.pushEvent('system', `${this.playerCount} states deployed. Attack freely.`);
 	}
 
 	/**
@@ -2323,7 +2339,7 @@ export class TerritorySimulation {
 			if (sourceAttackId !== 0) {
 				const attack = this.attacks.find((entry) => entry.id === sourceAttackId);
 				if (attack && attack.attackerId !== previousOwner) {
-					const grudge = (previousOwner - 1) * PLAYER_COUNT + (attack.attackerId - 1);
+					const grudge = (previousOwner - 1) * this.playerCount + (attack.attackerId - 1);
 					if (this.botGrievance[grudge] < 0xffff) this.botGrievance[grudge]++;
 				}
 			}
@@ -2787,7 +2803,8 @@ export class TerritorySimulation {
 			const strategicReserve = stalled ? 0 : this.botStrategicReserve(player);
 			// One emergency defensive action per interval; otherwise a bot may
 			// dump its whole reserve into stacked fortifications in one visit.
-			const maxActions = defensive ? 1 : BOT_ACTION_MAX_PER_INTERVAL;
+			const maxActions =
+				defensive || this.botDifficulty === 'relaxed' ? 1 : BOT_ACTION_MAX_PER_INTERVAL;
 
 			for (let action = 0; action < maxActions; action++) {
 				const budget = this.botGold[goldIndex] - reserve - strategicReserve;
@@ -2922,7 +2939,7 @@ export class TerritorySimulation {
 			// Neutral expansion fronts have defenderId 0 and threaten nobody.
 			if (attack.done || attack.defenderId <= 0) continue;
 			this.botPressure[attack.defenderId - 1]++;
-			this.botAttackers[(attack.attackerId - 1) * PLAYER_COUNT + (attack.defenderId - 1)] = 1;
+			this.botAttackers[(attack.attackerId - 1) * this.playerCount + (attack.defenderId - 1)] = 1;
 		}
 
 		for (const player of this.players) this.refreshBotThreat(player);
@@ -2956,8 +2973,8 @@ export class TerritorySimulation {
 		// fighting stops, so a grudge with no active war cannot hold the
 		// reserve forever.
 		let grievances = 0;
-		const grievanceBase = index * PLAYER_COUNT;
-		for (let attacker = 0; attacker < PLAYER_COUNT; attacker++) {
+		const grievanceBase = index * this.playerCount;
+		for (let attacker = 0; attacker < this.playerCount; attacker++) {
 			grievances += this.botGrievance[grievanceBase + attacker];
 		}
 		const recentLosses = Math.max(0, grievances - this.botGrievanceMark[index]);
@@ -3028,7 +3045,7 @@ export class TerritorySimulation {
 
 		// botPressure and botAttackers are refreshed by updateBotThreat() at the
 		// same interval, just before the economy pass.
-		const strengths = new Uint32Array(PLAYER_COUNT);
+		const strengths = new Uint32Array(this.playerCount);
 		for (const player of this.players) {
 			if (player.alive) strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
 		}
@@ -3066,14 +3083,19 @@ export class TerritorySimulation {
 			if (available < cost) continue;
 			const cap = Math.max(1, this.supplyCap(player.id));
 			const pressure = Math.floor((supply / cap) * BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT);
+			const difficultyChance =
+				this.botDifficulty === 'relaxed' ? 0.75 : this.botDifficulty === 'ruthless' ? 1.25 : 1;
 			const chance = Math.max(
 				0,
 				Math.min(
-					75,
-					BOT_ATTACK_BASE_CHANCE +
-						Math.floor((choice.targetScore - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
-						Math.floor(profile.aggression * BOT_ATTACK_AGGRESSION_WEIGHT) +
-						pressure
+					80,
+					Math.floor(
+						(BOT_ATTACK_BASE_CHANCE +
+							Math.floor((choice.targetScore - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
+							Math.floor(profile.aggression * BOT_ATTACK_AGGRESSION_WEIGHT) +
+							pressure) *
+							difficultyChance
+					)
 				)
 			);
 			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
@@ -3208,7 +3230,7 @@ export class TerritorySimulation {
 		if (defenderId === attackerId) return Number.NEGATIVE_INFINITY;
 
 		let score = 25 + Math.floor(profile.aggression * 0.6);
-		const grudge = this.botGrievance[(attackerId - 1) * PLAYER_COUNT + (defenderId - 1)];
+		const grudge = this.botGrievance[(attackerId - 1) * this.playerCount + (defenderId - 1)];
 		if (grudge > 0) {
 			score += 20 + Math.floor(profile.vengeful * 1.2) + Math.min(grudge, 20);
 		}
@@ -3233,7 +3255,7 @@ export class TerritorySimulation {
 			// active attacker is worth more than an unrelated third party, and
 			// unrelated aggression is devalued so the bot can defend instead.
 			const counterAttacking =
-				this.botAttackers[(defenderId - 1) * PLAYER_COUNT + (attackerId - 1)] === 1;
+				this.botAttackers[(defenderId - 1) * this.playerCount + (attackerId - 1)] === 1;
 			if (grudge > 0) {
 				score += BOT_THREAT_RETALIATE_BONUS + Math.floor(profile.vengeful * 0.5);
 			}
@@ -3321,6 +3343,26 @@ export class TerritorySimulation {
 		if (this.ended) return;
 		const alive = this.players.filter((player) => player.alive);
 		if (alive.length === 0) return;
+
+		if (this.matchDurationTicks > 0 && this.tick >= this.matchDurationTicks) {
+			let leader = alive[0];
+			for (const player of alive) {
+				if (
+					player.territory > leader.territory ||
+					(player.territory === leader.territory && player.id < leader.id)
+				) {
+					leader = player;
+				}
+			}
+			this.ended = true;
+			this.winnerId = leader.id;
+			this.pushEvent(
+				'victory',
+				`Time expires. ${leader.name} controls the most land and wins.`,
+				leader.id
+			);
+			return;
+		}
 
 		for (const player of alive) {
 			if (player.territory * 100 < this.landCount * SUPPLY_WIN_SHARE) continue;

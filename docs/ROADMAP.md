@@ -70,6 +70,16 @@ Acceptance criteria:
 
 ---
 
+## Deferred TODO (explicit)
+
+Kept out of the current implementation on purpose:
+
+- **Replay and post-match analysis** — command-log replay, scrubber, match history.
+- **Accessibility and mobile validation** — color-blind palette audit, reduced-motion pass, screen-reader polish, 320–430 px touch pass.
+- **Diplomacy and coordinated team AI** — alliances, shared vision, team victory, coordinated bot pushes.
+
+---
+
 ## Phase 1 — Harden the local game
 
 **Outcome:** A vertical slice that a new player can understand and finish without developer guidance.

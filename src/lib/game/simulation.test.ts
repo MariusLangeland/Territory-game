@@ -214,6 +214,29 @@ describe('map generation', () => {
 });
 
 describe('deterministic simulation', () => {
+	it('supports configured states, map size, difficulty, and match timer', () => {
+		const sim = new TerritorySimulation({
+			seed: 424242,
+			playerCount: 8,
+			width: 1024,
+			height: 640,
+			botDifficulty: 'relaxed',
+			matchDurationTicks: 120
+		});
+		expect(sim.playerCount).toBe(8);
+		expect(sim.width).toBe(1024);
+		expect(sim.height).toBe(640);
+		expect(sim.botDifficulty).toBe('relaxed');
+		expect(sim.map.starts).toHaveLength(8);
+		expect(sim.getSnapshot().players).toHaveLength(8);
+
+		for (let tick = 0; tick < 125; tick++) sim.step();
+		const snapshot = sim.getSnapshot();
+		expect(snapshot.ended).toBe(true);
+		expect(snapshot.winnerId).not.toBeNull();
+		expect(snapshot.tick).toBe(120);
+	});
+
 	it('exposes current supply for every state in snapshots', () => {
 		const sim = new TerritorySimulation({ seed: 424242 });
 		for (let tick = 0; tick < 10; tick++) sim.step();

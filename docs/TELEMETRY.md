@@ -265,3 +265,113 @@ A trimmed per-seed JSON record (`--json`) has this shape:
 - **Not a balance oracle:** Frontage v1's attack model is an implementation
   experiment. See [EXPERIMENTS.md](EXPERIMENTS.md); do not tune final balance
   from these numbers.
+
+## Balance sweep (`pnpm balance`)
+
+`scripts/balance-sweep.ts` plays a batch of deterministic headless matches and
+reports tuning signals the single-match telemetry table does not cover: match
+length, winner personality, the shared early-economy ramp, structure mix, and
+war pacing. Bots play their normal AI; the human state (id 1) is idle.
+
+```sh
+pnpm balance
+pnpm balance --seeds 1 --ticks 200
+pnpm balance --seeds 8 --start-seed 1234 --ticks 1800 --json
+```
+
+| Flag               | Default | Meaning                                                     |
+| ------------------ | ------- | ----------------------------------------------------------- |
+| `--seeds <count>`  | `8`     | Number of consecutive seeds to run; must be at least 1.     |
+| `--start-seed <n>` | `1234`  | First seed. Later seeds advance by 1, wrapping at 2^32.     |
+| `--ticks <max>`    | `1800`  | Tick ceiling per match (1800 = 3 minutes at 10 Hz).         |
+| `--json`           | off     | Print exactly one JSON document instead of the text report. |
+| `--help`, `-h`     | —       | Print usage.                                                |
+
+Every run uses 51 states (default map, standard bots) and the default growth
+layer; the human state issues no commands. A match reaching `--ticks` is a
+timeout, not an error.
+
+### Balance sweep metrics
+
+- **Per seed:** end tick, ended/timeout, winner id/name, alive count,
+  eliminations, and the winner's dominant personality trait plus its four
+  profile axes (`aggression`, `economy`, `fortification`, `command`). The axes
+  are read directly from the private `botProfiles` field through a read-only
+  cast.
+- **Winner trait buckets:** every deployed bot is grouped by its highest
+  profile axis (ties resolve in declaration order: aggression, economy,
+  fortification, command). Across seeds the report shows the bot population,
+  wins, and win rate per bucket. Timeouts and idle-human wins are reported as
+  unattributed wins.
+- **Early economy ramp:** at ticks 600/1200/1800 (5/10/15 minutes), the living
+  bots that hold at least **2 Command Post stacks and 2 War Academy stacks**.
+  Stacks are summed per owner/type, so upgraded pairs count. Reported per
+  checkpoint and as one aggregate completion rate. The idle human is excluded.
+- **Structure mix:** entity counts by structure type (including State) at ticks
+  600/1200/1800. A checkpoint is only reported when the match reached it, so a
+  short or early-ended match simply has fewer rows.
+- **Front / elimination pace:** every 600 ticks, the active-front count and
+  cumulative elimination events.
+- **Match length:** average, median, min, and max end tick across seeds, plus
+  the timeout rate.
+
+The JSON report is a deterministic single document with a stable `version`
+field (`1`), `options`, a `seeds` array in seed order, and an `aggregate`
+object. Field and structure-type ordering are fixed; no wall-clock values
+appear in either format.
+
+## Soak (`pnpm soak`)
+
+`scripts/soak.ts` runs one long deterministic match with normal bots and an
+idle human, validates the world at every sample, and asserts checksum stability
+on a short replay. It is the long-run integrity/memory gate; it does not tune
+balance.
+
+```sh
+pnpm soak
+pnpm soak --ticks 300
+pnpm soak --ticks 2000 --seed 1234 --json
+```
+
+| Flag            | Default | Meaning                                                    |
+| --------------- | ------- | ---------------------------------------------------------- |
+| `--ticks <max>` | `10000` | Maximum simulation ticks (10000 = ~16.7 minutes at 10 Hz). |
+| `--seed <n>`    | `1234`  | Unsigned 32-bit seed.                                      |
+| `--json`        | off     | Print exactly one JSON document instead of the report.     |
+| `--help`, `-h`  | —       | Print usage.                                               |
+
+### Sampling and validation
+
+Every 1,000 ticks, plus the final tick, the harness records: tick, active
+fronts, total live structures, districts (live buildable structures covering at
+least one cell, the telemetry definition), alive states, cumulative
+eliminations, process RSS in MiB, and the full-state checksum.
+
+Each sample is validated in a fixed order:
+
+1. **Ownership ids:** every `owners[]` cell is `0` or a deployed id `<=` state
+   count.
+2. **Finite economy:** player territory is a non-negative integer; player
+   supply, land share, and the human snapshot's gold/income/cap fields are
+   finite and non-negative.
+3. **Checksum:** `simulation.checksum()` is a finite integer.
+4. **Structures:** ids are positive and unique, owners are valid player ids,
+   types are known, packed indices are in bounds, and stacks are positive
+   integers.
+
+The first violation prints the tick, check name, and detail, then exits with a
+non-zero code.
+
+### Determinism assertion
+
+The soak also runs a second, shorter world (`min(300, --ticks)` ticks) twice
+from scratch and compares the final checksums. It prints `PASS` or `FAIL` and
+exits non-zero on mismatch. The main run's final summary reports the end tick,
+deterministic checksum, peak sampled RSS, final fronts/structures/districts,
+alive states, eliminations, and the number of validated samples.
+
+The only non-deterministic value in either script is RSS (from
+`process.memoryUsage()`); it is reported for memory tracking and never feeds
+simulation logic or checksums. A default 10,000-tick soak steps the simulation
+longer than the other harnesses, so expect it to take roughly a minute (or
+more on slower machines).

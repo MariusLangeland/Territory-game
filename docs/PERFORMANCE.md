@@ -26,6 +26,10 @@ All numbers are from the development machine unless stated otherwise. They are d
 
 Bot construction refreshes districts only within the new structure's radius and batches auras once per 3-second decision tick; a full-map district rebuild under 50 simultaneous bot builds cost ~200 ms and is no longer used for construction. District palette changes are reported as 32 × 32 tiles, so the renderer rewrites alpha for a few tiles instead of rebuilding the 2.1M-pixel control texture. Bot build ticks are staggered across the 3-second interval; in a 300-tick sample the worst district batch was 32 tiles (previously up to 549 when all 50 bots built together). The 10 Hz simulation has a 100 ms budget per tick. It uses ~2.6–3.3% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second. The merged-district union scan costs ~2.7 ms over the 2.1M-cell map and is throttled to at most once per 5 ticks (twice per second) from render/UI reads; it is never part of the 10 Hz simulation tick or checksums.
 
+### Long-run soak
+
+`pnpm soak` runs a deterministic 10,000-tick match, samples every 1,000 ticks (fronts, structures, districts, alive, RSS, checksum), and validates ownership/structure invariants. It also replays a short world twice to confirm checksums match. Use it before releases and after AI/economy changes; a rising RSS or district/front count without corresponding territorial change is a leak signal.
+
 ---
 
 ## 2. Current baseline

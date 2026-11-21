@@ -1752,3 +1752,45 @@ Bots branched immediately into personality-driven structures, so many skipped th
 - **Forced fixed CP/WA build order:** too rigid and ignores threat/site constraints.
 - **No early reserve:** attack spending overwhelms the ramp.
 - **Defense-only target scoring:** would make bots ignore valuable grudge targets.
+
+---
+
+## ADR-054 — Match setup, configurable worlds, balance sweep, and soak test
+
+**Status:** accepted and implemented in 0.50.0  
+**Date:** 2026-11-21
+
+### Context
+
+The 51-state, 2048×1024 configuration was a stress-test setting, not a selectable match format. Balance checks relied on a small telemetry sample, and there was no long-run resource/invariant soak test.
+
+### Decision
+
+- Add a match-setup panel to the intro:
+  - state count 8/16/24/32/51,
+  - map presets standard/compact/clash,
+  - bot difficulty relaxed/standard/ruthless,
+  - growth layer,
+  - optional 10/20/30-minute timer,
+  - saved defaults in localStorage.
+- Generalize `generateMap` and `TerritorySimulation` with `playerCount`, `width`, `height`, `botDifficulty`, and `matchDurationTicks`. Defaults preserve the original 51-state 2048×1024 behavior.
+- Bot difficulty adjusts economy action count and attack frequency; it does not change rules or income.
+- At timer expiry, the largest living state wins (lowest id breaks ties).
+- Add `scripts/balance-sweep.ts` (`pnpm balance`) for personality win rates, early-ramp completion, structure mix, front/elimination pace, and match-length distribution across seeds.
+- Add `scripts/soak.ts` (`pnpm soak`) for a 10k-tick deterministic long run with invariant validation and RSS/checksum sampling, plus a short determinism replay check.
+- Keep replay/post-match analysis, accessibility/mobile validation, and diplomacy/team AI as explicit TODO items.
+- App 0.50.0; protocol unchanged at 37.
+
+### Consequences
+
+- The game has selectable match formats without changing default deterministic output.
+- Configurable maps increase memory proportional to width×height; the renderer already allocates from simulation dimensions.
+- Match setup persists locally; URL seed remains shareable and independent.
+- Balance and soak checks are repeatable developer commands.
+- No wire changes yet; an online lobby will need to carry the same match configuration.
+
+### Alternatives considered
+
+- **Keep only the 51-state stress format:** simplest, but leaves no usable shipping match flow.
+- **Select states by hiding players on a fixed 51-start map:** changes map density and wastes unused starts.
+- **Global difficulty tuning in constants:** a setup option is explicit and replayable per match.

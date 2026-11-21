@@ -9,9 +9,6 @@
 	import {
 		ARTILLERY_SUPPLY_COST_PER_LEVEL,
 		HUMAN_PLAYER_ID,
-		MAP_HEIGHT,
-		MAP_WIDTH,
-		PLAYER_COUNT,
 		STRUCTURE_MIN_SPACING,
 		TICK_RATE,
 		colorForPlayer
@@ -24,6 +21,19 @@
 		type GrowthMode
 	} from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
+	import {
+		BOT_DIFFICULTY_OPTIONS,
+		DEFAULT_MATCH_SETTINGS,
+		MAP_PRESETS,
+		STATE_COUNT_OPTIONS,
+		TIMER_OPTIONS,
+		loadMatchSettings,
+		mapPreset,
+		matchSettingsEqual,
+		normalizeMatchSettings,
+		saveMatchSettings,
+		type MatchSettings
+	} from '#lib/game/match-config';
 	import {
 		STRUCTURE_ACCENTS,
 		STRUCTURE_DEFINITIONS,
@@ -78,6 +88,14 @@
 	let handRaised = $state(true);
 	let handShellEl = $state<HTMLDivElement | null>(null);
 	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
+	let matchSettings = $state<MatchSettings>({ ...DEFAULT_MATCH_SETTINGS });
+	let appliedMatchSettings = $state<MatchSettings | null>(null);
+	let settingsDirty = $derived(
+		appliedMatchSettings !== null && !matchSettingsEqual(matchSettings, appliedMatchSettings)
+	);
+	let stateCount = $derived(sim?.playerCount ?? matchSettings.states);
+	let mapWidth = $derived(sim?.width ?? mapPreset(matchSettings.mapPreset).width);
+	let mapHeight = $derived(sim?.height ?? mapPreset(matchSettings.mapPreset).height);
 	let keyboardCursor = $state<{ x: number; y: number } | null>(null);
 	let keyboardCursorScreen = $derived.by(() => {
 		if (!keyboardCursor || !cameraView) return null;
@@ -276,7 +294,14 @@
 	);
 	let showResult = $derived(Boolean(gameStarted && snapshot?.ended));
 	let seedHex = $derived(currentSeed.toString(16).toUpperCase().padStart(8, '0'));
-	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null);
+	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null && !settingsDirty);
+	let deployLabel = $derived(
+		settingsDirty
+			? 'APPLY MATCH SETUP FIRST'
+			: canDeploy
+				? 'DEPLOY COMMANDER'
+				: 'INITIALISING WEBGPU…'
+	);
 	let onboardingVisible = $derived(
 		onboardingStep !== null &&
 			gameStarted &&
@@ -311,6 +336,11 @@
 		}
 	});
 	let matchClock = $derived(formatClock((snapshot?.tick ?? 0) / TICK_RATE));
+	let matchTimeRemaining = $derived(
+		sim && sim.matchDurationTicks > 0
+			? formatClock(Math.max(0, (sim.matchDurationTicks - (snapshot?.tick ?? 0)) / TICK_RATE))
+			: null
+	);
 	let draggingCard = $derived(
 		draggingCardId === null
 			? null
@@ -415,7 +445,25 @@
 		return randomSeed();
 	}
 
-	function createWorld(seed: number): void {
+	function persistMatchSettings(): void {
+		saveMatchSettings(matchSettings);
+	}
+
+	function applyMatchSettings(): void {
+		persistMatchSettings();
+		createWorld(currentSeed || readSeedFromLocation(), matchSettings);
+	}
+
+	function applySeedPreset(seed: number): void {
+		persistMatchSettings();
+		createWorld(seed >>> 0, matchSettings);
+	}
+
+	function createWorld(seed: number, settings: MatchSettings = matchSettings): void {
+		const normalized = normalizeMatchSettings(settings);
+		matchSettings = { ...normalized };
+		appliedMatchSettings = { ...normalized };
+		const preset = mapPreset(normalized.mapPreset);
 		clearTimeout(worldTimer);
 		phase = 'loading';
 		errorMessage = '';
@@ -433,7 +481,7 @@
 		cameraView = null;
 		rankScrollTop = 0;
 		handRaised = true;
-		growthMode = DEFAULT_GROWTH_MODE;
+		growthMode = normalized.growthMode;
 		clearDragState();
 		eventFeed = [];
 		currentSeed = seed >>> 0;
@@ -442,7 +490,15 @@
 		// Yield once so the loading screen paints before the CPU builds the map.
 		worldTimer = setTimeout(() => {
 			try {
-				const next = new TerritorySimulation({ seed: seed >>> 0 });
+				const next = new TerritorySimulation({
+					seed: seed >>> 0,
+					playerCount: normalized.states,
+					width: preset.width,
+					height: preset.height,
+					growthMode: normalized.growthMode,
+					botDifficulty: normalized.difficulty,
+					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE
+				});
 				sim = next;
 				snapshot = next.getSnapshot();
 				phase = 'ready';
@@ -990,7 +1046,8 @@
 		} catch {
 			onboardingDone = false;
 		}
-		createWorld(readSeedFromLocation());
+		matchSettings = loadMatchSettings();
+		createWorld(readSeedFromLocation(), matchSettings);
 
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
@@ -1069,7 +1126,7 @@
 			<div class="brand-lockup">
 				<div class="brand-mark" aria-hidden="true"><span></span></div>
 				<div class="brand-type">
-					<p class="eyebrow">FRONTAGE V1 / {PLAYER_COUNT} STATES</p>
+					<p class="eyebrow">FRONTAGE V1 / {stateCount} STATES</p>
 					<h1>TERRITORY<span>.</span></h1>
 				</div>
 			</div>
@@ -1094,7 +1151,7 @@
 				</div>
 				<div class="readout-stat">
 					<span>STATES</span>
-					<strong>{aliveCount}<em>/{PLAYER_COUNT}</em></strong>
+					<strong>{aliveCount}<em>/{stateCount}</em></strong>
 				</div>
 			</div>
 
@@ -1102,6 +1159,9 @@
 				<div class="clock-block">
 					<span>WAR CLOCK</span>
 					<strong>{matchClock}</strong>
+					{#if matchTimeRemaining}
+						<small>{matchTimeRemaining} LEFT</small>
+					{/if}
 				</div>
 				<button
 					class="action-button pause-button"
@@ -1232,7 +1292,7 @@
 		<div class="minimap-dock hud">
 			<Minimap simulation={sim} {snapshot} {cameraView} onNavigate={navigateFromMinimap} />
 			<div class="minimap-meta">
-				<span>ATLAS / {MAP_WIDTH} × {MAP_HEIGHT}</span>
+				<span>ATLAS / {mapWidth} × {mapHeight}</span>
 				<span>{scaleLegend}</span>
 			</div>
 		</div>
@@ -1483,8 +1543,8 @@
 			<p class="overlay-kicker">CARTOGRAPHY IN PROGRESS</p>
 			<h2>SURVEYING THE<br />FRONTIER.</h2>
 			<p class="loading-copy">
-				Generating {MAP_WIDTH.toLocaleString('en-US')} × {MAP_HEIGHT.toLocaleString('en-US')} terrain
-				cells and deploying {PLAYER_COUNT} states.
+				Generating {mapWidth.toLocaleString('en-US')} × {mapHeight.toLocaleString('en-US')} terrain cells
+				and deploying {stateCount} states.
 			</p>
 		</div>
 	{/if}
@@ -1510,19 +1570,19 @@
 					<h2 id="intro-title">DRAW THE<br /><em>FRONTIER.</em></h2>
 					<p class="intro-lede">
 						Durable fronts spend supply, strength, and terrain defense against
-						{PLAYER_COUNT} deterministic states fighting over the same pixel atlas.
+						{stateCount} deterministic states fighting over the same pixel atlas.
 					</p>
 
 					<div class="spec-strip">
-						<div><strong>{MAP_WIDTH} × {MAP_HEIGHT}</strong><span>PIXEL ATLAS</span></div>
+						<div><strong>{mapWidth} × {mapHeight}</strong><span>PIXEL ATLAS</span></div>
 						<div><strong>{TICK_RATE} HZ</strong><span>FIXED SIMULATION</span></div>
 						<div><strong>WEBGPU</strong><span>DIRTY-TILE RENDER</span></div>
-						<div><strong>{PLAYER_COUNT}</strong><span>STATES DEPLOYED</span></div>
+						<div><strong>{stateCount}</strong><span>STATES DEPLOYED</span></div>
 					</div>
 
 					<div class="intro-actions">
 						<button class="deploy-button" type="button" onclick={deploy} disabled={!canDeploy}>
-							<span>{canDeploy ? 'DEPLOY COMMANDER' : 'INITIALISING WEBGPU…'}</span>
+							<span>{deployLabel}</span>
 							<svg viewBox="0 0 16 16" aria-hidden="true">
 								<path d="M2 8h11M9 3.5 13.5 8 9 12.5" />
 							</svg>
@@ -1544,8 +1604,8 @@
 					</div>
 
 					<p class="intro-footnote">
-						Frontage prototype: {PLAYER_COUNT - 1} AI states fight for 70% of the land while you build
-						with a single supply economy. Fronts cost supply, trade strength on contact, and can be cancelled.
+						Frontage prototype: {stateCount - 1} AI states fight for 70% of the land while you build with
+						a single supply economy. Fronts cost supply, trade strength on contact, and can be cancelled.
 						Share a seed to replay the same test.
 					</p>
 				</div>
@@ -1573,6 +1633,73 @@
 							<p>Take 70% of the land to win. Build cards and terrain defense shape the front.</p>
 						</li>
 					</ol>
+					<div class="match-setup">
+						<div class="setup-head">
+							<span>MATCH SETUP</span>
+							<span class:dirty={settingsDirty}>{settingsDirty ? 'CHANGED' : 'READY'}</span>
+						</div>
+						<label>
+							<span>STATES</span>
+							<select bind:value={matchSettings.states} onchange={persistMatchSettings}>
+								{#each STATE_COUNT_OPTIONS as count (count)}
+									<option value={count}>{count} STATES</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>MAP SIZE</span>
+							<select bind:value={matchSettings.mapPreset} onchange={persistMatchSettings}>
+								{#each MAP_PRESETS as preset (preset.id)}
+									<option value={preset.id}>{preset.label}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>BOT DIFFICULTY</span>
+							<select bind:value={matchSettings.difficulty} onchange={persistMatchSettings}>
+								{#each BOT_DIFFICULTY_OPTIONS as option (option.id)}
+									<option value={option.id}>{option.label}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>GROWTH LAYER</span>
+							<select bind:value={matchSettings.growthMode} onchange={persistMatchSettings}>
+								{#each GROWTH_MODES as mode (mode)}
+									<option value={mode}>{GROWTH_LABELS[mode]}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>MATCH TIMER</span>
+							<select bind:value={matchSettings.timerMinutes} onchange={persistMatchSettings}>
+								{#each TIMER_OPTIONS as minutes (minutes)}
+									<option value={minutes}>{minutes === 0 ? 'NO TIMER' : `${minutes} MIN`}</option>
+								{/each}
+							</select>
+						</label>
+						<div class="seed-presets">
+							<span>QUICK SEED</span>
+							<div>
+								<button type="button" onclick={() => applySeedPreset(1234)}>1234</button>
+								<button type="button" onclick={() => applySeedPreset(0xbeef)}>BEEF</button>
+								<button type="button" onclick={() => applySeedPreset(randomSeed())}>RANDOM</button>
+							</div>
+						</div>
+						<p class="setup-victory">
+							VICTORY: 70% OF LAND, LAST STATE STANDING{matchSettings.timerMinutes > 0
+								? ', OR TIMER LEADER'
+								: ''}
+						</p>
+						<button
+							class="setup-apply"
+							type="button"
+							onclick={applyMatchSettings}
+							disabled={!settingsDirty && phase === 'ready'}
+						>
+							{settingsDirty ? 'REBUILD MATCH' : 'SETTINGS APPLIED'}
+						</button>
+					</div>
 					<div class="brief-footer">
 						<span>MAP SEED</span>
 						<strong>{seedHex}</strong>
@@ -1581,7 +1708,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.49.0 / PROTOCOL 37</span>
+				<span>BUILD 0.50.0 / PROTOCOL 37</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1776,10 +1903,10 @@
 					</section>
 					<section>
 						<span class="manual-index">04 / STRESS TEST</span>
-						<h3>{PLAYER_COUNT} states, one tick.</h3>
+						<h3>{stateCount} states, one tick.</h3>
 						<p>
-							{TICK_RATE} fixed ticks per second, {PLAYER_COUNT - 1} free-attacking AI states, and a seeded
-							PRNG. The {(MAP_WIDTH * MAP_HEIGHT).toLocaleString('en-US')} pixel atlas is rendered from
+							{TICK_RATE} fixed ticks per second, {stateCount - 1} free-attacking AI states, and a seeded
+							PRNG. The {(mapWidth * mapHeight).toLocaleString('en-US')} pixel atlas is rendered from
 							a GPU control texture with only dirty tiles uploaded. Every second, land cut off from every
 							live State structure is annexed by an adjacent protected mainland with the largest shared
 							border. Capture a State structure to remove that state's annexation protection.
@@ -3522,6 +3649,119 @@
 		font-size: 10px;
 		line-height: 1.5;
 		color: var(--ink-dim);
+	}
+
+	.match-setup {
+		margin: 14px 0 8px;
+		padding: 12px 0 10px;
+		border-top: 1px solid var(--line-strong);
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.setup-head {
+		display: flex;
+		justify-content: space-between;
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.08em;
+		color: var(--ink-dim);
+	}
+
+	.setup-head span:last-child {
+		color: var(--signal);
+	}
+
+	.setup-head .dirty {
+		color: #ffd166;
+	}
+
+	.match-setup label {
+		display: grid;
+		grid-template-columns: 88px minmax(0, 1fr);
+		align-items: center;
+		gap: 8px;
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.05em;
+		color: var(--ink-dim);
+	}
+
+	.match-setup select {
+		width: 100%;
+		padding: 5px 6px;
+		border: 1px solid var(--line-strong);
+		border-radius: 0;
+		background: rgba(5, 14, 18, 0.9);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 8px;
+		letter-spacing: 0.03em;
+	}
+
+	.seed-presets {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		font-family: var(--font-mono);
+		font-size: 7px;
+		letter-spacing: 0.05em;
+		color: var(--ink-dim);
+	}
+
+	.seed-presets div {
+		display: flex;
+		gap: 4px;
+	}
+
+	.seed-presets button {
+		padding: 4px 6px;
+		border: 1px solid var(--line-strong);
+		background: transparent;
+		color: var(--ink-dim);
+		font-family: var(--font-mono);
+		font-size: 7px;
+		cursor: pointer;
+	}
+
+	.seed-presets button:hover {
+		color: var(--signal);
+		border-color: var(--signal);
+	}
+
+	.setup-victory {
+		margin: 2px 0;
+		font-family: var(--font-mono);
+		font-size: 6.5px;
+		line-height: 1.5;
+		letter-spacing: 0.04em;
+		color: var(--ink-dim);
+	}
+
+	.setup-apply {
+		padding: 7px 8px;
+		border: 1px solid var(--line-strong);
+		background: rgba(220, 233, 149, 0.08);
+		color: var(--signal);
+		font-family: var(--font-mono);
+		font-size: 8px;
+		letter-spacing: 0.06em;
+		cursor: pointer;
+	}
+
+	.setup-apply:disabled {
+		cursor: default;
+		color: var(--ink-dim);
+		opacity: 0.55;
+	}
+
+	.clock-block small {
+		font-family: var(--font-mono);
+		font-size: 6px;
+		letter-spacing: 0.05em;
+		color: #ffd166;
 	}
 
 	.brief-footer {

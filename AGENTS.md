@@ -14,9 +14,9 @@ Orientation for coding agents working on Territory. Read this before changing si
 
 ## Current status
 
-- **Current model — Frontage v1:** 51 states (1 human + 50 AI). One **supply** resource pays for cards, upgrades, and durable fronts. Supply income/cap derive from territory, Command Posts, and War Academies; the cap has **no global maximum**. Artillery is an active siege structure: 1000 supply to build, 300 supply per level fired, 140 px range, 6 s cooldown, one 2 s shell per level with ±36 px spread, 12 px blast, 64 px district, 16 px build clearance, and immunity for State structures. Cards cost 40/60/80/160/240 supply for Fortification/War Academy/Command Post/Jammer/Barracks, upgrades cost `base + 15 × current level`, and Fortifications add +1 defense. Effective attack levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs `30 + 40 × effective levels` and grants `1000 + 200 × levels` strength; power/piercing use `logTier = floor(log2(levels + 1))`. Jammers suppress enemy attacks globally without adding pixel defense. Captures spend power and strength; mutual contact trades `100 + 50 × opponent logTier` once per pair per tick. No fixed lifetime; 20 idle ticks kill a front. Cancellation refunds `floor(cost × remaining/initial strength)`. Holding 70% of land wins instantly; no time limit. State structures project +20 aura over 16px; districts are bounded noisy Voronoi regions; mutually hostile bots use personality profiles, threat reserves, and staggered build ticks.
-- Implemented: seeded 2048×1024 world, 51 starts, supply economy, durable fronts/attrition/cancellation/70% victory, State/buildable structures, bot personalities/threat defense, districts/auras/noise cleanup, growth layers, claim provenance, determinism/checksums, WebGPU dirty-tile rendering, 51-state HUD, rival supply banners, onboarding, keyboard cursor, pinch zoom, telemetry, tests, benchmark.
-- Not implemented: coordinated team bot AI, online server/WebSockets/lobbies/accounts/persistence, replay viewer, fog, audio, 320–430px mobile validation.
+- **Current model — Frontage v1:** configurable 8–51 states (default 51: 1 human + 50 AI), three map presets, optional match timer, and relaxed/standard/ruthless bot difficulty. One **supply** resource pays for cards, upgrades, and durable fronts. Supply income/cap derive from territory, Command Posts, and War Academies; the cap has **no global maximum**. Artillery is an active siege structure: 1000 supply to build, 300 supply per level fired, 140 px range, 6 s cooldown, one 2 s shell per level with ±36 px spread, 12 px blast, 64 px district, 16 px build clearance, and immunity for State structures. Cards cost 40/60/80/160/240 supply for Fortification/War Academy/Command Post/Jammer/Barracks, upgrades cost `base + 15 × current level`, and Fortifications add +1 defense. Effective attack levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs `30 + 40 × effective levels` and grants `1000 + 200 × levels` strength; power/piercing use `logTier = floor(log2(levels + 1))`. Jammers suppress enemy attacks globally without adding pixel defense. Captures spend power and strength; mutual contact trades `100 + 50 × opponent logTier` once per pair per tick. No fixed lifetime; 20 idle ticks kill a front. Cancellation refunds `floor(cost × remaining/initial strength)`. Holding 70% of land wins instantly; an optional 10/20/30-minute timer awards the match to the largest alive state. State structures project +20 aura over 16px; districts are bounded noisy Voronoi regions; mutually hostile bots use personality profiles, threat reserves, and staggered build ticks.
+- Implemented: seeded configurable-size worlds with 8–51 states, match setup (state count, map preset, bot difficulty, growth, optional timer, saved defaults), supply economy, durable fronts/attrition/cancellation/70% victory, State/buildable structures, bot personalities/threat defense, districts/auras/noise cleanup, growth layers, claim provenance, determinism/checksums, WebGPU dirty-tile rendering, state-count-aware HUD, rival supply banners, onboarding, keyboard cursor, pinch zoom, telemetry, balance sweep, soak test, tests, benchmark.
+- TODO (explicitly deferred): replay/post-match analysis; accessibility and 320–430px mobile validation; diplomacy/coordinated team bot AI. Also online server/WebSockets/lobbies/accounts/persistence, fog, and audio.
 - WebGPU is required. There is no fallback map renderer.
 
 ## Commands
@@ -27,6 +27,9 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm bench
+pnpm telemetry
+pnpm balance
+pnpm soak
 pnpm build
 pnpm lint
 ```
@@ -71,6 +74,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/routes/+page.svelte` — screen flow and HUD. Large file by design; keep gameplay rules out.
 - `src/lib/components/GameCanvas.svelte` — canvas/fixed loop/pointer; do not add simulation logic here.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
+- `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
 - `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
@@ -84,6 +88,8 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/net/protocol.ts` — protocol draft; keep docs synchronized.
 - `scripts/benchmark.ts` — performance baseline, including all growth layers.
 - `scripts/telemetry.ts` — deterministic headless multi-seed match metrics ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
+- `scripts/balance-sweep.ts` — personality/ramp/structure balance sweep.
+- `scripts/soak.ts` — long-run invariant and memory soak test.
 - `docs/COMBAT_DESIGN.md` — implemented Frontage v1 design and rationale.
 
 ## Definition of done
@@ -105,7 +111,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 1. Start `pnpm dev`.
 2. Open a seeded URL such as `/?seed=1234` in current Chrome/Edge.
 3. Confirm the intro appears, WebGPU error modal is absent, and DEPLOY is enabled.
-4. Deploy, confirm the 51-state virtualized leaderboard and active-front count; scroll it to the last rank.
+4. Deploy, confirm the virtualized leaderboard and active-front count match the selected state count; scroll it to the last rank.
 5. Click a frontier and confirm territory growth with no floating last-action box.
 6. Pause with Space and confirm the tick freezes.
 7. Switch the growth layer through CIRCULAR / SMOOTH / ORGANIC and confirm new attacks use it while in-flight orders keep theirs.
@@ -126,8 +132,9 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 22. Run ORGANIC for several seconds; confirm mutual fronts trade strength instead of interpenetrating, no isolated owner specks remain, and repeated clicks create separate attacks rather than upgrading one.
 23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
 24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch. Pan an edge state to the center and confirm the camera no longer stops at the map edge.
-25. Test a narrow viewport and scroll the 51-state leaderboard to the bottom.
+25. Test a narrow viewport and scroll the state-count-aware leaderboard to the bottom.
 26. Confirm rival supply text has a transparent background and no plaque/border, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
+27. On the intro, change state count, map preset, bot difficulty, growth layer, and timer; click REBUILD MATCH and confirm the intro stats, HUD state count, atlas dimensions, leaderboard, and countdown reflect the new settings. Reload and confirm the settings persisted.
 
 ## Style
 

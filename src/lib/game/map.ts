@@ -14,6 +14,12 @@ export interface StartPoint {
 	y: number;
 }
 
+export interface MapGenerationOptions {
+	width?: number;
+	height?: number;
+	playerCount?: number;
+}
+
 export interface GeneratedMap {
 	width: number;
 	height: number;
@@ -84,11 +90,17 @@ function fractalElevation(x: number, y: number, seed: number): number {
 	return total / weight;
 }
 
-function quantiseElevation(x: number, y: number, seed: number): number {
+function quantiseElevation(
+	x: number,
+	y: number,
+	seed: number,
+	width: number,
+	height: number
+): number {
 	let elevation = fractalElevation(x, y, seed);
 
 	// Pull the map edges down into ocean so the playfield reads as an atlas.
-	const edge = Math.min(x, MAP_WIDTH - 1 - x, y, MAP_HEIGHT - 1 - y);
+	const edge = Math.min(x, width - 1 - x, y, height - 1 - y);
 	const edgeFade = Math.min(1, edge / 74);
 	elevation *= 0.72 + 0.28 * edgeFade;
 
@@ -106,32 +118,44 @@ interface Candidate {
 	y: number;
 }
 
-function localLandDensity(land: Uint8Array, index: number, radius: number): number {
-	const x = index % MAP_WIDTH;
-	const y = (index - x) / MAP_WIDTH;
+function localLandDensity(
+	land: Uint8Array,
+	index: number,
+	radius: number,
+	width: number,
+	height: number
+): number {
+	const x = index % width;
+	const y = (index - x) / width;
 	const step = Math.max(1, Math.floor(radius / 10));
 	let landSamples = 0;
 	let total = 0;
 
 	for (let dy = -radius; dy <= radius; dy += step) {
 		const yy = y + dy;
-		if (yy < 0 || yy >= MAP_HEIGHT) continue;
+		if (yy < 0 || yy >= height) continue;
 		for (let dx = -radius; dx <= radius; dx += step) {
 			if (dx * dx + dy * dy > radius * radius) continue;
 			const xx = x + dx;
-			if (xx < 0 || xx >= MAP_WIDTH) continue;
+			if (xx < 0 || xx >= width) continue;
 			total++;
-			if (land[yy * MAP_WIDTH + xx]) landSamples++;
+			if (land[yy * width + xx]) landSamples++;
 		}
 	}
 
 	return total === 0 ? 0 : landSamples / total;
 }
 
-function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
+function chooseStarts(
+	land: Uint8Array,
+	seed: number,
+	playerCount: number,
+	width: number,
+	height: number
+): StartPoint[] {
 	const rng = new DeterministicRng((seed ^ 0x51ed270b) >>> 0);
 	const candidates: Candidate[] = [];
-	const targetCandidates = Math.max(1_200, PLAYER_COUNT * 64);
+	const targetCandidates = Math.max(1_200, playerCount * 64);
 	const maxAttempts = 400_000;
 	let attempts = 0;
 
@@ -139,20 +163,20 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 		attempts++;
 		const index = rng.nextInt(land.length);
 		if (!land[index]) continue;
-		const x = index % MAP_WIDTH;
-		const y = (index - x) / MAP_WIDTH;
-		if (localLandDensity(land, index, START_RADIUS + 10) < 0.64) continue;
+		const x = index % width;
+		const y = (index - x) / width;
+		if (localLandDensity(land, index, START_RADIUS + 10, width, height) < 0.64) continue;
 		candidates.push({ index, x, y });
 	}
 
-	if (candidates.length < PLAYER_COUNT) {
+	if (candidates.length < playerCount) {
 		throw new Error('Map generation did not produce enough land for player starts.');
 	}
 
 	// Seed the farthest-point sampler near the centre of the world so the first
 	// player starts in the middle of a landmass rather than on a remote edge.
-	const cx = MAP_WIDTH / 2;
-	const cy = MAP_HEIGHT / 2;
+	const cx = width / 2;
+	const cy = height / 2;
 	candidates.sort((a, b) => {
 		const da = (a.x - cx) ** 2 + (a.y - cy) ** 2;
 		const db = (b.x - cx) ** 2 + (b.y - cy) ** 2;
@@ -178,7 +202,7 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 	// seeds and still produces a deterministic set of starts.
 	const preferredSpacing = (START_RADIUS * 2 + 2) ** 2;
 
-	while (chosen.length < PLAYER_COUNT) {
+	while (chosen.length < playerCount) {
 		let bestIndex = -1;
 		let bestDistance = -1;
 
@@ -216,8 +240,8 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
 		}
 	}
 
-	if (chosen.length < PLAYER_COUNT) {
-		throw new Error(`Map generation could only place ${chosen.length}/${PLAYER_COUNT} starts.`);
+	if (chosen.length < playerCount) {
+		throw new Error(`Map generation could only place ${chosen.length}/${playerCount} starts.`);
 	}
 
 	return chosen.map((candidate) => ({
@@ -234,9 +258,14 @@ function chooseStarts(land: Uint8Array, seed: number): StartPoint[] {
  * same `land` mask from the same seed. If this algorithm changes, increment
  * MAP_VERSION in constants.ts.
  */
-export function generateMap(seed: number): GeneratedMap {
-	const width = MAP_WIDTH;
-	const height = MAP_HEIGHT;
+export function generateMap(seed: number, options: MapGenerationOptions = {}): GeneratedMap {
+	const width = options.width ?? MAP_WIDTH;
+	const height = options.height ?? MAP_HEIGHT;
+	const playerCount = options.playerCount ?? PLAYER_COUNT;
+	if (width < 256 || height < 256) {
+		throw new Error(`Map dimensions must be at least 256 x 256, received ${width} x ${height}.`);
+	}
+	if (playerCount < 2) throw new Error('A match needs at least two states.');
 	const pixelCount = width * height;
 	const elevations = new Uint16Array(pixelCount);
 	const histogram = new Uint32Array(1024);
@@ -244,7 +273,7 @@ export function generateMap(seed: number): GeneratedMap {
 	for (let y = 0; y < height; y++) {
 		const row = y * width;
 		for (let x = 0; x < width; x++) {
-			const elevation = quantiseElevation(x, y, seed);
+			const elevation = quantiseElevation(x, y, seed, width, height);
 			elevations[row + x] = elevation;
 			histogram[elevation >>> 6]++;
 		}
@@ -306,7 +335,7 @@ export function generateMap(seed: number): GeneratedMap {
 	}
 	detailSeed = (detailSeed + 1) >>> 0;
 
-	const starts = chooseStarts(land, seed);
+	const starts = chooseStarts(land, seed, playerCount, width, height);
 
 	return { width, height, land, shade, elevation, landCount, starts };
 }

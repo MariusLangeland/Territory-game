@@ -77,6 +77,8 @@ Pixel positions are integer; clicks are floored to cell coordinates before comma
 - A 32-bit seed generates the entire world.
 - The map UI accepts 1–8 hex characters; URLs store the decimal equivalent.
 - `MAP_VERSION` is part of the map identity. Seed alone is insufficient across generator versions.
+- Match identity also includes map width/height, player count, growth mode, bot difficulty, and match timer. Two matches with the same seed but different setup are different worlds.
+- Default generation (2048×1024, 51 states) remains byte-for-byte identical to the pre-configuration generator.
 
 ### 4.2 Simulation PRNG
 

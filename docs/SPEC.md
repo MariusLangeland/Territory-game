@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.49.0 (Frontage v1 + siege rework)  
+**Version:** 0.50.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.49.0, map version 4, protocol draft 37
+**Last synchronized with:** application 0.50.0, map version 4, protocol draft 37
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -31,7 +31,7 @@ OpenFront is the closest genre reference: a browser strategy game with a huge pi
 ### 1.4 Long-term match shape (target, not current)
 
 - 8 human states (or configurable rooms), with bots filling empty seats.
-- One shared 2048 × 1024 atlas, approximately 38% land.
+- One shared procedural atlas; default 2048 × 1024 (about 38% land) with compact and clash presets.
 - Fixed 10 Hz simulation.
 - Land generates a resource; attacks cost resources and time.
 - Final attack semantics are **undecided**. The current free flood-fill front is a stress-test stand-in; a concrete replacement proposal is in [COMBAT_DESIGN.md](COMBAT_DESIGN.md) and is not implemented.
@@ -57,9 +57,9 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 
 | Area                                                      | Status                   |
 | --------------------------------------------------------- | ------------------------ |
-| 2048 × 1024 seeded procedural atlas                       | ✅                       |
+| Seeded procedural atlas, 2048×1024 / 1536×768 / 1280×720  | ✅                       |
 | Land/ocean mask and terrain relief                        | ✅                       |
-| 51 states (1 human + 50 AI)                               | ✅                       |
+| 8–51 states (1 human + N AI), default 51                  | ✅                       |
 | Pixel ownership and incremental frontier tracking         | ✅                       |
 | Resource-free local-front attacks (BFS)                   | ✅                       |
 | Single supply economy, durable fronts, cancellation       | ✅                       |
@@ -70,7 +70,7 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 | Circular / smooth / organic selectable growth layers      | ✅                       |
 | State structures anchoring territory and projecting auras | ✅                       |
 | Supply income, drag-and-drop build cards, 70% victory     | ✅                       |
-| Minimap, virtualized 51-state leaderboard, perf readout   | ✅                       |
+| Minimap, virtualized state-count-aware leaderboard, perf  | ✅                       |
 | Seed input, URL seed, new world, rematch                  | ✅                       |
 | Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
 | Deterministic tests + attack stress tests + benchmark     | ✅                       |
@@ -115,7 +115,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 
 ### 4.1 The world
 
-- 2048 × 1024 cells (2,097,152 total).
+- Default 2048 × 1024 cells (2,097,152 total); compact 1536 × 768 and clash 1280 × 720 presets.
 - Generator targets 38% land.
 - Static binary land mask, 8-bit terrain shade, and a discrete elevation tier (0–5).
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
@@ -250,7 +250,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Mutual fronts trade strength; the survivor pauses on the contact line.
 - Cancellation refunds a proportional strength share immediately and is not tick-queued in this build.
 - Bots use profile-driven strategies rather than coordinated team play.
-- 51 states can form a near-even patchwork; 70% victory is the intended end condition.
+- Configurable 8–51 states can form a near-even patchwork; 70% victory, last-standing, or an optional timer decides the match.
 - No match time limit exists.
 
 ### 4.11 Combat randomness
@@ -426,8 +426,8 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 5.1 Screen flow
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
-2. **Intro:** seed load, deploy. Simulation paused. Copy identifies the attack stress build.
-3. **Live match:** 51-state HUD, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
+2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), growth layer, optional 10/20/30-minute timer, victory summary, saved defaults, rebuild, deploy. Simulation paused.
+3. **Live match:** state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
 6. **Result:** last state wins; final standings.
@@ -436,7 +436,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.2 HUD
 
-- Brand with attack-stress identification and 51 states.
+- Brand with attack-stress identification and the current state count.
 - Human name/color, land share, rank, living-state count.
 - War clock.
 - Pause/resume, field manual, new world.
@@ -494,7 +494,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
 - Human supply/cap in the horizontal supply bar, with FIRE and CANCEL FRONT at its right edge.
-- 51-state leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
+- State-count-aware leaderboard scrolls via virtualization; rank numbers are absolute and the human row is highlighted when visible.
 - Paused clicks do not issue orders.
 
 ### 5.6 Accessibility/responsive
@@ -565,7 +565,7 @@ Full detail: [DETERMINISM.md](DETERMINISM.md).
 
 Full detail: [RENDERING.md](RENDERING.md).
 
-1. One 2048 × 1024 `rgba8unorm` control texture and a 256 × 1 palette texture.
+1. One map-sized `rgba8unorm` control texture (default 2048 × 1024) and a 256 × 1 palette texture.
 2. R = owner id, G = land, B = terrain shade, A = normalized elevation tier.
 3. Per-tick changes normally upload 32 × 32 dirty tiles merged into strips. Above 96 dirty tiles, an adaptive full-texture resync is queued and uploaded in eight horizontal chunks, at most two per frame. No frame does a synchronous full-map upload.
 4. One full-screen triangle and one fragment shader.
