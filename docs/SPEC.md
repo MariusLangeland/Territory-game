@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.38.0 (Frontage v1 + siege rework)  
+**Version:** 0.38.1 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.38.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.38.1, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 

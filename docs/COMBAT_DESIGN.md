@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.38.0 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.38.1 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -509,19 +509,19 @@ Run the same seeds and bot profiles under `'stress'` and `'frontage'`:
 
 ## 7. Risks and mitigations
 
-| Risk                                           | Why it matters                                                     | Mitigation                                                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Supply snowball                                | Territory → income → more fronts is self-reinforcing.              | No hard income/stock caps; tune territory divisors with telemetry and use front pressure/attrition.                                          |
-| Two-resource complexity                        | Gold + supply adds HUD and decision load.                          | Keep the readout compact; supply is only launches; open decision to merge later.                                                            |
-| Front churn / click fatigue                    | More launches than the current 3-order tempo.                      | Front cap 8, early supply scarcity, long front lifetime, no reinforcement spam; revisit with playtests.                                     |
-| Symmetric attrition feels like nothing happens | Both fronts may die together.                                      | Barracks advantage is real (strength + damage); terrain decides the rest; tune `CLASH_ATTRITION_*` from telemetry.                          |
-| Unbreakable defensive walls                    | State aura + stacked Fortifications can outlast finite strength.   | Pierce, strength scaling, optional Fortification stack cap; telemetry counter "stalled fronts".                                             |
-| Bot quality regression                         | Bots currently reason about attack orders; supply/strength is new. | Phase 4 retune, deterministic strength estimate, A/B win rates; keep bot decisions hash-based.                                              |
-| Perf under more fronts                         | Up to 8 per player vs current order caps.                          | Stress mode keeps a lower cap; measure with the 51-state benchmark; pair-once-per-tick attrition.                                           |
-| Protocol/checksum break                        | Snapshot, replay, and wire change.                                 | `COMBAT_RULES_VERSION`, protocol bump, dual fixtures for stress/frontage, staged flag.                                                      |
-| Timeout decides too many games                 | A 60% hold may be hard to reach.                                   | Tune hold share/ticks; publish end cause; adjust only after 40-seed data.                                                                   |
-| Stale docs/ADRs                                | Several ADRs already contradict current behavior (Appendix B).     | Phase 6 doc pass; mark superseded ADRs explicitly.                                                                                          |
-| Mobile/tap tempo                               | More frequent launches on small screens.                           | Compact supply readout, tap-to-launch with clear markers, front cap; mobile parity is Phase 1 of ROADMAP.                                   |
+| Risk                                           | Why it matters                                                     | Mitigation                                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Supply snowball                                | Territory → income → more fronts is self-reinforcing.              | No hard income/stock caps; tune territory divisors with telemetry and use front pressure/attrition.                |
+| Two-resource complexity                        | Gold + supply adds HUD and decision load.                          | Keep the readout compact; supply is only launches; open decision to merge later.                                   |
+| Front churn / click fatigue                    | More launches than the current 3-order tempo.                      | Front cap 8, early supply scarcity, long front lifetime, no reinforcement spam; revisit with playtests.            |
+| Symmetric attrition feels like nothing happens | Both fronts may die together.                                      | Barracks advantage is real (strength + damage); terrain decides the rest; tune `CLASH_ATTRITION_*` from telemetry. |
+| Unbreakable defensive walls                    | State aura + stacked Fortifications can outlast finite strength.   | Pierce, strength scaling, optional Fortification stack cap; telemetry counter "stalled fronts".                    |
+| Bot quality regression                         | Bots currently reason about attack orders; supply/strength is new. | Phase 4 retune, deterministic strength estimate, A/B win rates; keep bot decisions hash-based.                     |
+| Perf under more fronts                         | Up to 8 per player vs current order caps.                          | Stress mode keeps a lower cap; measure with the 51-state benchmark; pair-once-per-tick attrition.                  |
+| Protocol/checksum break                        | Snapshot, replay, and wire change.                                 | `COMBAT_RULES_VERSION`, protocol bump, dual fixtures for stress/frontage, staged flag.                             |
+| Timeout decides too many games                 | A 60% hold may be hard to reach.                                   | Tune hold share/ticks; publish end cause; adjust only after 40-seed data.                                          |
+| Stale docs/ADRs                                | Several ADRs already contradict current behavior (Appendix B).     | Phase 6 doc pass; mark superseded ADRs explicitly.                                                                 |
+| Mobile/tap tempo                               | More frequent launches on small screens.                           | Compact supply readout, tap-to-launch with clear markers, front cap; mobile parity is Phase 1 of ROADMAP.          |
 
 ---
 
@@ -529,22 +529,22 @@ Run the same seeds and bot profiles under `'stress'` and `'frontage'`:
 
 The user approved these on 2026-11-20. This table records the shipped choices; earlier recommendations were superseded.
 
-| #   | Decision                 | Approved choice                                                                                            |
-| --- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| 1   | Shipping player count    | **51 states** (1 human + 50 bots).                                                                         |
-| 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                               |
-| 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                       |
-| 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                             |
+| #   | Decision                 | Approved choice                                                                                                        |
+| --- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Shipping player count    | **51 states** (1 human + 50 bots).                                                                                     |
+| 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                                           |
+| 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                                   |
+| 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                                         |
 | 5   | Supply constants         | Income `3 + territory/10000 + structures`/s, no income cap; stock cap `120 + territory/1000 + 40×Academy`, no maximum. |
-| 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                           |
-| 7   | Reinforcement            | **No reinforcement** in v1.                                                                                |
-| 8   | Fortification stacking   | Unbounded stacks (as before).                                                                              |
-| 9   | Capital capture          | Keep ADR-012: capture destroys State; territory remains but unanchored.                                    |
-| 10  | Growth layer             | In-match switch remains available for testing.                                                             |
-| 11  | Front cap                | No explicit cap; supply and idle expiry bound fronts.                                                      |
-| 12  | Attrition constants      | `100 + 50 × opponent steps` per pair per tick.                                                             |
-| 13  | Unaffordable requeue fix | Landed: cheapest candidate requeues instead of killing the front.                                          |
-| 14  | Bot supply rules         | Same supply/launch rules as the human, with personality weights.                                           |
+| 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                                       |
+| 7   | Reinforcement            | **No reinforcement** in v1.                                                                                            |
+| 8   | Fortification stacking   | Unbounded stacks (as before).                                                                                          |
+| 9   | Capital capture          | Keep ADR-012: capture destroys State; territory remains but unanchored.                                                |
+| 10  | Growth layer             | In-match switch remains available for testing.                                                                         |
+| 11  | Front cap                | No explicit cap; supply and idle expiry bound fronts.                                                                  |
+| 12  | Attrition constants      | `100 + 50 × opponent steps` per pair per tick.                                                                         |
+| 13  | Unaffordable requeue fix | Landed: cheapest candidate requeues instead of killing the front.                                                      |
+| 14  | Bot supply rules         | Same supply/launch rules as the human, with personality weights.                                                       |
 
 ---
 

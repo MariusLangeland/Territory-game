@@ -1359,3 +1359,32 @@ The economy now encourages several same-type structures, and their adjacent Voro
 - **Permanently bake a shared district color code:** would require a texture rebuild to restore Ctrl.
 - **Merge districts in simulation state:** would change auras, placement, and gameplay semantics.
 - **Draw seams in the 2D overlay under Ctrl:** would need per-cell boundary rendering at every zoom; the shader toggle is cheaper and exact.
+
+---
+
+## ADR-042 — Remove the supply-income hard cap
+
+**Status:** accepted and implemented in 0.38.1  
+**Date:** 2026-11-21
+
+### Context
+
+`supplyIncomeFor` still returned `min(60, ...)`, a leftover from the early frontage model. It silently flattened Command Post and territory scaling once a player reached 60 supply/s, contradicting the no-hard-caps direction.
+
+### Decision
+
+- Delete `SUPPLY_INCOME_MAX` and return the computed income directly.
+- Income is `3 + floor(territory / 10000) + 2 × Command Post stacks` per second with **no cap**.
+- Add a regression test that reaches >60/s with forty Command Posts.
+- App 0.38.1; protocol unchanged at 36.
+
+### Consequences
+
+- Command Post stacking and large territory keep paying off indefinitely.
+- The supply stock cap still exists as a derived, uncapped ceiling formula; only the stock is clamped, not the rate.
+- Existing balance can snowball faster; telemetry/front pressure remains the tuning lever rather than a silent income ceiling.
+
+### Alternatives considered
+
+- **Keep 60/s but show it in the HUD:** still a hard cap and contrary to the requirement.
+- **Diminishing income above a threshold:** softer than a hard cap but would require a new non-linear formula and explicit design review.
