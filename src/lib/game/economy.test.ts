@@ -81,6 +81,17 @@ describe('player economy and cards', () => {
 		expect(costs).toEqual([...costs].sort((a, b) => a - b));
 	});
 
+	it('pays +1 supply per second per 1000 owned pixels', () => {
+		const sim = new TerritorySimulation({ seed: 135794 });
+		const player = sim.players[HUMAN_PLAYER_ID - 1];
+		player.territory = 999;
+		expect(sim.income).toBe(BASE_GOLD_INCOME);
+		player.territory = 2000;
+		expect(sim.income).toBe(BASE_GOLD_INCOME + 2);
+		player.territory = 12_500;
+		expect(sim.income).toBe(BASE_GOLD_INCOME + 12);
+	});
+
 	it('pays base supply income every second and respects the cap', () => {
 		const sim = new TerritorySimulation({ seed: 135791 });
 		const cap = sim.supplyCap(HUMAN_PLAYER_ID);

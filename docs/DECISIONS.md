@@ -1420,3 +1420,32 @@ Building required an HTML drag from the hand. That is awkward with a mouse, unav
 - **Build immediately when a number is pressed:** impossible without a target cell; placement mode is required.
 - **Use Enter/arrow-key cursor only:** the request explicitly asks for left-click building.
 - **Suppress context menu with CSS only:** context menu is a browser default handled by JS.
+
+---
+
+## ADR-044 — Territory income: +1 supply/s per 1,000 owned pixels
+
+**Status:** accepted and implemented in 0.40.0  
+**Date:** 2026-11-21
+
+### Context
+
+Territory contributed only +1 supply/s per 10,000 pixels, while structure economies were stronger. That pushed play toward safe structure stacking and made aggressive expansion economically unattractive.
+
+### Decision
+
+- Change `SUPPLY_INCOME_TERRITORY_DIVISOR` from 10,000 to **1,000**.
+- Supply income is now `3 + floor(territory / 1000) + 2 × Command Post stacks` per second.
+- Add a regression test covering 999, 2,000, and 12,500 owned pixels.
+- App 0.40.0; protocol unchanged at 36.
+
+### Consequences
+
+- Every 1,000 owned pixels grants +1/s, roughly matching the supply-cap growth rate from territory.
+- Wide aggressive play gains income directly; structure-only play still gains from Command Posts.
+- Expansion snowball is stronger; front pressure and attrition remain the counterweight.
+
+### Alternatives considered
+
+- **Keep 10,000 and add a separate occupation term:** would double-count territory and complicate telemetry.
+- **Use a non-linear territory curve:** requires explicit diminishing-return design and more tuning data.

@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.39.0 (Frontage v1 + siege rework)  
+**Version:** 0.40.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.39.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.40.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -349,7 +349,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
 - Start with **90 supply** and **all six buildable cards** always available in the hand.
-- Supply income is `3 + floor(territory/10000) + income structures` per second, with **no income cap**. Command Post stacks add **+2/s**.
+- Supply income is `3 + floor(territory/1000) + income structures` per second, with **no income cap**. This is +1/s per 1,000 owned pixels, plus Command Post stacks at **+2/s** each.
 - Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
 - Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 5 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
