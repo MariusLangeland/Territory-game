@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.47.0 (Frontage v1 + siege rework)  
+**Version:** 0.48.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.47.0, map version 4, protocol draft 37
+**Last synchronized with:** application 0.48.0, map version 4, protocol draft 37
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -482,7 +482,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 - Default: human start, 3.8× fit zoom.
 - Range: 0.82×–18×.
-- Clamped to the map at high zoom.
+- No edge pan clamp: the map can overscroll so edge states can be centered away from HUD panels; outside-map space renders as ocean/void.
 - CSS-pixel input, DPR capped at 2.
 - Pausing/UI interaction must not move the camera unexpectedly.
 

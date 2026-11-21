@@ -1685,3 +1685,34 @@ War Academy cost 120 supply while providing +80 cap. The cap structure was meant
 
 - **Lower cap bonus instead:** would weaken the intended payoff rather than improving access.
 - **Keep display order fixed:** would break the established ascending-cost hand; reordering is cheaper and keeps shortcuts predictable.
+
+---
+
+## ADR-052 — Remove the edge pan clamp
+
+**Status:** accepted and implemented in 0.48.0  
+**Date:** 2026-11-21
+
+### Context
+
+`MapCamera.clamp()` forced the viewport to stay inside the map. States near a map edge could therefore not be moved away from fixed HUD panels, especially the leaderboard and hand, even when the player wanted to interact with them.
+
+### Decision
+
+- Remove camera bounds clamping from `setViewport`, `centerOn`, `panBy`, `zoomAt`, and `setZoom`.
+- The camera may overscroll beyond the map; outside-map space renders through the existing ocean/void shader path.
+- Keep zoom clamped to the existing 0.82×–18× range.
+- Add camera unit tests for centering an edge point and panning past the edge.
+- App 0.48.0; protocol unchanged at 37.
+
+### Consequences
+
+- Edge states can be dragged into the viewport center, clear of HUD occlusion.
+- Players can pan the map partly or fully out of view; this is intentional, not a bug.
+- Fit/resize no longer snaps the map back to center; the current center is preserved.
+- No simulation or wire changes.
+
+### Alternatives considered
+
+- **Overscroll only half a viewport:** still limits how far an edge state can escape wide HUD panels.
+- **UI-aware camera padding:** helps some panels but does not let the player choose a comfortable composition and adds coupling.

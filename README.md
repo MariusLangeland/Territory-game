@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.47.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.48.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -224,7 +224,7 @@ Svelte UI (+page.svelte)
         │     ├── integrity.ts ... annexation + neutral-pocket cleanup
         │     └── attacks ........ durable fronts, strength attrition, refunds
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
-        └── MapCamera ............ CSS-pixel camera, zoom, clamping
+        └── MapCamera ............ CSS-pixel camera, zoom, free overscroll pan
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
 ```
 
@@ -280,7 +280,7 @@ src/
       growth/                    switchable circular/smooth/organic frontier layers
       net/protocol.ts            multiplayer wire protocol draft
       render/
-        camera.ts                pan / zoom / clamp logic
+        camera.ts                pan / zoom / free overscroll camera
         camera-bridge.ts         imperative bridge for Svelte controls
         territory.wgsl.ts        full-screen WGSL map shader
         territory-renderer.ts    WebGPU setup, control texture, dirty uploads

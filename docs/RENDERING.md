@@ -223,7 +223,7 @@ The shader is intentionally procedural. No map art assets are required at runtim
 - zoom multiplier in `[0.82, 18]`;
 - pan in CSS pixels;
 - zoom-at-pointer preserving the map point under the cursor;
-- centering/clamping so the camera cannot show only void at high zoom;
+- free panning beyond the map edge (overscroll shows ocean/void) so edge states can be centered away from HUD overlays; no hard pan cap;
 - screen ↔ map transforms in CSS pixels.
 
 The renderer receives:

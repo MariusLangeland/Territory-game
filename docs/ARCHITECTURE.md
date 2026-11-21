@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.47.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.48.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.47.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.48.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -386,7 +386,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - Map space: integer cell units, `0..2047` × `0..1023`.
 - CSS screen space: canvas client pixels.
 - Physical GPU space: CSS multiplied by DPR (capped at 2).
-- `MapCamera` owns center, zoom, fit scale, clamping, screen-to-map and map-to-screen.
+- `MapCamera` owns center, zoom, fit scale, screen-to-map and map-to-screen. There is no edge pan clamp: edge states can be dragged toward the viewport center to escape HUD occlusion, showing ocean/void beyond the map.
 - Pointer events are converted to map cells using CSS space.
 - The renderer writes physical resolution and physical scale into uniforms.
 

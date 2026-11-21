@@ -125,7 +125,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 21. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, districts recompute, and a war-feed event appears.
 22. Run ORGANIC for several seconds; confirm mutual fronts trade strength instead of interpenetrating, no isolated owner specks remain, and repeated clicks create separate attacks rather than upgrading one.
 23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
+24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch. Pan an edge state to the center and confirm the camera no longer stops at the map edge.
 25. Test a narrow viewport and scroll the 51-state leaderboard to the bottom.
 26. Confirm rival supply text has a transparent background and no plaque/border, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
 

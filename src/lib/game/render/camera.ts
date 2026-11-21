@@ -32,13 +32,11 @@ export class MapCamera {
 	setViewport(width: number, height: number): void {
 		this.width = Math.max(1, width);
 		this.height = Math.max(1, height);
-		this.clamp();
 	}
 
 	centerOn(x: number, y: number): void {
 		this.centerX = x;
 		this.centerY = y;
-		this.clamp();
 	}
 
 	focusOn(x: number, y: number, zoom: number): void {
@@ -50,7 +48,6 @@ export class MapCamera {
 		const scale = Math.max(0.00001, this.scale);
 		this.centerX -= dx / scale;
 		this.centerY -= dy / scale;
-		this.clamp();
 	}
 
 	zoomAt(screenX: number, screenY: number, factor: number): void {
@@ -63,7 +60,6 @@ export class MapCamera {
 		const dy = screenY - this.height / 2;
 		this.centerX = before.x - dx / this.scale;
 		this.centerY = before.y - dy / this.scale;
-		this.clamp();
 	}
 
 	setZoom(zoom: number): void {
@@ -71,7 +67,6 @@ export class MapCamera {
 		this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
 		this.centerX = before.x;
 		this.centerY = before.y;
-		this.clamp();
 	}
 
 	screenToMap(screenX: number, screenY: number): { x: number; y: number } {
@@ -88,24 +83,6 @@ export class MapCamera {
 			x: this.width / 2 + (x - this.centerX) * scale,
 			y: this.height / 2 + (y - this.centerY) * scale
 		};
-	}
-
-	private clamp(): void {
-		const scale = Math.max(0.00001, this.scale);
-		const halfVisibleX = this.width / (2 * scale);
-		const halfVisibleY = this.height / (2 * scale);
-
-		if (halfVisibleX * 2 >= this.mapWidth) {
-			this.centerX = this.mapWidth / 2;
-		} else {
-			this.centerX = clamp(this.centerX, halfVisibleX, this.mapWidth - halfVisibleX);
-		}
-
-		if (halfVisibleY * 2 >= this.mapHeight) {
-			this.centerY = this.mapHeight / 2;
-		} else {
-			this.centerY = clamp(this.centerY, halfVisibleY, this.mapHeight - halfVisibleY);
-		}
 	}
 }
 
