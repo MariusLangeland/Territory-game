@@ -52,7 +52,6 @@ import {
 	START_RADIUS,
 	SUPPLY_CAP_BASE,
 	SUPPLY_CAP_TERRITORY_DIVISOR,
-	SUPPLY_INCOME_MAX,
 	SUPPLY_INCOME_TERRITORY_DIVISOR,
 	SUPPLY_WIN_SHARE,
 	STRUCTURE_MIN_SPACING,
@@ -266,6 +265,8 @@ export interface UpgradeCommand {
 	y: number;
 	/** Quoted base card cost plus the projected current level. */
 	cost: number;
+	/** Merged-district upgrades pin the lowest participating structure. */
+	structureId?: number;
 	sequence: number;
 }
 
@@ -296,6 +297,19 @@ export interface UpgradeQuote extends BuildOrderResult {
 	cost: number;
 	currentLevel: number;
 	projectedLevel: number;
+	merged: boolean;
+	structureCount: number;
+}
+
+/** A visual/upgrade group of touching same-owner districts of one structure type. */
+export interface MergedDistrictGroup {
+	ownerId: number;
+	type: BuildableStructureType;
+	totalStacks: number;
+	structureIds: number[];
+	centerX: number;
+	centerY: number;
+	lowestStructureId: number;
 }
 
 export interface StepResult {
@@ -402,6 +416,9 @@ export class TerritorySimulation {
 	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
 	private readonly structureStacksByType = new Uint32Array(PLAYER_COUNT * 8);
 	private structureCacheVersion = -1;
+	private mergedGroupsCache: MergedDistrictGroup[] = [];
+	private mergedGroupsLayoutVersion = -1;
+	private mergedGroupsComputedTick = -1000;
 
 	constructor(options: SimulationOptions) {
 		const width = options.width ?? undefined;
@@ -535,7 +552,7 @@ export class TerritorySimulation {
 				if (effect.kind === 'supply-income') income += effect.perSecond * stacks;
 			}
 		}
-		return Math.min(SUPPLY_INCOME_MAX, income);
+		return income;
 	}
 
 	supplyCap(playerId: number): number {
@@ -1057,7 +1074,13 @@ export class TerritorySimulation {
 	 * pixel. Clicking a district is enough; no card is consumed.
 	 */
 	/** Quote the total cost of upgrading an owned district by 1-5 levels. */
-	getUpgradeQuote(playerId: number, x: number, y: number, levels = 1): UpgradeQuote {
+	getUpgradeQuote(
+		playerId: number,
+		x: number,
+		y: number,
+		levels = 1,
+		merged = false
+	): UpgradeQuote {
 		const count = Math.max(1, Math.min(5, Math.floor(levels)));
 		const fail = (reason: BuildFailure, message: string): UpgradeQuote => ({
 			ok: false,
@@ -1066,7 +1089,9 @@ export class TerritorySimulation {
 			levels: count,
 			cost: 0,
 			currentLevel: 0,
-			projectedLevel: 0
+			projectedLevel: 0,
+			merged: false,
+			structureCount: 0
 		});
 		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
@@ -1077,49 +1102,107 @@ export class TerritorySimulation {
 		const target = this.resolveUpgradeTarget(playerId, x, y);
 		if (!target) return fail('no-district', 'Click one of your structure districts to upgrade it.');
 
-		const projectedLevel = target.structure.stacks + this.pendingUpgradesFor(target.structure.id);
+		const group = merged ? this.mergedGroupStructures(target.structure) : [target.structure];
+		const projected = group.map(
+			(structure) => structure.stacks + this.pendingUpgradesFor(structure.id)
+		);
+		const currentLevel = Math.min(...group.map((structure) => structure.stacks));
+		const projectedLevel = Math.min(...projected);
 		const baseCost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
 		let cost = 0;
 		for (let level = 0; level < count; level++) {
-			cost += baseCost + (projectedLevel + level) * UPGRADE_LEVEL_COST_STEP;
+			let selected = 0;
+			for (let index = 1; index < group.length; index++) {
+				if (
+					projected[index] < projected[selected] ||
+					(projected[index] === projected[selected] && group[index].id < group[selected].id)
+				) {
+					selected = index;
+				}
+			}
+			cost += baseCost + projected[selected] * UPGRADE_LEVEL_COST_STEP;
+			projected[selected]++;
 		}
+		const isMerged = merged && group.length > 1;
 		if (this.supplyOf(playerId) - this.pendingUpgradeCost(playerId) < cost) {
 			return {
 				...fail(
 					'no-gold',
-					`Need ${cost} supply to upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} by ${count} level${count === 1 ? '' : 's'}.`
+					`Need ${cost} supply to upgrade ${
+						isMerged ? 'the merged' : ''
+					}${STRUCTURE_DEFINITIONS[target.structure.type].label} district by ${count} level${
+						count === 1 ? '' : 's'
+					}.`
 				),
 				cost,
-				currentLevel: target.structure.stacks,
-				projectedLevel
+				currentLevel,
+				projectedLevel,
+				merged: isMerged,
+				structureCount: group.length
 			};
 		}
 		return {
 			ok: true,
-			message: `Upgrade ${STRUCTURE_DEFINITIONS[target.structure.type].label} by ${count} level${
-				count === 1 ? '' : 's'
-			} for ${cost} supply.`,
+			message: `Upgrade ${isMerged ? 'the merged ' : ''}${
+				STRUCTURE_DEFINITIONS[target.structure.type].label
+			} district by ${count} level${count === 1 ? '' : 's'} for ${cost} supply.`,
 			levels: count,
 			cost,
-			currentLevel: target.structure.stacks,
-			projectedLevel
+			currentLevel,
+			projectedLevel,
+			merged: isMerged,
+			structureCount: group.length
 		};
 	}
 
 	/** Queue one or more district upgrades; Shift-click queues five at once. */
-	upgradeDistrict(playerId: number, x: number, y: number, levels = 1): BuildOrderResult {
-		const quote = this.getUpgradeQuote(playerId, x, y, levels);
+	upgradeDistrict(
+		playerId: number,
+		x: number,
+		y: number,
+		levels = 1,
+		merged = false
+	): BuildOrderResult {
+		const quote = this.getUpgradeQuote(playerId, x, y, levels, merged);
 		if (!quote.ok) return quote;
 		const target = this.resolveUpgradeTarget(playerId, x, y);
 		if (!target) return quote;
 		const baseCost = STRUCTURE_DEFINITIONS[target.structure.type].cost;
+		if (!quote.merged) {
+			for (let level = 0; level < quote.levels; level++) {
+				this.pendingCommands.push({
+					type: 'upgrade',
+					playerId,
+					x: Math.floor(x),
+					y: Math.floor(y),
+					cost: baseCost + (quote.projectedLevel + level) * UPGRADE_LEVEL_COST_STEP,
+					sequence: this.nextCommandSequence++
+				});
+			}
+			return quote;
+		}
+
+		const group = this.mergedGroupStructures(target.structure);
 		for (let level = 0; level < quote.levels; level++) {
+			let selected = group[0];
+			let selectedProjected = selected.stacks + this.pendingUpgradesFor(selected.id);
+			for (const structure of group) {
+				const projected = structure.stacks + this.pendingUpgradesFor(structure.id);
+				if (
+					projected < selectedProjected ||
+					(projected === selectedProjected && structure.id < selected.id)
+				) {
+					selected = structure;
+					selectedProjected = projected;
+				}
+			}
 			this.pendingCommands.push({
 				type: 'upgrade',
 				playerId,
-				x: Math.floor(x),
-				y: Math.floor(y),
-				cost: baseCost + (quote.projectedLevel + level) * UPGRADE_LEVEL_COST_STEP,
+				x: selected.x,
+				y: selected.y,
+				cost: baseCost + selectedProjected * UPGRADE_LEVEL_COST_STEP,
+				structureId: selected.id,
 				sequence: this.nextCommandSequence++
 			});
 		}
@@ -1149,6 +1232,10 @@ export class TerritorySimulation {
 		let count = 0;
 		for (const command of this.pendingCommands) {
 			if (command.type !== 'upgrade') continue;
+			if (command.structureId !== undefined) {
+				if (command.structureId === structureId) count++;
+				continue;
+			}
 			const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
 			if (target?.structure.id === structureId) count++;
 		}
@@ -1424,7 +1511,15 @@ export class TerritorySimulation {
 			}
 
 			if (command.type === 'upgrade') {
-				const target = this.resolveUpgradeTarget(command.playerId, command.x, command.y);
+				const target =
+					command.structureId !== undefined
+						? (() => {
+								const structure = this.structures.byId(command.structureId);
+								if (!structure || structure.ownerId !== command.playerId) return null;
+								if (this.owners[structure.index] !== command.playerId) return null;
+								return { index: structure.index, structure };
+							})()
+						: this.resolveUpgradeTarget(command.playerId, command.x, command.y);
 				if (!target) continue;
 				const cost = command.cost;
 				if (!this.spendSupply(command.playerId, cost)) continue;
@@ -1624,6 +1719,160 @@ export class TerritorySimulation {
 	getDistrictColorCode(x: number, y: number): number {
 		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
 		return this.districtColorCodes[y * this.width + x];
+	}
+
+	/**
+	 * Visual/upgrade groups of touching same-owner districts of the same type.
+	 * Membership is recomputed at most every few ticks; stack totals refresh on
+	 * every read so level badges stay current after upgrades.
+	 */
+	getMergedDistricts(): readonly MergedDistrictGroup[] {
+		const layout = this.structures.layoutVersion;
+		const fresh =
+			this.mergedGroupsLayoutVersion === layout && this.tick - this.mergedGroupsComputedTick < 5;
+		if (!fresh) {
+			this.rebuildMergedDistricts();
+			this.mergedGroupsLayoutVersion = layout;
+			this.mergedGroupsComputedTick = this.tick;
+		}
+		return this.refreshMergedGroupTotals();
+	}
+
+	private rebuildMergedDistricts(): void {
+		const parent = new Map<number, number>();
+		const find = (id: number): number => {
+			let root = parent.get(id) ?? id;
+			if (root === id) {
+				parent.set(id, id);
+				return id;
+			}
+			root = find(root);
+			parent.set(id, root);
+			return root;
+		};
+		const union = (left: number, right: number): void => {
+			const leftRoot = find(left);
+			const rightRoot = find(right);
+			if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+		};
+
+		const { width, height, owners, districtStructureIds, districtTypes } = this;
+		for (let y = 0; y < height; y++) {
+			const row = y * width;
+			for (let x = 0; x < width; x++) {
+				const index = row + x;
+				const id = districtStructureIds[index];
+				if (id === 0) continue;
+				const owner = owners[index];
+				const type = districtTypes[index];
+				if (x + 1 < width) {
+					const neighbour = index + 1;
+					const nextId = districtStructureIds[neighbour];
+					if (
+						nextId !== 0 &&
+						nextId !== id &&
+						owners[neighbour] === owner &&
+						districtTypes[neighbour] === type
+					) {
+						union(id, nextId);
+					}
+				}
+				if (y + 1 < height) {
+					const neighbour = index + width;
+					const nextId = districtStructureIds[neighbour];
+					if (
+						nextId !== 0 &&
+						nextId !== id &&
+						owners[neighbour] === owner &&
+						districtTypes[neighbour] === type
+					) {
+						union(id, nextId);
+					}
+				}
+			}
+		}
+
+		const members = new Map<
+			number,
+			{
+				ownerId: number;
+				type: BuildableStructureType;
+				structureIds: number[];
+				sumX: number;
+				sumY: number;
+			}
+		>();
+		for (const structure of this.structures.all) {
+			if (structure.type === 'state') continue;
+			if (STRUCTURE_DEFINITIONS[structure.type].districtRange <= 0) continue;
+			const root = find(structure.id);
+			let member = members.get(root);
+			if (!member) {
+				member = {
+					ownerId: structure.ownerId,
+					type: structure.type,
+					structureIds: [],
+					sumX: 0,
+					sumY: 0
+				};
+				members.set(root, member);
+			}
+			member.structureIds.push(structure.id);
+			member.sumX += structure.x;
+			member.sumY += structure.y;
+		}
+
+		this.mergedGroupsCache = [];
+		for (const member of members.values()) {
+			const count = member.structureIds.length;
+			this.mergedGroupsCache.push({
+				ownerId: member.ownerId,
+				type: member.type,
+				totalStacks: count,
+				structureIds: member.structureIds,
+				centerX: Math.round(member.sumX / count),
+				centerY: Math.round(member.sumY / count),
+				lowestStructureId: member.structureIds[0]
+			});
+		}
+		this.refreshMergedGroupTotals();
+	}
+
+	private refreshMergedGroupTotals(): readonly MergedDistrictGroup[] {
+		for (const group of this.mergedGroupsCache) {
+			let total = 0;
+			let lowestStacks = Number.POSITIVE_INFINITY;
+			let lowestId = Number.POSITIVE_INFINITY;
+			for (const structureId of group.structureIds) {
+				const structure = this.structures.byId(structureId);
+				if (!structure) continue;
+				total += structure.stacks;
+				if (
+					structure.stacks < lowestStacks ||
+					(structure.stacks === lowestStacks && structure.id < lowestId)
+				) {
+					lowestStacks = structure.stacks;
+					lowestId = structure.id;
+				}
+			}
+			group.totalStacks = total;
+			if (Number.isFinite(lowestId)) group.lowestStructureId = lowestId;
+		}
+		return this.mergedGroupsCache;
+	}
+
+	private mergedGroupStructures(structure: Structure): Structure[] {
+		if (structure.type === 'state') return [structure];
+		for (const group of this.getMergedDistricts()) {
+			if (!group.structureIds.includes(structure.id)) continue;
+			const result: Structure[] = [];
+			for (const structureId of group.structureIds) {
+				const member = this.structures.byId(structureId);
+				if (member) result.push(member);
+			}
+			return result.length > 0 ? result : [structure];
+		}
+		return [structure];
 	}
 
 	private rebuildAuraDefense(): void {

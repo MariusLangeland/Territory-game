@@ -67,6 +67,7 @@
 	let hover = $state<HoverState | null>(null);
 	let pointerScreen = $state<{ x: number; y: number } | null>(null);
 	let shiftHeld = $state(false);
+	let ctrlHeld = $state(false);
 	let cameraView = $state<CameraView | null>(null);
 	let perf = $state<RendererFrameStats>({
 		fps: 0,
@@ -176,10 +177,16 @@
 			if (hover.owner === HUMAN_PLAYER_ID) {
 				if (sim.getDistrictStructureId(x, y) === 0) return null;
 				const levels = shiftHeld ? 5 : 1;
-				const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels);
+				const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !ctrlHeld);
 				if (quote.currentLevel === 0) return null;
 				return {
-					label: levels === 5 ? 'UPGRADE ×5' : 'UPGRADE',
+					label: quote.merged
+						? levels === 5
+							? 'MERGED ×5'
+							: 'MERGED'
+						: levels === 5
+							? 'UPGRADE ×5'
+							: 'UPGRADE',
 					cost: quote.cost,
 					affordable: quote.ok
 				};
@@ -225,7 +232,7 @@
 		if (sim.getOwner(x, y) !== HUMAN_PLAYER_ID) return null;
 		if (sim.getDistrictStructureId(x, y) === 0) return null;
 		const levels = shiftHeld ? 5 : 1;
-		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels);
+		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !ctrlHeld);
 		if (quote.currentLevel === 0) return null;
 		return {
 			x: pointerScreen.x,
@@ -234,6 +241,8 @@
 			cost: quote.cost,
 			currentLevel: quote.currentLevel,
 			projectedLevel: quote.projectedLevel,
+			merged: quote.merged,
+			structureCount: quote.structureCount,
 			ok: quote.ok
 		};
 	});
@@ -555,7 +564,7 @@
 			sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID &&
 			sim.getDistrictStructureId(Math.floor(x), Math.floor(y)) !== 0
 		) {
-			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y, shiftHeld ? 5 : 1);
+			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y, shiftHeld ? 5 : 1, !ctrlHeld);
 			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
 			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
 			return;
@@ -748,6 +757,7 @@
 	function handleWindowPointerMove(event: PointerEvent): void {
 		pointerScreen = { x: event.clientX, y: event.clientY };
 		shiftHeld = event.shiftKey;
+		ctrlHeld = event.ctrlKey;
 		if (!gameStarted || showIntro) return;
 		if (draggingCardId !== null) {
 			handRaised = true;
@@ -828,10 +838,12 @@
 
 	function handleKeyup(event: KeyboardEvent): void {
 		if (event.key === 'Shift') shiftHeld = false;
+		if (event.key === 'Control') ctrlHeld = false;
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {
 		shiftHeld = event.shiftKey;
+		ctrlHeld = event.ctrlKey;
 		const target = event.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
@@ -948,8 +960,12 @@
 			<span>UPGRADE +{upgradeTooltip.levels} LV</span>
 			<strong>{formatSupply(upgradeTooltip.cost)}<small>S TOTAL</small></strong>
 			<i>
-				LV.{upgradeTooltip.currentLevel} → LV.{upgradeTooltip.projectedLevel +
-					upgradeTooltip.levels}
+				{#if upgradeTooltip.merged}
+					MERGED ×{upgradeTooltip.structureCount} · LOWEST LV.{upgradeTooltip.currentLevel}
+				{:else}
+					LV.{upgradeTooltip.currentLevel} → LV.{upgradeTooltip.projectedLevel +
+						upgradeTooltip.levels}
+				{/if}
 			</i>
 			{#if !upgradeTooltip.ok}<em>INSUFFICIENT SUPPLY</em>{/if}
 		</div>
@@ -960,6 +976,7 @@
 				simulation={sim}
 				{paused}
 				targeting={artilleryTargeting}
+				mergeDistricts={!ctrlHeld}
 				{cameraBridge}
 				onTick={handleTick}
 				onHover={handleHover}
@@ -1497,7 +1514,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.37.1 / PROTOCOL 36</span>
+				<span>BUILD 0.38.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>

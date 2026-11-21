@@ -1325,3 +1325,37 @@ The bottom-left economy panel duplicated map information in a cramped column and
 - **Keep a numeric panel beside the bar:** defeats the requested single-line HUD.
 - **Show cost only after clicking:** no planning benefit.
 - **Draw cost as a shrinking fill before commit:** visually ambiguous with current supply; the overlay segment preserves the actual fill.
+
+---
+
+## ADR-041 — Visual merging of touching same-type districts
+
+**Status:** accepted and implemented in 0.38.0  
+**Date:** 2026-11-21
+
+### Context
+
+The economy now encourages several same-type structures, and their adjacent Voronoi districts drew separate seams and icons. Players had to remember which structure was cheaper to level.
+
+### Decision
+
+- Touching districts owned by the same player with the same structure type form a visual/upgrade group.
+- The territory shader removes internal seams and per-district fill variants by comparing the structure-type base code while an `u.mergeDistricts` uniform is 1. Ctrl sets it to 0 for the previous per-district look.
+- The 2D overlay draws one combined icon at the mean structure centre with the summed stack badge for multi-structure groups.
+- Clicking a merged district upgrades the lowest projected level first; five-level batches distribute across the lowest structures. Merged upgrade commands carry a pinned `structureId` so noisy Voronoi centre assignment cannot redirect an upgrade.
+- **Ctrl** disables merging: seams/icons return and the clicked structure is upgraded directly.
+- Group membership is computed by a union scan of the district map, cached for at most 5 ticks; stack totals refresh on each read. It is visual/upgrade convenience only, not checksum state.
+- App 0.38.0; protocol unchanged at 36.
+
+### Consequences
+
+- Repeated structures read as one coherent district with one combined level.
+- Spending is steered toward the weakest member without removing per-structure choice under Ctrl.
+- The shader change needs only one uniform float; no extra texture or upload.
+- Group membership can lag captures by up to half a second, while levels remain current.
+
+### Alternatives considered
+
+- **Permanently bake a shared district color code:** would require a texture rebuild to restore Ctrl.
+- **Merge districts in simulation state:** would change auras, placement, and gameplay semantics.
+- **Draw seams in the 2D overlay under Ctrl:** would need per-cell boundary rendering at every zoom; the shader toggle is cheaper and exact.

@@ -9,6 +9,8 @@ export class StructureRegistry {
 	private nextId = 1;
 	/** Increments on every create/reinforce/destroy so derived caches can refresh lazily. */
 	private mutationVersion = 0;
+	/** Increments only when structures appear or disappear, not when stacks change. */
+	private structureLayoutVersion = 0;
 
 	create(type: StructureType, ownerId: number, x: number, y: number, width: number): Structure {
 		const index = y * width + x;
@@ -23,6 +25,7 @@ export class StructureRegistry {
 			effects: effectsForType(type)
 		};
 		this.mutationVersion++;
+		this.structureLayoutVersion++;
 		this.items.push(structure);
 		this.byIndex.set(index, structure);
 		this.byStructureId.set(structure.id, structure);
@@ -81,6 +84,7 @@ export class StructureRegistry {
 		const position = this.items.indexOf(structure);
 		if (position < 0) return false;
 		this.mutationVersion++;
+		this.structureLayoutVersion++;
 		this.items.splice(position, 1);
 		this.byIndex.delete(structure.index);
 		this.byStructureId.delete(structure.id);
@@ -111,5 +115,9 @@ export class StructureRegistry {
 
 	get version(): number {
 		return this.mutationVersion;
+	}
+
+	get layoutVersion(): number {
+		return this.structureLayoutVersion;
 	}
 }

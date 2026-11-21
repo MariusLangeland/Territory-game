@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.37.1. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.38.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.37.1. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.38.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -84,7 +84,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `defenseAt` = `1 + elevation + occupied + aura`. Capture cost is `max(1, defenseAt − pierce)` paid from power and strength.
-- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `min(60, 3 + territory/10000 + supply-income effects)` per second; cap is `120 + territory/1000 + 40 × Academy stacks` with no upper bound. `supplyCap` is public.
+- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + territory/10000 + supply-income effects` per second with no income cap; cap is `120 + territory/1000 + 40 × Academy stacks` with no upper bound. `supplyCap` is public.
 - No attack-order inventory exists. Front launch cost/strength derive from effective live Barracks levels; power/pierce derive from integer log2 tiers. A defending Jammer subtracts one effective level per stack.
 - `structureStacksByType` caches owner/type stack totals and refreshes only when `StructureRegistry.version` changes, so per-tick income and per-launch attack stats do not scan every structure.
 - Permanent hand: all six buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
@@ -238,6 +238,8 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 ### Districts
 
 `simulation.rebuildDistricts` clears the district arrays, then for each buildable structure scans its `districtRange` bounding box expanded by `DISTRICT_NOISE_MARGIN`. Every owned cell is assigned the nearest eligible structure of that owner; the comparison distance is `actual distance + integerNoiseOffset`, with ties breaking on structure type code then id. The offset comes from coherent 8 px value noise plus per-pixel jitter (`districtNoise`), so outer edges grow/shrink by roughly two pixels and split lines wiggle. The result is a constrained, non-overlapping Voronoi partition. `districtStructureIds` records the winning structure so same-type districts remain distinct; `districtColorCodes` gives each a render palette variant. `updateDistrictAt` handles an ordinary ownership change by reassigning just that cell.
+
+`getMergedDistricts` performs a throttled union scan over `districtStructureIds`: touching cells of the same owner and type union their districts, yielding visual/upgrade groups with combined stacks, a mean icon centre, and the pinned lowest structure. Membership recomputes at most every 5 ticks and refreshes totals per read; it is not authoritative gameplay state or checksum input. The territory shader compares type base codes while `mergeDistrictSeams` is on, removing internal seams; the 2D overlay suppresses individual icons for multi-structure groups and draws one combined-level icon. Ctrl sets the shader flag off and bypasses group targeting.
 
 Placing a new type requires an unassigned owned cell outside all districts. If the target is inside a same-type district, that district's structure's `stacks` is incremented. If the same type lands outside all districts, a new structure and district are created. Different types inside any district are rejected. Structure creation/destruction calls `refreshDistrictsAround`, which recomputes only the affected neighbourhood and records dirty renderer tiles; stacking leaves the district map unchanged.
 
@@ -403,7 +405,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - The loading → intro → live → defeat/result flow.
 - Snapshot state and derived HUD/leaderboard/result data.
 - Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`.
-- The free-floating card hand reads supply/cap/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues one upgrade command; Shift-click uses `getUpgradeQuote` to atomically queue five. A cursor tooltip above the pointer shows the quoted total for the current modifier. A fixed horizontal supply bar above the hand fills by `supply/supplyCap` from snapshots and previews the hovered click cost (frontier launch, upgrade quote, or artillery volley) as an overlay segment plus a `-cost` chip; its action area hosts FIRE and CANCEL FRONT. The old supply/front/defense panel was removed. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
+- The free-floating card hand reads supply/cap/income/hand from snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Clicking an owned district queues one upgrade command; Shift-click uses `getUpgradeQuote` to atomically queue five. Merged groups pick the lowest projected structure per level and pin `structureId`; Ctrl-click targets the clicked structure. A cursor tooltip above the pointer shows the quoted total for the current modifier and flags merged groups. A fixed horizontal supply bar above the hand fills by `supply/supplyCap` from snapshots and previews the hovered click cost (frontier launch, upgrade quote, or artillery volley) as an overlay segment plus a `-cost` chip; its action area hosts FIRE and CANCEL FRONT. The old supply/front/defense panel was removed. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
 - Growth-layer test switch; new fronts use the pending simulation mode while in-flight fronts keep their captured mode.
 - Seed input, rematch, new world, URL synchronization.
 - Global keyboard shortcuts.

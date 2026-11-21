@@ -8,6 +8,7 @@ struct Uniforms {
   time: f32,
   zoom: f32,
   dpr: f32,
+  mergeDistricts: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -50,6 +51,16 @@ fn elevationOf(control: vec4<f32>) -> f32 {
 
 fn districtOf(control: vec4<f32>) -> u32 {
   return u32(round(control.a * 255.0)) >> 3u;
+}
+
+fn districtTypeBase(code: u32) -> u32 {
+  if (code == 0u) { return 0u; }
+  return ((code - 1u) / 4u) * 4u + 1u;
+}
+
+fn districtSeamCode(code: u32) -> u32 {
+  if (u.mergeDistricts > 0.5 && code > 0u) { return districtTypeBase(code); }
+  return code;
 }
 
 fn districtColor(code: u32) -> vec3<f32> {
@@ -129,7 +140,8 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let isLand = control.g > 0.5;
   let shade = control.b;
   let elevation = elevationOf(control);
-  let district = districtOf(control);
+  let rawDistrict = districtOf(control);
+  let district = districtSeamCode(rawDistrict);
 
   let west = controlAt(uv - vec2<f32>(texel.x, 0.0));
   let east = controlAt(uv + vec2<f32>(texel.x, 0.0));
@@ -157,13 +169,14 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     color = mix(base * tint, terrainColor * (0.58 + shade * 0.52), terrainMix);
 
     // Districts are a subtle structure-type wash plus a soft shared boundary.
-    if (owner > 0u && district > 0u) {
-      color = mix(color, districtColor(district), 0.14);
+    if (owner > 0u && rawDistrict > 0u) {
+      let tintCode = select(rawDistrict, districtTypeBase(rawDistrict), u.mergeDistricts > 0.5);
+      color = mix(color, districtColor(tintCode), 0.14);
       let districtEdge =
-        districtOf(west) != district ||
-        districtOf(east) != district ||
-        districtOf(north) != district ||
-        districtOf(south) != district;
+        districtSeamCode(districtOf(west)) != district ||
+        districtSeamCode(districtOf(east)) != district ||
+        districtSeamCode(districtOf(north)) != district ||
+        districtSeamCode(districtOf(south)) != district;
       if (districtEdge) {
         // A faint seam, not a state border.
         color = mix(color, color * 0.82, 0.45);

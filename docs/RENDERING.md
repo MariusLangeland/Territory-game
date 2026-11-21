@@ -48,6 +48,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - uses a cream five-point capital star for State structures, a firing cannon for Artillery, crossed swords for Barracks, a shield for Fortifications, radar rings for Jammers, a command mast for Command Posts, and layered chevrons for War Academies. Active artillery targeting draws range rings, and in-flight shells render as owner-ringed projectiles with a fading trail.
 - renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
+- when district merging is enabled (Ctrl not held), draws one combined icon at the mean centre of each touching same-owner/same-type group, with the combined stack badge; individual icons return under Ctrl;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);
 - `pointer-events: none`, so attacks/drags still target the WebGPU canvas;
@@ -83,7 +84,7 @@ The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is n
 - darkens pixels where a neighbour has a different tier, producing subtle contour boundaries;
 - leaves the continuous shade channel for relief grain.
 
-This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle 14% structure-type wash and a faint seam (about 8% darker) at district boundaries, making Voronoi districts readable without hiding terrain, elevation, or state ownership.
+This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle 14% structure-type wash and a faint seam (about 8% darker) at district boundaries, making Voronoi districts readable without hiding terrain, elevation, or state ownership. With the merge uniform on, seam comparisons and tint use the structure-type base code, so touching same-owner/same-type districts become one area; Ctrl restores the variant-level comparison. No extra texture or upload is needed.
 
 Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer writes R and packed A for ownership changes; G/B are written at initialization/resync.
 
@@ -161,18 +162,19 @@ No vertex buffers, no index buffers.
 
 ### Uniforms
 
-| Field        | Purpose                                               |
-| ------------ | ----------------------------------------------------- |
-| `resolution` | Physical framebuffer size                             |
-| `camera`     | Map-space center                                      |
-| `mapSize`    | 2048 × 1024                                           |
-| `hover`      | Hovered map cell, negative when none                  |
-| `scale`      | Physical pixels per map pixel                         |
-| `time`       | Seconds for ocean animation                           |
-| `zoom`       | Camera zoom factor for pixel-grid gating              |
-| `dpr`        | Device pixel ratio for screen-constant hover outlines |
+| Field            | Purpose                                                                     |
+| ---------------- | --------------------------------------------------------------------------- |
+| `resolution`     | Physical framebuffer size                                                   |
+| `camera`         | Map-space center                                                            |
+| `mapSize`        | 2048 × 1024                                                                 |
+| `hover`          | Hovered map cell, negative when none                                        |
+| `scale`          | Physical pixels per map pixel                                               |
+| `time`           | Seconds for ocean animation                                                 |
+| `zoom`           | Camera zoom factor for pixel-grid gating                                    |
+| `dpr`            | Device pixel ratio for screen-constant hover outlines                       |
+| `mergeDistricts` | 1 removes same-type internal district seams and variants; Ctrl sets it to 0 |
 
-The uniform struct is 48 bytes in a 64-byte buffer (std140-friendly padding).
+The uniform struct is 52 bytes occupied in a 64-byte buffer (std140-friendly padding).
 
 ### Fragment behavior
 

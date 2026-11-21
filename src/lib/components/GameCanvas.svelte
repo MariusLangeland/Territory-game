@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { ARTILLERY_RANGE, HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
-	import { STRUCTURE_ACCENTS } from '#lib/game/Structures';
+	import { STRUCTURE_ACCENTS, type StructureType } from '#lib/game/Structures';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import { TerritoryRenderer, type RendererFrameStats } from '#lib/game/render/territory-renderer';
 
@@ -27,6 +27,7 @@
 		simulation: TerritorySimulation;
 		paused: boolean;
 		targeting?: boolean;
+		mergeDistricts?: boolean;
 		cameraBridge: GameCameraBridge;
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;
@@ -40,6 +41,7 @@
 		simulation,
 		paused,
 		targeting = false,
+		mergeDistricts = true,
 		cameraBridge,
 		onTick,
 		onHover,
@@ -208,6 +210,95 @@
 			context.stroke();
 		}
 
+		function drawStructureIcon(
+			context: CanvasRenderingContext2D,
+			type: StructureType,
+			ownerId: number,
+			stacks: number,
+			x: number,
+			y: number
+		): void {
+			const human = ownerId === HUMAN_PLAYER_ID;
+			const isState = type === 'state';
+			const radius = isState
+				? human
+					? STATE_HUMAN_MARKER_RADIUS
+					: STATE_BOT_MARKER_RADIUS
+				: BUILDABLE_MARKER_RADIUS;
+			const ownerColor = colorForPlayer(ownerId);
+			const accent = STRUCTURE_ACCENTS[type];
+
+			// A dark halo keeps every structure readable over bright terrain and
+			// territory colors. State keeps the owner-colored disc; buildables use
+			// a dark badge with an owner ring so their type icon stays legible.
+			context.beginPath();
+			context.arc(x, y, radius + 4, 0, Math.PI * 2);
+			context.fillStyle = 'rgba(2, 8, 12, 0.42)';
+			context.fill();
+			context.beginPath();
+			context.arc(x, y, radius + 2, 0, Math.PI * 2);
+			context.fillStyle = 'rgba(4, 12, 16, 0.92)';
+			context.fill();
+
+			context.beginPath();
+			context.arc(x, y, radius, 0, Math.PI * 2);
+			context.fillStyle = isState ? ownerColor.hex : 'rgba(5, 15, 20, 0.96)';
+			context.fill();
+			context.lineWidth = isState ? (human ? 2.4 : 2) : 2.6;
+			context.strokeStyle = isState ? 'rgba(252, 246, 225, 0.96)' : ownerColor.hex;
+			context.stroke();
+
+			if (human && isState) {
+				context.beginPath();
+				context.arc(x, y, radius + 5.5, 0, Math.PI * 2);
+				context.lineWidth = 1.4;
+				context.strokeStyle = 'rgba(252, 246, 225, 0.34)';
+				context.stroke();
+			}
+
+			context.strokeStyle = isState ? 'rgba(255, 248, 225, 0.98)' : accent;
+			context.lineWidth = isState ? 1.8 : 2.1;
+			context.lineCap = 'round';
+			context.lineJoin = 'round';
+			if (type === 'state') {
+				drawStar(context, x, y, radius * 0.58, radius * 0.24);
+				context.fillStyle = 'rgba(255, 248, 225, 0.98)';
+				context.fill();
+				context.lineWidth = 1;
+				context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
+				context.stroke();
+			} else if (type === 'artillery') {
+				drawArtillery(context, x, y, radius);
+			} else if (type === 'barracks') {
+				drawCrossedSwords(context, x, y, radius);
+			} else if (type === 'fortification') {
+				drawShield(context, x, y, radius);
+			} else if (type === 'jammer') {
+				drawJammer(context, x, y, radius);
+			} else if (type === 'command-post') {
+				drawCommandPost(context, x, y, radius);
+			} else {
+				drawWarAcademy(context, x, y, radius);
+			}
+
+			if (stacks > 1) {
+				const badgeX = x + radius * 0.78;
+				const badgeY = y + radius * 0.78;
+				context.beginPath();
+				context.arc(badgeX, badgeY, 6.5, 0, Math.PI * 2);
+				context.fillStyle = 'rgba(5, 14, 18, 0.96)';
+				context.fill();
+				context.lineWidth = 1;
+				context.strokeStyle = accent;
+				context.stroke();
+				context.fillStyle = '#fff7df';
+				context.font = '600 8px ui-monospace, monospace';
+				context.textAlign = 'center';
+				context.textBaseline = 'middle';
+				context.fillText(String(stacks), badgeX, badgeY + 0.5);
+			}
+		}
+
 		function drawStructures(): void {
 			if (!renderer || !structureCanvas) return;
 			const camera = renderer.camera;
@@ -248,93 +339,36 @@
 				}
 			}
 
+			const mergedGroups = mergeDistricts ? simulation.getMergedDistricts() : [];
+			const mergedIds = new Set<number>();
+			for (const group of mergedGroups) {
+				if (group.structureIds.length < 2) continue;
+				for (const structureId of group.structureIds) mergedIds.add(structureId);
+			}
+
 			for (const structure of simulation.structures.all) {
+				if (mergedIds.has(structure.id)) continue;
 				const point = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
 				if (point.x < -18 || point.y < -18 || point.x > width + 18 || point.y > height + 18) {
 					continue;
 				}
+				drawStructureIcon(
+					context,
+					structure.type,
+					structure.ownerId,
+					structure.stacks,
+					point.x,
+					point.y
+				);
+			}
 
-				const human = structure.ownerId === HUMAN_PLAYER_ID;
-				const isState = structure.type === 'state';
-				const radius = isState
-					? human
-						? STATE_HUMAN_MARKER_RADIUS
-						: STATE_BOT_MARKER_RADIUS
-					: BUILDABLE_MARKER_RADIUS;
-				const ownerColor = colorForPlayer(structure.ownerId);
-				const accent = STRUCTURE_ACCENTS[structure.type];
-				const x = point.x;
-				const y = point.y;
-
-				// A dark halo keeps every structure readable over bright terrain
-				// and territory colors. State keeps the owner-colored disc; buildables
-				// use a dark badge with an owner ring so their type icon stays legible.
-				context.beginPath();
-				context.arc(x, y, radius + 4, 0, Math.PI * 2);
-				context.fillStyle = 'rgba(2, 8, 12, 0.42)';
-				context.fill();
-				context.beginPath();
-				context.arc(x, y, radius + 2, 0, Math.PI * 2);
-				context.fillStyle = 'rgba(4, 12, 16, 0.92)';
-				context.fill();
-
-				context.beginPath();
-				context.arc(x, y, radius, 0, Math.PI * 2);
-				context.fillStyle = isState ? ownerColor.hex : 'rgba(5, 15, 20, 0.96)';
-				context.fill();
-				context.lineWidth = isState ? (human ? 2.4 : 2) : 2.6;
-				context.strokeStyle = isState ? 'rgba(252, 246, 225, 0.96)' : ownerColor.hex;
-				context.stroke();
-
-				if (human && isState) {
-					context.beginPath();
-					context.arc(x, y, radius + 5.5, 0, Math.PI * 2);
-					context.lineWidth = 1.4;
-					context.strokeStyle = 'rgba(252, 246, 225, 0.34)';
-					context.stroke();
+			for (const group of mergedGroups) {
+				if (group.structureIds.length < 2 || group.totalStacks <= 0) continue;
+				const point = camera.mapToScreen(group.centerX + 0.5, group.centerY + 0.5);
+				if (point.x < -18 || point.y < -18 || point.x > width + 18 || point.y > height + 18) {
+					continue;
 				}
-
-				context.strokeStyle = isState ? 'rgba(255, 248, 225, 0.98)' : accent;
-				context.lineWidth = isState ? 1.8 : 2.1;
-				context.lineCap = 'round';
-				context.lineJoin = 'round';
-				if (structure.type === 'state') {
-					drawStar(context, x, y, radius * 0.58, radius * 0.24);
-					context.fillStyle = 'rgba(255, 248, 225, 0.98)';
-					context.fill();
-					context.lineWidth = 1;
-					context.strokeStyle = 'rgba(5, 14, 18, 0.88)';
-					context.stroke();
-				} else if (structure.type === 'artillery') {
-					drawArtillery(context, x, y, radius);
-				} else if (structure.type === 'barracks') {
-					drawCrossedSwords(context, x, y, radius);
-				} else if (structure.type === 'fortification') {
-					drawShield(context, x, y, radius);
-				} else if (structure.type === 'jammer') {
-					drawJammer(context, x, y, radius);
-				} else if (structure.type === 'command-post') {
-					drawCommandPost(context, x, y, radius);
-				} else {
-					drawWarAcademy(context, x, y, radius);
-				}
-
-				if (structure.stacks > 1) {
-					const badgeX = x + radius * 0.78;
-					const badgeY = y + radius * 0.78;
-					context.beginPath();
-					context.arc(badgeX, badgeY, 6.5, 0, Math.PI * 2);
-					context.fillStyle = 'rgba(5, 14, 18, 0.96)';
-					context.fill();
-					context.lineWidth = 1;
-					context.strokeStyle = accent;
-					context.stroke();
-					context.fillStyle = '#fff7df';
-					context.font = '600 8px ui-monospace, monospace';
-					context.textAlign = 'center';
-					context.textBaseline = 'middle';
-					context.fillText(String(structure.stacks), badgeX, badgeY + 0.5);
-				}
+				drawStructureIcon(context, group.type, group.ownerId, group.totalStacks, point.x, point.y);
 			}
 
 			for (const shell of simulation.activeShells) {
@@ -405,6 +439,7 @@
 				}
 			}
 
+			renderer.mergeDistrictSeams = mergeDistricts;
 			renderer.render(now);
 			drawStructures();
 

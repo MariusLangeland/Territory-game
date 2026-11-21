@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.37.1 (Frontage v1 + siege rework)  
+**Version:** 0.38.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.37.1, map version 4, protocol draft 36
+**Last synchronized with:** application 0.38.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -349,10 +349,11 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
 - Start with **90 supply** and **all six buildable cards** always available in the hand.
-- Supply income is `min(60, 3 + floor(territory/10000) + income structures)` per second. Command Post stacks add **+2/s**.
+- Supply income is `3 + floor(territory/10000) + income structures` per second, with **no income cap**. Command Post stacks add **+2/s**.
 - Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 5 × current level` (projected through queued upgrades). Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 5 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Holding **Ctrl** hides merged districts: individual seams/icons return and the clicked structure is upgraded directly. Upgrade commands pinned to a merged structure survive its centre being assigned to a neighboring district cell.
 - Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for 1 level, or 5 levels while Shift is held.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
@@ -393,6 +394,8 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 - A district cannot exceed its structure's nominal `districtRange` by more than a small noise margin, cannot leave the owner's borders, and cannot overlap another district. Cells outside every structure's range remain unassigned.
 - District edges are perturbed by deterministic integer noise: coherent 8 px value noise plus a faint per-pixel jitter. This makes the outer edge grow or shrink by roughly 2 px and makes Voronoi split lines irregular. It is purely visual/geometric; all captures and auras still use the resulting district map.
 - Multiple structures and districts of the same type are allowed. Dropping a matching type inside a district stacks onto **that district's** structure; dropping it outside all districts creates a new structure and district.
+- Touching districts of the **same owner and type** merge visually: their internal district seams/fill variants disappear and one icon at their centre shows the combined stack count. The territory shader compares the type base instead of the per-district variant while merging is enabled.
+- Merged groups are recomputed from the district map at a throttled cadence (at most every 5 ticks) and their level totals refresh on every read. This is a visual/upgrade convenience; gameplay districts and auras remain per-structure.
 - A different structure type cannot be placed inside an existing district. A new type can only be placed on owned land outside all districts.
 - Defensive auras apply to every owned cell in the owning structure's district; Fortifications cover their whole district. State auras use their radius around the capital. Barracks and Jammers are global attacker/defender modifiers, not pixel auras.
 - Each stack increases the structure's effect: supply income, aura defense, attack levels, suppression, or supply cap.
@@ -407,7 +410,7 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 | Command Post  |          32 px | +2 supply/s per stack           |
 | War Academy   |          32 px | +40 supply cap per stack        |
 
-District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code.
+District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code. The shader's merge uniform removes same-type internal seams and variants; Ctrl turns it off. The 2D structure overlay draws one combined icon per multi-structure merged group.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -639,7 +642,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts accrue orders continuously, and War Academies raise the cap.
-- [x] Clicking an owned district upgrades its structure without consuming a card; Shift-click queues five levels and the cursor tooltip shows the total cost.
+- [x] Clicking an owned district upgrades its structure without consuming a card; Shift-click queues five levels and the cursor tooltip shows the total cost. Touching same-type districts merge visually, merged upgrades prioritize the lowest structure, and Ctrl disables merging.
 - [x] HUD and leaderboard scale to 51 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 51-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

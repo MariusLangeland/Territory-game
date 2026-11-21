@@ -56,6 +56,8 @@ export class TerritoryRenderer {
 		frames: 0
 	};
 	hover: { x: number; y: number } | null = null;
+	/** Visual-only: treat touching same-owner districts of one type as one area. */
+	mergeDistrictSeams = true;
 	onDeviceLost?: (message: string) => void;
 
 	private readonly device: GPUDevice;
@@ -361,6 +363,7 @@ export class TerritoryRenderer {
 		u[9] = now / 1000;
 		u[10] = this.camera.zoom;
 		u[11] = dpr;
+		u[12] = this.mergeDistrictSeams ? 1 : 0;
 
 		this.device.queue.writeBuffer(this.uniformBuffer, 0, u);
 

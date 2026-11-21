@@ -90,6 +90,23 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBe(cap);
 	});
 
+	it('allows supply income to grow without a hard cap', () => {
+		const sim = new TerritorySimulation({ seed: 135793 });
+		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
+		expect(capital).toBeDefined();
+		if (!capital) return;
+		for (let index = 0; index < 40; index++) {
+			sim.structures.create(
+				'command-post',
+				HUMAN_PLAYER_ID,
+				Math.min(sim.width - 1, capital.x + index),
+				Math.min(sim.height - 1, capital.y + 20),
+				sim.width
+			);
+		}
+		expect(sim.income).toBeGreaterThan(60);
+	});
+
 	it('artillery is an active ability, not passive income', () => {
 		const sim = new TerritorySimulation({ seed: 135792 });
 		buildCard(sim, 'artillery');
@@ -180,6 +197,61 @@ describe('player economy and cards', () => {
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(6);
 		expect(sim.gold).toBe(25);
+	});
+
+	it('merges touching same-type districts and upgrades the lowest first', () => {
+		const sim = new TerritorySimulation({ seed: 246817 });
+		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
+		expect(capital).toBeDefined();
+		if (!capital) return;
+		const left = sim.structures.create(
+			'fortification',
+			HUMAN_PLAYER_ID,
+			capital.x - 4,
+			capital.y,
+			sim.width
+		);
+		const right = sim.structures.create(
+			'fortification',
+			HUMAN_PLAYER_ID,
+			capital.x + 4,
+			capital.y,
+			sim.width
+		);
+		sim.structures.setStacks(left, 2);
+		const internals = sim as unknown as {
+			refreshDistrictsAround(structure: typeof left): void;
+		};
+		internals.refreshDistrictsAround(left);
+		internals.refreshDistrictsAround(right);
+
+		const group = sim.getMergedDistricts().find((entry) => entry.structureIds.includes(left.id));
+		expect(group).toBeDefined();
+		expect(group?.structureIds).toHaveLength(2);
+		expect(group?.totalStacks).toBe(3);
+
+		for (let level = 0; level < 6; level++) {
+			sim.structures.create(
+				'war-academy',
+				HUMAN_PLAYER_ID,
+				Math.min(sim.width - 1, capital.x + 100 + level),
+				Math.min(sim.height - 1, capital.y + 100),
+				sim.width
+			);
+		}
+		sim.gold = 300;
+		const mergedQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, right.x, right.y, 5, true);
+		expect(mergedQuote.merged).toBe(true);
+		expect(mergedQuote.currentLevel).toBe(1);
+		expect(mergedQuote.cost).toBe(255);
+		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, right.x, right.y, 5, true).ok).toBe(true);
+		sim.step();
+		expect(sim.structures.byId(left.id)?.stacks).toBe(4);
+		expect(sim.structures.byId(right.id)?.stacks).toBe(4);
+
+		const ctrlQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, left.x, left.y, 1, false);
+		expect(ctrlQuote.merged).toBe(false);
+		expect(ctrlQuote.cost).toBe(60);
 	});
 
 	it('rejects a five-level upgrade without queuing partial levels', () => {

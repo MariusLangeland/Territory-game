@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.37.1).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.38.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personalities: aggression, vengeance, caution, conciliation, opportunism, and a six-structure build plan. They retaliate against attackers, avoid stronger or retaliation-capable targets when wary, seek friendly expansion against stronger neighbours when conciliatory, and pile onto already-contested opponents when opportunistic. Threatened bots reserve supply, fortify their border, and rebuild destroyed defenses.
 >
@@ -78,6 +78,7 @@ pnpm format     # Prettier write
 | Click / tap a shared border | Buy a durable front with supply                        |
 | Click / tap your district   | Upgrade that district's structure with supply          |
 | Shift + click your district | Queue 5 upgrades at once                               |
+| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure  |
 | Drag                        | Pan the map                                            |
 | Scroll                      | Zoom at the pointer                                    |
 | Two-finger pinch            | Zoom on touch                                          |
@@ -155,7 +156,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `min(60, 3 + floor(territory/10000) + structures)` per second; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 5 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
+The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/10000) + structures` per second with **no income cap**; cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory; cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 5 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |
@@ -181,7 +182,9 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - multiple structures and districts of the same type are allowed;
 - dropping the same type inside a district **stacks** onto that district's structure, multiplying its effect;
 - dropping the same type outside all districts creates another structure/district;
-- a different type cannot be dropped inside any existing district.
+- a different type cannot be dropped inside any existing district;
+- touching districts of the **same owner and type** merge visually: internal seams and fill variants disappear, and one combined-level icon replaces the individual icons;
+- clicking a merged district upgrades its **lowest-level structure first** (five-level batches spread across the lowest structures); holding **Ctrl** disables merging, restores individual borders/icons, and upgrades whichever structure is under the cursor.
 
 | Structure     | District range | Stack effect    |
 | ------------- | -------------: | --------------- |
@@ -194,7 +197,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
-District pixels receive a subtle structure-type tint, a per-district brightness variant, and darkened boundaries in the WebGPU territory shader. This keeps even adjacent same-type districts distinguishable.
+District pixels receive a subtle structure-type tint, a per-district brightness variant, and darkened boundaries in the WebGPU territory shader. When merging is active, the shader compares same-owner/same-type districts by type base and drops their internal seams; Ctrl restores the per-district variants and seams.
 
 Structures must be at least **8 px apart** (centre to centre); dropping a new type too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 

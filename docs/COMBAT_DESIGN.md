@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.37.1 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.38.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -129,7 +129,7 @@ Derived per tick from live territory and structures (same derived-stat style as 
 
 ```text
 supplyCap(player)    = 120 + floor(territory / 1000) + 40 × WarAcademyStacks   // no maximum
-supplyIncome(player) = min(60,  3  + floor(territory / 10000) +  2 × CommandPostStacks)   // per second
+supplyIncome(player) =  3  + floor(territory / 10000) +  2 × CommandPostStacks   // per second, no cap
 ```
 
 - Start: `supply = 90` for every player (human and bots). Base cap at spawn (~800 land cells) is 120,
@@ -359,11 +359,9 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `SUPPLY_CAP_BASE`                | 120   | Base cap before territory/structures                   |
 | `SUPPLY_CAP_LAND_DIVISOR`        | 1000  | +1 cap per 1000 land cells                             |
 | `SUPPLY_CAP_PER_ACADEMY_STACK`   | 40    | War Academy cap bonus                                  |
-| `SUPPLY_ABSOLUTE_CAP`            | 600   | Hard cap                                               |
 | `SUPPLY_INCOME_BASE`             | 3     | Supply/s base                                          |
 | `SUPPLY_INCOME_LAND_DIVISOR`     | 10000 | +1 supply/s per 10 000 land cells                      |
 | `SUPPLY_INCOME_PER_COMMAND_POST` | 2     | Supply/s per Command Post stack                        |
-| `SUPPLY_INCOME_CAP`              | 60    | Supply/s hard cap                                      |
 | `SUPPLY_TICKS_PER_UNIT`          | 10    | Ticks of accrual per supply                            |
 | `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |
 | `LAUNCH_COST_BASE`               | 30    | Supply cost of a base front                            |
@@ -513,7 +511,7 @@ Run the same seeds and bot profiles under `'stress'` and `'frontage'`:
 
 | Risk                                           | Why it matters                                                     | Mitigation                                                                                                                                  |
 | ---------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Supply snowball                                | Territory → income → more fronts is self-reinforcing.              | Cap income (60/s), cap stock (600), 15-minute timeout + 60% hold; tune divisors with telemetry; optional diminishing income above 40% land. |
+| Supply snowball                                | Territory → income → more fronts is self-reinforcing.              | No hard income/stock caps; tune territory divisors with telemetry and use front pressure/attrition.                                          |
 | Two-resource complexity                        | Gold + supply adds HUD and decision load.                          | Keep the readout compact; supply is only launches; open decision to merge later.                                                            |
 | Front churn / click fatigue                    | More launches than the current 3-order tempo.                      | Front cap 8, early supply scarcity, long front lifetime, no reinforcement spam; revisit with playtests.                                     |
 | Symmetric attrition feels like nothing happens | Both fronts may die together.                                      | Barracks advantage is real (strength + damage); terrain decides the rest; tune `CLASH_ATTRITION_*` from telemetry.                          |
@@ -537,7 +535,7 @@ The user approved these on 2026-11-20. This table records the shipped choices; e
 | 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                               |
 | 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                       |
 | 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                             |
-| 5   | Supply constants         | Income `min(60, 3 + territory/10000 + structures)/s`; cap `120 + territory/1000 + 40×Academy`, no maximum. |
+| 5   | Supply constants         | Income `3 + territory/10000 + structures`/s, no income cap; stock cap `120 + territory/1000 + 40×Academy`, no maximum. |
 | 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                           |
 | 7   | Reinforcement            | **No reinforcement** in v1.                                                                                |
 | 8   | Fortification stacking   | Unbounded stacks (as before).                                                                              |
