@@ -9,6 +9,7 @@ Each structure type owns one file:
 - `jammer.ts`
 - `command-post.ts`
 - `war-academy.ts`
+- `port.ts`
 
 A definition contains its label, rules text, card cost, buildability, accent color, and effect descriptors. Edit the type-specific file for balance or wording; do not add gameplay branches to the UI or simulation for individual types.
 

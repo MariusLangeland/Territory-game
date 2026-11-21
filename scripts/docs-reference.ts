@@ -34,6 +34,8 @@ import {
 	MAP_HEIGHT,
 	MAP_WIDTH,
 	MAP_VERSION,
+	NAVAL_LANDING_SURCHARGE,
+	NAVAL_SPEED_PX_PER_SECOND,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PROTOCOL_VERSION,
@@ -182,6 +184,16 @@ function renderConstants(): string {
 		constantLine('MAP_WIDTH', 'map width in pixels', MAP_WIDTH),
 		constantLine('MAP_HEIGHT', 'map height in pixels', MAP_HEIGHT),
 		constantLine('PLAYER_COUNT', 'maximum states per match', PLAYER_COUNT),
+		constantLine(
+			'NAVAL_LANDING_SURCHARGE',
+			'extra supply over a front launch',
+			NAVAL_LANDING_SURCHARGE
+		),
+		constantLine(
+			'NAVAL_SPEED_PX_PER_SECOND',
+			'boat speed along a sea route',
+			NAVAL_SPEED_PX_PER_SECOND
+		),
 		constantLine('TICK_RATE', 'simulation ticks per second', TICK_RATE)
 	];
 	return lines.join('\n');

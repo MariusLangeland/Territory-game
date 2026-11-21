@@ -61,6 +61,8 @@ import {
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	LEAST_RESISTANCE_SAMPLE_SIZE,
+	NAVAL_LANDING_SURCHARGE,
+	NAVAL_SPEED_PX_PER_SECOND,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
@@ -84,8 +86,9 @@ import {
 	type GrowthLayer,
 	type GrowthMode
 } from './growth';
-import { TerritoryIntegrity } from './integrity';
+import { TerritoryIntegrity, type IntegrityAnchor } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
+import { adjacentWater, computeSeaComponents, isShoreIndex, SeaRouter } from './naval';
 import {
 	BUILDABLE_STRUCTURE_TYPES,
 	StructureRegistry,
@@ -206,6 +209,22 @@ export interface PublicArtilleryShell extends ArtilleryShell {
 	progress: number;
 }
 
+export interface NavalLanding {
+	id: number;
+	ownerId: number;
+	portId: number;
+	targetIndex: number;
+	/** Water route plus the final target shore cell. */
+	path: number[];
+	launchedAtTick: number;
+	arriveAtTick: number;
+}
+
+export interface PublicNavalLanding extends NavalLanding {
+	/** Render-only interpolation in `[0, 1]`; not checksummed. */
+	progress: number;
+}
+
 export interface GameSnapshot {
 	tick: number;
 	seed: number;
@@ -214,6 +233,7 @@ export interface GameSnapshot {
 	players: PublicPlayer[];
 	attacks: PublicAttack[];
 	shells: PublicArtilleryShell[];
+	navalLandings: PublicNavalLanding[];
 	structures: PublicStructure[];
 	/** Human state's economy. Bots do not build cards yet. */
 	gold: number;
@@ -232,7 +252,7 @@ export interface GameSnapshot {
 }
 
 export type SimEventKind =
-	'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'artillery' | 'system';
+	'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'artillery' | 'naval' | 'system';
 
 export interface SimEvent {
 	id: number;
@@ -254,7 +274,11 @@ export type AttackFailure =
 	| 'cooling'
 	| 'no-supply'
 	| 'out-of-range'
-	| 'district-clearance';
+	| 'district-clearance'
+	| 'no-port'
+	| 'not-shore'
+	| 'no-sea-path'
+	| 'friendly-shore';
 
 export interface AttackOrderResult {
 	ok: boolean;
@@ -272,6 +296,14 @@ export interface AttackCommand {
 
 export interface ArtilleryFireCommand {
 	type: 'artillery';
+	playerId: number;
+	x: number;
+	y: number;
+	sequence: number;
+}
+
+export interface NavalCommand {
+	type: 'naval';
 	playerId: number;
 	x: number;
 	y: number;
@@ -299,7 +331,8 @@ export interface UpgradeCommand {
 	sequence: number;
 }
 
-export type GameCommand = AttackCommand | ArtilleryFireCommand | BuildCommand | UpgradeCommand;
+export type GameCommand =
+	AttackCommand | ArtilleryFireCommand | NavalCommand | BuildCommand | UpgradeCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -308,6 +341,7 @@ export type BuildFailure =
 	| 'no-gold'
 	| 'ocean'
 	| 'not-owned'
+	| 'not-shore'
 	| 'occupied'
 	| 'too-close'
 	| 'inside-district'
@@ -437,6 +471,14 @@ export class TerritorySimulation {
 	private readonly shade: Uint8Array;
 	private readonly elevation: Uint8Array;
 	private readonly landCount: number;
+	private readonly seaComponents: Uint32Array;
+	private readonly seaRouter: SeaRouter;
+	/** Scratch land-component labels used for Port annexation protection. */
+	private readonly portComponentOf: Uint32Array;
+	private readonly portComponentQueue: Uint32Array;
+	private portVisitToken = 0;
+	private navalLandings: NavalLanding[] = [];
+	private nextNavalId = 1;
 	private attacks: AttackState[] = [];
 	private nextAttackId = 1;
 	private pendingCommands: GameCommand[] = [];
@@ -486,6 +528,10 @@ export class TerritorySimulation {
 		this.shade = this.map.shade;
 		this.elevation = this.map.elevation;
 		this.landCount = this.map.landCount;
+		this.seaComponents = computeSeaComponents(this.land, this.width, this.height);
+		this.seaRouter = new SeaRouter(this.land, this.width, this.height);
+		this.portComponentOf = new Uint32Array(this.width * this.height);
+		this.portComponentQueue = new Uint32Array(this.width * this.height);
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
 		this.auraDefense = new Uint16Array(this.width * this.height);
@@ -841,6 +887,194 @@ export class TerritorySimulation {
 		return fail('out-of-range', 'No ready artillery can reach that point.');
 	}
 
+	/** Queue a naval landing from any friendly port to this shore. */
+	enqueueNavalAttack(playerId: number, x: number, y: number): AttackOrderResult {
+		const validation = this.validateNavalAttack(playerId, x, y);
+		if (!validation.ok) return validation;
+		this.pendingCommands.push({
+			type: 'naval',
+			playerId,
+			x: Math.floor(x),
+			y: Math.floor(y),
+			sequence: this.nextCommandSequence++
+		});
+		return validation;
+	}
+
+	validateNavalAttack(playerId: number, x: number, y: number): AttackOrderResult {
+		const fail = (reason: AttackFailure, message: string): AttackOrderResult => ({
+			ok: false,
+			reason,
+			message
+		});
+		if (this.ended) return fail('ended', 'The conflict is over.');
+		const player = this.players[playerId - 1];
+		if (!player || !player.alive) return fail('eliminated', 'Your state has been eliminated.');
+		const roundedX = Math.floor(x);
+		const roundedY = Math.floor(y);
+		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
+			return fail('invalid', 'Choose a shore inside the map.');
+		}
+		const index = roundedY * this.width + roundedX;
+		if (!this.land[index]) return fail('ocean', 'Naval landings target a shore.');
+		if (!isShoreIndex(this.land, this.width, this.height, index)) {
+			return fail('not-shore', 'Ports can only land on shoreline cells.');
+		}
+		const targetOwner = this.owners[index];
+		if (targetOwner === playerId) return fail('friendly-shore', 'That shore is already friendly.');
+		if (this.structures.at(index)) {
+			return fail('invalid', 'A structure occupies that shore.');
+		}
+		const ports = this.structures.forOwner(playerId).filter((entry) => entry.type === 'port');
+		if (ports.length === 0) return fail('no-port', 'Build a Port before launching a landing.');
+		const route = this.findNavalRoute(playerId, index);
+		if (!route) return fail('no-sea-path', 'No sea route reaches that shore.');
+		const cost = this.attackSupplyCost(playerId, targetOwner) + NAVAL_LANDING_SURCHARGE;
+		if (
+			this.supplyOf(playerId) -
+				this.pendingAttackSupply(playerId) -
+				this.pendingNavalSupply(playerId) <
+			cost
+		) {
+			return fail('no-supply', `Need ${cost} supply for a naval landing.`);
+		}
+		return { ok: true, message: `Naval landing ordered for ${cost} supply.` };
+	}
+
+	private navalSupplyCost(playerId: number, targetIndex: number): number {
+		return this.attackSupplyCost(playerId, this.owners[targetIndex]) + NAVAL_LANDING_SURCHARGE;
+	}
+
+	private pendingNavalSupply(playerId: number): number {
+		let total = 0;
+		for (const command of this.pendingCommands) {
+			if (command.type !== 'naval' || command.playerId !== playerId) continue;
+			total += this.navalSupplyCost(playerId, command.y * this.width + command.x);
+		}
+		return total;
+	}
+
+	private findNavalRoute(
+		playerId: number,
+		targetIndex: number
+	): { port: Structure; path: Uint32Array; targetWater: number } | null {
+		const ports = this.structures
+			.forOwner(playerId)
+			.filter((entry) => entry.type === 'port')
+			.sort((left, right) => {
+				const leftDistance =
+					Math.abs(left.x - (targetIndex % this.width)) +
+					Math.abs(left.y - Math.floor(targetIndex / this.width));
+				const rightDistance =
+					Math.abs(right.x - (targetIndex % this.width)) +
+					Math.abs(right.y - Math.floor(targetIndex / this.width));
+				return leftDistance - rightDistance || left.id - right.id;
+			});
+		if (ports.length === 0) return null;
+		const targetWater: number[] = [];
+		adjacentWater(this.land, this.width, this.height, targetIndex, targetWater);
+		if (targetWater.length === 0) return null;
+
+		let best: { port: Structure; path: Uint32Array; targetWater: number } | null = null;
+		for (const port of ports) {
+			const sourceWater: number[] = [];
+			adjacentWater(this.land, this.width, this.height, port.index, sourceWater);
+			for (const start of sourceWater) {
+				for (const end of targetWater) {
+					if (this.seaComponents[start] !== this.seaComponents[end]) continue;
+					const path = this.seaRouter.findPath(start, end);
+					if (!path) continue;
+					if (!best || path.length < best.path.length) {
+						best = { port, path, targetWater: end };
+					}
+				}
+			}
+		}
+		return best;
+	}
+
+	private tryLaunchNaval(playerId: number, x: number, y: number): boolean {
+		const validation = this.validateNavalAttack(playerId, x, y);
+		if (!validation.ok) return false;
+		const index = Math.floor(y) * this.width + Math.floor(x);
+		const route = this.findNavalRoute(playerId, index);
+		if (!route) return false;
+		const cost = this.navalSupplyCost(playerId, index);
+		if (!this.spendSupply(playerId, cost)) return false;
+		const path = Array.from(route.path);
+		path.push(index);
+		const distance = Math.max(1, path.length - 1);
+		const travelTicks = Math.max(1, Math.ceil((distance / NAVAL_SPEED_PX_PER_SECOND) * TICK_RATE));
+		this.navalLandings.push({
+			id: this.nextNavalId++,
+			ownerId: playerId,
+			portId: route.port.id,
+			targetIndex: index,
+			path,
+			launchedAtTick: this.tick,
+			arriveAtTick: this.tick + travelTicks
+		});
+		this.pushEvent(
+			'naval',
+			`${this.players[playerId - 1].name} launches a naval landing.`,
+			playerId
+		);
+		return true;
+	}
+
+	private processNavalLandings(): void {
+		if (this.navalLandings.length === 0) return;
+		const remaining: NavalLanding[] = [];
+		for (const landing of this.navalLandings) {
+			if (this.tick < landing.arriveAtTick) {
+				remaining.push(landing);
+				continue;
+			}
+			this.completeNavalLanding(landing);
+		}
+		this.navalLandings = remaining;
+	}
+
+	private completeNavalLanding(landing: NavalLanding): void {
+		const owner = this.players[landing.ownerId - 1];
+		if (!owner?.alive) return;
+		const index = landing.targetIndex;
+		if (!this.land[index] || !isShoreIndex(this.land, this.width, this.height, index)) return;
+		if (this.owners[index] === landing.ownerId || this.structures.at(index)) return;
+
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		this.claim(index, landing.ownerId);
+		this.structures.create('port', landing.ownerId, x, y, this.width);
+		this.pushEvent(
+			'naval',
+			`${owner.name}'s landing captures a beachhead and builds a Port.`,
+			landing.ownerId
+		);
+		this.rebuildAuraDefense();
+
+		let beachTarget = -1;
+		let bestDefense = Number.POSITIVE_INFINITY;
+		const neighbours = [
+			x > 0 ? index - 1 : -1,
+			x + 1 < this.width ? index + 1 : -1,
+			y > 0 ? index - this.width : -1,
+			y + 1 < this.height ? index + this.width : -1
+		];
+		for (const neighbour of neighbours) {
+			if (neighbour < 0 || !this.land[neighbour]) continue;
+			if (this.owners[neighbour] === landing.ownerId) continue;
+			const defense = this.getDefense(neighbour % this.width, Math.floor(neighbour / this.width));
+			if (defense < bestDefense) {
+				bestDefense = defense;
+				beachTarget = neighbour;
+			}
+		}
+		if (beachTarget >= 0) {
+			this.createAttack(landing.ownerId, beachTarget, [beachTarget]);
+		}
+	}
+
 	private fireArtilleryVolley(playerId: number, x: number, y: number): number {
 		const player = this.players[playerId - 1];
 		if (!player?.alive) return 0;
@@ -1034,6 +1268,9 @@ export class TerritorySimulation {
 				reason: 'not-owned',
 				message: 'Drop the card inside your controlled territory.'
 			};
+		}
+		if (card.type === 'port' && !isShoreIndex(this.land, this.width, this.height, index)) {
+			return { ok: false, reason: 'not-shore', message: 'Ports must be built on a shoreline.' };
 		}
 		const districtId = this.districtStructureIds[index];
 		if (districtId !== 0) {
@@ -1321,6 +1558,7 @@ export class TerritorySimulation {
 			this.runBotDecisions();
 			this.runBotArtillery();
 			this.processArtilleryShells();
+			this.processNavalLandings();
 			this.processAttacks();
 			const annexDue =
 				this.tick % ANNEX_INTERVAL_TICKS === 0 ||
@@ -1386,6 +1624,11 @@ export class TerritorySimulation {
 		const index = y * this.width + x;
 		if (!this.land[index]) return 0;
 		return BASE_DEFENSE_OFFSET + this.elevation[index];
+	}
+
+	isShore(x: number, y: number): boolean {
+		if (x < 0 || y < 0 || x >= this.width || y >= this.height) return false;
+		return isShoreIndex(this.land, this.width, this.height, y * this.width + x);
 	}
 
 	getDefense(x: number, y: number): number {
@@ -1476,6 +1719,17 @@ export class TerritorySimulation {
 			mix(shell.launchedAtTick);
 			mix(shell.arriveAtTick);
 		}
+		mix(this.nextNavalId);
+		for (const landing of this.navalLandings) {
+			mix(landing.id);
+			mix(landing.ownerId);
+			mix(landing.portId);
+			mix(landing.targetIndex);
+			mix(landing.launchedAtTick);
+			mix(landing.arriveAtTick);
+			mix(landing.path.length);
+			for (const cell of landing.path) mix(cell);
+		}
 
 		for (const attack of this.attacks) {
 			mix(attack.id);
@@ -1510,6 +1764,11 @@ export class TerritorySimulation {
 			if (this.ended) return;
 			const player = this.players[command.playerId - 1];
 			if (!player?.alive) continue;
+
+			if (command.type === 'naval') {
+				this.tryLaunchNaval(command.playerId, command.x, command.y);
+				continue;
+			}
 
 			if (command.type === 'build') {
 				const validation = this.validateBuild(
@@ -2314,10 +2573,90 @@ export class TerritorySimulation {
 	}
 
 	private annexDisconnectedTerritory(): void {
-		const stateAnchors = this.structures.all.filter((structure) => structure.type === 'state');
-		this.integrity.run(this.owners, this.land, stateAnchors, (index, newOwner) => {
+		const anchors: IntegrityAnchor[] = this.structures.all
+			.filter((structure) => structure.type === 'state')
+			.map((structure) => ({ index: structure.index, ownerId: structure.ownerId }));
+		anchors.push(...this.protectedPortAnchors());
+		this.integrity.run(this.owners, this.land, anchors, (index, newOwner) => {
 			this.claim(index, newOwner, 0);
 		});
+	}
+
+	/**
+	 * A Port protects its land component when that component reaches the
+	 * owner's State, or when it shares a sea component with another friendly
+	 * Port whose land component reaches the State.
+	 */
+	private protectedPortAnchors(): IntegrityAnchor[] {
+		const ports = this.structures.all.filter((structure) => structure.type === 'port');
+		if (ports.length === 0) return [];
+		const anchor: IntegrityAnchor[] = [];
+		const byOwner = new Map<number, typeof ports>();
+		const seaById = new Map<number, Set<number>>();
+		const landAnchored = new Set<number>();
+
+		for (const port of ports) {
+			const token = ++this.portVisitToken;
+			let head = 0;
+			let tail = 0;
+			this.portComponentOf[port.index] = token;
+			this.portComponentQueue[tail++] = port.index;
+			let reachesState = false;
+			while (head < tail) {
+				const index = this.portComponentQueue[head++] ?? 0;
+				const structure = this.structures.at(index);
+				if (structure?.type === 'state' && structure.ownerId === port.ownerId) {
+					reachesState = true;
+				}
+				const x = index % this.width;
+				const y = (index - x) / this.width;
+				const neighbours = [
+					x > 0 ? index - 1 : -1,
+					x + 1 < this.width ? index + 1 : -1,
+					y > 0 ? index - this.width : -1,
+					y + 1 < this.height ? index + this.width : -1
+				];
+				for (const next of neighbours) {
+					if (next < 0 || !this.land[next]) continue;
+					if (this.owners[next] !== port.ownerId) continue;
+					if (this.portComponentOf[next] === token) continue;
+					this.portComponentOf[next] = token;
+					this.portComponentQueue[tail++] = next;
+				}
+			}
+			const ownerPorts = byOwner.get(port.ownerId) ?? [];
+			ownerPorts.push(port);
+			byOwner.set(port.ownerId, ownerPorts);
+			const waters: number[] = [];
+			adjacentWater(this.land, this.width, this.height, port.index, waters);
+			const seaIds = new Set<number>();
+			for (const water of waters) {
+				const sea = this.seaComponents[water] ?? 0;
+				if (sea > 0) seaIds.add(sea);
+			}
+			seaById.set(port.id, seaIds);
+			if (reachesState) {
+				landAnchored.add(port.id);
+				anchor.push({ index: port.index, ownerId: port.ownerId });
+			}
+		}
+
+		for (const ownerPorts of byOwner.values()) {
+			const anchoredSea = new Set<number>();
+			for (const port of ownerPorts) {
+				if (!landAnchored.has(port.id)) continue;
+				for (const sea of seaById.get(port.id) ?? []) anchoredSea.add(sea);
+			}
+			for (const port of ownerPorts) {
+				if (landAnchored.has(port.id)) continue;
+				for (const sea of seaById.get(port.id) ?? []) {
+					if (!anchoredSea.has(sea)) continue;
+					anchor.push({ index: port.index, ownerId: port.ownerId });
+					break;
+				}
+			}
+		}
+		return anchor;
 	}
 
 	private cleanupUnclaimedPockets(): void {
@@ -2461,7 +2800,12 @@ export class TerritorySimulation {
 				5 +
 				Math.floor(command * 0.55) +
 				Math.floor(economy * 0.35) +
-				(hash32(playerId, 14, seed) % 20)
+				(hash32(playerId, 14, seed) % 20),
+			port:
+				4 +
+				Math.floor(aggression * 0.2) +
+				Math.floor(command * 0.2) +
+				(hash32(playerId, 16, seed) % 16)
 		};
 		const preferred = BUILDABLE_STRUCTURE_TYPES.map((type) => [type, structureBias[type]] as const);
 		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
@@ -2676,6 +3020,9 @@ export class TerritorySimulation {
 					break;
 				case 'artillery':
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
+					break;
+				case 'port':
+					buildScore += (count === 0 ? 16 : 0) + (player.territory > 4000 ? 6 : 0);
 					break;
 			}
 			// Shared opening ramp: economy structures dominate until the bot has
@@ -3007,6 +3354,13 @@ export class TerritorySimulation {
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
+		if (type === 'port') {
+			for (const index of player.border) {
+				if (!isShoreIndex(this.land, this.width, this.height, index)) continue;
+				if (this.isBotBuildCellValid(player, index)) return index;
+			}
+			return -1;
+		}
 		if (type === 'artillery' || type === 'command-post' || type === 'war-academy') {
 			const state = this.structures.forOwnerType(player.id, 'state');
 			if (state) {
@@ -3418,6 +3772,7 @@ export class TerritorySimulation {
 			players,
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
 			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
+			navalLandings: this.navalLandings.map((landing) => this.toPublicNavalLanding(landing)),
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
 			gold: this.gold,
 			income: this.income,
@@ -3462,6 +3817,20 @@ export class TerritorySimulation {
 			effects: structure.effects,
 			readyAtTick: this.artilleryReadyAt(structure)
 		};
+	}
+
+	private toPublicNavalLanding(landing: NavalLanding): PublicNavalLanding {
+		const span = Math.max(1, landing.arriveAtTick - landing.launchedAtTick);
+		const elapsed = Math.max(0, Math.min(span, this.tick - landing.launchedAtTick));
+		const path = landing.path.filter(
+			(_, index) => index % 8 === 0 || index === landing.path.length - 1
+		);
+		return { ...landing, path, progress: elapsed / span };
+	}
+
+	/** Read-only landing view for the 2D overlay. */
+	get activeNavalLandings(): readonly PublicNavalLanding[] {
+		return this.navalLandings.map((landing) => this.toPublicNavalLanding(landing));
 	}
 
 	private toPublicShell(shell: ArtilleryShell): PublicArtilleryShell {

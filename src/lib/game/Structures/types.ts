@@ -5,7 +5,14 @@
  */
 
 export type StructureType =
-	'state' | 'artillery' | 'barracks' | 'fortification' | 'command-post' | 'war-academy' | 'jammer';
+	| 'state'
+	| 'artillery'
+	| 'barracks'
+	| 'fortification'
+	| 'command-post'
+	| 'war-academy'
+	| 'jammer'
+	| 'port';
 
 export type BuildableStructureType = Exclude<StructureType, 'state'>;
 
@@ -52,13 +59,19 @@ export interface BarracksSuppressionEffect {
 	amount: number;
 }
 
+/** Marks a shore structure that enables naval landings and sea protection. */
+export interface PortEffect {
+	kind: 'port';
+}
+
 export type StructureEffect =
 	| DefenseAuraEffect
 	| BarracksPowerEffect
 	| SupplyIncomeEffect
 	| SupplyCapEffect
 	| ArtilleryEffect
-	| BarracksSuppressionEffect;
+	| BarracksSuppressionEffect
+	| PortEffect;
 
 export interface StructureDefinition {
 	label: string;

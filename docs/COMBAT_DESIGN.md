@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.52.0 / protocol 37.  
+**Status:** IMPLEMENTED in application 0.53.0 / protocol 38.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -250,7 +250,7 @@ captureCost   = max(1, defense − logTier)             // per capture, paid fro
 
 ### 3.5 Structures and cards under Frontage v1
 
-Supply costs and the permanent six-card hand:
+Supply costs and the permanent seven-card hand:
 
 | Card          | Cost | Implemented effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------------------ |
@@ -260,6 +260,7 @@ Supply costs and the permanent six-card hand:
 | Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
 | Command Post  | 80   | +1 supply per second per stack.                                          |
 | War Academy   | 60   | +80 supply cap per stack; no global maximum.                             |
+| Port          | 200  | Shore-only naval landing anchor; protects sea-linked land components.    |
 
 - `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is
@@ -361,6 +362,8 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `SUPPLY_CAP_PER_ACADEMY_STACK`   | 80    | War Academy cap bonus                                  |
 | `SUPPLY_INCOME_BASE`             | 3     | Supply/s base                                          |
 | `SUPPLY_INCOME_LAND_DIVISOR`     | 3000  | +1 supply/s per 3,000 land cells                       |
+| `NAVAL_LANDING_SURCHARGE`        | 60    | Extra supply over a normal launch for a landing        |
+| `NAVAL_SPEED_PX_PER_SECOND`      | 80    | Boat speed along a sea route                           |
 | `SUPPLY_INCOME_PER_COMMAND_POST` | 2     | Supply/s per Command Post stack                        |
 | `SUPPLY_TICKS_PER_UNIT`          | 10    | Ticks of accrual per supply                            |
 | `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |

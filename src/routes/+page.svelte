@@ -618,6 +618,13 @@
 			return;
 		}
 		const result = sim.enqueueAttack(HUMAN_PLAYER_ID, x, y);
+		if (!result.ok && result.reason === 'no-shared-border') {
+			const naval = sim.enqueueNavalAttack(HUMAN_PLAYER_ID, x, y);
+			if (naval.ok) {
+				showToast(naval.message, 'success');
+				return;
+			}
+		}
 		showToast(result.message, result.ok ? 'success' : 'error');
 		if (result.ok) advanceOnboarding(1, 2);
 	}
@@ -703,6 +710,8 @@
 				return 'COMMAND';
 			case 'war-academy':
 				return 'DOCTRINE';
+			case 'port':
+				return 'NAVAL';
 		}
 	}
 
@@ -972,7 +981,7 @@
 
 		if (showResult || defeatOpen || showHelp) return;
 
-		if (/^[1-6]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+		if (/^[1-7]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
 			event.preventDefault();
 			beginKeyboardPlacement(Number(event.key) - 1);
 			return;
@@ -1482,6 +1491,10 @@
 											<svg viewBox="0 0 24 24">
 												<path d="M12 21V9M8 9a6 6 0 0 1 8 0M5 6a10 10 0 0 1 14 0M9 21h6" />
 											</svg>
+										{:else if card.type === 'port'}
+											<svg viewBox="0 0 24 24">
+												<path d="M12 3v15M8 6a4 4 0 0 1 8 0M5 12h14M5 15c0 4 3 6 7 6s7-2 7-6" />
+											</svg>
 										{:else}
 											<svg viewBox="0 0 24 24">
 												<path d="M12 4 20 8l-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
@@ -1708,7 +1721,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.52.0 / PROTOCOL 37</span>
+				<span>BUILD 0.53.0 / PROTOCOL 38</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>

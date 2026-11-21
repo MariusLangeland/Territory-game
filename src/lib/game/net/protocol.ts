@@ -11,12 +11,13 @@ import type {
 	AttackFailure,
 	PublicArtilleryShell,
 	PublicAttack,
+	PublicNavalLanding,
 	PublicPlayer,
 	SimEventKind
 } from '../simulation';
 import type { PublicCard, PublicStructure } from '../Structures';
 
-export const NET_PROTOCOL_VERSION = 37;
+export const NET_PROTOCOL_VERSION = 38;
 
 export type MatchId = string;
 export type PlayerId = number;
@@ -38,6 +39,13 @@ export interface ArtilleryIntent {
 	y: number;
 }
 
+export interface NavalIntent {
+	type: 'naval';
+	sequence: number;
+	x: number;
+	y: number;
+}
+
 export type ClientMessage =
 	| {
 			t: 'hello';
@@ -52,7 +60,7 @@ export type ClientMessage =
 			t: 'intent';
 			/** Client's best estimate; the server decides the authoritative tick. */
 			targetTick: Tick;
-			intent: AttackIntent | ArtilleryIntent;
+			intent: AttackIntent | ArtilleryIntent | NavalIntent;
 	  }
 	| {
 			/** Host-controlled test mode; server must accept and broadcast it. */
@@ -82,6 +90,7 @@ export interface WireSnapshot {
 	players: WirePlayer[];
 	attacks: PublicAttack[];
 	shells: PublicArtilleryShell[];
+	navalLandings: PublicNavalLanding[];
 	structures: PublicStructure[];
 	supply: number;
 	supplyCap: number;
@@ -174,6 +183,20 @@ export function isAttackIntent(value: unknown): value is AttackIntent {
 	const intent = value as Record<string, unknown>;
 	return (
 		intent.type === 'attack' &&
+		typeof intent.sequence === 'number' &&
+		Number.isSafeInteger(intent.sequence) &&
+		typeof intent.x === 'number' &&
+		Number.isFinite(intent.x) &&
+		typeof intent.y === 'number' &&
+		Number.isFinite(intent.y)
+	);
+}
+
+export function isNavalIntent(value: unknown): value is NavalIntent {
+	if (!value || typeof value !== 'object') return false;
+	const intent = value as Record<string, unknown>;
+	return (
+		intent.type === 'naval' &&
 		typeof intent.sequence === 'number' &&
 		Number.isSafeInteger(intent.sequence) &&
 		typeof intent.x === 'number' &&

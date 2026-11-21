@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.52.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Ports (v0.53.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**; an optional match timer awards the largest alive state.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -33,12 +33,13 @@
 | Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                     |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                             |
-| Supply economy  | 90 starting supply, uncapped maximum, six cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                 |
+| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                               |
 | Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism         |
 | Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                 |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
+| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                               |
 | Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                   |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                       |
@@ -87,7 +88,7 @@ pnpm format     # Prettier write
 | Click / tap your district   | Upgrade that district's structure with supply                   |
 | Shift + click your district | Queue 5 upgrades at once                                        |
 | Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
-| `1`–`6`                     | Start placing that card; left-click builds, right-click cancels |
+| `1`–`7`                     | Start placing that card; left-click builds, right-click cancels |
 | Drag                        | Pan the map                                                     |
 | Scroll                      | Zoom at the pointer                                             |
 | Two-finger pinch            | Zoom on touch                                                   |
@@ -117,10 +118,11 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
 11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent logTier` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
 12. **Artillery:** costs 1000 supply, needs 16 px of district-free ground, and covers a 64 px district. `A` or FIRE, then click a raw aim point (no snapping). Every ready battery in 140 px fires one shell per level at 300 supply per level; after 2 s each shell lands with ±36 px spread and removes one level from a non-State structure within 12 px. Batteries reload for 6 s; States are immune.
-13. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins. There is no match time limit.
-14. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
-15. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
-16. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
+13. **Ports:** Ports cost 200 supply and can only be built on owned shoreline. A Port lets you click any non-friendly shore with a sea route; a boat sails there at 80 px/s, claims a beachhead, auto-builds another Port, and opens a regular inward front. Ports whose land reaches your State protect their component, as do ports sharing a sea with such a port.
+14. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins; an optional match timer awards the largest alive state.
+15. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
+16. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
+17. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
 
 ### Terrain and defense
 
@@ -167,7 +169,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 Each rival state has a **map-anchored supply banner** at its capital showing its name and current supply. Banners scale with territory but are capped by the state's on-screen footprint, so zooming out shrinks or hides them instead of covering the map. They use transparent backgrounds with no border or plaque; larger states still get larger text. The human state is intentionally excluded because its supply is shown in the hand bar.
 
-The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures` per second with **no income cap** (+1/s per 3,000 owned pixels); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`6` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
+The human commander starts with **90 supply** and **all seven build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures` per second with **no income cap** (+1/s per 3,000 owned pixels); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`7` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |
@@ -177,6 +179,7 @@ The human commander starts with **90 supply** and **all six build cards** perman
 | Jammer        | 160  | Global −1 enemy effective Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                         |
 | War Academy   | 60   | +80 supply cap                                               |
+| Port          | 200  | Shore-only naval landing port; sea-linked annex protection   |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 
@@ -197,14 +200,15 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - touching districts of the **same owner and type** merge visually: internal seams and fill variants disappear, and one combined-level icon replaces the individual icons;
 - clicking a merged district upgrades its **lowest-level structure first** (five-level batches spread across the lowest structures); holding **Ctrl** disables merging, restores individual borders/icons, and upgrades whichever structure is under the cursor.
 
-| Structure     | District range | Stack effect    |
-| ------------- | -------------: | --------------- |
-| Artillery     |             64 | active siege    |
-| Barracks      |             44 | +1 attack level |
-| Fortification |             40 | +1 defense      |
-| Jammer        |             32 | −1 enemy level  |
-| Command Post  |             32 | +1 supply/s     |
-| War Academy   |             32 | +80 supply cap  |
+| Structure     | District range | Stack effect               |
+| ------------- | -------------: | -------------------------- |
+| Artillery     |             64 | active siege               |
+| Barracks      |             44 | +1 attack level            |
+| Port          |              0 | naval anchor (no district) |
+| Fortification |             40 | +1 defense                 |
+| Jammer        |             32 | −1 enemy level             |
+| Command Post  |             32 | +1 supply/s                |
+| War Academy   |             32 | +80 supply cap             |
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 

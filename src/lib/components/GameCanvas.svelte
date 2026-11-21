@@ -219,6 +219,25 @@
 			context.stroke();
 		}
 
+		function drawPort(
+			context: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			radius: number
+		): void {
+			context.beginPath();
+			context.arc(x, y - radius * 0.55, radius * 0.16, 0, Math.PI * 2);
+			context.stroke();
+			context.beginPath();
+			context.moveTo(x, y - radius * 0.4);
+			context.lineTo(x, y + radius * 0.55);
+			context.moveTo(x - radius * 0.5, y - radius * 0.08);
+			context.lineTo(x + radius * 0.5, y - radius * 0.08);
+			context.moveTo(x - radius * 0.62, y + radius * 0.18);
+			context.quadraticCurveTo(x, y + radius * 0.82, x + radius * 0.62, y + radius * 0.18);
+			context.stroke();
+		}
+
 		function drawStructureIcon(
 			context: CanvasRenderingContext2D,
 			type: StructureType,
@@ -286,6 +305,8 @@
 				drawJammer(context, x, y, radius);
 			} else if (type === 'command-post') {
 				drawCommandPost(context, x, y, radius);
+			} else if (type === 'port') {
+				drawPort(context, x, y, radius);
 			} else {
 				drawWarAcademy(context, x, y, radius);
 			}
@@ -520,6 +541,47 @@
 				context.fill();
 				context.lineWidth = 1.2;
 				context.strokeStyle = ownerColor.hex;
+				context.stroke();
+			}
+
+			for (const landing of simulation.activeNavalLandings) {
+				if (landing.path.length === 0) continue;
+				const scaled = landing.progress * (landing.path.length - 1);
+				const fromSlot = Math.max(0, Math.min(landing.path.length - 1, Math.floor(scaled)));
+				const toSlot = Math.min(landing.path.length - 1, fromSlot + 1);
+				const t = scaled - fromSlot;
+				const fromIndex = landing.path[fromSlot] ?? landing.path[0] ?? 0;
+				const toIndex = landing.path[toSlot] ?? fromIndex;
+				const fromX = (fromIndex % simulation.width) + 0.5;
+				const fromY = Math.floor(fromIndex / simulation.width) + 0.5;
+				const toX = (toIndex % simulation.width) + 0.5;
+				const toY = Math.floor(toIndex / simulation.width) + 0.5;
+				const point = camera.mapToScreen(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+				if (point.x < -20 || point.y < -20 || point.x > width + 20 || point.y > height + 20) {
+					continue;
+				}
+				const ownerColor = colorForPlayer(landing.ownerId);
+				const angle = Math.atan2(toY - fromY, toX - fromX);
+				context.save();
+				context.translate(point.x, point.y);
+				context.rotate(angle);
+				context.beginPath();
+				context.moveTo(8, 0);
+				context.lineTo(-5, 4.5);
+				context.lineTo(-2, 0);
+				context.lineTo(-5, -4.5);
+				context.closePath();
+				context.fillStyle = '#f7eed0';
+				context.fill();
+				context.lineWidth = 1.4;
+				context.strokeStyle = ownerColor.hex;
+				context.stroke();
+				context.restore();
+				context.beginPath();
+				context.moveTo(point.x - Math.cos(angle) * 8, point.y - Math.sin(angle) * 8);
+				context.lineTo(point.x - Math.cos(angle) * 18, point.y - Math.sin(angle) * 18);
+				context.lineWidth = 2;
+				context.strokeStyle = 'rgba(160, 220, 235, 0.35)';
 				context.stroke();
 			}
 

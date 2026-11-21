@@ -200,15 +200,15 @@ The draft is in `src/lib/game/net/protocol.ts`. Core messages:
 
 ### Server → client
 
-| Message      | Purpose                                                                                                                                             |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                            |
-| `tick`       | Owner changes, public players, live structures, active fronts (strength/power/pierce/idle), in-flight shells, current growth mode, events, checksum |
-| `ack`        | Intent accepted                                                                                                                                     |
-| `reject`     | Intent rejected with reason                                                                                                                         |
-| `match-over` | Winner and final snapshot                                                                                                                           |
-| `pong`       | RTT response                                                                                                                                        |
-| `error`      | Room/protocol/rate-limit errors                                                                                                                     |
+| Message      | Purpose                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`    | Identity, baseline snapshot, seed, map version, checksum                                                                                                                              |
+| `tick`       | Owner changes, public players, live structures (including Ports), active fronts (strength/power/pierce/idle), in-flight shells, naval landings, current growth mode, events, checksum |
+| `ack`        | Intent accepted                                                                                                                                                                       |
+| `reject`     | Intent rejected with reason                                                                                                                                                           |
+| `match-over` | Winner and final snapshot                                                                                                                                                             |
+| `pong`       | RTT response                                                                                                                                                                          |
+| `error`      | Room/protocol/rate-limit errors                                                                                                                                                       |
 
 ### Encoding
 
@@ -255,7 +255,7 @@ Player economy and cards:
 - the hand is the fixed six-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - continuous supply income, uncapped cap growth, Artillery cooldowns/shells, Barracks/Jammer attack stats, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
-- bots use the same supply economy; every public player payload now includes current `supply` so clients can render rival supply banners (protocol 37).
+- bots use the same supply economy; every public player payload includes current `supply` so clients can render rival supply banners. Protocol 38 adds Port/naval landing state and naval intents.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);

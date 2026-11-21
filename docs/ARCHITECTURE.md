@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.52.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.53.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.52.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.53.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -87,7 +87,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + floor(territory/3000) + supply-income effects` per second (+1/s per 3,000 owned pixels) with no income cap; cap is `120 + territory/1000 + 80 × Academy stacks` with no upper bound. `supplyCap` is public.
 - No attack-order inventory exists. Front launch cost/strength derive from effective live Barracks levels; power/pierce derive from integer log2 tiers. A defending Jammer subtracts one effective level per stack.
 - `structureStacksByType` caches owner/type stack totals and refreshes only when `StructureRegistry.version` changes, so per-tick income and per-launch attack stats do not scan every structure.
-- Permanent hand: all six buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
+- Permanent hand: all seven buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
 - Bot economy: `botGold`, `botGoldAccrual`, and deterministic `botProfiles` (traits plus per-type affinity). Bots use utility scores, strategic reserves, cap growth, and expansion pressure rather than a fixed build script.
 - Bot budgets and profiles affect checksums through their supply and the structures they create.
 - Structure stacks: multiple structures and districts of the same type are allowed. `structure.stacks` multiplies supply income, aura defense, effective attack levels, Jammer suppression, and supply cap.
@@ -389,6 +389,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - Physical GPU space: CSS multiplied by DPR (capped at 2).
 - `MapCamera` owns center, zoom, fit scale, screen-to-map and map-to-screen. There is no edge pan clamp: edge states can be dragged toward the viewport center to escape HUD occlusion, showing ocean/void beyond the map.
 - `generateMap(seed, options)` supports runtime state count and map dimensions while preserving the default 2048×1024/51-state output. `TerritorySimulation` stores `playerCount`; per-player arrays and grievance/attacker matrices are sized from it.
+- `naval.ts` labels static 4-connected sea components once and provides deterministic 4-neighbour A* for boat routes. `TerritorySimulation` queues naval commands, spends launch supply, advances boats by arrival tick, claims the beachhead, auto-builds a Port, and opens a normal inward front. Port protection adds `IntegrityAnchor`s for Ports whose friendly land reaches the State, plus same-owner Ports sharing a sea component with one.
 - Pointer events are converted to map cells using CSS space.
 - The renderer writes physical resolution and physical scale into uniforms.
 

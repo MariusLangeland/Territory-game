@@ -1886,3 +1886,34 @@ Value and formula changes required manual edits across README, SPEC, ARCHITECTUR
 - Most value changes require only a source change and `pnpm docs:reference`.
 - CI fails when generated docs drift.
 - Human prose still changes for genuinely new behavior, but no longer for every number.
+
+---
+
+## ADR-058 — Shore Ports and naval landings
+
+**Status:** accepted and implemented in 0.53.0  
+**Date:** 2026-11-21
+
+### Context
+
+The map is mostly ocean, but all attacks were land-frontier attacks. Coastal states had no way to project power across water or establish sea-linked territory.
+
+### Decision
+
+- Add a seventh card, **Port**, cost 200, no district, buildable only on owned shoreline.
+- Static sea components and deterministic 4-neighbour A* live in `naval.ts`.
+- With a friendly Port, clicking a non-friendly, unoccupied shore with a sea route queues a naval landing:
+  - launch cost = normal front launch + 60 supply,
+  - route follows shortest ocean path at 80 map px/s,
+  - on arrival, claim the beachhead, auto-build a Port there, and open a normal front inward,
+  - invalid targets cancel the landing at arrival.
+- Snapshot adds `navalLandings` with route and progress; checksums include landing state.
+- Port annexation protection: a Port anchors its friendly land component if it reaches the owner's State, or shares a sea component with another same-owner Port that does.
+- Protocol 38; generated REFERENCE includes Port/naval constants.
+
+### Consequences
+
+- Players can open a second front across water and persist it with a free landing Port.
+- Sea components make "has sea path" cheap to test; A* only runs when a landing is requested.
+- Bots may build Ports through normal utility scoring but do not yet plan naval campaigns.
+- Port has no district, so no card-upgrade loop and no district UI conflict.

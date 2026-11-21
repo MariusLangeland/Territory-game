@@ -20,7 +20,7 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:version START -->
 
-- App version: `0.52.0` (from `package.json` `version`).
+- App version: `0.53.0` (from `package.json` `version`).
 
 <!-- AUTOGEN:version END -->
 
@@ -30,12 +30,14 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.ts`.
 
-- `PROTOCOL_VERSION` — simulation protocol revision: `37`.
-- `NET_PROTOCOL_VERSION` — wire protocol revision: `37`.
+- `PROTOCOL_VERSION` — simulation protocol revision: `38`.
+- `NET_PROTOCOL_VERSION` — wire protocol revision: `38`.
 - `MAP_VERSION` — map generation revision: `4`.
 - `MAP_WIDTH` — map width in pixels: `2048`.
 - `MAP_HEIGHT` — map height in pixels: `1024`.
 - `PLAYER_COUNT` — maximum states per match: `51`.
+- `NAVAL_LANDING_SURCHARGE` — extra supply over a front launch: `60`.
+- `NAVAL_SPEED_PX_PER_SECOND` — boat speed along a sea route: `80`.
 - `TICK_RATE` — simulation ticks per second: `10`.
 
 <!-- AUTOGEN:constants END -->
@@ -114,6 +116,14 @@ Definitions come from `src/lib/game/Structures/`. A buildable defense aura cover
 - **Description:** Global aura: -1 effective enemy Barracks level per stack.
 - **Effects:**
   - `barracks-suppression` — −1 effective enemy Barracks level per stack.
+
+### `port` — PORT
+
+- **Cost:** `200` supply (buildable).
+- **District range:** `0` px.
+- **Description:** Naval landing port. Build on a shore; enables sea landings and protects sea-linked territory.
+- **Effects:**
+  - [object Object]
 
 <!-- AUTOGEN:structures END -->
 

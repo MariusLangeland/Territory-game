@@ -3,6 +3,7 @@ import { BARRACKS_DEFINITION } from './barracks';
 import { COMMAND_POST_DEFINITION } from './command-post';
 import { FORTIFICATION_DEFINITION } from './fortification';
 import { JAMMER_DEFINITION } from './jammer';
+import { PORT_DEFINITION } from './port';
 import { STATE_DEFINITION } from './state';
 import { WAR_ACADEMY_DEFINITION } from './war-academy';
 import type {
@@ -19,7 +20,8 @@ export const STRUCTURE_TYPES = [
 	'fortification',
 	'command-post',
 	'war-academy',
-	'jammer'
+	'jammer',
+	'port'
 ] as const satisfies readonly StructureType[];
 
 /** Hand order is ascending card cost. */
@@ -28,6 +30,7 @@ export const BUILDABLE_STRUCTURE_TYPES = [
 	'war-academy',
 	'command-post',
 	'jammer',
+	'port',
 	'barracks',
 	'artillery'
 ] as const satisfies readonly BuildableStructureType[];
@@ -39,7 +42,8 @@ export const STRUCTURE_DEFINITIONS: Record<StructureType, StructureDefinition> =
 	fortification: FORTIFICATION_DEFINITION,
 	'command-post': COMMAND_POST_DEFINITION,
 	'war-academy': WAR_ACADEMY_DEFINITION,
-	jammer: JAMMER_DEFINITION
+	jammer: JAMMER_DEFINITION,
+	port: PORT_DEFINITION
 };
 
 export const STRUCTURE_TYPE_CODES: Record<StructureType, number> = {
@@ -49,7 +53,8 @@ export const STRUCTURE_TYPE_CODES: Record<StructureType, number> = {
 	fortification: 4,
 	'command-post': 5,
 	'war-academy': 6,
-	jammer: 7
+	jammer: 7,
+	port: 8
 };
 
 export function structureTypeFromCode(code: number): StructureType | null {
@@ -68,6 +73,8 @@ export function structureTypeFromCode(code: number): StructureType | null {
 			return 'war-academy';
 		case 7:
 			return 'jammer';
+		case 8:
+			return 'port';
 		default:
 			return null;
 	}
@@ -80,7 +87,8 @@ export const STRUCTURE_ACCENTS: Record<StructureType, string> = {
 	fortification: FORTIFICATION_DEFINITION.accent,
 	'command-post': COMMAND_POST_DEFINITION.accent,
 	'war-academy': WAR_ACADEMY_DEFINITION.accent,
-	jammer: JAMMER_DEFINITION.accent
+	jammer: JAMMER_DEFINITION.accent,
+	port: PORT_DEFINITION.accent
 };
 
 export function effectsForType(type: StructureType): readonly StructureEffect[] {

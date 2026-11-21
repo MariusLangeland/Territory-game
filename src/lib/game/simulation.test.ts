@@ -487,10 +487,10 @@ describe('attack stress mode', () => {
 		const focuses = new Set(profiles.map((profile) => profile.focus));
 		expect(focuses.size).toBeGreaterThan(1);
 		for (const profile of profiles) {
-			expect(profile.buildPlan).toHaveLength(6);
-			expect(new Set(profile.buildPlan).size).toBe(6);
+			expect(profile.buildPlan).toHaveLength(7);
+			expect(new Set(profile.buildPlan).size).toBe(7);
 			expect(profile.buildPlan[0]).toBe(profile.focus);
-			expect(Object.keys(profile.structureBias)).toHaveLength(6);
+			expect(Object.keys(profile.structureBias)).toHaveLength(7);
 			for (const value of Object.values(profile.structureBias)) {
 				expect(value).toBeGreaterThanOrEqual(0);
 				expect(value).toBeLessThanOrEqual(200);

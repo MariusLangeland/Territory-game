@@ -18,3 +18,4 @@ export * from './fortification';
 export * from './jammer';
 export * from './command-post';
 export * from './war-academy';
+export * from './port';

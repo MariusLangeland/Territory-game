@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.52.0 (Frontage v1 + siege rework)  
+**Version:** 0.53.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.52.0, map version 4, protocol draft 37  
+**Last synchronized with:** application 0.53.0, map version 4, protocol draft 38  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -84,7 +84,7 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 | ------------------------------------------------------- | ---------------------------------------------- |
 | Final attack design                                     | Undecided; must replace the experimental model |
 | Coordinated bot strategy/team play                      | Bots use individual profiles only              |
-| Structure construction beyond cards, ownership transfer | State + six buildables; design pending         |
+| Structure construction beyond cards, ownership transfer | State + seven buildables; design pending       |
 | Authoritative game server, rooms, reconnect, prediction | [NETWORKING.md](NETWORKING.md)                 |
 | Human-vs-human play, lobbies, spectating                | [ROADMAP.md](ROADMAP.md)                       |
 | Accounts, progression, persistence                      | [ROADMAP.md](ROADMAP.md)                       |
@@ -319,11 +319,11 @@ This removes the small unclaimed specks and coastal slivers that organic growth 
 - Every land component connected to a live State structure is protected from annexation.
 - A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
-- Only State structures anchor protection. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, teal jammer rings, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. Each rival capital also carries a supply banner scaled by that state's territory. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- State structures anchor protection. A Port also anchors its land component when that component reaches the owner's State, or when it shares a sea component with another friendly Port whose land component reaches the State. Other buildables do not prevent annexation.
+- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, teal jammer rings, green command mast, violet academy chevrons, blue anchor). Marker sizes are fixed in screen pixels and do not grow with camera zoom. Each rival capital also carries a supply banner scaled by that state's territory. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
-State is the permanent anchor structure. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
+State is the permanent anchor structure. Artillery, Barracks, Fortifications, Jammers, Command Posts, War Academies, and Ports are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
 
 ### 4.16 Elevation and defense
 
@@ -354,7 +354,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
-- Start with **90 supply** and **all six buildable cards** always available in the hand.
+- Start with **90 supply** and **all seven buildable cards** always available in the hand.
 - Supply income is `3 + floor(territory/3000) + income structures` per second, with **no income cap**. This is +1/s per 3,000 owned pixels, plus Command Post stacks at **+1/s** each.
 - Supply cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
@@ -365,7 +365,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
-- Costs: Artillery **1000**, Barracks **240**, Fortification **40**, Jammer **160**, Command Post **80**, War Academy **60** supply.
+- Costs: Artillery **1000**, Barracks **240**, Port **200**, Fortification **40**, Jammer **160**, Command Post **80**, War Academy **60** supply.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
@@ -378,6 +378,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 | Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                               |
 | War Academy   | 60   | +80 supply cap                                                     |
+| Port          | 200  | Shore-only naval landing port and sea-linked protection anchor     |
 
 Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 
@@ -392,6 +393,17 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 - On impact, the nearest hostile structure within **12 px** loses one level. A level-1 structure is destroyed; State destruction removes annexation protection.
 - Artillery has no passive income. A volley costs **300 supply per level**; firing is rejected if the total cannot be paid. It has no front-cap interaction.
 - Bots use the same cooldown and shell rules, ignore State targets, and aim at the strongest non-State structure in range.
+
+### 4.17c Ports and naval landings
+
+- **Port:** 200-supply card, no district, buildable only on owned shoreline cells (land with an orthogonally adjacent ocean pixel).
+- With at least one Port, clicking a non-friendly shore that normal land attacks cannot reach attempts a **naval landing**.
+- Validation: target must be a shore, not friendly, not occupied by a structure, and reachable by a 4-neighbour ocean path from a friendly Port.
+- The launch costs a normal front launch plus a **60-supply surcharge**. Supply is spent at launch; the boat carries the landing.
+- The boat follows the deterministic shortest sea route at **80 map px/s** and is rendered on the overlay with its owner color and wake.
+- On arrival the target shore becomes a friendly beachhead, a **new Port is automatically built there**, and a regular inward front is opened against the lowest-defense adjacent land. If the target is no longer valid, the landing is cancelled.
+- Ports anchor annexation protection when their friendly-owned land component reaches the owner's State, or when their sea component is shared with such a Port of the same owner.
+- Naval landing state includes route, launch/arrival ticks, and the target beachhead in checksums and snapshots.
 
 ### 4.18 Districts and structure stacking
 
@@ -442,7 +454,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - War clock.
 - Pause/resume, field manual, new world.
 - Rival supply banners: map-anchored transparent name/supply text at each living rival's capital, updated from 5 Hz snapshots. Text scale is a deterministic function of the rival's territory relative to the largest living rival, so larger states have larger text. The banner must fit inside the state's on-screen footprint: it shrinks to fit, then hides if the footprint is too small to hold legible text. There is no plaque, background fill, or colored border. Offscreen rivals and the human are excluded; visible banners are clamped inside the viewport.
-- World-control leaderboard: 51 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
+- World-control leaderboard: one logical row per state in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.
 - War feed for eliminations/victory.
 - World claimed meter.
@@ -528,7 +540,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 6.3 Snapshot and change batch
 
 - Snapshot after each tick; no direct simulation arrays in UI.
-- Snapshot includes the current growth mode used for new orders, live structures, and public attacks with their creation layer.
+- Snapshot includes the current growth mode used for new orders, live structures, public attacks with their creation layer, in-flight artillery, and naval landings with their sea routes/progress.
 - Change batch: `(owner << 21) | pixelIndex`, `Uint32Array(16_384)`.
 - Consumed before the next tick.
 - Overflow triggers renderer full resync and never changes game state.
@@ -642,7 +654,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Six elevation tiers color the map and add base defense.
 - [x] Occupied pixels add one defense; effective Barracks levels scale cost/strength linearly and power/piercing logarithmically.
 - [x] A live State structure adds 20 defense within 16 px; the bonus disappears when the structure is destroyed.
-- [x] The human starts with all six cards and 90 supply, earns supply income, can build repeatedly, and never loses a card from the hand.
+- [x] The human starts with all seven cards and 90 supply, earns supply income, can build repeatedly, and never loses a card from the hand.
 - [x] Artillery, Barracks, Fortification, Jammer, Command Post, and War Academy apply their active/economy/combat effects.
 - [x] Fronts cost supply and buy durable strength; cancellation refunds the remaining strength share; holding 70% of land wins instantly.
 - [x] Structures claim bounded, non-overlapping Voronoi districts within owner borders; aura effects are limited to their district.
