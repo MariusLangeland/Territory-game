@@ -86,7 +86,7 @@ Definitions come from `src/lib/game/Structures/`. A buildable defense aura cover
 
 ### `fortification` — FORTIFICATION
 
-- **Cost:** `40` supply (buildable).
+- **Cost:** `30` supply (buildable).
 - **District range:** `40` px.
 - **Description:** +1 defense to every friendly pixel in its district.
 - **Effects:**

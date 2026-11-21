@@ -365,7 +365,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
-- Costs: Artillery **1000**, Barracks **240**, Port **200**, Fortification **40**, Jammer **160**, Command Post **80**, War Academy **60** supply.
+- Costs: Artillery **1000**, Barracks **240**, Port **200**, Fortification **30**, Jammer **160**, Command Post **80**, War Academy **60** supply.
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
@@ -374,7 +374,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 | ------------- | ---- | ------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
 | Barracks      | 240  | +1 effective attack level; cost +40, strength +200 per level       |
-| Fortification | 40   | +1 defense to every friendly pixel in its 40 px district; stacks   |
+| Fortification | 30   | +1 defense to every friendly pixel in its 40 px district; stacks   |
 | Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                               |
 | War Academy   | 60   | +80 supply cap                                                     |

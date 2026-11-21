@@ -175,7 +175,7 @@ describe('player economy and cards', () => {
 		expect(result.ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(45);
+		expect(sim.gold).toBe(100 - (STRUCTURE_DEFINITIONS.fortification.cost + 15));
 
 		sim.gold = 100;
 		expect(
@@ -201,13 +201,15 @@ describe('player economy and cards', () => {
 			5
 		);
 		expect(quote.ok).toBe(true);
-		expect(quote.cost).toBe(425);
+		expect(quote.cost).toBe(
+			STRUCTURE_DEFINITIONS.fortification.cost * 5 + 15 * (1 + 2 + 3 + 4 + 5)
+		);
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(6);
-		expect(sim.gold).toBe(75);
+		expect(sim.gold).toBe(500 - quote.cost);
 	});
 
 	it('merges touching same-type districts and upgrades the lowest first', () => {
@@ -254,7 +256,9 @@ describe('player economy and cards', () => {
 		const mergedQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, right.x, right.y, 5, true);
 		expect(mergedQuote.merged).toBe(true);
 		expect(mergedQuote.currentLevel).toBe(1);
-		expect(mergedQuote.cost).toBe(365);
+		expect(mergedQuote.cost).toBe(
+			STRUCTURE_DEFINITIONS.fortification.cost * 5 + 15 * (1 + 2 + 2 + 3 + 3)
+		);
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, right.x, right.y, 5, true).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.byId(left.id)?.stacks).toBe(4);
@@ -262,7 +266,7 @@ describe('player economy and cards', () => {
 
 		const ctrlQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, left.x, left.y, 1, false);
 		expect(ctrlQuote.merged).toBe(false);
-		expect(ctrlQuote.cost).toBe(100);
+		expect(ctrlQuote.cost).toBe(STRUCTURE_DEFINITIONS.fortification.cost + 60);
 	});
 
 	it('rejects a five-level upgrade without queuing partial levels', () => {
@@ -294,7 +298,7 @@ describe('player economy and cards', () => {
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(false);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(35);
+		expect(sim.gold).toBe(90 - (STRUCTURE_DEFINITIONS.fortification.cost + 15));
 	});
 
 	it('reports district dirty tiles instead of forcing a full rebuild', () => {
@@ -384,7 +388,7 @@ describe('player economy and cards', () => {
 			)
 		).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(45);
+		expect(sim.gold).toBe(100 - (STRUCTURE_DEFINITIONS.fortification.cost + 15));
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 
 		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
@@ -411,7 +415,7 @@ describe('player economy and cards', () => {
 		expect(sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.hand.map((card) => card.id)).toContain(fortificationCard.id);
-		expect(sim.gold).toBe(60);
+		expect(sim.gold).toBe(100 - STRUCTURE_DEFINITIONS.fortification.cost);
 		sim.gold = 100;
 		expect(sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y).ok).toBe(true);
 		sim.step();
@@ -426,7 +430,7 @@ describe('player economy and cards', () => {
 		const y = (index - x) / sim.width;
 		const before = sim.getAuraDefense(x, y);
 		sim.hand = [{ id: 4567, type: 'fortification' }];
-		sim.gold = 40;
+		sim.gold = STRUCTURE_DEFINITIONS.fortification.cost;
 		expect(sim.playCard(HUMAN_PLAYER_ID, 4567, x, y).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.type).toBe('fortification');

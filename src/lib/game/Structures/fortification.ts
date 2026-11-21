@@ -7,7 +7,7 @@ export const FORTIFICATION_DEFENSE = 1;
 export const FORTIFICATION_DEFINITION: StructureDefinition = {
 	label: 'FORTIFICATION',
 	description: '+1 defense to every friendly pixel in its district.',
-	cost: 40,
+	cost: 30,
 	buildable: true,
 	accent: '#63c6d7',
 	districtRange: 40,

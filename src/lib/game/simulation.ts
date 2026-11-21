@@ -3029,7 +3029,11 @@ export class TerritorySimulation {
 			// Shared opening ramp: economy structures dominate until the bot has
 			// its first Command Post and War Academy line. Threat still pulls
 			// defensive actions through the separate defensive budget path.
-			if (type === earlyType) buildScore += BOT_EARLY_ECONOMY_UTILITY;
+			// A threatened bot's emergency action must be defensive first;
+			// otherwise a lower defensive reserve can release enough supply for
+			// the opening ramp or cap growth to win instead.
+			if (type === earlyType && !defensive) buildScore += BOT_EARLY_ECONOMY_UTILITY;
+			if (defensive && type === 'fortification' && count === 0) buildScore += 500;
 			// Cheap actions get a small efficiency nudge without making them
 			// dominate expensive strategic choices.
 			buildScore += Math.floor(1200 / (definition.cost + 100));
