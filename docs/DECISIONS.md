@@ -1942,3 +1942,31 @@ The first naval implementation charged a fixed 60-supply surcharge and auto-buil
 - Naval attacks are a materially larger supply commitment.
 - The upfront cost covers the Port that will exist after landing.
 - No wire or snapshot shape change.
+
+---
+
+## ADR-060 — Bots value income, deter stronger neighbours, and exploit low supply
+
+**Status:** accepted and implemented in 0.54.0  
+**Date:** 2026-11-21
+
+### Context
+
+Bots defended reactively, under-invested in supply, and evaluated stronger opponents only through caution/conciliation penalties. A stronger neighbour with no supply was still treated like any other threat, and a bot behind on income kept attacking instead of repairing its economy.
+
+### Decision
+
+- Add per-bot neighbour comparisons at every decision tick:
+  - income gap = strongest bordering neighbour income minus own income;
+  - deterrence = strength advantage of the strongest bordering neighbour, in strength/100 units.
+- Income gap raises Command Post and War Academy utility, raises their copy/level limits, and reduces attack chance.
+- Deterrence raises Fortification utility, desired copies/levels, and adds up to 10 threat, so a stronger neighbour can trigger defensive posture before an attack.
+- Threatened bots reserve up to 60 supply, place Fortifications on the border cell with the most hostile contact, and prioritize Fortification upgrades over unrelated plan steps.
+- A stronger neighbour below 25% supply, or below its counterattack cost, is a supply opportunity: reduce caution/conciliation, add target-score and attack-chance bonuses.
+- Add regression tests for neighbour gaps, income/deterrence economic choices, and low-supply opportunity scoring.
+
+### Consequences
+
+- Bots build more Fortifications, Command Posts, and War Academies and fewer fronts.
+- Deterministic telemetry and checksum coverage include the new income-gap and deterrence fields.
+- No wire-shape change; protocol remains 38.

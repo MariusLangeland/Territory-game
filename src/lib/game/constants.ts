@@ -171,7 +171,28 @@ export const BOT_THREAT_DEFENSIVE = 20;
 export const BOT_THREAT_SAFE = 10;
 
 /** Gold a threatened bot withholds from its build plan until it is safe again. */
-export const BOT_DEFENSE_RESERVE_MAX = 40; // enough for one Fortification
+export const BOT_DEFENSE_RESERVE_MAX = 60; // enough for a Fortification upgrade
+
+/** The economy always values income, and values it more when neighbours earn more. */
+export const BOT_INCOME_UTILITY = 10;
+export const BOT_INCOME_GAP_COMMAND_POST_WEIGHT = 4;
+export const BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT = 1;
+export const BOT_INCOME_GAP_ATTACK_PENALTY = 1;
+export const BOT_INCOME_GAP_ATTACK_PENALTY_CAP = 30;
+
+/** Strength advantage of a neighbouring state, in strength/100 units. */
+export const BOT_DETERRENCE_STRENGTH_DIVISOR = 100;
+export const BOT_THREAT_PER_DETERRENCE = 1;
+export const BOT_THREAT_DETERRENCE_CAP = 10;
+export const BOT_DETERRENCE_FORT_UTILITY = 2;
+export const BOT_DETERRENCE_MAX_EXTRA_COPIES = 2;
+export const BOT_DETERRENCE_MAX_EXTRA_LEVELS = 3;
+export const BOT_DEFENSE_FIRST_UTILITY = 500;
+
+/** A stronger neighbour caught with low supply is an opportunity, not a deterrent. */
+export const BOT_OPPORTUNITY_LOW_SUPPLY_PERCENT = 25;
+export const BOT_OPPORTUNITY_STRONGER_BONUS = 55;
+export const BOT_OPPORTUNITY_CHANCE_BONUS = 25;
 /**
  * Build intervals a threatened bot may fail to afford any defensive action
  * before the reserve is released. This keeps a long stalemate from blocking

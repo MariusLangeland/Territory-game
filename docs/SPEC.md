@@ -203,6 +203,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - **opportunism** (join existing wars).
 - **Common opening economy ramp:** every bot first alternates Command Posts and War Academies until it owns two of each (or the opening window expires). During this phase it prefers neutral expansion over opening state wars, but falls back to the best hostile border when no neutral ground is reachable. A small early reserve keeps attacks from draining the next economy structure.
 - After the opening, every bot derives a **per-type affinity** (`structureBias`) with a per-type hash jitter, plus a display-oriented preference order. The order is not a fixed build script: economic actions are scored each build interval from affinity, threat response, income/cap pressure, novelty vs repeat penalty, efficiency, and affordability.
+- **Income pressure:** every bot compares its supply income with its bordering neighbours. The income gap always raises Command Post and War Academy utility, so a bot behind its neighbours prioritizes income over other economy; the same gap reduces its attack appetite so it can rebuild its economy first.
 - **Attack ground preference:** border candidates are scored by target utility minus a penalty proportional to that cell's defense, so bots favor the cheapest contact ground on their preferred target.
 - **Strategic savings:** after two buildables, a bot reserves supply for its highest-scoring missing type. If that type's cost exceeds the stock cap, it saves for and prioritizes War Academy cap growth instead; the reserve releases as soon as the target is affordable. Attacks keep at most half the current stock (minimum 60) for that save and cap the next-purchase buffer at 40, taking the larger reserve instead of stacking both. This prevents aspiration savings from freezing expansion.
 - **Expansion pressure:** if a missing type has no legal site because existing districts cover the bot's owned cells, expansion becomes the priority and attacks may draw from the economic reserve.
@@ -213,16 +214,19 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - **Threat posture:** once per decision tick, each bot computes an integer threat score:
   - `25` per active hostile front, capped at `50`;
   - `1` per hostile pixel touching its border, capped at `8`;
-  - `2` per grievance captured since the previous refresh, capped at `20`.
+  - `2` per grievance captured since the previous refresh, capped at `20`;
+  - up to `10` from **deterrence** when a bordering state's estimated strength exceeds the bot's own.
   - A bot enters defensive posture at threat `≥20` and leaves at `≤10` (hysteresis).
-- **Defensive reserve:** a threatened bot withholds up to **40 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
-- **Defensive spending:** while threatened, the bot first builds a missing Fortification on a border cell touching an enemy, then a Barracks, then upgrades the lower of the two. These actions may consume the reserve; non-defence spending cannot.
+- **Deterrence:** a stronger bordering state raises Fortification utility even before it attacks, and increases the desired Fortification copies/levels; this is the bot's pre-war deterrent.
+- **Defensive reserve:** a threatened bot withholds up to **60 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
+- **Defensive spending:** while threatened, the bot first builds a missing Fortification on the border cell with the most hostile neighbours, then upgrades the Fortification, then builds/upgrades a Barracks or Jammer. These actions may consume the reserve; non-defence spending cannot.
 - **Rebuilding:** a destroyed plan structure is simply missing from the plan and is rebuilt when affordable and placeable; destroyed defensive structures are rebuilt first under threat.
 - **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available supply.
   - Vengeful bots strongly favor owners that have captured their land.
   - Cautious bots penalize stronger targets and targets holding enough supply to retaliate.
   - Conciliatory bots more strongly avoid stronger opponents, preferring neutral expansion.
   - Opportunistic bots gain a large bonus against states already under attack and against weaker states.
+  - **Supply opportunity:** a stronger neighbour with supply below 25% of its cap, or below its own counterattack cost, is treated as an opportunity. The usual caution/conciliation penalty is reduced, the target gains a large score bonus, and its attack chance gets an extra bonus.
   - Aggression raises the baseline hostile score; low-aggression bots usually prefer neutral land.
   - While threatened, a grudge holder gets a large retaliation bonus, an active attacker gets a counterattack bonus, and unrelated neighbours are penalized so the bot defends or counterattacks instead of opening a new war.
 - Capturing a pixel records one grievance for the defender against the attacking owner. Grievances persist, are capped, and are checksummed.

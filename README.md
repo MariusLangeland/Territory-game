@@ -175,7 +175,7 @@ The human commander starts with **90 supply** and **all seven build cards** perm
 | ------------- | ---- | ------------------------------------------------------------ |
 | Artillery     | 1000 | Active: inaccurate, 300 supply/level, 64 px district         |
 | Barracks      | 240  | +1 effective attack level; +40 cost, +200 strength per level |
-| Fortification | 40   | +1 defense to every friendly pixel in its district; stacks   |
+| Fortification | 30   | +1 defense to every friendly pixel in its district; stacks   |
 | Jammer        | 160  | Global −1 enemy effective Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                         |
 | War Academy   | 60   | +80 supply cap                                               |

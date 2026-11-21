@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGrowthLayer, GROWTH_MODES } from './growth';
 import { generateMap } from './map';
-import { TerritorySimulation, type AttackState } from './simulation';
+import { TerritorySimulation, type AttackState, type PlayerState } from './simulation';
 import type { BuildableStructureType } from './Structures';
 import {
 	ATTACK_IDLE_TICKS,
@@ -557,7 +557,7 @@ describe('attack stress mode', () => {
 				defenderId: number,
 				selfStrength: number,
 				strengths: Uint32Array
-			): number;
+			): { score: number; opportunity: boolean };
 		};
 		const base = {
 			aggression: 50,
@@ -576,15 +576,29 @@ describe('attack stress mode', () => {
 		const score = (overrides: Record<string, number>) =>
 			internals.scoreBotTarget(2, { ...base, ...overrides }, 1, 100, strengths);
 
+		const targetScore = (overrides: Record<string, number>) => score(overrides).score;
+
 		internals.botGrievance[PLAYER_COUNT] = 10;
-		expect(score({ vengeful: 100 })).toBeGreaterThan(score({ vengeful: 0 }));
+		expect(targetScore({ vengeful: 100 })).toBeGreaterThan(targetScore({ vengeful: 0 }));
 		internals.botGrievance[PLAYER_COUNT] = 0;
 
-		expect(score({ cautious: 100 })).toBeLessThan(score({ cautious: 0 }));
-		expect(score({ conciliatory: 100 })).toBeLessThan(score({ conciliatory: 0 }));
+		expect(targetScore({ cautious: 100 })).toBeLessThan(targetScore({ cautious: 0 }));
+		expect(targetScore({ conciliatory: 100 })).toBeLessThan(targetScore({ conciliatory: 0 }));
 
 		internals.botPressure[0] = 3;
-		expect(score({ opportunist: 100 })).toBeGreaterThan(score({ opportunist: 0 }));
+		expect(targetScore({ opportunist: 100 })).toBeGreaterThan(targetScore({ opportunist: 0 }));
+
+		// A stronger neighbour that cannot afford a counterattack is an
+		// opportunity even for a cautious profile.
+		const savedGold = sim.gold;
+		sim.gold = 0;
+		const lowSupply = score({ cautious: 100, opportunist: 100 });
+		expect(lowSupply.opportunity).toBe(true);
+		sim.gold = 1000;
+		const highSupply = score({ cautious: 100, opportunist: 100 });
+		expect(highSupply.opportunity).toBe(false);
+		expect(lowSupply.score).toBeGreaterThan(highSupply.score);
+		sim.gold = savedGold;
 	});
 
 	it('scales attacks from live Barracks levels without merging clicks', () => {
@@ -1126,7 +1140,7 @@ type BotDefenseInternals = {
 		defenderId: number,
 		selfStrength: number,
 		strengths: Uint32Array
-	): number;
+	): { score: number; opportunity: boolean };
 };
 
 /** Step until the simulation reaches the requested tick. */
@@ -1425,7 +1439,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		const profile = internals.botProfiles[1] as unknown as Record<string, unknown>;
 		const strengths = new Uint32Array(PLAYER_COUNT).fill(1000);
 		const score = (defenderId: number): number =>
-			internals.scoreBotTarget(2, profile, defenderId, 1000, strengths);
+			internals.scoreBotTarget(2, profile, defenderId, 1000, strengths).score;
 
 		const peacefulNeutral = score(0);
 		expect(peacefulNeutral).toBeGreaterThan(0);
@@ -1437,6 +1451,73 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(score(0)).toBeGreaterThan(peacefulNeutral);
 		expect(score(3)).toBeGreaterThan(score(5));
 		expect(score(4)).toBeGreaterThan(score(5));
+	});
+
+	it('measures income and strength gaps against bordering neighbours', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const width = sim.width;
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number, sourceAttackId?: number): void;
+			botIncomeGap: Uint8Array;
+			botDeterrence: Uint16Array;
+		};
+		const self = sim.players[1];
+		const neighbour = sim.players[2];
+		expect(self).toBeDefined();
+		expect(neighbour).toBeDefined();
+		if (!self || !neighbour) return;
+		let claimed = -1;
+		for (const index of self.border) {
+			const x = index % width;
+			const y = (index - x) / width;
+			const candidates = [
+				x > 0 ? index - 1 : -1,
+				x + 1 < width ? index + 1 : -1,
+				y > 0 ? index - width : -1,
+				y + 1 < sim.height ? index + width : -1
+			];
+			for (const next of candidates) {
+				if (next < 0 || (sim.owners[next] ?? 0) !== 0) continue;
+				internals.claim(next, neighbour.id);
+				claimed = next;
+				break;
+			}
+			if (claimed >= 0) break;
+		}
+		expect(claimed).toBeGreaterThanOrEqual(0);
+		neighbour.territory += 30_000;
+		stepUntilTick(sim, BOT_DECISION_INTERVAL);
+
+		expect(internals.botIncomeGap[self.id - 1]).toBeGreaterThan(0);
+		expect(internals.botDeterrence[self.id - 1]).toBeGreaterThan(0);
+	});
+
+	it('prioritizes income and deterrent fortifications from neighbour pressure', () => {
+		const sim = new TerritorySimulation({ seed: 90210 });
+		const internals = sim as unknown as {
+			tick: number;
+			botIncomeGap: Uint8Array;
+			botDeterrence: Uint16Array;
+			botDefensive: Uint8Array;
+			chooseBotEconomicAction(
+				player: PlayerState,
+				budget: number,
+				defensiveBudget?: number
+			): { type: string } | null;
+		};
+		const player = sim.players[1];
+		expect(player).toBeDefined();
+		if (!player) return;
+		internals.tick = 1201;
+		internals.botDefensive[player.id - 1] = 0;
+
+		internals.botIncomeGap[player.id - 1] = 100;
+		internals.botDeterrence[player.id - 1] = 0;
+		expect(internals.chooseBotEconomicAction(player, 1000, 1000)?.type).toBe('command-post');
+
+		internals.botIncomeGap[player.id - 1] = 0;
+		internals.botDeterrence[player.id - 1] = 100;
+		expect(internals.chooseBotEconomicAction(player, 1000, 1000)?.type).toBe('fortification');
 	});
 
 	it('includes bot threat state in the checksum and stays deterministic', () => {

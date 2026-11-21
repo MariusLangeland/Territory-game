@@ -256,7 +256,7 @@ Supply costs and the permanent seven-card hand:
 | ------------- | ---- | ------------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
 | Barracks      | 240  | +1 effective level; +200 strength/+40 cost per level, log2 power/pierce. |
-| Fortification | 40   | +1 defense per stack across its district.                                |
+| Fortification | 30   | +1 defense per stack across its district.                                |
 | Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
 | Command Post  | 80   | +1 supply per second per stack.                                          |
 | War Academy   | 60   | +80 supply cap per stack; no global maximum.                             |
@@ -346,8 +346,13 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
   penalties, threat response, income/cap pressure, and efficiency. A strategic reserve funds the
   highest-affinity missing type (or War Academy cap growth when the cap is the bottleneck), and
   expansion becomes the priority when no legal build site exists.
+- Each bot compares income and estimated strength with bordering neighbours. A higher neighbour
+  income raises Command Post/War Academy priority and reduces attack appetite; a stronger neighbour
+  raises Fortification utility, desired copies/levels, and a capped deterrence threat contribution.
 - `scoreBotTarget` additionally penalizes targets with large total active front strength
-  (caution/conciliation) and rewards targets already under front pressure (opportunism). Grievances
+  (caution/conciliation) and rewards targets already under front pressure (opportunism). A stronger
+  neighbour below 25% supply (or below its counterattack cost) is a supply opportunity: its
+  caution/conciliation penalty is reduced and it gains score and attack-chance bonuses. Grievances
   are unchanged.
 - No new RNG: all bot decisions remain `hash32`/existing shared-PRNG draws with the same ordering
   discipline. Utility/reserve comparisons are integer.

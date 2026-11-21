@@ -39,9 +39,24 @@ import {
 	BOT_ATTACK_SCORE_WEIGHT,
 	BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT,
 	BOT_BUILD_INTERVAL,
+	BOT_DEFENSE_FIRST_UTILITY,
 	BOT_DEFENSE_RESERVE_MAX,
 	BOT_DEFENSE_STALL_INTERVALS,
 	BOT_DECISION_INTERVAL,
+	BOT_DETERRENCE_FORT_UTILITY,
+	BOT_DETERRENCE_MAX_EXTRA_COPIES,
+	BOT_DETERRENCE_MAX_EXTRA_LEVELS,
+	BOT_DETERRENCE_STRENGTH_DIVISOR,
+	BOT_INCOME_GAP_ATTACK_PENALTY,
+	BOT_INCOME_GAP_ATTACK_PENALTY_CAP,
+	BOT_INCOME_GAP_COMMAND_POST_WEIGHT,
+	BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT,
+	BOT_INCOME_UTILITY,
+	BOT_OPPORTUNITY_CHANCE_BONUS,
+	BOT_OPPORTUNITY_LOW_SUPPLY_PERCENT,
+	BOT_OPPORTUNITY_STRONGER_BONUS,
+	BOT_THREAT_DETERRENCE_CAP,
+	BOT_THREAT_PER_DETERRENCE,
 	BOT_STARTING_GOLD,
 	BOT_THREAT_ATTACK_CAP,
 	BOT_THREAT_CONTACT_CAP,
@@ -461,6 +476,10 @@ export class TerritorySimulation {
 	private readonly botReserve: Uint8Array;
 	/** Consecutive build intervals without an affordable defensive action. */
 	private readonly botDefenseStall: Uint8Array;
+	/** Supply-income deficit versus the strongest bordering neighbour. */
+	private readonly botIncomeGap: Uint8Array;
+	/** Military-strength deficit versus the strongest bordering neighbour. */
+	private readonly botDeterrence: Uint16Array;
 	/** Grievance total each bot held at the previous threat refresh. */
 	private readonly botGrievanceMark: Uint32Array;
 	/** botAttackers[attacker * PLAYER_COUNT + defender] = 1 while a front is live. */
@@ -559,6 +578,8 @@ export class TerritorySimulation {
 		this.botDefensive = new Uint8Array(this.playerCount);
 		this.botReserve = new Uint8Array(this.playerCount);
 		this.botDefenseStall = new Uint8Array(this.playerCount);
+		this.botIncomeGap = new Uint8Array(this.playerCount);
+		this.botDeterrence = new Uint16Array(this.playerCount);
 		this.botGrievanceMark = new Uint32Array(this.playerCount);
 		this.botAttackers = new Uint8Array(this.playerCount * this.playerCount);
 		this.botProfiles = Array.from({ length: this.playerCount }, (_, index) =>
@@ -1687,6 +1708,8 @@ export class TerritorySimulation {
 		for (const defensive of this.botDefensive) mix(defensive);
 		for (const reserve of this.botReserve) mix(reserve);
 		for (const stall of this.botDefenseStall) mix(stall);
+		for (const gap of this.botIncomeGap) mix(gap);
+		for (const deterrence of this.botDeterrence) mix(deterrence);
 		for (const mark of this.botGrievanceMark) mix(mark);
 		for (const orders of this.attackOrders) mix(orders);
 
@@ -2957,6 +2980,8 @@ export class TerritorySimulation {
 		const aspiration = this.botAspiration(player);
 		const capGap = aspiration !== null && aspiration.cost > cap;
 		const earlyType = this.botEarlyEconomyType(player);
+		const incomeGap = this.botIncomeGap[player.id - 1];
+		const deterrence = this.botDeterrence[player.id - 1];
 		const owned = this.structures.forOwner(player.id);
 		const candidates: BotEconomicAction[] = [];
 		const order = new Map(BUILDABLE_STRUCTURE_TYPES.map((type, index) => [type, index] as const));
@@ -2969,16 +2994,22 @@ export class TerritorySimulation {
 			const isDefensive = type === 'fortification' || type === 'barracks' || type === 'jammer';
 			const maxCopies =
 				type === 'fortification'
-					? 1 + Math.floor(profile.fortification / 60) + (defensive ? 1 : 0)
+					? 1 +
+						Math.floor(profile.fortification / 60) +
+						(defensive ? 1 : 0) +
+						Math.min(BOT_DETERRENCE_MAX_EXTRA_COPIES, Math.floor(deterrence / 30))
 					: type === 'barracks'
 						? 1 + Math.floor(profile.aggression / 70)
-						: 1 + Math.floor(profile.command / 70);
+						: type === 'command-post'
+							? 2 + Math.floor(profile.command / 50)
+							: 2 + Math.floor(profile.command / 70);
 			const maxLevel =
 				type === 'fortification'
 					? 2 +
 						Math.floor(profile.fortification / 40) +
 						Math.floor(threat / 25) +
-						(defensive ? 1 : 0)
+						(defensive ? 1 : 0) +
+						Math.min(BOT_DETERRENCE_MAX_EXTRA_LEVELS, Math.floor(deterrence / 25))
 					: type === 'barracks'
 						? 1 + Math.floor(profile.aggression / 50) + Math.floor(threat / 25)
 						: 1 + Math.floor(profile.command / 50) + Math.floor(threat / 25);
@@ -2993,11 +3024,13 @@ export class TerritorySimulation {
 				case 'fortification':
 					// Threat value is personal and diluted by repeated copies: a
 					// defensive personality adds another fortification, while a
-					// warlike bot still invests elsewhere.
+					// warlike bot still invests elsewhere. A stronger neighbour is
+					// also a reason to build deterrent cover before they attack.
 					buildScore += Math.floor(
 						(threat * (1 + Math.floor(profile.fortification / 50)) + (defensive ? 20 : 0)) /
 							(1 + totalStacks)
 					);
+					buildScore += deterrence * BOT_DETERRENCE_FORT_UTILITY;
 					break;
 				case 'barracks':
 					buildScore +=
@@ -3014,10 +3047,20 @@ export class TerritorySimulation {
 					);
 					break;
 				case 'command-post':
-					buildScore += Math.max(0, 12 - income) * 2 + (supplyRatio > 0.85 ? 8 : 0);
+					// Income is always useful; a neighbour earning more makes it
+					// urgent rather than optional.
+					buildScore +=
+						Math.max(0, 12 - income) * 2 +
+						(supplyRatio > 0.85 ? 8 : 0) +
+						BOT_INCOME_UTILITY +
+						incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT;
 					break;
 				case 'war-academy':
-					buildScore += (capGap ? 100 : 0) + (supplyRatio > 0.8 ? 18 : 0) + (cap < 400 ? 6 : 0);
+					buildScore +=
+						(capGap ? 100 : 0) +
+						(supplyRatio > 0.8 ? 18 : 0) +
+						(cap < 400 ? 6 : 0) +
+						incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT;
 					break;
 				case 'artillery':
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
@@ -3033,7 +3076,9 @@ export class TerritorySimulation {
 			// otherwise a lower defensive reserve can release enough supply for
 			// the opening ramp or cap growth to win instead.
 			if (type === earlyType && !defensive) buildScore += BOT_EARLY_ECONOMY_UTILITY;
-			if (defensive && type === 'fortification' && count === 0) buildScore += 500;
+			if (defensive && type === 'fortification' && count === 0) {
+				buildScore += BOT_DEFENSE_FIRST_UTILITY;
+			}
 			// Cheap actions get a small efficiency nudge without making them
 			// dominate expensive strategic choices.
 			buildScore += Math.floor(1200 / (definition.cost + 100));
@@ -3066,10 +3111,15 @@ export class TerritorySimulation {
 				// Pixel defense is the fastest way to blunt an active front, but
 				// heavily stacked forts stop crowding out other investments.
 				upgradeScore += Math.floor((threat * 3 + (defensive ? 20 : 0) + 10) / (1 + lowest.stacks));
+				upgradeScore += deterrence * BOT_DETERRENCE_FORT_UTILITY;
+				if (defensive) upgradeScore += BOT_DEFENSE_FIRST_UTILITY;
 			} else if (type === 'barracks' || type === 'jammer') {
 				upgradeScore += Math.floor((threat * 2 + (defensive ? 12 : 0)) / (1 + lowest.stacks));
-			} else if (type === 'war-academy' && capGap) {
-				upgradeScore += 80;
+			} else if (type === 'command-post') {
+				upgradeScore += BOT_INCOME_UTILITY + incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT;
+			} else if (type === 'war-academy') {
+				if (capGap) upgradeScore += 80;
+				upgradeScore += incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT;
 			}
 			if (
 				(!isDefensive || lowest.stacks < maxLevel) &&
@@ -3250,14 +3300,33 @@ export class TerritorySimulation {
 	 */
 	private findBotDefenseCell(player: PlayerState): number {
 		const candidates: number[] = [];
+		let bestIndex = -1;
+		let bestContact = 0;
 		for (const index of player.border) {
 			if (!this.isBotBuildCellValid(player, index)) continue;
-			if (this.hasHostileNeighbour(index, player.id)) return index;
-			candidates.push(index);
-			if (candidates.length >= 32) break;
+			const contact = this.hostileNeighbourCount(index, player.id);
+			if (contact > bestContact) {
+				bestContact = contact;
+				bestIndex = index;
+			}
+			if (contact === 0 && candidates.length < 32) candidates.push(index);
 		}
+		if (bestIndex >= 0) return bestIndex;
 		if (candidates.length === 0) return -1;
 		return candidates[hash32(this.tick, player.id, this.seed ^ 0x3c6ef372) % candidates.length];
+	}
+
+	private hostileNeighbourCount(index: number, playerId: number): number {
+		const width = this.width;
+		const height = this.height;
+		const x = index % width;
+		const y = (index - x) / width;
+		let count = 0;
+		if (x > 0 && this.isHostileOwner(index - 1, playerId)) count++;
+		if (x + 1 < width && this.isHostileOwner(index + 1, playerId)) count++;
+		if (y > 0 && this.isHostileOwner(index - width, playerId)) count++;
+		if (y + 1 < height && this.isHostileOwner(index + width, playerId)) count++;
+		return count;
 	}
 
 	private hasHostileNeighbour(index: number, playerId: number): boolean {
@@ -3323,6 +3392,32 @@ export class TerritorySimulation {
 			BOT_THREAT_CONTACT_CAP
 		);
 
+		// Neighbours higher on the supply or strength curve are both a reason to
+		// invest in economy and a reason to deter them with fortifications.
+		const neighbours = this.botNeighborIds(player);
+		let maxNeighbourIncome = 0;
+		let maxNeighbourStrength = 0;
+		for (const neighbourId of neighbours) {
+			maxNeighbourIncome = Math.max(maxNeighbourIncome, this.supplyIncomeFor(neighbourId));
+			maxNeighbourStrength = Math.max(
+				maxNeighbourStrength,
+				this.estimatePlayerStrength(neighbourId)
+			);
+		}
+		this.botIncomeGap[index] = Math.min(
+			0xff,
+			Math.max(0, maxNeighbourIncome - this.supplyIncomeFor(player.id))
+		);
+		const strengthGap = Math.max(0, maxNeighbourStrength - this.estimatePlayerStrength(player.id));
+		this.botDeterrence[index] = Math.min(
+			0xffff,
+			Math.floor(strengthGap / BOT_DETERRENCE_STRENGTH_DIVISOR)
+		);
+		threat += Math.min(
+			this.botDeterrence[index] * BOT_THREAT_PER_DETERRENCE,
+			BOT_THREAT_DETERRENCE_CAP
+		);
+
 		// Grievances are cumulative; the delta since the last refresh is the
 		// "recent territory loss" signal and decays on its own once the
 		// fighting stops, so a grudge with no active war cannot hold the
@@ -3356,6 +3451,29 @@ export class TerritorySimulation {
 			if (contact * BOT_THREAT_PER_CONTACT >= BOT_THREAT_CONTACT_CAP) break;
 		}
 		return contact;
+	}
+
+	/** Unique hostile states touching this bot's border. */
+	private botNeighborIds(player: PlayerState): number[] {
+		const neighbours: number[] = [];
+		const width = this.width;
+		const height = this.height;
+		for (const index of player.border) {
+			const bx = index % width;
+			const by = (index - bx) / width;
+			if (bx > 0) this.addHostileNeighbor(neighbours, index - 1, player.id);
+			if (bx + 1 < width) this.addHostileNeighbor(neighbours, index + 1, player.id);
+			if (by > 0) this.addHostileNeighbor(neighbours, index - width, player.id);
+			if (by + 1 < height) this.addHostileNeighbor(neighbours, index + width, player.id);
+		}
+		return neighbours;
+	}
+
+	private addHostileNeighbor(neighbours: number[], index: number, playerId: number): void {
+		if (!this.land[index]) return;
+		const owner = this.owners[index];
+		if (owner === 0 || owner === playerId) return;
+		if (!neighbours.includes(owner)) neighbours.push(owner);
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
@@ -3455,6 +3573,11 @@ export class TerritorySimulation {
 			if (available < cost) continue;
 			const cap = Math.max(1, this.supplyCap(player.id));
 			const pressure = Math.floor((supply / cap) * BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT);
+			const incomePenalty = Math.min(
+				BOT_INCOME_GAP_ATTACK_PENALTY_CAP,
+				this.botIncomeGap[player.id - 1] * BOT_INCOME_GAP_ATTACK_PENALTY
+			);
+			const opportunityBonus = choice.opportunity ? BOT_OPPORTUNITY_CHANCE_BONUS : 0;
 			const difficultyChance =
 				this.botDifficulty === 'relaxed' ? 0.75 : this.botDifficulty === 'ruthless' ? 1.25 : 1;
 			const chance = Math.max(
@@ -3465,7 +3588,9 @@ export class TerritorySimulation {
 						(BOT_ATTACK_BASE_CHANCE +
 							Math.floor((choice.targetScore - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
 							Math.floor(profile.aggression * BOT_ATTACK_AGGRESSION_WEIGHT) +
-							pressure) *
+							pressure +
+							opportunityBonus -
+							incomePenalty) *
 							difficultyChance
 					)
 				)
@@ -3538,10 +3663,11 @@ export class TerritorySimulation {
 		selfStrength: number,
 		strengths: Uint32Array,
 		neutralOnly = false
-	): { index: number; score: number; targetScore: number } | null {
+	): { index: number; score: number; targetScore: number; opportunity: boolean } | null {
 		let bestIndex = -1;
 		let bestScore = Number.NEGATIVE_INFINITY;
 		let bestTargetScore = 0;
+		let bestOpportunity = false;
 		const samples = BOT_SEARCH_TRIES * 3;
 		for (let attempt = 0; attempt < samples; attempt++) {
 			const borderIndex = this.pickBorderCell(player);
@@ -3562,26 +3688,26 @@ export class TerritorySimulation {
 				// Opening economy ramp: expand into neutral ground but avoid
 				// opening state wars before the Command Post/War Academy line.
 				if (neutralOnly && defenderId !== 0) continue;
-				const targetScore = this.scoreBotTarget(
-					player.id,
-					profile,
-					defenderId,
-					selfStrength,
-					strengths
-				);
+				const target = this.scoreBotTarget(player.id, profile, defenderId, selfStrength, strengths);
 				// Prefer the cheapest ground on the preferred target: fortified
 				// or elevated contact cells are deprioritized.
 				const defense = this.getDefense(x, y);
-				const score = targetScore - defense * BOT_ATTACK_DEFENSE_WEIGHT;
+				const score = target.score - defense * BOT_ATTACK_DEFENSE_WEIGHT;
 				if (score > bestScore) {
 					bestScore = score;
-					bestTargetScore = targetScore;
+					bestTargetScore = target.score;
+					bestOpportunity = target.opportunity;
 					bestIndex = index;
 				}
 			}
 		}
 		return bestIndex >= 0
-			? { index: bestIndex, score: bestScore, targetScore: bestTargetScore }
+			? {
+					index: bestIndex,
+					score: bestScore,
+					targetScore: bestTargetScore,
+					opportunity: bestOpportunity
+				}
 			: null;
 	}
 
@@ -3591,15 +3717,17 @@ export class TerritorySimulation {
 		defenderId: number,
 		selfStrength: number,
 		strengths: Uint32Array
-	): number {
+	): { score: number; opportunity: boolean } {
 		const threatened = this.botDefensive[attackerId - 1] === 1;
 		if (defenderId === 0) {
 			// With a war at home, quiet neutral expansion beats opening a new front.
-			return (
-				45 + Math.floor(profile.aggression * 0.15) + (threatened ? BOT_THREAT_NEUTRAL_BIAS : 0)
-			);
+			return {
+				score:
+					45 + Math.floor(profile.aggression * 0.15) + (threatened ? BOT_THREAT_NEUTRAL_BIAS : 0),
+				opportunity: false
+			};
 		}
-		if (defenderId === attackerId) return Number.NEGATIVE_INFINITY;
+		if (defenderId === attackerId) return { score: Number.NEGATIVE_INFINITY, opportunity: false };
 
 		let score = 25 + Math.floor(profile.aggression * 0.6);
 		const grudge = this.botGrievance[(attackerId - 1) * this.playerCount + (defenderId - 1)];
@@ -3612,13 +3740,26 @@ export class TerritorySimulation {
 		}
 
 		const targetStrength = strengths[defenderId - 1];
-		if (targetStrength > Math.floor(selfStrength * 1.1)) {
-			score -= Math.floor(profile.cautious * 0.7);
-			score -= Math.floor(profile.conciliatory * 1.0);
+		const stronger = targetStrength > Math.floor(selfStrength * 1.1);
+		const defenderSupply = this.supplyOf(defenderId);
+		const defenderCap = Math.max(1, this.supplyCap(defenderId));
+		const lowSupply =
+			defenderSupply * 100 < defenderCap * BOT_OPPORTUNITY_LOW_SUPPLY_PERCENT ||
+			defenderSupply < this.attackSupplyCost(defenderId, attackerId);
+		const opportunity = stronger && lowSupply;
+		if (stronger) {
+			// A normally cautious bot still pounces when a stronger neighbour
+			// has spent its supply and cannot counterattack.
+			const cautionWeight = opportunity ? 0.35 : 0.7;
+			const conciliationWeight = opportunity ? 0.5 : 1.0;
+			score -= Math.floor(profile.cautious * cautionWeight);
+			score -= Math.floor(profile.conciliatory * conciliationWeight);
 		} else if (targetStrength < Math.floor(selfStrength * 0.85)) {
 			score += 10 + Math.floor(profile.opportunist * 0.15);
 		}
-		if (this.supplyOf(defenderId) >= this.attackSupplyCost(defenderId, attackerId)) {
+		if (lowSupply) {
+			score += BOT_OPPORTUNITY_STRONGER_BONUS + Math.floor(profile.opportunist * 0.6);
+		} else if (defenderSupply >= this.attackSupplyCost(defenderId, attackerId)) {
 			score -= Math.floor(profile.cautious * 0.4);
 		}
 
@@ -3634,7 +3775,7 @@ export class TerritorySimulation {
 			if (counterAttacking) score += BOT_THREAT_COUNTER_BONUS;
 			if (grudge === 0 && !counterAttacking) score -= BOT_THREAT_UNRELATED_PENALTY;
 		}
-		return score;
+		return { score, opportunity };
 	}
 
 	private pickBorderCell(player: PlayerState): number | null {
