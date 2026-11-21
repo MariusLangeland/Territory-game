@@ -69,6 +69,38 @@ describe('evolutionary AI sandbox', () => {
 		expect(DEFAULT_FITNESS_WEIGHTS.land).toBe(60_000);
 	});
 
+	it('continues a finished run from its last generation', () => {
+		const sandbox = new EvolutionSandbox({
+			seed: 31,
+			populationSize: 4,
+			generations: 1,
+			playerCount: 2,
+			matchesPerRound: 1,
+			ticks: 200,
+			width: 640,
+			height: 360
+		});
+		sandbox.begin();
+		let guard = 0;
+		while (sandbox.phase !== 'finished' && guard++ < 200) {
+			if (!sandbox.currentSimulation) {
+				if (!sandbox.nextMatch()) break;
+				continue;
+			}
+			while (!sandbox.step(200)) {
+				// Run round to completion.
+			}
+			sandbox.finishMatch();
+			sandbox.nextMatch();
+		}
+		expect(sandbox.phase).toBe('finished');
+		expect(sandbox.continueEvolution()).toBe(true);
+		expect(sandbox.phase).toBe('generation-complete');
+		expect(sandbox.config.generations).toBe(2);
+		expect(sandbox.nextMatch()).toBe(true);
+		expect(sandbox.generation).toBe(1);
+	});
+
 	it('runs deterministic selection, pruning, and bucket assignment', () => {
 		const config = {
 			seed: 42,

@@ -2191,3 +2191,31 @@ Genome v1 was a fixed 21-scalar vector. Threshold effects could produce differen
 - Behavior remains deterministic and inspectable, though probabilistic transitions add match variance.
 - Initial genomes contain random controllers, so the first generations explore genuinely different state graphs.
 - Pure utility-argmax behavior remains fully supported for legacy/v1 genomes.
+
+---
+
+## ADR-069 — Resumable Evolution Lab with linked genome inspection
+
+**Status:** accepted and implemented in 0.62.0  
+**Date:** 2026-11-21
+
+### Context
+
+The Evolution Lab only started fresh runs, placed controls in the scrolling page flow, and showed results below the canvas. That made the lab awkward as an inspection tool: the canvas did not own the screen, a finished run could not be extended, and a genome could not be linked to its occupation on the map.
+
+### Decision
+
+- Add `EvolutionSandbox.continueEvolution()`: a finished run extends its generation budget and breeds the next generation from its final rows plus the existing QD archive.
+- Rename the primary action to `NEW EVOLUTION`; add `CONTINUE EVOLUTION` to resume a paused match, advance a completed generation, or extend a finished run.
+- Pin both actions at the top of a scrollable right-side context window.
+- Make the canvas fill the remaining left area and move setup, weights, spreadsheet, and bucket panels into collapsible `<details>` panels.
+- Put the compact genome spreadsheet in the context window.
+- Add bidirectional selection: spreadsheet rows select a genome and highlight its current-match occupation; clicking an occupied canvas cell selects that genome.
+- Draw the selected genome's Markov state graph, with the live state highlighted when it is in the active match.
+- Expose selected owner id and selection callbacks from `GameCanvas`.
+
+### Consequences
+
+- The lab is usable as a persistent experiment workspace instead of a single-shot setup page.
+- Continue is in-memory for the current session; a page reload still starts with no resumable run.
+- Canvas selection is only meaningful for genomes in the current match; selecting a retired genome still shows its graph in the spreadsheet.

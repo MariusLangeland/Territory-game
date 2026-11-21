@@ -753,6 +753,28 @@ export class EvolutionSandbox {
 		this.phase = 'generation-complete';
 	}
 
+	/**
+	 * Continue a finished run by extending its generation budget and breeding
+	 * the final population once more from the existing survivors and archive.
+	 */
+	continueEvolution(extraGenerations = 1): boolean {
+		if (this.phase !== 'finished' || this.reports.length === 0) return false;
+		if (this.config.generations >= 50) return false;
+		const latest = this.reports[this.reports.length - 1];
+		this.config.generations = Math.min(
+			50,
+			this.config.generations + Math.max(1, Math.trunc(extraGenerations))
+		);
+		this.pendingPopulation = nextPopulation(
+			latest.rows,
+			this.config,
+			this.generation + 1,
+			this.archive
+		);
+		this.phase = 'generation-complete';
+		return true;
+	}
+
 	nextGeneration(): void {
 		if (this.phase !== 'generation-complete') return;
 		this.generation++;

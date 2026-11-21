@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
+	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
 	import {
 		BOT_BUCKETS,
 		DEFAULT_FITNESS_WEIGHTS,
@@ -14,6 +15,7 @@
 		saveEvolutionBuckets,
 		serializeEvolutionCsv,
 		type BotBucket,
+		type BotGenome,
 		type EvolutionBuckets,
 		type EvolutionConfig
 	} from '#lib/game/ai';
@@ -62,6 +64,7 @@
 		good: false,
 		top: true
 	});
+	let selectedGenomeId = $state<string | null>(null);
 
 	let rows = $derived.by(() => {
 		void revision;
@@ -82,6 +85,27 @@
 		void revision;
 		return sandbox?.phase ?? 'idle';
 	});
+	let selectedOwnerId = $derived.by(() => {
+		void revision;
+		if (!sandbox || !selectedGenomeId) return null;
+		const seat = sandbox.currentSeats.findIndex((genome) => genome.id === selectedGenomeId);
+		return seat >= 0 ? seat + 1 : null;
+	});
+	let selectedGenome = $derived.by<BotGenome | null>(() => {
+		void revision;
+		if (!selectedGenomeId) return null;
+		return (
+			sandbox?.population.find((genome) => genome.id === selectedGenomeId) ??
+			sandbox?.currentSeats.find((genome) => genome.id === selectedGenomeId) ??
+			rows.find((row) => row.genome.id === selectedGenomeId)?.genome ??
+			null
+		);
+	});
+	let selectedMarkovState = $derived.by(() => {
+		void revision;
+		if (!currentSimulation || !selectedOwnerId) return null;
+		return currentSimulation.getBotMarkovState(selectedOwnerId);
+	});
 
 	function start(): void {
 		stopTimer();
@@ -95,6 +119,58 @@
 		matchKey++;
 		revision++;
 		status = 'Generation 1 — natural selection in progress.';
+		selectedGenomeId = null;
+	}
+
+	function continueEvolution(): void {
+		if (!sandbox) {
+			notice = 'No previous evolution to continue. Start a new evolution first.';
+			return;
+		}
+		stopTimer();
+		if (sandbox.phase === 'match' && currentSimulation?.ended) {
+			sandbox.finishMatch();
+		}
+		if (sandbox.phase === 'finished') {
+			if (!sandbox.continueEvolution(1)) {
+				notice = 'This run reached the maximum generation count.';
+				return;
+			}
+		}
+		if (sandbox.phase === 'generation-complete') {
+			sandbox.nextMatch();
+		}
+		currentSimulation = sandbox.currentSimulation;
+		running = true;
+		matchHandled = false;
+		snapshot = null;
+		matchKey++;
+		revision++;
+		status =
+			sandbox.phase === 'finished'
+				? 'Evolution complete. Buckets saved locally.'
+				: `Continuing generation ${sandbox.generation + 1} — match ${
+						sandbox.currentMatchIndex + 1
+					}/${sandbox.progress.matches || '?'}.`;
+		if (sandbox.phase === 'generation-complete' || sandbox.phase === 'finished') {
+			buckets = bucketsFromReport(sandbox.report());
+			saveEvolutionBuckets(buckets);
+		}
+	}
+
+	function selectGenome(id: string | null): void {
+		selectedGenomeId = id;
+	}
+
+	function selectOwner(ownerId: number | null): void {
+		if (!sandbox || !ownerId) {
+			selectedGenomeId = null;
+			notice = 'Canvas selection cleared.';
+			return;
+		}
+		const genome = sandbox.currentSeats[ownerId - 1];
+		selectedGenomeId = genome?.id ?? null;
+		notice = genome ? `Selected ${genome.id} from the map.` : 'No genome is seated there.';
 	}
 
 	function stopTimer(): void {
@@ -184,6 +260,7 @@
 		revision++;
 		notice = `Imported ${genomes.length} genomes from spreadsheet.`;
 		status = 'Imported population — running.';
+		selectedGenomeId = null;
 	}
 
 	function useBuckets(): void {
@@ -206,6 +283,7 @@
 		matchKey++;
 		revision++;
 		notice = `Loaded ${pool.length} genomes from selected buckets.`;
+		selectedGenomeId = null;
 	}
 
 	function selectAll(bucket: BotBucket, enabled: boolean): void {
@@ -242,6 +320,7 @@
 			<span class:live={running} class="live-dot"></span>
 			<span>{status}</span>
 			<span class="phase">{phase.toUpperCase()}</span>
+			<a class="header-link" href="/duel">DUEL LAB</a>
 		</div>
 	</header>
 
@@ -256,13 +335,15 @@
 						speedMultiplier={speed}
 						maxStepsPerFrame={Math.max(4, Math.min(4096, speed * 2))}
 						cameraFocus="map"
+						{selectedOwnerId}
+						onSelectOwner={selectOwner}
 						onTick={handleTick}
 					/>
 				{/key}
 			{:else}
 				<div class="empty">
 					<span>NO ACTIVE MATCH</span>
-					<p>Start a run to watch evolved genomes fight for land.</p>
+					<p>Start a new evolution or continue the previous run.</p>
 				</div>
 			{/if}
 			<div class="spectator-hud">
@@ -292,210 +373,197 @@
 			</div>
 		</section>
 
-		<aside class="side">
-			<section class="panel">
-				<h2>Run setup</h2>
-				<div class="fields">
-					<label><span>SEED</span><input type="number" bind:value={config.seed} /></label>
-					<label>
-						<span>POPULATION</span><input
-							type="number"
-							min="4"
-							max="64"
-							bind:value={config.populationSize}
-						/>
-					</label>
-					<label>
-						<span>GENERATIONS</span><input
-							type="number"
-							min="1"
-							max="50"
-							bind:value={config.generations}
-						/>
-					</label>
-					<label>
-						<span>PLAYERS</span><input
-							type="number"
-							min="2"
-							max="51"
-							bind:value={config.playerCount}
-						/>
-					</label>
-					<label>
-						<span>MATCHES / ROUND</span><input
-							type="number"
-							min="1"
-							max="8"
-							bind:value={config.matchesPerRound}
-						/>
-					</label>
-					<label>
-						<span>TICKS / MATCH</span><input
-							type="number"
-							min="200"
-							max="30000"
-							step="100"
-							bind:value={config.ticks}
-						/>
-					</label>
-					<label>
-						<span>TEAM AI</span><input
-							type="number"
-							min="1"
-							max="8"
-							bind:value={config.teamCount}
-						/>
-					</label>
-					<label class="toggle">
-						<input type="checkbox" bind:checked={config.lineageDuels} />
-						<span>LINEAGE DUELS (1v1)</span>
-					</label>
-				</div>
-				<div class="run-actions">
-					<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
-					<a class="preset" href="/duel">DUEL LAB →</a>
-				</div>
-				<p class="hint">
-					Fitness = land + income + attack + wins + survival +
-					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all. Lineage duels
-					(1v1) test each descendant against a parent; a losing record is culled.
-				</p>
-			</section>
-
-			<section class="panel">
-				<h2>Fitness weights</h2>
-				<FitnessWeightsEditor
-					weights={config.fitnessWeights}
-					onupdate={(weights) => (config.fitnessWeights = weights)}
-				/>
-			</section>
-
-			<section class="panel">
-				<h2>Spreadsheet</h2>
-				<div class="button-row">
-					<button type="button" onclick={downloadCsv} disabled={!sandbox}>EXPORT CSV</button>
-					<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
-				</div>
-				<input
-					bind:this={fileInput}
-					class="hidden-file"
-					type="file"
-					accept=".csv,text/csv"
-					onchange={importCsv}
-				/>
-				<p class="hint">
-					The exported sheet contains each genome’s traits, module weights, bucket, and fitness.
-					Re-import it to run those bots again.
-				</p>
-			</section>
-
-			<section class="panel">
-				<h2>Performance buckets</h2>
-				<div class="buckets">
-					{#each BOT_BUCKETS as bucket (bucket)}
-						<div class="bucket">
-							<label>
-								<input
-									type="checkbox"
-									checked={selectedBuckets[bucket]}
-									onchange={(event) =>
-										selectAll(bucket, (event.currentTarget as HTMLInputElement).checked)}
-								/>
-								<span class={`bucket-name ${bucket}`}>{bucket.toUpperCase()}</span>
-							</label>
-							<strong>{counts[bucket]}</strong>
-						</div>
-					{/each}
-				</div>
-				<button
-					type="button"
-					onclick={useBuckets}
-					disabled={counts.poor + counts.good + counts.top === 0}
-				>
-					RUN WITH SELECTED BUCKETS
+		<aside class="context">
+			<div class="context-actions">
+				<button class="primary" type="button" onclick={start}>NEW EVOLUTION</button>
+				<button class="continue" type="button" onclick={continueEvolution} disabled={!sandbox}>
+					CONTINUE EVOLUTION
 				</button>
-				<p class="hint">
-					Relaxed difficulty uses poor, standard good, ruthless top. Finished buckets are saved
-					locally and used by the main match setup. QD archive: {archiveRows.length} strategy descriptors.
-				</p>
-			</section>
+			</div>
+
+			<div class="context-scroll">
+				<details class="panel" open>
+					<summary>RUN SETUP</summary>
+					<div class="panel-body">
+						<div class="fields">
+							<label><span>SEED</span><input type="number" bind:value={config.seed} /></label>
+							<label>
+								<span>POPULATION</span><input
+									type="number"
+									min="4"
+									max="64"
+									bind:value={config.populationSize}
+								/>
+							</label>
+							<label>
+								<span>GENERATIONS</span><input
+									type="number"
+									min="1"
+									max="50"
+									bind:value={config.generations}
+								/>
+							</label>
+							<label>
+								<span>PLAYERS</span><input
+									type="number"
+									min="2"
+									max="51"
+									bind:value={config.playerCount}
+								/>
+							</label>
+							<label>
+								<span>MATCHES / ROUND</span><input
+									type="number"
+									min="1"
+									max="8"
+									bind:value={config.matchesPerRound}
+								/>
+							</label>
+							<label>
+								<span>TICKS / MATCH</span><input
+									type="number"
+									min="200"
+									max="30000"
+									step="100"
+									bind:value={config.ticks}
+								/>
+							</label>
+							<label>
+								<span>TEAM AI</span><input
+									type="number"
+									min="1"
+									max="8"
+									bind:value={config.teamCount}
+								/>
+							</label>
+							<label class="toggle">
+								<input type="checkbox" bind:checked={config.lineageDuels} />
+								<span>LINEAGE DUELS (1v1)</span>
+							</label>
+						</div>
+						<p class="hint">
+							TEAM AI 1 = free-for-all. Lineage duels test each descendant against a parent; a
+							losing record is culled.
+						</p>
+					</div>
+				</details>
+
+				<details class="panel">
+					<summary>FITNESS WEIGHTS</summary>
+					<div class="panel-body">
+						<FitnessWeightsEditor
+							weights={config.fitnessWeights}
+							onupdate={(weights) => (config.fitnessWeights = weights)}
+						/>
+					</div>
+				</details>
+
+				<details class="panel" open>
+					<summary>SPREADSHEET ({rows.length})</summary>
+					<div class="panel-body">
+						<div class="button-row">
+							<button type="button" onclick={downloadCsv} disabled={!sandbox}>EXPORT CSV</button>
+							<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
+						</div>
+						<input
+							bind:this={fileInput}
+							class="hidden-file"
+							type="file"
+							accept=".csv,text/csv"
+							onchange={importCsv}
+						/>
+						{#if notice}<p class="notice">{notice}</p>{/if}
+
+						<div class="spreadsheet">
+							<div class="sheet-head">
+								<span>#</span><span>GENOME</span><span>FIT</span><span>BUCKET</span><span>
+									MARKOV
+								</span>
+							</div>
+							<div class="sheet-body">
+								{#each rows as row, index (row.genome.id)}
+									<button
+										class="genome-row"
+										class:selected={row.genome.id === selectedGenomeId}
+										type="button"
+										onclick={() => selectGenome(row.genome.id)}
+									>
+										<span>{index + 1}</span>
+										<span class="mono">{row.genome.id}</span>
+										<span>{row.fitness.toFixed(0)}</span>
+										<span class={`pill ${row.bucket}`}>{row.bucket}</span>
+										<span>{row.genome.markov ? `${row.genome.markov.states.length}s` : '—'}</span>
+									</button>
+								{/each}
+								{#if rows.length === 0}
+									<p class="hint">No scores yet. Start or finish a match to populate the sheet.</p>
+								{/if}
+							</div>
+						</div>
+
+						<div class="selected-panel">
+							{#if selectedGenome}
+								<div class="selected-title">
+									<span>SELECTED</span>
+									<strong>{selectedGenome.id}</strong>
+									<span>GEN {selectedGenome.generation}</span>
+									<span>{selectedGenome.markov?.states.length ?? 0} states</span>
+								</div>
+								<MarkovGraph
+									controller={selectedGenome.markov}
+									currentState={selectedMarkovState}
+								/>
+							{:else}
+								<p class="hint">
+									Select a spreadsheet row or click an occupied region on the map to inspect that
+									bot's state graph.
+								</p>
+							{/if}
+						</div>
+					</div>
+				</details>
+
+				<details class="panel">
+					<summary>PERFORMANCE BUCKETS</summary>
+					<div class="panel-body">
+						<div class="buckets">
+							{#each BOT_BUCKETS as bucket (bucket)}
+								<div class="bucket">
+									<label>
+										<input
+											type="checkbox"
+											checked={selectedBuckets[bucket]}
+											onchange={(event) =>
+												selectAll(bucket, (event.currentTarget as HTMLInputElement).checked)}
+										/>
+										<span class={`bucket-name ${bucket}`}>{bucket.toUpperCase()}</span>
+									</label>
+									<strong>{counts[bucket]}</strong>
+								</div>
+							{/each}
+						</div>
+						<button
+							type="button"
+							onclick={useBuckets}
+							disabled={counts.poor + counts.good + counts.top === 0}
+						>
+							RUN WITH SELECTED BUCKETS
+						</button>
+						<p class="hint">
+							Relaxed difficulty uses poor, standard good, ruthless top. Finished buckets are saved
+							locally and used by the main match setup. QD archive: {archiveRows.length} strategy descriptors.
+						</p>
+					</div>
+				</details>
+			</div>
 		</aside>
 	</main>
-
-	<section class="results">
-		<div class="results-head">
-			<h2>GENOME PERFORMANCE</h2>
-			{#if notice}<span class="notice">{notice}</span>{/if}
-			<button type="button" onclick={downloadCsv} disabled={!sandbox}>DOWNLOAD SPREADSHEET</button>
-		</div>
-		<div class="table-wrap">
-			<table>
-				<thead>
-					<tr>
-						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>DESCRIPTOR</th><th>FITNESS</th>
-						<th>LAND</th><th>INCOME</th><th>ECO</th><th>DEF</th><th>NAV</th><th>ATT</th><th>
-							COOP
-						</th><th>KILL</th><th>WEAK</th><th>REPEL</th><th>DMG</th><th>LIN Δ</th><th>WINS</th><th>
-							MARKOV
-						</th>
-						<th>MODULES (INC/DEF/DET/OPP/EXP/RET)</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each rows.slice(0, 24) as row, index (row.genome.id)}
-						<tr>
-							<td>{index + 1}</td>
-							<td class="mono">{row.genome.id}</td>
-							<td>{row.genome.generation}</td>
-							<td><span class={`pill ${row.bucket}`}>{row.bucket}</span></td>
-							<td class="mono">{row.descriptor}</td>
-							<td>{row.fitness.toFixed(1)}</td>
-							<td>{(row.landShare * 100).toFixed(2)}%</td>
-							<td>{row.income.toFixed(1)}/s</td>
-							<td>{row.economy.toFixed(1)}</td>
-							<td>{row.defense.toFixed(1)}</td>
-							<td>{row.naval.toFixed(1)}</td>
-							<td>{Math.round(row.aggression)}</td>
-							<td>{Math.round(row.cooperation)}</td>
-							<td>{row.eliminations.toFixed(1)}</td>
-							<td>{Math.round(row.weakAttacks)}</td>
-							<td>{Math.round(row.defenseStops)}</td>
-							<td>{Math.round(row.defenseDamage)}</td>
-							<td class="mono">
-								{row.lineageWins > 0 ? 'W' : row.lineageLosses > 0 ? 'L' : '—'}
-								{row.lineageDelta >= 0 ? '+' : ''}{Math.round(row.lineageDelta)}
-							</td>
-							<td>{row.wins}</td>
-							<td class="mono">
-								{row.genome.markov ? `${row.genome.markov.states.length}s` : '—'}
-							</td>
-							<td class="mono modules">
-								{Math.round(row.genome.modules.income)}/{Math.round(
-									row.genome.modules.defense
-								)}/{Math.round(row.genome.modules.deterrence)}/{Math.round(
-									row.genome.modules.opportunity
-								)}/{Math.round(row.genome.modules.expansion)}/{Math.round(
-									row.genome.modules.retaliation
-								)}
-							</td>
-						</tr>
-					{/each}
-					{#if rows.length === 0}
-						<tr>
-							<td colspan="21" class="empty-row">
-								No scores yet. Start a run and finish at least one match.
-							</td>
-						</tr>
-					{/if}
-				</tbody>
-			</table>
-		</div>
-	</section>
 </div>
 
 <style>
 	.lab {
-		min-height: 100vh;
+		height: 100vh;
+		overflow: hidden;
 		background: #050b0e;
 		color: #f7eed0;
 		font-family: 'IBM Plex Mono', 'Cascadia Mono', monospace;
@@ -509,6 +577,7 @@
 		padding: 12px 18px;
 		border-bottom: 1px solid rgba(247, 238, 208, 0.12);
 		background: linear-gradient(180deg, #071216, #050b0e);
+		flex: none;
 	}
 	.back,
 	.lab button {
@@ -552,6 +621,13 @@
 		font-size: 10px;
 		color: rgba(247, 238, 208, 0.72);
 	}
+	.header-link {
+		color: #58c7e8;
+		text-decoration: none;
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		border-bottom: 1px solid rgba(88, 199, 232, 0.4);
+	}
 	.phase {
 		color: #58c7e8;
 	}
@@ -567,15 +643,16 @@
 	}
 	.lab-body {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 320px;
-		align-items: start;
+		grid-template-columns: minmax(0, 1fr) 390px;
 		gap: 12px;
 		padding: 12px;
-		min-height: 420px;
+		flex: 1;
+		min-height: 0;
 	}
 	.viewport {
 		position: relative;
-		height: clamp(420px, calc(100vh - 140px), 720px);
+		height: 100%;
+		min-height: 0;
 		border: 1px solid rgba(247, 238, 208, 0.12);
 		background: #03080a;
 		overflow: hidden;
@@ -600,6 +677,7 @@
 		background: rgba(3, 8, 10, 0.82);
 		border: 1px solid rgba(247, 238, 208, 0.15);
 		padding: 8px 10px;
+		max-width: calc(100% - 20px);
 	}
 	.stat {
 		display: flex;
@@ -623,22 +701,67 @@
 		border-color: #f3b74d;
 		color: #f3b74d;
 	}
-	.side {
+	.context {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		min-height: 0;
+		border: 1px solid rgba(247, 238, 208, 0.12);
+		background: rgba(7, 18, 22, 0.65);
+	}
+	.context-actions {
+		display: flex;
+		gap: 6px;
+		padding: 9px;
+		border-bottom: 1px solid rgba(247, 238, 208, 0.12);
+		background: #071216;
+		flex: none;
+	}
+	.context-actions .primary {
+		flex: 1;
+		background: #f3b74d !important;
+		border-color: #f3b74d !important;
+		color: #050b0e !important;
+		font-weight: 700;
+	}
+	.context-actions .continue {
+		flex: 1;
+		color: #58c7e8;
+		border-color: rgba(88, 199, 232, 0.45);
+	}
+	.context-scroll {
+		min-height: 0;
+		overflow-y: auto;
+		padding: 9px;
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
 	}
 	.panel {
 		border: 1px solid rgba(247, 238, 208, 0.12);
 		background: rgba(7, 18, 22, 0.8);
-		padding: 10px;
 	}
-	.panel h2,
-	.results h2 {
-		margin: 0 0 8px;
-		font-size: 10px;
-		letter-spacing: 0.18em;
+	.panel summary {
+		cursor: pointer;
+		list-style: none;
+		padding: 8px 9px;
+		font-size: 9px;
+		letter-spacing: 0.16em;
 		color: #58c7e8;
+		user-select: none;
+	}
+	.panel summary::-webkit-details-marker {
+		display: none;
+	}
+	.panel summary::after {
+		content: '+';
+		float: right;
+		color: rgba(247, 238, 208, 0.4);
+	}
+	.panel[open] summary::after {
+		content: '−';
+	}
+	.panel-body {
+		padding: 0 9px 9px;
 	}
 	.fields {
 		display: grid;
@@ -668,49 +791,24 @@
 		grid-column: 1 / -1;
 		padding-top: 2px;
 	}
-
 	.fields .toggle input {
 		width: auto;
 		margin: 0;
 	}
-
 	.fields .toggle span {
 		color: #9bb3bd;
 		font-size: 9px;
 		letter-spacing: 0.08em;
 	}
-
-	.run-actions {
-		display: flex;
-		gap: 6px;
-		margin-top: 9px;
-	}
-
-	.primary {
-		flex: 1;
-		background: #f3b74d !important;
-		border-color: #f3b74d !important;
-		color: #050b0e !important;
-		font-weight: 700;
-	}
-
-	.preset {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex: none;
-		padding: 0 10px;
-		border: 1px solid rgba(88, 199, 232, 0.45);
-		color: #58c7e8;
-		text-decoration: none;
-		font-size: 9px;
-		letter-spacing: 0.08em;
-	}
-	.hint {
+	.hint,
+	.notice {
 		margin: 7px 0 0;
-		font-size: 9px;
+		font-size: 8px;
 		line-height: 1.45;
 		color: rgba(247, 238, 208, 0.45);
+	}
+	.notice {
+		color: #73c88f;
 	}
 	.button-row {
 		display: flex;
@@ -722,10 +820,74 @@
 	.hidden-file {
 		display: none;
 	}
+	.spreadsheet {
+		margin-top: 8px;
+		border: 1px solid rgba(247, 238, 208, 0.1);
+	}
+	.sheet-head,
+	.genome-row {
+		display: grid;
+		grid-template-columns: 24px minmax(0, 1fr) 52px 48px 38px;
+		align-items: center;
+		gap: 4px;
+	}
+	.sheet-head {
+		padding: 5px 6px;
+		font-size: 8px;
+		color: rgba(247, 238, 208, 0.45);
+		border-bottom: 1px solid rgba(247, 238, 208, 0.1);
+	}
+	.sheet-body {
+		max-height: 220px;
+		overflow-y: auto;
+	}
+	.genome-row {
+		width: 100%;
+		padding: 5px 6px;
+		border: 0;
+		border-bottom: 1px solid rgba(247, 238, 208, 0.05);
+		background: transparent;
+		color: rgba(247, 238, 208, 0.82);
+		font: inherit;
+		font-size: 8px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.genome-row:hover {
+		background: rgba(88, 199, 232, 0.08);
+	}
+	.genome-row.selected {
+		background: rgba(243, 183, 77, 0.14);
+		color: #f3b74d;
+	}
+	.genome-row .mono {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.selected-panel {
+		margin-top: 9px;
+		padding-top: 8px;
+		border-top: 1px solid rgba(247, 238, 208, 0.1);
+	}
+	.selected-title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 5px 8px;
+		margin-bottom: 6px;
+		font-size: 8px;
+		color: rgba(247, 238, 208, 0.5);
+	}
+	.selected-title strong {
+		color: #f3b74d;
+		font-size: 9px;
+	}
 	.buckets {
 		display: flex;
 		flex-direction: column;
 		gap: 5px;
+		margin-bottom: 7px;
 	}
 	.bucket {
 		display: flex;
@@ -747,63 +909,13 @@
 	.bucket-name.poor {
 		color: #d05d52;
 	}
-	.results {
-		margin: 0 12px 12px;
-		border: 1px solid rgba(247, 238, 208, 0.12);
-		background: rgba(7, 18, 22, 0.8);
-	}
-	.results-head {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 9px 10px;
-		border-bottom: 1px solid rgba(247, 238, 208, 0.1);
-	}
-	.results-head h2 {
-		margin: 0;
-	}
-	.notice {
-		font-size: 9px;
-		color: #73c88f;
-	}
-	.results-head button {
-		margin-left: auto;
-	}
-	.table-wrap {
-		max-height: 280px;
-		overflow: auto;
-	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 9px;
-	}
-	th {
-		position: sticky;
-		top: 0;
-		background: #071216;
-		color: rgba(247, 238, 208, 0.5);
-		text-align: left;
-		padding: 6px 8px;
-		font-weight: 500;
-		letter-spacing: 0.06em;
-	}
-	td {
-		padding: 5px 8px;
-		border-top: 1px solid rgba(247, 238, 208, 0.06);
-		color: rgba(247, 238, 208, 0.82);
-	}
-	.mono {
-		font-family: inherit;
-	}
-	.modules {
-		color: rgba(88, 199, 232, 0.8);
-	}
 	.pill {
-		padding: 1px 5px;
+		padding: 1px 4px;
 		border: 1px solid currentColor;
-		font-size: 8px;
+		font-size: 7px;
 		text-transform: uppercase;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.pill.top {
 		color: #73c88f;
@@ -814,17 +926,20 @@
 	.pill.poor {
 		color: #d05d52;
 	}
-	.empty-row {
-		text-align: center;
-		color: rgba(247, 238, 208, 0.35);
-		padding: 24px;
-	}
 	@media (max-width: 980px) {
+		.lab {
+			height: auto;
+			overflow: auto;
+		}
 		.lab-body {
 			grid-template-columns: 1fr;
+			height: auto;
 		}
 		.viewport {
 			height: clamp(340px, calc(100vh - 220px), 560px);
+		}
+		.context {
+			max-height: 70vh;
 		}
 	}
 </style>

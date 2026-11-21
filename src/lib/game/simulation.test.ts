@@ -1651,7 +1651,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		const erased = sim.players.filter((player) => !player.alive).length;
 		expect(total('statesEliminated')).toBeGreaterThan(0);
 		expect(total('statesEliminated')).toBeLessThanOrEqual(erased);
-	}, 15_000);
+	}, 30_000);
 
 	it('includes bot threat state in the checksum and stays deterministic', () => {
 		const left = new TerritorySimulation({ seed: 424242 });

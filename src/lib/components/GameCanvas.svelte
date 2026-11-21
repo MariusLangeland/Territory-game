@@ -43,6 +43,9 @@
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;
 		onAttack?: (x: number, y: number) => void;
+		/** Spectator genome selection: click an occupied cell to select its owner. */
+		selectedOwnerId?: number | null;
+		onSelectOwner?: (ownerId: number | null) => void;
 		onError?: (error: Error) => void;
 		onReady?: () => void;
 		onPerf?: (stats: RendererFrameStats) => void;
@@ -61,6 +64,8 @@
 		onTick,
 		onHover,
 		onAttack,
+		selectedOwnerId = null,
+		onSelectOwner,
 		onError,
 		onReady,
 		onPerf
@@ -515,6 +520,13 @@
 					point.x,
 					point.y
 				);
+				if (selectedOwnerId && structure.ownerId === selectedOwnerId) {
+					context.beginPath();
+					context.arc(point.x, point.y, 11, 0, Math.PI * 2);
+					context.lineWidth = 1.4;
+					context.strokeStyle = '#f3b74d';
+					context.stroke();
+				}
 			}
 
 			for (const group of mergedGroups) {
@@ -524,6 +536,31 @@
 					continue;
 				}
 				drawStructureIcon(context, group.type, group.ownerId, group.totalStacks, point.x, point.y);
+				if (selectedOwnerId && group.ownerId === selectedOwnerId) {
+					context.beginPath();
+					context.arc(point.x, point.y, 11, 0, Math.PI * 2);
+					context.lineWidth = 1.4;
+					context.strokeStyle = '#f3b74d';
+					context.stroke();
+				}
+			}
+
+			if (selectedOwnerId && selectedOwnerId > 0) {
+				const capital = simulation.map.starts[selectedOwnerId - 1];
+				if (capital) {
+					const point = camera.mapToScreen(capital.x + 0.5, capital.y + 0.5);
+					const color = colorForPlayer(selectedOwnerId);
+					context.beginPath();
+					context.arc(point.x, point.y, 20, 0, Math.PI * 2);
+					context.lineWidth = 2;
+					context.strokeStyle = '#f3b74d';
+					context.stroke();
+					context.beginPath();
+					context.arc(point.x, point.y, 14, 0, Math.PI * 2);
+					context.lineWidth = 1;
+					context.strokeStyle = color.hex;
+					context.stroke();
+				}
 			}
 
 			for (const shell of simulation.activeShells) {
@@ -846,7 +883,17 @@
 					event.clientX - rect.left,
 					event.clientY - rect.top
 				);
-				onAttack?.(Math.floor(point.x), Math.floor(point.y));
+				const x = Math.floor(point.x);
+				const y = Math.floor(point.y);
+				if (onSelectOwner) {
+					const owner =
+						x >= 0 && y >= 0 && x < simulation.width && y < simulation.height
+							? (simulation.owners[y * simulation.width + x] ?? 0)
+							: 0;
+					onSelectOwner(owner > 0 ? owner : null);
+				} else {
+					onAttack?.(x, y);
+				}
 			}
 
 			if (activePointers.size === 0) suppressNextTap = false;
