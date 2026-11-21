@@ -1,6 +1,11 @@
 import { hash32 } from '../map';
 import { TerritorySimulation, type GameSnapshot, type PublicPlayer } from '../simulation';
-import { genomeFitness } from './evolution';
+import {
+	DEFAULT_FITNESS_WEIGHTS,
+	genomeFitness,
+	normalizeFitnessWeights,
+	type FitnessWeights
+} from './evolution';
 import { createRandomGenome, mutateGenome, type BotGenome } from './genome';
 
 export interface DuelConfig {
@@ -11,6 +16,7 @@ export interface DuelConfig {
 	width: number;
 	height: number;
 	names: [string, string];
+	fitnessWeights: FitnessWeights;
 }
 
 export const DEFAULT_DUEL_CONFIG: DuelConfig = {
@@ -20,7 +26,8 @@ export const DEFAULT_DUEL_CONFIG: DuelConfig = {
 	ticks: 1600,
 	width: 1280,
 	height: 720,
-	names: ['ALPHA', 'BETA']
+	names: ['ALPHA', 'BETA'],
+	fitnessWeights: DEFAULT_FITNESS_WEIGHTS
 };
 
 export interface DuelNode {
@@ -80,14 +87,16 @@ export function normalizeDuelConfig(config: Partial<DuelConfig> = {}): DuelConfi
 		ticks: Math.max(200, Math.min(30_000, Math.trunc(merged.ticks))),
 		width: Math.max(512, Math.trunc(merged.width)),
 		height: Math.max(256, Math.trunc(merged.height)),
-		names: [cleanName(merged.names[0], 'ALPHA'), cleanName(merged.names[1], 'BETA')]
+		names: [cleanName(merged.names[0], 'ALPHA'), cleanName(merged.names[1], 'BETA')],
+		fitnessWeights: normalizeFitnessWeights(merged.fitnessWeights)
 	};
 }
 
 function seatFitness(
 	simulation: TerritorySimulation,
 	snapshot: GameSnapshot,
-	player: PublicPlayer
+	player: PublicPlayer,
+	weights: FitnessWeights
 ): number {
 	const playerId = player.id;
 	const attackStrength = snapshot.attacks
@@ -114,7 +123,8 @@ function seatFitness(
 			naval,
 			aggression: behavior.attacksLaunched,
 			cooperation: behavior.supportedAttacks
-		}
+		},
+		weights
 	);
 }
 
@@ -243,7 +253,9 @@ export class DuelLab {
 		const seatFitnesses: [number, number] = [0, 0];
 		for (let seat = 0; seat < 2; seat++) {
 			const player = snapshot.players.find((entry) => entry.id === seat + 1);
-			if (player) seatFitnesses[seat] = seatFitness(simulation, snapshot, player);
+			if (player) {
+				seatFitnesses[seat] = seatFitness(simulation, snapshot, player, this.config.fitnessWeights);
+			}
 		}
 		const characterFitness: [number, number] = [0, 0];
 		for (let seat = 0; seat < 2; seat++) {

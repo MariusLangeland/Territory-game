@@ -2108,3 +2108,29 @@ The population lab's 1v1 lineage mode was still a population algorithm with geno
 - No benefit is extracted from culling; both lineages stay available and only the weaker side changes after each block.
 - Close centre spawns make contact likely, but do not force an artificial attack before the bots' normal economy/opening rules would allow one.
 - The lab is still local and deterministic; it does not introduce online play or full coevolution.
+
+---
+
+## ADR-066 — User-tunable evolution fitness weights
+
+**Status:** accepted and implemented in 0.59.0  
+**Date:** 2026-11-21
+
+### Context
+
+Evolution fitness had all reward scales hardcoded, with land at 120,000. That made territorial score dominate the other terms and gave users no way to test whether the aggressive phenotype was caused by the weighting or by the simulation/AI.
+
+### Decision
+
+- Define a shared `FitnessWeights` object for land, income, attack, win, survival, economy, defense, naval, aggression, and cooperation.
+- Use it as the single source for population evolution, Duel Lab block fitness, and headless evolution.
+- Lower the default land weight from 120,000 to **60,000**; leave other defaults unchanged.
+- Expose editable inputs in both labs, a reset control, and `--weight-<name>` flags for `pnpm evolution`.
+- Clamp weights to finite non-negative values and cap them at 10,000,000.
+
+### Consequences
+
+- The reward function is an explicit experimental surface rather than a hidden constant.
+- Users can test whether a strategy is selected because of the simulation or because land/win scale swamped the rest.
+- Changing weights changes ranking and mutation choice but remains deterministic for a fixed configuration.
+- The default shift alone did not remove the aggressive-phenotype concentration in the audit; further reward design is still a balance task.

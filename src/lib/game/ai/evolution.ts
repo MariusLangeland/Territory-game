@@ -11,6 +11,76 @@ import {
 export type BotBucket = 'poor' | 'good' | 'top';
 export const BOT_BUCKETS: readonly BotBucket[] = ['poor', 'good', 'top'];
 
+export interface FitnessWeights {
+	land: number;
+	income: number;
+	attack: number;
+	win: number;
+	survival: number;
+	economy: number;
+	defense: number;
+	naval: number;
+	aggression: number;
+	cooperation: number;
+}
+
+export const FITNESS_WEIGHT_KEYS = [
+	'land',
+	'income',
+	'attack',
+	'win',
+	'survival',
+	'economy',
+	'defense',
+	'naval',
+	'aggression',
+	'cooperation'
+] as const;
+
+export const FITNESS_WEIGHT_LABELS: Record<keyof FitnessWeights, string> = {
+	land: 'Land share',
+	income: 'Income /s',
+	attack: 'Attack strength',
+	win: 'Match win',
+	survival: 'Survival',
+	economy: 'Economy structures',
+	defense: 'Defense structures',
+	naval: 'Naval reach',
+	aggression: 'Attacks launched',
+	cooperation: 'Allied support'
+};
+
+/**
+ * Land was 120k in the original fitness. That made territorial score dominate
+ * every decision; the default is halved and every term is now user-tunable.
+ */
+export const DEFAULT_FITNESS_WEIGHTS: FitnessWeights = {
+	land: 60_000,
+	income: 120,
+	attack: 0.3,
+	win: 75_000,
+	survival: 1_000,
+	economy: 8,
+	defense: 10,
+	naval: 25,
+	aggression: 2,
+	cooperation: 8
+};
+
+export function normalizeFitnessWeights(
+	weights: Partial<FitnessWeights> | undefined
+): FitnessWeights {
+	const normalized = { ...DEFAULT_FITNESS_WEIGHTS };
+	for (const key of FITNESS_WEIGHT_KEYS) {
+		const raw = weights?.[key];
+		if (raw === undefined) continue;
+		const value = Number(raw);
+		if (!Number.isFinite(value)) continue;
+		normalized[key] = Math.max(0, Math.min(10_000_000, value));
+	}
+	return normalized;
+}
+
 export interface EvolutionConfig {
 	seed: number;
 	populationSize: number;
@@ -27,6 +97,7 @@ export interface EvolutionConfig {
 	 * mutation must beat its ancestor instead of relying on mixed-pair noise.
 	 */
 	lineageDuels: boolean;
+	fitnessWeights: FitnessWeights;
 }
 
 export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
@@ -39,7 +110,8 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
 	width: 1280,
 	height: 720,
 	teamCount: 1,
-	lineageDuels: true
+	lineageDuels: true,
+	fitnessWeights: DEFAULT_FITNESS_WEIGHTS
 };
 
 export interface GenomePerformance {
@@ -109,7 +181,8 @@ export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}):
 		width: Math.max(512, Math.trunc(merged.width)),
 		height: Math.max(256, Math.trunc(merged.height)),
 		teamCount: Math.max(1, Math.min(playerCount, Math.trunc(merged.teamCount))),
-		lineageDuels: merged.lineageDuels !== false
+		lineageDuels: merged.lineageDuels !== false,
+		fitnessWeights: normalizeFitnessWeights(merged.fitnessWeights)
 	};
 }
 
@@ -119,10 +192,7 @@ export function createInitialPopulation(config: EvolutionConfig): BotGenome[] {
 	);
 }
 
-/**
- * Final fitness is deliberately multi-objective: land is the primary score,
- * but income, durable attack strength, and winning all matter.
- */
+/** Final fitness is deliberately multi-objective and fully weight-driven. */
 export function genomeFitness(
 	player: PublicPlayer,
 	income: number,
@@ -134,19 +204,20 @@ export function genomeFitness(
 		naval: number;
 		aggression: number;
 		cooperation: number;
-	} = { economy: 0, defense: 0, naval: 0, aggression: 0, cooperation: 0 }
+	} = { economy: 0, defense: 0, naval: 0, aggression: 0, cooperation: 0 },
+	weights: FitnessWeights = DEFAULT_FITNESS_WEIGHTS
 ): number {
 	return Math.round(
-		player.landShare * 120_000 +
-			income * 120 +
-			attackStrength * 0.3 +
-			(won ? 75_000 : 0) +
-			(player.alive ? 1_000 : 0) +
-			strategy.economy * 8 +
-			strategy.defense * 10 +
-			strategy.naval * 25 +
-			strategy.aggression * 2 +
-			strategy.cooperation * 8
+		player.landShare * weights.land +
+			income * weights.income +
+			attackStrength * weights.attack +
+			(won ? weights.win : 0) +
+			(player.alive ? weights.survival : 0) +
+			strategy.economy * weights.economy +
+			strategy.defense * weights.defense +
+			strategy.naval * weights.naval +
+			strategy.aggression * weights.aggression +
+			strategy.cooperation * weights.cooperation
 	);
 }
 
@@ -169,7 +240,8 @@ function descriptorFor(metrics: {
 function scoreMatch(
 	simulation: TerritorySimulation,
 	snapshot: GameSnapshot,
-	seats: readonly BotGenome[]
+	seats: readonly BotGenome[],
+	weights: FitnessWeights
 ): Map<string, Evaluation> {
 	const scored = new Map<string, Evaluation>();
 	for (let seat = 0; seat < seats.length; seat++) {
@@ -202,7 +274,8 @@ function scoreMatch(
 			simulation.incomeOf(playerId),
 			attackStrength,
 			snapshot.winnerId === playerId,
-			strategy
+			strategy,
+			weights
 		);
 		scored.set(genome.id, {
 			genome,
@@ -449,7 +522,7 @@ export class EvolutionSandbox {
 		const simulation = this.currentSimulation;
 		if (!simulation) return;
 		const snapshot = simulation.getSnapshot();
-		const scored = scoreMatch(simulation, snapshot, this.currentSeats);
+		const scored = scoreMatch(simulation, snapshot, this.currentSeats, this.config.fitnessWeights);
 		for (const [id, value] of scored) {
 			const existing = this.evaluations.get(id);
 			if (!existing) {

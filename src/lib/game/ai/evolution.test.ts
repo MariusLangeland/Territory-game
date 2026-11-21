@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { TerritorySimulation } from '../simulation';
-import { EvolutionSandbox, runEvolution } from './evolution';
+import { TerritorySimulation, type PublicPlayer } from '../simulation';
+import {
+	DEFAULT_FITNESS_WEIGHTS,
+	EvolutionSandbox,
+	genomeFitness,
+	normalizeFitnessWeights,
+	runEvolution
+} from './evolution';
 import { parseEvolutionCsv, serializeEvolutionCsv } from './evolution-csv';
 import { BOT_MODULE_IDS, createRandomGenome, crossoverGenomes, mutateGenome } from './genome';
 
@@ -22,6 +28,37 @@ describe('evolutionary AI sandbox', () => {
 		const child = crossoverGenomes(first, mutated, 123, 2);
 		expect(child.parents).toEqual([first.id, mutated.id]);
 		expect(child.generation).toBe(2);
+	});
+
+	it('applies configurable fitness weights and normalizes bad values', () => {
+		const player = { landShare: 0.5, alive: true } as unknown as PublicPlayer;
+		const strategy = {
+			economy: 10,
+			defense: 10,
+			naval: 2,
+			aggression: 10,
+			cooperation: 5
+		};
+		const baseline = genomeFitness(player, 10, 100, true, strategy);
+		const zeroed = genomeFitness(player, 10, 100, true, strategy, {
+			land: 0,
+			income: 0,
+			attack: 0,
+			win: 0,
+			survival: 0,
+			economy: 0,
+			defense: 0,
+			naval: 0,
+			aggression: 0,
+			cooperation: 0
+		});
+		expect(baseline).toBeGreaterThan(0);
+		expect(zeroed).toBe(0);
+		const normalized = normalizeFitnessWeights({ land: -10, win: Number.POSITIVE_INFINITY });
+		expect(normalized.land).toBe(0);
+		expect(normalized.win).toBe(DEFAULT_FITNESS_WEIGHTS.win);
+		// The default land term is intentionally half the old 120k value.
+		expect(DEFAULT_FITNESS_WEIGHTS.land).toBe(60_000);
 	});
 
 	it('runs deterministic selection, pruning, and bucket assignment', () => {

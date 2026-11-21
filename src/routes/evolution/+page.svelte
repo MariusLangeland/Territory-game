@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
 	import {
 		BOT_BUCKETS,
+		DEFAULT_FITNESS_WEIGHTS,
 		EvolutionSandbox,
 		bucketCounts,
 		bucketsFromReport,
@@ -38,7 +40,8 @@
 		width: 1280,
 		height: 720,
 		teamCount: 1,
-		lineageDuels: true
+		lineageDuels: true,
+		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS }
 	});
 	let sandbox = $state<EvolutionSandbox | null>(null);
 	let currentSimulation = $state<TerritorySimulation | null>(null);
@@ -357,6 +360,14 @@
 					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all. Lineage duels
 					(1v1) test each descendant against a parent; a losing record is culled.
 				</p>
+			</section>
+
+			<section class="panel">
+				<h2>Fitness weights</h2>
+				<FitnessWeightsEditor
+					weights={config.fitnessWeights}
+					onupdate={(weights) => (config.fitnessWeights = weights)}
+				/>
 			</section>
 
 			<section class="panel">

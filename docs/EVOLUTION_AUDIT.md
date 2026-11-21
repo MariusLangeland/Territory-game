@@ -63,6 +63,26 @@ stayed around 88k–93k with no clear upward trend. Two matches per genome are t
 few to distinguish strategies at that horizon. The 3,000-tick runs show a much
 clearer selection signal.
 
+## Fitness-weight update
+
+The original land weight was 120k. It is now **60k** by default and every term is
+editable in both labs (and via `--weight-<name>` in headless runs).
+
+Re-running seed 2026 with the new default:
+
+| Generation | Best fitness | Top land share |
+| ---------- | -----------: | -------------: |
+| 1          |       90,380 |          17.9% |
+| 2          |       94,722 |          23.6% |
+| 3          |       98,162 |          28.4% |
+| 4          |       98,018 |          27.9% |
+| 5          |       97,694 |          27.7% |
+
+The best lineage still improves, then plateaus. Lowering land did not change the
+dominant phenotype: the top genomes remain aggressor builds (`E0-D0-N0-A2`). This
+means the default weight change alone does not fix the concentration; it gives
+the user a direct control to test alternatives.
+
 ## Interpretation
 
 - Evolution is now mechanically sound: no genome is unobserved, fitness is

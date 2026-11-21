@@ -13,10 +13,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
 	DEFAULT_EVOLUTION_CONFIG,
+	DEFAULT_FITNESS_WEIGHTS,
 	EvolutionSandbox,
+	FITNESS_WEIGHT_KEYS,
 	normalizeEvolutionConfig,
 	serializeEvolutionCsv,
-	type EvolutionConfig
+	type EvolutionConfig,
+	type FitnessWeights
 } from '../src/lib/game/ai';
 
 interface CliOptions {
@@ -26,12 +29,31 @@ interface CliOptions {
 
 function parseArgs(argv: readonly string[]): CliOptions {
 	const options: CliOptions = {
-		config: { ...DEFAULT_EVOLUTION_CONFIG },
+		config: {
+			...DEFAULT_EVOLUTION_CONFIG,
+			fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS }
+		},
 		out: 'reports/evolution.csv'
+	};
+	const weightFlag = (arg: string): keyof FitnessWeights | null => {
+		const match =
+			/^--weight-(land|income|attack|win|survival|economy|defense|naval|aggression|cooperation)$/.exec(
+				arg
+			);
+		return match ? (match[1] as keyof FitnessWeights) : null;
 	};
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index];
 		const next = (): string => argv[++index] ?? '';
+		const weightKey = weightFlag(arg);
+		if (weightKey && options.config.fitnessWeights) {
+			const value = Number(next());
+			if (!Number.isFinite(value)) {
+				throw new Error(`${arg} must be a finite number.`);
+			}
+			options.config.fitnessWeights[weightKey] = Math.max(0, value);
+			continue;
+		}
 		if (arg === '--population') options.config.populationSize = Number(next());
 		else if (arg === '--generations') options.config.generations = Number(next());
 		else if (arg === '--matches') options.config.matchesPerRound = Number(next());
@@ -43,7 +65,8 @@ function parseArgs(argv: readonly string[]): CliOptions {
 		else if (arg === '--out') options.out = next();
 		else if (arg === '--help' || arg === '-h') {
 			console.log(
-				'Usage: pnpm evolution [--population N] [--generations N] [--matches N] [--players N] [--ticks N] [--seed N] [--out file.csv]'
+				'Usage: pnpm evolution [--population N] [--generations N] [--matches N] [--players N] [--ticks N] [--seed N] [--out file.csv]',
+				`  weight flags: ${FITNESS_WEIGHT_KEYS.map((key) => `--weight-${key}`).join(' ')}`
 			);
 			process.exit(0);
 		}

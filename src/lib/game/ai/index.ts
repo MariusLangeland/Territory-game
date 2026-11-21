@@ -18,15 +18,20 @@ export {
 export {
 	BOT_BUCKETS,
 	DEFAULT_EVOLUTION_CONFIG,
+	DEFAULT_FITNESS_WEIGHTS,
+	FITNESS_WEIGHT_KEYS,
+	FITNESS_WEIGHT_LABELS,
 	EvolutionSandbox,
 	bucketRows,
 	createInitialPopulation,
 	genomeFitness,
 	normalizeEvolutionConfig,
+	normalizeFitnessWeights,
 	runEvolution,
 	type BotBucket,
 	type EvolutionConfig,
 	type EvolutionReport,
+	type FitnessWeights,
 	type GenerationResult,
 	type GenomePerformance
 } from './evolution';

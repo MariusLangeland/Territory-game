@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
-	import { DEFAULT_DUEL_CONFIG, DuelLab, type DuelConfig, type DuelNode } from '#lib/game/ai';
+	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
+	import {
+		DEFAULT_DUEL_CONFIG,
+		DEFAULT_FITNESS_WEIGHTS,
+		DuelLab,
+		type DuelConfig,
+		type DuelNode
+	} from '#lib/game/ai';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
 
@@ -17,7 +24,8 @@
 
 	let config = $state<DuelConfig>({
 		...DEFAULT_DUEL_CONFIG,
-		names: ['ALPHA', 'BETA']
+		names: ['ALPHA', 'BETA'],
+		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS }
 	});
 	let lab = $state<DuelLab | null>(null);
 	let currentSimulation = $state<TerritorySimulation | null>(null);
@@ -318,6 +326,15 @@
 					eliminated.
 				</p>
 				<p class="status">{status}</p>
+			</section>
+
+			<section class="panel">
+				<h2>Fitness weights</h2>
+				<FitnessWeightsEditor
+					weights={config.fitnessWeights}
+					onupdate={(weights) => (config.fitnessWeights = weights)}
+					compact
+				/>
 			</section>
 		</aside>
 	</div>
