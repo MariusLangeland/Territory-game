@@ -22,7 +22,10 @@
 		{ label: '1×', steps: 1 },
 		{ label: '4×', steps: 4 },
 		{ label: '16×', steps: 16 },
-		{ label: '48×', steps: 48 }
+		{ label: '48×', steps: 48 },
+		{ label: '120×', steps: 120 },
+		{ label: '480×', steps: 480 },
+		{ label: '1000×', steps: 1000 }
 	] as const;
 
 	let config = $state<EvolutionConfig>({
@@ -90,6 +93,20 @@
 		status = 'Generation 1 — natural selection in progress.';
 	}
 
+	function startOneVsOne(): void {
+		config = {
+			...config,
+			playerCount: 2,
+			populationSize: 8,
+			matchesPerRound: 4,
+			ticks: 800,
+			generations: Math.max(2, config.generations)
+		};
+		speed = 1000;
+		notice = '1v1 preset: 8 genomes, 2 seats, 4 matches/round at 1000×.';
+		start();
+	}
+
 	function stopTimer(): void {
 		if (pendingTimer !== null) {
 			clearTimeout(pendingTimer);
@@ -102,6 +119,7 @@
 		if (!nextSnapshot.ended || matchHandled || !sandbox) return;
 		matchHandled = true;
 		status = 'Match complete — scoring genomes…';
+		const continueDelay = speed >= 480 ? 20 : speed >= 120 ? 70 : speed >= 48 ? 160 : 650;
 		pendingTimer = setTimeout(() => {
 			pendingTimer = null;
 			if (!sandbox) return;
@@ -124,7 +142,7 @@
 				sandbox.currentMatchIndex + 1
 			}/${sandbox.progress.matches || '?'}`;
 			revision++;
-		}, 650);
+		}, continueDelay);
 	}
 
 	function toggleRunning(): void {
@@ -246,7 +264,7 @@
 						paused={!running}
 						{cameraBridge}
 						speedMultiplier={speed}
-						maxStepsPerFrame={Math.max(4, speed * 2)}
+						maxStepsPerFrame={Math.max(4, Math.min(4096, speed * 2))}
 						cameraFocus="map"
 						onTick={handleTick}
 					/>
@@ -339,7 +357,10 @@
 						/>
 					</label>
 				</div>
-				<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
+				<div class="run-actions">
+					<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
+					<button class="preset" type="button" onclick={startOneVsOne}>1v1 GAUNTLET</button>
+				</div>
 				<p class="hint">
 					Fitness = land + income + attack + wins + survival +
 					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all.
@@ -576,6 +597,7 @@
 	}
 	.speed-row {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 4px;
 		margin-left: 10px;
 	}
@@ -622,13 +644,24 @@
 		padding: 5px 6px;
 		min-width: 0;
 	}
-	.primary {
-		width: 100%;
+	.run-actions {
+		display: flex;
+		gap: 6px;
 		margin-top: 9px;
+	}
+
+	.primary {
+		flex: 1;
 		background: #f3b74d !important;
 		border-color: #f3b74d !important;
 		color: #050b0e !important;
 		font-weight: 700;
+	}
+
+	.preset {
+		flex: none;
+		color: #58c7e8;
+		border-color: rgba(88, 199, 232, 0.45);
 	}
 	.hint {
 		margin: 7px 0 0;

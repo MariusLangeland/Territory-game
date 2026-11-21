@@ -172,7 +172,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 26. Confirm rival supply text has a transparent background and no plaque/border, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
 27. On the intro, change state count, map preset, bot difficulty, growth layer, and timer; click REBUILD MATCH and confirm the intro stats, HUD state count, atlas dimensions, leaderboard, and countdown reflect the new settings. Reload and confirm the settings persisted.
 28. Build a Port on owned shoreline, click a distant non-friendly shore with a sea route, confirm a boat sails along the sea, claims a beachhead, auto-builds a second Port, and starts an inland front. Confirm inland Port placement is rejected.
-29. Open `/evolution`, run a short selection (or lower ticks), confirm the spectator renders all bots, fast-forward changes speed, matches score into buckets, the QD descriptor archive grows, the table shows E/D/N/A descriptors and strategy metrics, CSV export/import works, and saved buckets appear in the main match difficulty path.
+29. Open `/evolution`, run a short selection (or lower ticks), confirm the spectator renders all bots, fast-forward reaches 1000×, the 1v1 preset sets two seats and advances matches quickly, matches score into buckets, the QD descriptor archive grows, the table shows E/D/N/A descriptors and strategy metrics, CSV export/import works, and saved buckets appear in the main match difficulty path.
 
 ## Style
 
