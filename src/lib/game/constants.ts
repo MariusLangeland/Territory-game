@@ -41,7 +41,7 @@ export const ATTACK_DAMAGE_PER_TICK = 30;
 export const ATTACK_ORDER_DAMAGE_BONUS = 15;
 export const ATTACK_ORDER_DEFENSE_PIERCE = 1;
 export const ATTACK_SUPPLY_COST_BASE = 30;
-export const ATTACK_SUPPLY_COST_BONUS = 15;
+export const ATTACK_SUPPLY_COST_BONUS = 40;
 export const ATTACK_STRENGTH_BASE = 1500;
 export const ATTACK_STRENGTH_BONUS = 450;
 export const ATTACK_ATTRITION_BASE = 100;
@@ -103,7 +103,7 @@ export const ATTACK_SEARCH_RADIUS = 34;
 
 /** Active artillery: one shell per structure level per volley. */
 export const ARTILLERY_SUPPLY_COST_PER_LEVEL = 300;
-export const UPGRADE_LEVEL_COST_STEP = 5;
+export const UPGRADE_LEVEL_COST_STEP = 15;
 export const ARTILLERY_RANGE = 140;
 /** Artillery needs this much district-free ground around its centre. */
 export const ARTILLERY_BUILD_CLEARANCE = 16;

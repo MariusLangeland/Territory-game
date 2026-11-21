@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.41.0 (Frontage v1 + siege rework)  
+**Version:** 0.42.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.41.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.42.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -140,7 +140,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 4. The simulation searches a 34-cell radius for cells of the target owner adjacent to the attacker's territory. These become seeds.
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
-7. Launching costs **supply** `30 + 15 × effective Barracks levels`. Effective levels are the attacker's live Barracks stacks minus the defender's live Jammer stacks (floor 0). Supply is the only resource and also pays for cards and upgrades.
+7. Launching costs **supply** `30 + 40 × effective Barracks levels`. Effective levels are the attacker's live Barracks stacks minus the defender's live Jammer stacks (floor 0). Supply is the only resource and also pays for cards and upgrades.
 8. Each front buys durable strength `1500 + 450 × effective levels`. Speed and defense piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Scaling is infinite, with logarithmic fall-off for speed/piercing. Repeated clicks create separate fronts; they never reinforce an existing one.
 9. Each tick, the growth layer nominates candidates up to the front's power budget. Each capture costs `max(1, defense − piercing)` from **both** the per-tick power and the durable strength. The sampler takes the cheapest of up to 10 candidates; ties keep growth priority.
 10. Before every capture, the cell must still share a land edge with territory owned by the attacker. A front can never create a detached enclave.
@@ -331,7 +331,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 | Occupied bonus           | `+1` when the pixel has a nonzero owner                                 |
 | State aura               | `+20` within 16 px; overlapping auras do not stack                      |
 | Effective levels         | `max(0, attacker Barracks stacks − defender Jammer stacks)`             |
-| Supply launch cost       | `30 + 15 × effective levels`                                            |
+| Supply launch cost       | `30 + 40 × effective levels`                                            |
 | Durable strength         | `1500 + 450 × effective levels`                                         |
 | Speed tier               | `logTier = floor(log2(effective levels + 1))`                           |
 | Power per front per tick | `30 + 15 × logTier`                                                     |
@@ -352,15 +352,15 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
 - Start with **90 supply** and **all six buildable cards** always available in the hand.
-- Supply income is `3 + floor(territory/1000) + income structures` per second, with **no income cap**. This is +1/s per 1,000 owned pixels, plus Command Post stacks at **+2/s** each.
-- Supply cap is `120 + floor(territory/1000) + 40 × War Academy stacks`, with **no global maximum**.
+- Supply income is `3 + floor(territory/1000) + income structures` per second, with **no income cap**. This is +1/s per 1,000 owned pixels, plus Command Post stacks at **+1/s** each.
+- Supply cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 5 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 15 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
 - Holding **Ctrl** hides merged districts: individual seams/icons return and the clicked structure is upgraded directly. Upgrade commands pinned to a merged structure survive its centre being assigned to a neighboring district cell.
 - Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for 1 level, or 5 levels while Shift is held.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
-- Dropping inside a same-type district upgrades that district's structure at `base cost + 5 × current level`; dropping the same type outside all districts creates another structure at its base cost.
+- Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
 - Costs: Artillery **1000**, Barracks **240**, Fortification **40**, Jammer **160**, Command Post **80**, War Academy **120** supply.
 - Captured buildable structures are razed and their effects disappear.
@@ -370,11 +370,11 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 | Card          | Cost | Effect                                                             |
 | ------------- | ---- | ------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
-| Barracks      | 240  | +1 effective attack level; cost +15, strength +450 per level       |
+| Barracks      | 240  | +1 effective attack level; cost +40, strength +450 per level       |
 | Fortification | 40   | +1 defense to every friendly pixel in its 40 px district; stacks   |
 | Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
-| Command Post  | 80   | +2 supply per second                                               |
-| War Academy   | 120  | +40 supply cap                                                     |
+| Command Post  | 80   | +1 supply per second                                               |
+| War Academy   | 120  | +80 supply cap                                                     |
 
 Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 
@@ -410,8 +410,8 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 | Barracks      |          44 px | +1 effective attack level       |
 | Fortification |          40 px | +1 defense per stack            |
 | Jammer        |          32 px | −1 enemy attack level per stack |
-| Command Post  |          32 px | +2 supply/s per stack           |
-| War Academy   |          32 px | +40 supply cap per stack        |
+| Command Post  |          32 px | +1 supply/s per stack           |
+| War Academy   |          32 px | +80 supply cap per stack        |
 
 District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code. The shader's merge uniform removes same-type internal seams and variants; Ctrl turns it off. The 2D structure overlay draws one combined icon per multi-structure merged group.
 

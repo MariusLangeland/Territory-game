@@ -1492,3 +1492,34 @@ Bots followed a fixed sorted `buildPlan`, then upgraded the lowest plan structur
 - **Fully random action selection weighted by traits:** less legible and harder to balance than explicit utilities.
 - **Keep the fixed build plan but add random interruptions:** still hard-coded and does not respond to cap/site/threat bottlenecks.
 - **Give bots free supply/cap:** hides the structural problem and breaks the shared-rules model.
+
+---
+
+## ADR-046 — Upgrade step 15, Barracks cost +40, War Academy +80 cap, Command Post +1/s
+
+**Status:** accepted and implemented in 0.42.0  
+**Date:** 2026-11-21
+
+### Context
+
+Upgrades and Barracks levels were underpriced relative to their scaling, while Command Posts gave too much passive income and War Academies too little cap relief. The economy needed steeper level investment and a stronger cap-growth payoff.
+
+### Decision
+
+- `UPGRADE_LEVEL_COST_STEP` 5 → **15**. Upgrade cost is `base + 15 × projected current level`; shifted five-level quotes use the same step.
+- `ATTACK_SUPPLY_COST_BONUS` 15 → **40**. Launch cost is `30 + 40 × effective Barracks levels`.
+- War Academy supply cap per stack 40 → **80**. The current model has no separate attack cap; this is the supply cap that gates attacks.
+- Command Post income 2 → **1 supply/s** per stack.
+- App 0.42.0; protocol unchanged at 36.
+
+### Consequences
+
+- Leveling is a much steeper supply commitment; Tall builds need deliberate savings.
+- Barracks now trade much more supply for attack strength, making them a real strategic cost.
+- War Academy is a stronger answer to the expensive Barracks/Artillery cap bottleneck.
+- Command Posts are supplementary rather than a dominant passive-income engine.
+
+### Alternatives considered
+
+- **Change only upgrade step:** would leave Barracks scaling too cheap.
+- **Add a separate attack cap:** there is no such mechanic in the current model and it would be new scope.

@@ -9,7 +9,7 @@ export const BARRACKS_POWER_PER_LEVEL = 1;
 export const BARRACKS_DEFINITION: StructureDefinition = {
 	label: 'BARRACKS',
 	description:
-		'+1 attack strength level. Attack cost rises by 15; speed and piercing use log2 scaling.',
+		'+1 attack strength level. Attack cost rises by 40; speed and piercing use log2 scaling.',
 	cost: 240,
 	buildable: true,
 	accent: '#ff7868',

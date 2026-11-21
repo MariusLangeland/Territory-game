@@ -558,6 +558,7 @@ describe('attack stress mode', () => {
 		expect(target).not.toBeNull();
 		if (!target) return;
 		const internals = sim as unknown as { attacks: AttackState[] };
+		sim.gold = 200;
 		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
 		expect(sim.enqueueAttack(1, target.x, target.y).ok).toBe(true);
 		sim.step();

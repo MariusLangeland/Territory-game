@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.41.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.42.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.41.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.42.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -84,7 +84,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `defenseAt` = `1 + elevation + occupied + aura`. Capture cost is `max(1, defenseAt − pierce)` paid from power and strength.
-- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + floor(territory/1000) + supply-income effects` per second (+1/s per 1,000 owned pixels) with no income cap; cap is `120 + territory/1000 + 40 × Academy stacks` with no upper bound. `supplyCap` is public.
+- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + floor(territory/1000) + supply-income effects` per second (+1/s per 1,000 owned pixels) with no income cap; cap is `120 + territory/1000 + 80 × Academy stacks` with no upper bound. `supplyCap` is public.
 - No attack-order inventory exists. Front launch cost/strength derive from effective live Barracks levels; power/pierce derive from integer log2 tiers. A defending Jammer subtracts one effective level per stack.
 - `structureStacksByType` caches owner/type stack totals and refreshes only when `StructureRegistry.version` changes, so per-tick income and per-launch attack stats do not scan every structure.
 - Permanent hand: all six buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.
@@ -233,7 +233,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 - Barracks: `barracks-power`, +1 effective attack level per stack; cost/strength linear, power/pierce log2.
 - Jammer: `barracks-suppression`, −1 effective enemy Barracks level per stack, global and no pixel defense.
 - Artillery: `artillery`, cost 1000, 64 px district, 16 px district-free build clearance, 140 px range, 6-second cooldown, one shell per level at 300 supply/level with ±36 px spread; shells remove one level from the nearest non-State hostile structure in a 12 px blast.
-- Command Post: `supply-income`, +2 supply per second.
+- Command Post: `supply-income`, +1 supply per second.
 - War Academy: `supply-cap`, +40.
 
 `simulation.rebuildAuraDefense` clears the overlay, applies max-stacking auras, then adds additive auras, skipping every cell not owned by the aura's structure owner **or outside that structure's district** (State auras use their radius, with no district). `defenseAt` reads it, so effects share the attack-point economy. When ownership changes without destroying a structure, `updateAuraAt` recomputes just that cell from the new owner's structures, immediately removing the old owner's aura. A full rebuild still runs at world creation, structure creation, and structure destruction. `getAttackStats` combines live Barracks stacks with the defender's Jammer suppression using the stack cache.
@@ -262,7 +262,7 @@ type GameCommand =
 	| { type: 'build'; playerId; cardId; x; y; sequence };
 ```
 
-`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation reserves supply for already-queued fronts. Applying an attack spends launch supply and creates strength; builds validate supply, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, stack eligibility, and Artillery's 16 px district-free clearance again. A build that lands in a matching district pays `base cost + 5 × current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + 5 × projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
+`enqueueAttack`, `playCard`, and `upgradeDistrict` validate immediately and queue. Authoritative creation/spending still happens inside the next `step()`, where state may have changed. Attack validation reserves supply for already-queued fronts. Applying an attack spends launch supply and creates strength; builds validate supply, permanent-hand membership, the destination cell, the 8 px exclusion radius, district ownership, stack eligibility, and Artillery's 16 px district-free clearance again. A build that lands in a matching district pays `base cost + 15 × current level`; a new structure pays base cost. Upgrades resolve the district's structure, spend `base card cost + 15 × projected current level`, and increment stacks without consuming a card; pending upgrade costs are reserved against their projected levels during click validation. Cards are not removed. This separation is the model for future network intents. Resource accrual runs before the command queue each tick.
 
 ### 3.7 Snapshots
 

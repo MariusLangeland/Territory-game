@@ -106,7 +106,7 @@ describe('player economy and cards', () => {
 		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
 		expect(capital).toBeDefined();
 		if (!capital) return;
-		for (let index = 0; index < 40; index++) {
+		for (let index = 0; index < 80; index++) {
 			sim.structures.create(
 				'command-post',
 				HUMAN_PLAYER_ID,
@@ -175,7 +175,7 @@ describe('player economy and cards', () => {
 		expect(result.ok).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(55);
+		expect(sim.gold).toBe(45);
 
 		sim.gold = 100;
 		expect(
@@ -183,7 +183,7 @@ describe('player economy and cards', () => {
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(3);
-		expect(sim.gold).toBeGreaterThanOrEqual(50);
+		expect(sim.gold).toBeGreaterThanOrEqual(30);
 	});
 
 	it('quotes and queues five-level upgrades atomically', () => {
@@ -193,7 +193,7 @@ describe('player economy and cards', () => {
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
 		raiseSupplyCap(sim);
-		sim.gold = 300;
+		sim.gold = 500;
 		const quote = sim.getUpgradeQuote(
 			HUMAN_PLAYER_ID,
 			target % sim.width,
@@ -201,13 +201,13 @@ describe('player economy and cards', () => {
 			5
 		);
 		expect(quote.ok).toBe(true);
-		expect(quote.cost).toBe(275);
+		expect(quote.cost).toBe(425);
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
 		).toBe(true);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(6);
-		expect(sim.gold).toBe(25);
+		expect(sim.gold).toBe(75);
 	});
 
 	it('merges touching same-type districts and upgrades the lowest first', () => {
@@ -250,11 +250,11 @@ describe('player economy and cards', () => {
 				sim.width
 			);
 		}
-		sim.gold = 300;
+		sim.gold = 600;
 		const mergedQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, right.x, right.y, 5, true);
 		expect(mergedQuote.merged).toBe(true);
 		expect(mergedQuote.currentLevel).toBe(1);
-		expect(mergedQuote.cost).toBe(255);
+		expect(mergedQuote.cost).toBe(365);
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, right.x, right.y, 5, true).ok).toBe(true);
 		sim.step();
 		expect(sim.structures.byId(left.id)?.stacks).toBe(4);
@@ -262,7 +262,7 @@ describe('player economy and cards', () => {
 
 		const ctrlQuote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, left.x, left.y, 1, false);
 		expect(ctrlQuote.merged).toBe(false);
-		expect(ctrlQuote.cost).toBe(60);
+		expect(ctrlQuote.cost).toBe(100);
 	});
 
 	it('rejects a five-level upgrade without queuing partial levels', () => {
@@ -272,7 +272,8 @@ describe('player economy and cards', () => {
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
 		raiseSupplyCap(sim);
-		sim.gold = 200;
+		raiseSupplyCap(sim);
+		sim.gold = 300;
 		expect(
 			sim.upgradeDistrict(HUMAN_PLAYER_ID, target % sim.width, Math.floor(target / sim.width), 5).ok
 		).toBe(false);
@@ -293,7 +294,7 @@ describe('player economy and cards', () => {
 		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y).ok).toBe(false);
 		sim.step();
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(45);
+		expect(sim.gold).toBe(35);
 	});
 
 	it('reports district dirty tiles instead of forcing a full rebuild', () => {
@@ -383,7 +384,7 @@ describe('player economy and cards', () => {
 			)
 		).toHaveLength(1);
 		expect(sim.structures.at(index)?.stacks).toBe(2);
-		expect(sim.gold).toBe(55);
+		expect(sim.gold).toBe(45);
 		expect(sim.income).toBe(BASE_GOLD_INCOME);
 
 		const other = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
@@ -583,7 +584,7 @@ describe('player economy and cards', () => {
 		const { index } = buildCard(sim, 'barracks');
 		expect(sim.getAttackStats(HUMAN_PLAYER_ID, 0)).toMatchObject({
 			levels: 1,
-			cost: 45,
+			cost: 70,
 			power: 45,
 			pierce: 1,
 			strength: 1950
@@ -595,7 +596,7 @@ describe('player economy and cards', () => {
 		sim.structures.setStacks(structure, 20);
 		const infinite = sim.getAttackStats(HUMAN_PLAYER_ID, 0);
 		expect(infinite.levels).toBe(20);
-		expect(infinite.cost).toBe(330);
+		expect(infinite.cost).toBe(830);
 		expect(infinite.power).toBe(90);
 		expect(infinite.pierce).toBe(4);
 		expect(infinite.strength).toBe(10_500);
@@ -620,7 +621,7 @@ describe('player economy and cards', () => {
 		sim.structures.setStacks(enemyBarracks, 5);
 		const unsuppressed = sim.getAttackStats(2, 0);
 		expect(unsuppressed.effectiveLevels).toBe(5);
-		expect(unsuppressed.cost).toBe(105);
+		expect(unsuppressed.cost).toBe(230);
 		expect(unsuppressed.strength).toBe(3750);
 
 		const jammer = sim.structures.create(
@@ -634,7 +635,7 @@ describe('player economy and cards', () => {
 		const suppressed = sim.getAttackStats(2, HUMAN_PLAYER_ID);
 		expect(suppressed.levels).toBe(5);
 		expect(suppressed.effectiveLevels).toBe(3);
-		expect(suppressed.cost).toBe(75);
+		expect(suppressed.cost).toBe(150);
 		expect(suppressed.strength).toBe(2850);
 		expect(sim.getDefense(x, y)).toBe(defenseBefore);
 	});
@@ -773,7 +774,7 @@ describe('player economy and cards', () => {
 		const sim = new TerritorySimulation({ seed: 112358 });
 		const baseCap = sim.supplyCap(HUMAN_PLAYER_ID);
 		buildCard(sim, 'war-academy');
-		expect(sim.supplyCap(HUMAN_PLAYER_ID)).toBe(baseCap + 40);
+		expect(sim.supplyCap(HUMAN_PLAYER_ID)).toBe(baseCap + 80);
 	});
 
 	it('clamps supply when a War Academy is razed', () => {
@@ -781,7 +782,7 @@ describe('player economy and cards', () => {
 		const baseCap = sim.supplyCap(HUMAN_PLAYER_ID);
 		const { index } = buildCard(sim, 'war-academy');
 		const raisedCap = sim.supplyCap(HUMAN_PLAYER_ID);
-		expect(raisedCap).toBe(baseCap + 40);
+		expect(raisedCap).toBe(baseCap + 80);
 		sim.gold = raisedCap;
 		const internals = sim as unknown as {
 			claim(index: number, newOwner: number, attackId?: number): void;
@@ -799,6 +800,6 @@ describe('player economy and cards', () => {
 		sim.gold = 0;
 		internals.goldAccrual = 0;
 		for (let i = 0; i < TICK_RATE; i++) sim.step();
-		expect(sim.gold).toBe(BASE_GOLD_INCOME + 2);
+		expect(sim.gold).toBe(BASE_GOLD_INCOME + 1);
 	});
 });

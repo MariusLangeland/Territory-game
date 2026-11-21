@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.41.0 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.42.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -128,7 +128,7 @@ Derived per tick from live territory and structures (same derived-stat style as 
 `defenseAt` — never a mutable per-cell array):
 
 ```text
-supplyCap(player)    = 120 + floor(territory / 1000) + 40 × WarAcademyStacks   // no maximum
+supplyCap(player)    = 120 + floor(territory / 1000) + 80 × WarAcademyStacks   // no maximum
 supplyIncome(player) =  3  + floor(territory / 1000) +  2 × CommandPostStacks   // per second, no cap
 ```
 
@@ -161,7 +161,7 @@ On the next tick the command is applied in `(sequence, playerId)` order:
 ```text
 effectiveLevels = max(0, attacker Barracks stacks − defender Jammer stacks)
 logTier         = 31 - clz32(effectiveLevels + 1)        // floor(log2(levels + 1))
-launchCost      = 30 + 15 × effectiveLevels              // no cap
+launchCost      = 30 + 40 × effectiveLevels              // no cap
 strength        = 1500 + 450 × effectiveLevels           // no cap
 powerPerTick    = 30 + 15 × logTier
 pierce          = logTier
@@ -241,7 +241,7 @@ captureCost   = max(1, defense − logTier)             // per capture, paid fro
 - Fortification: +1 per stack over every cell of its own district (additive, friendly-only).
 - Jammer: global enemy suppression, −1 effective Barracks level per stack; never alters pixel defense.
 - Districts, structure spacing (8 px), stacking, and razing rules are unchanged.
-- Barracks is the offensive scaler: each level adds +450 strength and +15 launch cost; each log2 tier
+- Barracks is the offensive scaler: each level adds +450 strength and +40 launch cost; each log2 tier
   adds +15 power and +1 piercing. Scaling never caps
   cost (see 3.6).
 - Example: State-aura highland occupied pixel with `logTier = 0` costs `max(1, 1+3+1+20) = 25`
@@ -256,11 +256,11 @@ Supply costs and the permanent six-card hand:
 | Card          | Cost | Implemented effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
-| Barracks      | 240  | +1 effective level; +450 strength/+15 cost per level, log2 power/pierce. |
+| Barracks      | 240  | +1 effective level; +450 strength/+40 cost per level, log2 power/pierce. |
 | Fortification | 40   | +1 defense per stack across its district.                                |
 | Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
-| Command Post  | 80   | +2 supply per second per stack.                                          |
-| War Academy   | 120  | +40 supply cap per stack; no global maximum.                             |
+| Command Post  | 80   | +1 supply per second per stack.                                          |
+| War Academy   | 120  | +80 supply cap per stack; no global maximum.                             |
 
 - `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is
@@ -359,7 +359,7 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `SUPPLY_START`                   | 90    | Starting supply, all players                           |
 | `SUPPLY_CAP_BASE`                | 120   | Base cap before territory/structures                   |
 | `SUPPLY_CAP_LAND_DIVISOR`        | 1000  | +1 cap per 1000 land cells                             |
-| `SUPPLY_CAP_PER_ACADEMY_STACK`   | 40    | War Academy cap bonus                                  |
+| `SUPPLY_CAP_PER_ACADEMY_STACK`   | 80    | War Academy cap bonus                                  |
 | `SUPPLY_INCOME_BASE`             | 3     | Supply/s base                                          |
 | `SUPPLY_INCOME_LAND_DIVISOR`     | 1000  | +1 supply/s per 1 000 land cells                       |
 | `SUPPLY_INCOME_PER_COMMAND_POST` | 2     | Supply/s per Command Post stack                        |
@@ -554,14 +554,14 @@ The user approved these on 2026-11-20. This table records the shipped choices; e
 | Current (implemented)                                                                                          | Proposed (Frontage v1)                                                                           |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Attack-order inventory (`BASE_HUMAN_ATTACK_ORDERS = 3`, `BASE_BOT_ATTACK_ORDERS = 2`), +1 per 100 ticks to cap | Supply stock; continuous income from territory + Command Posts; cap from territory + War Academy |
-| Launch cost 1 order                                                                                            | Launch cost `30 + 15 × effective levels` supply                                                  |
+| Launch cost 1 order                                                                                            | Launch cost `30 + 40 × effective levels` supply                                                  |
 | Embedded orders `1 + min(5, ceil(Barracks/2))`                                                                 | Effective levels = Barracks stacks minus defender Jammer stacks                                  |
 | Points/tick `30 + 15 × (orders − 1)`                                                                           | `power = 30 + 15 × logTier` spending cap                                                         |
 | Capture cost `max(1, defense − (orders − 1))`                                                                  | `max(1, defense − logTier)`, paid from durable strength                                          |
 | Lifetime `50 + 10 × (initial orders − 1)` ticks                                                                | Durable strength pool + 20-tick idle + 300-tick hygiene                                          |
 | Defender spends inventory orders to strip embedded orders                                                      | Simultaneous strength attrition on mutual contact                                                |
-| War Academy: +1 order cap                                                                                      | War Academy: +40 supply cap                                                                      |
-| Command Post: +1 order per 600 ticks                                                                           | Command Post: +2 supply/s                                                                        |
+| War Academy: +1 order cap                                                                                      | War Academy: +80 supply cap                                                                      |
+| Command Post: +1 order per 600 ticks                                                                           | Command Post: +1 supply/s                                                                        |
 | No refund / no cancel                                                                                          | No refund / no cancel (explicit)                                                                 |
 | Last alive wins                                                                                                | Last alive, or 60% land for 60 s, or 15-min score                                                |
 
