@@ -522,12 +522,12 @@ export class EvolutionSandbox {
 		}
 		const rounds = Math.ceil(this.population.length / this.config.playerCount);
 		const schedule: BotGenome[][] = [];
+		// Rotate a single population order by playerCount each match. The windows
+		// tile the population instead of sampling random starts, so no genome can
+		// sit out a generation and end with fitness 0.
+		const base = hash32(this.config.seed, this.generation, 0x9e3779b9) % this.population.length;
 		for (let round = 0; round < rounds * this.config.matchesPerRound; round++) {
-			const offset =
-				(round * this.config.playerCount +
-					(hash32(hash32(this.config.seed, this.generation, round), 0x9e3779b9, 0) %
-						this.population.length)) %
-				this.population.length;
+			const offset = (base + round * this.config.playerCount) % this.population.length;
 			const seats: BotGenome[] = [];
 			for (let seat = 0; seat < this.config.playerCount; seat++) {
 				seats.push(this.population[(offset + seat) % this.population.length]);

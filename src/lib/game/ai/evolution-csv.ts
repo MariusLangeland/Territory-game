@@ -23,6 +23,7 @@ const TRAIT_COLUMNS = [
 export function evolutionCsvHeader(): string[] {
 	return [
 		'id',
+		'evaluation_generation',
 		'generation',
 		'bucket',
 		'fitness',
@@ -51,10 +52,14 @@ function csvCell(value: string | number): string {
 	return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function serializeGenomeRow(row: GenomePerformance): string {
+export function serializeGenomeRow(
+	row: GenomePerformance,
+	evaluationGeneration = row.genome.generation
+): string {
 	const genome = row.genome;
 	const values: Array<string | number> = [
 		genome.id,
+		evaluationGeneration,
 		genome.generation,
 		row.bucket,
 		row.fitness,
@@ -81,15 +86,14 @@ export function serializeGenomeRow(row: GenomePerformance): string {
 
 export function serializeEvolutionCsv(report: EvolutionReport): string {
 	const lines = [evolutionCsvHeader().join(',')];
-	const seen = new Set<string>();
 	const generations = report.final
 		? [report.final, ...report.generations.filter((entry) => entry !== report.final)]
 		: report.generations;
 	for (const generation of generations) {
 		for (const row of generation.rows) {
-			if (seen.has(row.genome.id)) continue;
-			seen.add(row.genome.id);
-			lines.push(serializeGenomeRow(row));
+			// Reused QD elites appear in several generations; keep each evaluation
+			// row so the exported sheet still contains the full final population.
+			lines.push(serializeGenomeRow(row, generation.generation));
 		}
 	}
 	return `${lines.join('\r\n')}\r\n`;

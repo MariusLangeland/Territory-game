@@ -54,6 +54,31 @@ describe('evolutionary AI sandbox', () => {
 		expect(left.archive.every((row) => /^E\d-D\d-N\d-A\d$/.test(row.descriptor))).toBe(true);
 	});
 
+	it('schedules every population genome at least once per generation', () => {
+		const sandbox = new EvolutionSandbox({
+			seed: 17,
+			populationSize: 13,
+			generations: 2,
+			playerCount: 4,
+			matchesPerRound: 2,
+			ticks: 200,
+			width: 640,
+			height: 360
+		});
+		sandbox.begin();
+		const schedule = (sandbox as unknown as { schedule: Array<Array<{ id: string }>> }).schedule;
+		const appearances = new Map<string, number>();
+		for (const seats of schedule) {
+			const unique = new Set(seats.map((seat) => seat.id));
+			expect(unique.size).toBe(seats.length);
+			for (const id of unique) appearances.set(id, (appearances.get(id) ?? 0) + 1);
+		}
+		expect(appearances.size).toBe(13);
+		const counts = [...appearances.values()];
+		expect(Math.min(...counts)).toBeGreaterThanOrEqual(1);
+		expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+	});
+
 	it('runs mirrored ancestor duels in 1v1 lineage mode', () => {
 		const report = runEvolution({
 			seed: 5,

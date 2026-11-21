@@ -21,7 +21,7 @@
 >
 > **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry`, `pnpm balance`, and `pnpm soak` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
 >
-> **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md).
+> **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md); headless evolution findings live in [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md).
 
 ---
 
