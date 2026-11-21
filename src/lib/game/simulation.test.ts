@@ -1621,6 +1621,24 @@ describe('bot threat detection and defensive behaviour', () => {
 		);
 	});
 
+	it('uses one supply pool for player 1 in all-bot matches', () => {
+		const sim = new TerritorySimulation({
+			seed: 77,
+			width: 640,
+			height: 360,
+			playerCount: 2,
+			allPlayersBots: true,
+			duelStarts: true
+		});
+		const internals = sim as unknown as { botGold: number[] };
+		const snapshot = sim.getSnapshot();
+		expect(snapshot.humanId).toBe(0);
+		expect(snapshot.players[0].supply).toBe(internals.botGold[0]);
+		expect(snapshot.players[0].supply).toBe(snapshot.players[1].supply);
+		for (let tick = 0; tick < 200; tick++) sim.step();
+		expect(sim.getSnapshot().players[0].supply).toBe(internals.botGold[0]);
+	});
+
 	it('records successful attack and defense reward metrics', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });
 		for (let tick = 0; tick < 2500; tick++) sim.step();

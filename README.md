@@ -42,7 +42,7 @@
 | Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                                      |
 | AI Evolution    | Genome traits + behaviour modules, strategic options, QD descriptor archive, tunable attack/defense fitness weights, selection/pruning/mutation, buckets, CSV, up-to-1000× WebGPU lab |
 | AI strategy     | Committed strategic options/blackboard, neighbour pressure, deterrence, supply opportunities, bot naval campaigns, coordinated teams, behavior telemetry                              |
-| Duel Lab        | Explicit 1v1 mode with two named characters, close centre spawns, no culling, forced least-fit mutation and a mutation graph/path                                                     |
+| Duel Lab        | Explicit 1v1 mode with named characters, mirrored close centre spawns, one fair supply pool, forced least-fit mutation and a mutation graph/path                                      |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                 |
 | Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                                          |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                   |

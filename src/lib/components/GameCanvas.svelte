@@ -355,7 +355,7 @@
 				}
 			}
 			const rivals = snapshot.players.filter(
-				(player) => player.alive && player.id !== HUMAN_PLAYER_ID && player.territory > 0
+				(player) => player.alive && player.id !== snapshot.humanId && player.territory > 0
 			);
 			if (rivals.length === 0) return;
 			const maxTerritory = Math.max(1, ...rivals.map((player) => player.territory));

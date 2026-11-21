@@ -501,6 +501,7 @@ export class TerritorySimulation {
 	readonly playerCount: number;
 	readonly map: GeneratedMap;
 	readonly botDifficulty: BotDifficulty;
+	private readonly allPlayersBots: boolean;
 	readonly matchDurationTicks: number;
 	readonly owners: Uint16Array;
 	/** Attack id that most recently captured each cell; 0 for starting land. */
@@ -578,7 +579,7 @@ export class TerritorySimulation {
 	private readonly land: Uint8Array;
 	private readonly shade: Uint8Array;
 	private readonly elevation: Uint8Array;
-	private readonly landCount: number;
+	private landCount: number;
 	private readonly seaComponents: Uint32Array;
 	private readonly seaRouter: SeaRouter;
 	private readonly shoreIndices: number[] = [];
@@ -611,6 +612,7 @@ export class TerritorySimulation {
 
 	constructor(options: SimulationOptions) {
 		this.seed = options.seed >>> 0;
+		this.allPlayersBots = options.allPlayersBots === true;
 		const playerCount = Math.trunc(options.playerCount ?? PLAYER_COUNT);
 		if (playerCount < 2 || playerCount > PLAYER_COUNT) {
 			throw new Error(`playerCount must be between 2 and ${PLAYER_COUNT}.`);
@@ -638,7 +640,7 @@ export class TerritorySimulation {
 		this.elevation = this.map.elevation;
 		this.landCount = this.map.landCount;
 		if (options.duelStarts && this.playerCount === 2) {
-			this.map.starts = this.chooseDuelStarts();
+			this.prepareDuelMap();
 		}
 		this.seaComponents = computeSeaComponents(this.land, this.width, this.height);
 		this.seaRouter = new SeaRouter(this.land, this.width, this.height);
@@ -838,12 +840,13 @@ export class TerritorySimulation {
 	}
 
 	private supplyOf(playerId: number): number {
-		return playerId === HUMAN_PLAYER_ID ? this.gold : (this.botGold[playerId - 1] ?? 0);
+		if (playerId === HUMAN_PLAYER_ID && !this.allPlayersBots) return this.gold;
+		return this.botGold[playerId - 1] ?? 0;
 	}
 
 	private setSupply(playerId: number, value: number): void {
 		const clamped = Math.max(0, Math.min(this.supplyCap(playerId), value));
-		if (playerId === HUMAN_PLAYER_ID) this.gold = clamped;
+		if (playerId === HUMAN_PLAYER_ID && !this.allPlayersBots) this.gold = clamped;
 		else this.botGold[playerId - 1] = clamped;
 	}
 
@@ -894,11 +897,13 @@ export class TerritorySimulation {
 	 * Rates are per second and converted with an integer remainder at 10 Hz.
 	 */
 	private accrueResources(): void {
-		this.goldAccrual += this.income * TICK_RATE;
-		const earnedGold = Math.floor(this.goldAccrual / INCOME_INTERVAL_TICKS);
-		if (earnedGold > 0) {
-			this.creditSupply(HUMAN_PLAYER_ID, earnedGold);
-			this.goldAccrual -= earnedGold * INCOME_INTERVAL_TICKS;
+		if (!this.allPlayersBots) {
+			this.goldAccrual += this.income * TICK_RATE;
+			const earnedGold = Math.floor(this.goldAccrual / INCOME_INTERVAL_TICKS);
+			if (earnedGold > 0) {
+				this.creditSupply(HUMAN_PLAYER_ID, earnedGold);
+				this.goldAccrual -= earnedGold * INCOME_INTERVAL_TICKS;
+			}
 		}
 
 		for (const player of this.players) {
@@ -4446,9 +4451,105 @@ export class TerritorySimulation {
 	}
 
 	/**
-	 * Duel starts deliberately ignore the usual farthest-point spread. Both
-	 * states begin within a few start-radii of the map centre so every round
-	 * has contact potential instead of two isolated expansion races.
+	 * Duel maps are mirrored across the vertical centre line. Both players
+	 * therefore get the same land, elevation and expansion room; seat order is
+	 * the only remaining asymmetry.
+	 */
+	private prepareDuelMap(): void {
+		const map = this.map;
+		const cx = Math.floor(map.width / 2);
+		for (let y = 0; y < map.height; y++) {
+			const row = y * map.width;
+			for (let x = 0; x < cx; x++) {
+				const source = row + (map.width - 1 - x);
+				const target = row + x;
+				map.land[target] = map.land[source];
+				map.shade[target] = map.shade[source];
+				map.elevation[target] = map.elevation[source];
+			}
+		}
+		let landCount = 0;
+		for (let index = 0; index < map.land.length; index++) {
+			if (map.land[index]) landCount++;
+		}
+		map.landCount = landCount;
+		this.landCount = landCount;
+
+		const localLand = (x: number, y: number): number => {
+			let count = 0;
+			for (let dy = -8; dy <= 8; dy++) {
+				for (let dx = -8; dx <= 8; dx++) {
+					const sx = x + dx;
+					const sy = y + dy;
+					if (sx < 0 || sy < 0 || sx >= map.width || sy >= map.height) continue;
+					if (map.land[sy * map.width + sx]) count++;
+				}
+			}
+			return count;
+		};
+		const cy = Math.floor(map.height / 2);
+		let best: StartPoint[] | null = null;
+		let bestScore = Number.POSITIVE_INFINITY;
+		for (let radius = 0; radius < Math.min(map.height / 2, 240); radius += 2) {
+			for (const y of radius === 0 ? [cy] : [cy - radius, cy + radius]) {
+				if (y < 0 || y >= map.height) continue;
+				for (let offset = 40; offset <= 180; offset += 2) {
+					const x = cx - offset;
+					const mirrorX = map.width - 1 - x;
+					if (x < 0 || mirrorX >= map.width) continue;
+					if (!map.land[y * map.width + x] || !map.land[y * map.width + mirrorX]) {
+						continue;
+					}
+					if (localLand(x, y) < 230 || localLand(mirrorX, y) < 230) continue;
+					const score = radius * 2 + Math.abs(offset - 52) * 3;
+					if (score < bestScore) {
+						bestScore = score;
+						best = [
+							{ index: y * map.width + x, x, y },
+							{ index: y * map.width + mirrorX, x: mirrorX, y }
+						];
+					}
+				}
+			}
+			if (best) break;
+		}
+		const chosen = best as StartPoint[] | null;
+		map.starts =
+			chosen && this.landConnected(chosen[0].index, chosen[1].index)
+				? chosen
+				: this.chooseDuelStarts();
+	}
+
+	private landConnected(first: number, second: number): boolean {
+		const visited = new Uint8Array(this.land.length);
+		const queue = new Int32Array(this.land.length);
+		let head = 0;
+		let tail = 0;
+		visited[first] = 1;
+		queue[tail++] = first;
+		while (head < tail) {
+			const index = queue[head++];
+			if (index === second) return true;
+			const x = index % this.width;
+			const y = (index - x) / this.width;
+			const neighbours = [
+				x > 0 ? index - 1 : -1,
+				x + 1 < this.width ? index + 1 : -1,
+				y > 0 ? index - this.width : -1,
+				y + 1 < this.height ? index + this.width : -1
+			];
+			for (const next of neighbours) {
+				if (next < 0 || !this.land[next] || visited[next]) continue;
+				visited[next] = 1;
+				queue[tail++] = next;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Fallback for maps where the mirrored search cannot find a local pair.
+	 * Both states still begin within a few start-radii of the centre.
 	 */
 	private chooseDuelStarts(): StartPoint[] {
 		const cx = this.width / 2;
@@ -4553,7 +4654,11 @@ export class TerritorySimulation {
 
 					// Perturb the frontier with an integer hash so beachheads read
 					// as rough coastline rather than perfect circles.
-					const wobble = 0.82 + (hash32(x, y, this.seed ^ (i * 0x9e37)) & 0xff) / 1450;
+					// Relative-to-start wobble keeps mirrored duel starts identical;
+					// a player-indexed absolute hash made one side's beachhead
+					// systematically larger and snowballed the first seat.
+					const wobble =
+						0.82 + (hash32(Math.abs(dx), dy + outerRadius, this.seed ^ 0x9e37) & 0xff) / 1450;
 					const radius = START_RADIUS * wobble;
 					if (dx * dx + dy * dy > radius * radius) continue;
 
@@ -4674,17 +4779,17 @@ export class TerritorySimulation {
 			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
 			navalLandings: this.navalLandings.map((landing) => this.toPublicNavalLanding(landing)),
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
-			gold: this.gold,
-			income: this.income,
-			supply: this.gold,
+			gold: this.supplyOf(HUMAN_PLAYER_ID),
+			income: this.supplyIncomeFor(HUMAN_PLAYER_ID),
+			supply: this.supplyOf(HUMAN_PLAYER_ID),
 			supplyCap: this.supplyCap(HUMAN_PLAYER_ID),
-			supplyIncome: this.income,
+			supplyIncome: this.supplyIncomeFor(HUMAN_PLAYER_ID),
 			hand: this.hand.map((card) => ({ id: card.id, type: card.type })),
 			attackOrders: 0,
 			attackOrderCap: 0,
 			winnerId: this.winnerId,
 			ended: this.ended,
-			humanId: HUMAN_PLAYER_ID,
+			humanId: this.allPlayersBots ? 0 : HUMAN_PLAYER_ID,
 			growthMode: this.growthMode
 		};
 	}

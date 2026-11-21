@@ -26,6 +26,19 @@ evaluation, making the exported final population look incomplete.
 The CSV now includes an `evaluation_generation` column and keeps one row per
 genome evaluation. Re-importing still deduplicates by genome id.
 
+### 3. All-bot player 1 had two supply pools
+
+In spectated all-bot matches, player 1 was still hard-coded as the POV/human seat.
+Economy spending used `botGold[0]`, while attacks and income used the separate
+human `gold` pool. Player 1 could therefore bank one pool for structures and spend
+the other on fronts forever, and the rival supply banner skipped it because it was
+treated as the POV.
+
+All-bot matches now route player 1 through `botGold` like every other bot,
+credit its income once, set `snapshot.humanId = 0`, and show its supply banner.
+Duel starts are also mirrored and terrain-mirrored. Seat-1 win rate changed from
+20/20 to roughly 8–12/20 in sampled runs.
+
 ## Results after the fixes
 
 ### Seed 2026 — 12 genomes, 6 players, 3,000 ticks, 2 matches/genome
