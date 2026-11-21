@@ -22,6 +22,11 @@ export interface EvolutionConfig {
 	height: number;
 	/** 1 = free-for-all; >1 assigns cyclic teams for coordinated bot matches. */
 	teamCount: number;
+	/**
+	 * In 1v1, evaluate each descendant in mirrored duels against one parent so a
+	 * mutation must beat its ancestor instead of relying on mixed-pair noise.
+	 */
+	lineageDuels: boolean;
 }
 
 export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
@@ -33,7 +38,8 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
 	ticks: 1600,
 	width: 1280,
 	height: 720,
-	teamCount: 1
+	teamCount: 1,
+	lineageDuels: true
 };
 
 export interface GenomePerformance {
@@ -52,6 +58,10 @@ export interface GenomePerformance {
 	naval: number;
 	aggression: number;
 	cooperation: number;
+	/** Direct parent-duel record; zero matches means no lineage duel was played. */
+	lineageWins: number;
+	lineageLosses: number;
+	lineageDelta: number;
 }
 
 export interface GenerationResult {
@@ -81,6 +91,9 @@ interface Evaluation {
 	naval: number;
 	aggression: number;
 	cooperation: number;
+	lineageWins: number;
+	lineageLosses: number;
+	lineageDelta: number;
 }
 
 export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}): EvolutionConfig {
@@ -95,7 +108,8 @@ export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}):
 		ticks: Math.max(200, Math.min(30_000, Math.trunc(merged.ticks))),
 		width: Math.max(512, Math.trunc(merged.width)),
 		height: Math.max(256, Math.trunc(merged.height)),
-		teamCount: Math.max(1, Math.min(playerCount, Math.trunc(merged.teamCount)))
+		teamCount: Math.max(1, Math.min(playerCount, Math.trunc(merged.teamCount))),
+		lineageDuels: merged.lineageDuels !== false
 	};
 }
 
@@ -198,37 +212,74 @@ function scoreMatch(
 			income: simulation.incomeOf(playerId),
 			attackStrength,
 			fitness,
-			...strategy
+			...strategy,
+			lineageWins: 0,
+			lineageLosses: 0,
+			lineageDelta: 0
 		});
+	}
+	if (seats.length === 2) {
+		const first = scored.get(seats[0].id);
+		const second = scored.get(seats[1].id);
+		if (first && second) {
+			const pairs: Array<[Evaluation, Evaluation]> = [
+				[first, second],
+				[second, first]
+			];
+			for (const [child, parent] of pairs) {
+				if (!child.genome.parents.includes(parent.genome.id)) continue;
+				// Mirror duels use the same map and swapped seats. Compare the
+				// summed performance margin so a lucky spawn cancels across seats
+				// instead of becoming a false binary win.
+				child.lineageDelta += child.fitness - parent.fitness;
+			}
+		}
 	}
 	return scored;
 }
 
-function aggregateEvaluations(evaluations: Map<string, Evaluation>): GenomePerformance[] {
-	const rows = Array.from(evaluations.values()).map<GenomePerformance>((evaluation) => ({
-		genome: evaluation.genome,
-		bucket: 'poor',
-		matches: evaluation.matches,
-		wins: evaluation.wins,
-		landShare: evaluation.matches ? evaluation.landShare / evaluation.matches : 0,
-		income: evaluation.matches ? evaluation.income / evaluation.matches : 0,
-		attackStrength: evaluation.matches ? evaluation.attackStrength / evaluation.matches : 0,
-		fitness: evaluation.matches
-			? Math.round((evaluation.fitness / evaluation.matches) * 100) / 100
-			: 0,
-		economy: evaluation.matches ? evaluation.economy / evaluation.matches : 0,
-		defense: evaluation.matches ? evaluation.defense / evaluation.matches : 0,
-		naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
-		aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0,
-		cooperation: evaluation.matches ? evaluation.cooperation / evaluation.matches : 0,
-		descriptor: descriptorFor({
+function aggregateEvaluations(
+	evaluations: Map<string, Evaluation>,
+	populationIds?: Set<string>
+): GenomePerformance[] {
+	const rows = Array.from(evaluations.values())
+		.filter((evaluation) => !populationIds || populationIds.has(evaluation.genome.id))
+		.map<GenomePerformance>((evaluation) => ({
+			genome: evaluation.genome,
+			bucket: 'poor',
+			matches: evaluation.matches,
+			wins: evaluation.wins,
+			landShare: evaluation.matches ? evaluation.landShare / evaluation.matches : 0,
+			income: evaluation.matches ? evaluation.income / evaluation.matches : 0,
+			attackStrength: evaluation.matches ? evaluation.attackStrength / evaluation.matches : 0,
+			fitness: evaluation.matches
+				? Math.round((evaluation.fitness / evaluation.matches) * 100) / 100
+				: 0,
 			economy: evaluation.matches ? evaluation.economy / evaluation.matches : 0,
 			defense: evaluation.matches ? evaluation.defense / evaluation.matches : 0,
 			naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
-			aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0
-		})
-	}));
-	rows.sort((a, b) => b.fitness - a.fitness || a.genome.id.localeCompare(b.genome.id));
+			aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0,
+			cooperation: evaluation.matches ? evaluation.cooperation / evaluation.matches : 0,
+			lineageWins: evaluation.lineageDelta > 0 ? 1 : 0,
+			lineageLosses: evaluation.lineageDelta < 0 ? 1 : 0,
+			lineageDelta: evaluation.lineageDelta,
+			descriptor: descriptorFor({
+				economy: evaluation.matches ? evaluation.economy / evaluation.matches : 0,
+				defense: evaluation.matches ? evaluation.defense / evaluation.matches : 0,
+				naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
+				aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0
+			})
+		}));
+	// A mutation that loses its mirrored ancestor comparison falls below any
+	// neutral genome; a winner rises. This keeps selection incremental.
+	const selectionScore = (row: GenomePerformance): number =>
+		row.fitness + (row.lineageWins - row.lineageLosses) * 60_000;
+	rows.sort(
+		(left, right) =>
+			selectionScore(right) - selectionScore(left) ||
+			right.fitness - left.fitness ||
+			left.genome.id.localeCompare(right.genome.id)
+	);
 	return rows;
 }
 
@@ -251,15 +302,18 @@ function nextPopulation(
 	generation: number,
 	archive: Map<string, GenomePerformance>
 ): BotGenome[] {
-	const survivorCount = Math.max(2, Math.ceil(rows.length * 0.5));
-	const survivors = rows.slice(0, survivorCount).map((row) => row.genome);
+	const lineageCull = config.playerCount === 2 && config.lineageDuels;
+	const eligible = lineageCull ? rows.filter((row) => row.lineageLosses <= row.lineageWins) : rows;
+	const survivorPool = eligible.length >= 2 ? eligible : rows;
+	const survivorCount = Math.max(2, Math.ceil(survivorPool.length * 0.5));
+	const survivors = survivorPool.slice(0, survivorCount).map((row) => row.genome);
 	const eliteCount = Math.max(1, Math.ceil(rows.length * 0.2));
 	const archiveElites = Array.from(archive.values()).sort(
 		(left, right) => right.fitness - left.fitness
 	);
 	const next: BotGenome[] = [];
 	const eliteIds = new Set<string>();
-	for (const row of rows.slice(0, eliteCount)) {
+	for (const row of survivorPool.slice(0, eliteCount)) {
 		if (eliteIds.has(row.genome.id)) continue;
 		eliteIds.add(row.genome.id);
 		next.push(cloneGenome(row.genome));
@@ -272,7 +326,7 @@ function nextPopulation(
 		eliteIds.add(row.genome.id);
 		next.push(cloneGenome(row.genome));
 	}
-	const parentPool = [...rows.slice(0, survivorCount), ...archiveElites];
+	const parentPool = [...survivorPool.slice(0, survivorCount), ...archiveElites];
 	while (next.length < config.populationSize) {
 		const seed = hash32(hash32(config.seed, generation, next.length), 0x27d4eb2d, 0);
 		const first = parentPool[seed % parentPool.length].genome;
@@ -299,12 +353,21 @@ export class EvolutionSandbox {
 	/** MAP-Elites-style archive: best fitness per strategy descriptor. */
 	readonly archive = new Map<string, GenomePerformance>();
 	private schedule: BotGenome[][] = [];
+	/** Optional fixed seed per match so mirrored lineage duels share a map. */
+	private scheduleSeeds: number[] = [];
 	private evaluations = new Map<string, Evaluation>();
+	/** Keeps ancestors available as opponents after they leave the live population. */
+	private readonly genomeBank = new Map<string, BotGenome>();
 	private pendingPopulation: BotGenome[] = [];
 
 	constructor(config: Partial<EvolutionConfig> = {}) {
 		this.config = normalizeEvolutionConfig(config);
 		this.population = createInitialPopulation(this.config);
+		this.registerGenomes(this.population);
+	}
+
+	private registerGenomes(genomes: readonly BotGenome[]): void {
+		for (const genome of genomes) this.genomeBank.set(genome.id, genome);
 	}
 
 	get latestRows(): GenomePerformance[] {
@@ -336,6 +399,8 @@ export class EvolutionSandbox {
 		this.population = pool.slice(0, this.config.populationSize);
 		this.reports = [];
 		this.archive.clear();
+		this.genomeBank.clear();
+		this.registerGenomes(this.population);
 		this.generation = 0;
 		this.currentSimulation = null;
 		this.phase = 'idle';
@@ -347,11 +412,9 @@ export class EvolutionSandbox {
 		if (this.phase !== 'match' || this.currentSimulation) return false;
 		if (this.currentMatchIndex >= this.schedule.length) return false;
 		const seats = this.schedule[this.currentMatchIndex];
-		const seed = hash32(
-			hash32(this.config.seed, this.generation, this.currentMatchIndex),
-			0x51ed270b,
-			0
-		);
+		const seed =
+			this.scheduleSeeds[this.currentMatchIndex] ??
+			hash32(hash32(this.config.seed, this.generation, this.currentMatchIndex), 0x51ed270b, 0);
 		this.currentMatchSeed = seed;
 		this.currentSeats = seats;
 		this.currentSimulation = new TerritorySimulation({
@@ -403,6 +466,7 @@ export class EvolutionSandbox {
 				existing.naval += value.naval;
 				existing.aggression += value.aggression;
 				existing.cooperation += value.cooperation;
+				existing.lineageDelta += value.lineageDelta;
 			}
 		}
 		this.currentSimulation = null;
@@ -427,6 +491,7 @@ export class EvolutionSandbox {
 		this.currentSimulation = null;
 		this.currentSeats = [];
 		this.evaluations = new Map();
+		this.registerGenomes(this.population);
 		this.schedule = this.buildSchedule();
 		for (const genome of this.population) {
 			this.evaluations.set(genome.id, {
@@ -441,13 +506,20 @@ export class EvolutionSandbox {
 				defense: 0,
 				naval: 0,
 				aggression: 0,
-				cooperation: 0
+				cooperation: 0,
+				lineageWins: 0,
+				lineageLosses: 0,
+				lineageDelta: 0
 			});
 		}
 		this.startNextMatch();
 	}
 
 	private buildSchedule(): BotGenome[][] {
+		this.scheduleSeeds = [];
+		if (this.config.playerCount === 2 && this.config.lineageDuels) {
+			return this.buildLineageSchedule();
+		}
 		const rounds = Math.ceil(this.population.length / this.config.playerCount);
 		const schedule: BotGenome[][] = [];
 		for (let round = 0; round < rounds * this.config.matchesPerRound; round++) {
@@ -465,10 +537,46 @@ export class EvolutionSandbox {
 		return schedule;
 	}
 
+	/**
+	 * Every current genome meets one parent in both seat orders. Comparing the
+	 * two match performances isolates the mutation from mixed-pair noise: losing
+	 * both is a lineage loss, winning both is a lineage win.
+	 */
+	private buildLineageSchedule(): BotGenome[][] {
+		const schedule: BotGenome[][] = [];
+		const passes = Math.max(1, Math.ceil(this.config.matchesPerRound / 2));
+		for (let index = 0; index < this.population.length; index++) {
+			const child = this.population[index];
+			const ancestors = child.parents
+				.map((id) => this.genomeBank.get(id))
+				.filter((genome): genome is BotGenome => !!genome && genome.id !== child.id);
+			let opponent: BotGenome | undefined;
+			if (ancestors.length > 0) {
+				const pick = hash32(hash32(this.config.seed, this.generation, index), 0x85ebca6b, index);
+				opponent = ancestors[pick % ancestors.length];
+			} else {
+				opponent = this.population[(index + 1) % this.population.length];
+				if (opponent.id === child.id)
+					opponent = this.population[(index + 2) % this.population.length];
+			}
+			if (!opponent || opponent.id === child.id) continue;
+			for (let pass = 0; pass < passes; pass++) {
+				const pairSeed = hash32(hash32(this.config.seed, this.generation, index), 0x9e3779b9, pass);
+				schedule.push([child, opponent], [opponent, child]);
+				this.scheduleSeeds.push(pairSeed, pairSeed);
+			}
+		}
+		return schedule;
+	}
+
 	private completeGeneration(): void {
-		const rows = aggregateEvaluations(this.evaluations);
+		const populationIds = new Set(this.population.map((genome) => genome.id));
+		const rows = aggregateEvaluations(this.evaluations, populationIds);
 		const buckets = bucketRows(rows);
 		for (const row of rows) {
+			// A genome that lost both mirrored ancestor duels does not earn a
+			// quality-diversity slot; otherwise the archive would rescue it.
+			if (row.lineageLosses > row.lineageWins) continue;
 			const existing = this.archive.get(row.descriptor);
 			if (!existing || row.fitness > existing.fitness) {
 				this.archive.set(row.descriptor, { ...row });
@@ -497,6 +605,7 @@ export class EvolutionSandbox {
 		this.generation++;
 		this.population = this.pendingPopulation;
 		this.pendingPopulation = [];
+		this.registerGenomes(this.population);
 		this.startGeneration();
 	}
 

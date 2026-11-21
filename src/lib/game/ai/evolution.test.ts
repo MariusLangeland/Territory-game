@@ -54,6 +54,30 @@ describe('evolutionary AI sandbox', () => {
 		expect(left.archive.every((row) => /^E\d-D\d-N\d-A\d$/.test(row.descriptor))).toBe(true);
 	});
 
+	it('runs mirrored ancestor duels in 1v1 lineage mode', () => {
+		const report = runEvolution({
+			seed: 5,
+			populationSize: 8,
+			generations: 3,
+			playerCount: 2,
+			matchesPerRound: 2,
+			ticks: 200,
+			width: 640,
+			height: 360,
+			lineageDuels: true
+		});
+		const rows = report.final.rows;
+		expect(rows).toHaveLength(8);
+		expect(
+			rows
+				.filter((row) => row.genome.parents.length > 0)
+				.every((row) => row.lineageWins + row.lineageLosses <= 1)
+		).toBe(true);
+		const allRows = report.generations.flatMap((generation) => generation.rows);
+		expect(allRows.some((row) => row.lineageWins > 0)).toBe(true);
+		expect(allRows.some((row) => row.lineageLosses > 0)).toBe(true);
+	}, 10_000);
+
 	it('round-trips genomes through the spreadsheet CSV', () => {
 		const report = runEvolution({
 			seed: 7,

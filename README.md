@@ -27,28 +27,28 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                                     |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                                           |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically                       |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                   |
-| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                     |
-| Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism                               |
-| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                                       |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                              |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                   |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                                             |
-| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                                     |
-| AI Evolution    | Genome traits + behaviour modules, strategic options, QD descriptor archive, selection/pruning/mutation, poor/good/top buckets, CSV, up-to-1000× WebGPU spectator lab and 1v1 preset |
-| AI strategy     | Committed strategic options/blackboard, neighbour pressure, deterrence, supply opportunities, bot naval campaigns, coordinated teams, behavior telemetry                             |
-| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                |
-| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                                         |
-| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                  |
-| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                             |
-| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                          |
-| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                                              |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                                                            |
+| Area            | Implementation                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                                |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                                      |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically                  |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                              |
+| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                |
+| Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism                          |
+| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                                  |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                         |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                              |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                                        |
+| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                                |
+| AI Evolution    | Genome traits + behaviour modules, strategic options, QD descriptor archive, mirrored ancestor culling in 1v1, selection/pruning/mutation, buckets, CSV, up-to-1000× WebGPU lab |
+| AI strategy     | Committed strategic options/blackboard, neighbour pressure, deterrence, supply opportunities, bot naval campaigns, coordinated teams, behavior telemetry                        |
+| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                           |
+| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                                    |
+| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                             |
+| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                        |
+| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                     |
+| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                                         |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                                                       |
 
 ## Quick start
 

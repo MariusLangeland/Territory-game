@@ -37,7 +37,8 @@
 		ticks: 1600,
 		width: 1280,
 		height: 720,
-		teamCount: 1
+		teamCount: 1,
+		lineageDuels: true
 	});
 	let sandbox = $state<EvolutionSandbox | null>(null);
 	let currentSimulation = $state<TerritorySimulation | null>(null);
@@ -100,10 +101,11 @@
 			populationSize: 8,
 			matchesPerRound: 4,
 			ticks: 800,
-			generations: Math.max(2, config.generations)
+			generations: Math.max(2, config.generations),
+			lineageDuels: true
 		};
 		speed = 1000;
-		notice = '1v1 preset: 8 genomes, 2 seats, 4 matches/round at 1000×.';
+		notice = '1v1 preset: 8 genomes, mirrored ancestor duels at 1000×.';
 		start();
 	}
 
@@ -356,6 +358,10 @@
 							bind:value={config.teamCount}
 						/>
 					</label>
+					<label class="toggle">
+						<input type="checkbox" bind:checked={config.lineageDuels} />
+						<span>LINEAGE DUELS (1v1)</span>
+					</label>
 				</div>
 				<div class="run-actions">
 					<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
@@ -363,7 +369,8 @@
 				</div>
 				<p class="hint">
 					Fitness = land + income + attack + wins + survival +
-					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all.
+					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all. Lineage duels
+					(1v1) test each descendant against a parent; a losing record is culled.
 				</p>
 			</section>
 
@@ -432,7 +439,7 @@
 						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>DESCRIPTOR</th><th>FITNESS</th>
 						<th>LAND</th><th>INCOME</th><th>ECO</th><th>DEF</th><th>NAV</th><th>ATT</th><th>
 							COOP
-						</th><th>WINS</th>
+						</th><th>LIN Δ</th><th>WINS</th>
 						<th>MODULES (INC/DEF/DET/OPP/EXP/RET)</th>
 					</tr>
 				</thead>
@@ -452,6 +459,10 @@
 							<td>{row.naval.toFixed(1)}</td>
 							<td>{Math.round(row.aggression)}</td>
 							<td>{Math.round(row.cooperation)}</td>
+							<td class="mono">
+								{row.lineageWins > 0 ? 'W' : row.lineageLosses > 0 ? 'L' : '—'}
+								{row.lineageDelta >= 0 ? '+' : ''}{Math.round(row.lineageDelta)}
+							</td>
 							<td>{row.wins}</td>
 							<td class="mono modules">
 								{Math.round(row.genome.modules.income)}/{Math.round(
@@ -466,7 +477,7 @@
 					{/each}
 					{#if rows.length === 0}
 						<tr>
-							<td colspan="15" class="empty-row">
+							<td colspan="16" class="empty-row">
 								No scores yet. Start a run and finish at least one match.
 							</td>
 						</tr>
@@ -644,6 +655,25 @@
 		padding: 5px 6px;
 		min-width: 0;
 	}
+	.fields .toggle {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		grid-column: 1 / -1;
+		padding-top: 2px;
+	}
+
+	.fields .toggle input {
+		width: auto;
+		margin: 0;
+	}
+
+	.fields .toggle span {
+		color: #9bb3bd;
+		font-size: 9px;
+		letter-spacing: 0.08em;
+	}
+
 	.run-actions {
 		display: flex;
 		gap: 6px;

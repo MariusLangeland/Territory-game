@@ -2054,3 +2054,29 @@ The tactical utility layer produced context-sensitive decisions, but bots had no
 - Evolution optimizes both outcome and behavioral diversity, reducing collapse to one dominant strategy.
 - Reward metrics now favor multiple viable archetypes, not just land grabbing.
 - The option set is intentionally small and symbolic; richer HTN/GOAP planning and dynamic diplomacy remain future work.
+
+---
+
+## ADR-064 — Mirrored lineage duels for 1v1 evolution
+
+**Status:** accepted and implemented in 0.57.0  
+**Date:** 2026-11-21
+
+### Context
+
+The lab originally scored each generation in mixed schedules and then kept the top half by aggregate fitness. That is a valid population-selection scheme, but in 1v1 it does not directly test the mutation hypothesis: a child can be carried by a favourable opponent draw instead of proving it beats its ancestor, and an ancestor can persist only because it is in a different descriptor niche.
+
+### Decision
+
+- In 1v1 with lineage duels enabled, every current genome plays one parent in same-seed, seat-swapped matches.
+- The summed fitness margin across same-seed, seat-swapped fights is the lineage result: positive promotes the genome, negative prevents it from entering the survivor pool and from creating a new QD archive slot.
+- The generation still keeps the top half of eligible genomes plus QD elites; a zero margin is neutral and falls back to ordinary fitness.
+- `matchesPerRound` controls the number of mirrored passes (two matches per pass); lineage results are shown as `LIN W-L` and included in CSV.
+- Initial/imported genomes without a known ancestor use a deterministic mirror pairing until the first mutation generation.
+
+### Consequences
+
+- Beneficial mutations are tested against their immediate ancestor, not only against the population average.
+- Direct losers are culled even if their absolute fitness looks acceptable; QD diversity is not allowed to rescue a genome that loses its lineage duel.
+- Same-seed mirroring removes map variance but not seat asymmetry, so a single split is treated as a draw.
+- This is still short-horizon incremental selection, not full coevolution or open-ended search; multi-parent crossover records one parent as the duel ancestor.

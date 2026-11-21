@@ -37,6 +37,9 @@ export function evolutionCsvHeader(): string[] {
 		'strategy_naval',
 		'strategy_aggression',
 		'strategy_cooperation',
+		'lineage_wins',
+		'lineage_losses',
+		'lineage_delta',
 		...TRAIT_COLUMNS,
 		...BOT_MODULE_IDS.map((id) => `module_${id}`),
 		...BUILDABLE_STRUCTURE_TYPES.map((type) => `bias_${type}`)
@@ -66,6 +69,9 @@ export function serializeGenomeRow(row: GenomePerformance): string {
 		row.naval.toFixed(1),
 		row.aggression.toFixed(1),
 		row.cooperation.toFixed(1),
+		row.lineageWins,
+		row.lineageLosses,
+		row.lineageDelta.toFixed(0),
 		...TRAIT_COLUMNS.map((column) => genome[column]),
 		...BOT_MODULE_IDS.map((id) => genome.modules[id]),
 		...BUILDABLE_STRUCTURE_TYPES.map((type) => genome.structureBias[type])
