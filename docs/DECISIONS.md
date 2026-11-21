@@ -1997,3 +1997,32 @@ Bot behavior was hand-tuned through constants and personality hashes. Improving 
 - All-bot simulations add an option that makes the human seat a bot; normal matches are unaffected when no genomes are supplied.
 - Evolution behavior is deterministic and covered by tests for genome mutation/crossover, selection, buckets, CSV round-trip, and genome-derived profiles.
 - The spreadsheet is not a binary .xlsx workbook; CSV is used so the client can import it with no extra dependency.
+
+---
+
+## ADR-062 — AI behavior telemetry, naval strategy, teams, and release hygiene
+
+**Status:** accepted and implemented in 0.55.0  
+**Date:** 2026-11-21
+
+### Context
+
+The new economy/deterrence/opportunity AI needed measurement before tuning, bots still ignored Ports for offense, documentation duplicated card costs, version strings were manually copied, and several product-backlog items were still deferred.
+
+### Decision
+
+- Add non-gameplay `BotBehaviorTelemetry` counters for threatened Fortifications, deterrence postures, income-gap economy, supply opportunities, bot Ports, and landings. Expose them through telemetry, post-match analysis, and the result modal.
+- Add `pnpm ai:balance` for an 8-seed × 6,000-tick matrix across standard/ruthless and organic/circular, including elimination variance, average match length, front activity, Fortification coverage, economy investment, and behavior counters.
+- Add deterministic bot naval planning: coastal opportunity scoring, Port builds, sea-connected target validation, low-supply/low-defense preference, and a minimum-score/supply gate.
+- Add optional coordinated teams. Teammates never target each other and gain a coordination bonus when joining an ally's target. The Evolution Lab exposes team count.
+- Add post-match analysis/seed replay and copy-seed controls.
+- Remove duplicated card-cost tables from README/AGENTS/COMBAT/SPEC; generated REFERENCE owns costs.
+- Inject the app version into the UI footer from `package.json`; remove manual app-version prose.
+- Batch the AI, naval, evolution, replay, accessibility, and team work into 0.55.0.
+
+### Consequences
+
+- AI tuning is measurable and repeatable; failed thresholds can be tuned against saved matrix reports.
+- Bots can project power over water without wasting Port-cost-inclusive landings on poor targets.
+- Team games are available in the Evolution Lab without changing free-for-all defaults.
+- Future card-cost changes require code, tests, and generated REFERENCE only.

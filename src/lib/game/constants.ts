@@ -134,8 +134,12 @@ export const BOT_STRATEGIC_SAVE_MIN_STRUCTURES = 2;
 export const BOT_EARLY_ECONOMY_PER_TYPE = 2;
 export const BOT_EARLY_ECONOMY_TICK_LIMIT = 1200;
 export const BOT_EARLY_ECONOMY_UTILITY = 20_000;
-/** Leave early attacks some room while the bot saves for economy. */
-export const BOT_EARLY_ECONOMY_RESERVE_MAX = 40;
+/**
+ * During the opening economy ramp, save the full next Command Post/War Academy
+ * cost. A small 40-supply reserve let cheap Fortifications win the budget and
+ * starved the supply ramp; the cap still leaves room for a base front.
+ */
+export const BOT_EARLY_ECONOMY_RESERVE_MAX = 60;
 /** Attack ground preference: subtract this much per point of pixel defense. */
 export const BOT_ATTACK_DEFENSE_WEIGHT = 6;
 /**
@@ -148,6 +152,11 @@ export const BOT_ATTACK_SAVE_KEEP_FLOOR = 60;
 export const BOT_ATTACK_ECONOMIC_BUFFER_CAP = 40;
 /** Boat speed in map pixels per second along its sea route. */
 export const NAVAL_SPEED_PX_PER_SECOND = 80;
+/** Bot naval planning: sample shores and only spend on a worthwhile landing. */
+export const BOT_NAVAL_SEARCH_TRIES = 10;
+export const BOT_NAVAL_MIN_SCORE = 38;
+export const BOT_NAVAL_LAUNCH_CHANCE = 30;
+export const BOT_NAVAL_DISTANCE_PENALTY_DIVISOR = 60;
 /** Attack decision weights: target utility, not only a fixed aggression roll. */
 export const BOT_ATTACK_BASE_CHANCE = 3;
 export const BOT_ATTACK_SCORE_CENTER = 45;
@@ -205,6 +214,8 @@ export const BOT_DEFENSE_STALL_INTERVALS = 3;
 export const BOT_THREAT_RETALIATE_BONUS = 60;
 export const BOT_THREAT_COUNTER_BONUS = 40;
 export const BOT_THREAT_UNRELATED_PENALTY = 30;
+/** Team AI: reward joining a teammate's target; never attack teammates. */
+export const BOT_TEAM_COORDINATION_BONUS = 30;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
 export const PROTOCOL_VERSION = 38;

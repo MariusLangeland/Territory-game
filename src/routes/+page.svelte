@@ -294,6 +294,10 @@
 			: null
 	);
 	let showResult = $derived(Boolean(gameStarted && snapshot?.ended));
+	let aiPostMatch = $derived.by(() => {
+		void snapshot;
+		return sim?.getBotBehaviorTelemetry() ?? null;
+	});
 	let seedHex = $derived(currentSeed.toString(16).toUpperCase().padStart(8, '0'));
 	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null && !settingsDirty);
 	let deployLabel = $derived(
@@ -545,6 +549,15 @@
 
 	function rematch(): void {
 		createWorld(currentSeed);
+	}
+
+	async function copySeed(): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(String(currentSeed));
+			showToast(`Seed ${currentSeed} copied.`, 'success');
+		} catch {
+			showToast(`Seed: ${currentSeed}`, 'warn');
+		}
 	}
 
 	function applySeed(): void {
@@ -1733,7 +1746,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.54.0 / PROTOCOL 38</span>
+				<span>BUILD {__APP_VERSION__} / PROTOCOL 38</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1806,6 +1819,33 @@
 					<div><span>SEED</span><strong>{seedHex}</strong></div>
 				</div>
 
+				{#if aiPostMatch}
+					<div class="result-ai">
+						<div>
+							<span>AI FORTS UNDER THREAT</span><strong>
+								{aiPostMatch.threatenedFortificationBuilds} built / {aiPostMatch.threatenedFortificationUpgrades}
+								upgraded
+							</strong>
+						</div>
+						<div>
+							<span>DETERRENCE POSTURES</span><strong>{aiPostMatch.deterrencePostures}</strong>
+						</div>
+						<div>
+							<span>INCOME-GAP CP / WA</span><strong>
+								{aiPostMatch.incomeGapCommandPosts} / {aiPostMatch.incomeGapWarAcademies}
+							</strong>
+						</div>
+						<div>
+							<span>SUPPLY OPPORTUNITIES</span><strong>{aiPostMatch.opportunityAttacks}</strong>
+						</div>
+						<div>
+							<span>BOT PORTS / LANDINGS</span><strong>
+								{aiPostMatch.botPortBuilds} / {aiPostMatch.botNavalLandings}
+							</strong>
+						</div>
+					</div>
+				{/if}
+
 				<ol class="result-standings">
 					{#each ranked.slice(0, 4) as player, index (player.id)}
 						<li
@@ -1824,6 +1864,7 @@
 					<button class="deploy-button" type="button" onclick={rematch}>
 						<span>REMATCH SAME SEED</span>
 					</button>
+					<button class="ghost-button" type="button" onclick={copySeed}>COPY SEED</button>
 					<button class="ghost-button" type="button" onclick={newWorld}>NEW WORLD</button>
 					<button class="ghost-button" type="button" onclick={() => (showHelp = true)}>
 						FIELD MANUAL
@@ -1941,7 +1982,7 @@
 
 				<div class="manual-footer">
 					<span><kbd>SPACE</kbd> PAUSE / RESUME</span>
-					<span><kbd>1</kbd>–<kbd>6</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
+					<span><kbd>1</kbd>–<kbd>7</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
 					<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
 					<span><kbd>H</kbd> FIELD MANUAL</span>
 					<span>WEBGPU / DETERMINISTIC CORE</span>
@@ -3964,6 +4005,40 @@
 		color: var(--ink);
 	}
 
+	.result-ai {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		margin: 0 0 12px;
+		border: 1px solid var(--line-soft);
+		background: rgba(88, 199, 232, 0.04);
+	}
+
+	.result-ai div {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 8px 9px;
+		border-right: 1px solid var(--line-soft);
+	}
+
+	.result-ai div:last-child {
+		border-right: 0;
+	}
+
+	.result-ai span {
+		font-family: var(--font-mono);
+		font-size: 6px;
+		letter-spacing: 0.08em;
+		color: var(--ink-faint);
+	}
+
+	.result-ai strong {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		color: #8fd4e8;
+	}
+
 	.result-standings {
 		margin: 0 0 10px;
 		padding: 0;
@@ -4827,6 +4902,42 @@
 
 		.onboarding-hint p {
 			font-size: 9px;
+		}
+	}
+
+	@media (max-width: 620px) {
+		.card-tray {
+			left: 0;
+			right: 0;
+			transform: none;
+			width: 100vw;
+			max-width: 100vw;
+			overflow-x: auto;
+			overflow-y: hidden;
+			justify-content: flex-start;
+			padding: 0 8px;
+			pointer-events: auto;
+			scrollbar-width: thin;
+		}
+
+		.hand-shell {
+			min-width: max-content;
+		}
+
+		.hand-row {
+			width: max-content;
+		}
+	}
+
+	@media (max-width: 900px) {
+		.result-ai {
+			grid-template-columns: 1fr 1fr;
+		}
+		.result-ai div:nth-child(even) {
+			border-right: 0;
+		}
+		.result-ai div:nth-child(-n + 4) {
+			border-bottom: 1px solid var(--line-soft);
 		}
 	}
 

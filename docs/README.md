@@ -15,6 +15,7 @@ This directory is the long-term reference for the project. Start with the specif
 | [DECISIONS.md](DECISIONS.md)         | Architecture decision records               | You want to know why a choice was made before revisiting it                        |
 | [COMBAT_DESIGN.md](COMBAT_DESIGN.md) | Implemented Frontage v1 design              | You are tuning supply, front strength, attrition, or victory rules                 |
 | [TELEMETRY.md](TELEMETRY.md)         | Headless match telemetry                    | You need repeatable outcome/balance metrics across seeds                           |
+| [AI_BALANCE.md](AI_BALANCE.md)       | AI behavior matrix results                  | You are tuning bot economy, defence, naval strategy, or targeting                  |
 
 ## Documentation rules
 
@@ -27,11 +28,11 @@ This directory is the long-term reference for the project. Start with the specif
 
 ## Version map
 
-| Surface                | Version        | Defined in                                                 |
-| ---------------------- | -------------- | ---------------------------------------------------------- |
-| Map + start generation | `4`            | `MAP_VERSION` in `src/lib/game/constants.ts`               |
-| Wire protocol draft    | `36`           | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts`   |
-| Application            | `0.54.0`       | `package.json`                                             |
-| Generated rules        | `REFERENCE.md` | `scripts/docs-reference.ts` (code/tests are authoritative) |
-| Simulation tick rate   | 10 Hz          | `TICK_RATE` in `src/lib/game/constants.ts`                 |
-| Combat model           | Frontage v1    | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                       |
+| Surface                | Version          | Defined in                                                 |
+| ---------------------- | ---------------- | ---------------------------------------------------------- |
+| Map + start generation | `4`              | `MAP_VERSION` in `src/lib/game/constants.ts`               |
+| Wire protocol draft    | `38`             | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts`   |
+| Application            | see package.json | `package.json`                                             |
+| Generated rules        | `REFERENCE.md`   | `scripts/docs-reference.ts` (code/tests are authoritative) |
+| Simulation tick rate   | 10 Hz            | `TICK_RATE` in `src/lib/game/constants.ts`                 |
+| Combat model           | Frontage v1      | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                       |

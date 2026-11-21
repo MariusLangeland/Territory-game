@@ -375,3 +375,9 @@ The only non-deterministic value in either script is RSS (from
 simulation logic or checksums. A default 10,000-tick soak steps the simulation
 longer than the other harnesses, so expect it to take roughly a minute (or
 more on slower machines).
+
+## AI behavior counters
+
+Every telemetry record now includes bot behavior counters: threatened Fortification builds/upgrades, deterrence-triggered defensive postures, Command Posts/War Academies built while behind a neighbour's income, opportunity attacks, and bot Port/landing counts. These counters are non-gameplay and are not checksummed.
+
+`pnpm ai:balance` runs the 8-seed × 6,000-tick matrix across standard/ruthless and organic/circular, writing `reports/ai-balance.json` and `.csv`. Use `--difficulty`, `--mode`, `--seeds`, and `--ticks` to run a slice.

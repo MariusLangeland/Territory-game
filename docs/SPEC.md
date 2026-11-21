@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.54.0 (Frontage v1 + siege rework)  
+**Version:** see generated [REFERENCE.md](REFERENCE.md) / `package.json`  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.54.0, map version 4, protocol draft 38  
+**Last synchronized with:** map version 4, protocol draft 38  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -201,7 +201,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - **caution** (retaliation fear),
   - **conciliation** (avoid stronger opponents),
   - **opportunism** (join existing wars).
-- **Common opening economy ramp:** every bot first alternates Command Posts and War Academies until it owns two of each (or the opening window expires). During this phase it prefers neutral expansion over opening state wars, but falls back to the best hostile border when no neutral ground is reachable. A small early reserve keeps attacks from draining the next economy structure.
+- **Common opening economy ramp:** every bot first alternates Command Posts and War Academies until it owns two of each (or the opening window expires). During this phase it prefers neutral expansion over opening state wars, but falls back to the best hostile border when no neutral ground is reachable. A 60-supply early reserve keeps cheap Fortifications and attacks from draining the next Command Post/War Academy.
 - After the opening, every bot derives a **per-type affinity** (`structureBias`) with a per-type hash jitter, plus a display-oriented preference order. The order is not a fixed build script: economic actions are scored each build interval from affinity, threat response, income/cap pressure, novelty vs repeat penalty, efficiency, and affordability.
 - **Income pressure:** every bot compares its supply income with its bordering neighbours. The income gap always raises Command Post and War Academy utility, so a bot behind its neighbours prioritizes income over other economy; the same gap reduces its attack appetite so it can rebuild its economy first.
 - **Attack ground preference:** border candidates are scored by target utility minus a penalty proportional to that cell's defense, so bots favor the cheapest contact ground on their preferred target.
@@ -221,6 +221,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - **Defensive reserve:** a threatened bot withholds up to **60 supply** from non-defence plan spending while saving for a missing Fortification, missing Barracks, or the cheaper next defensive upgrade. A stall valve releases the reserve after 3 build intervals (9 seconds) with no affordable defensive action.
 - **Defensive spending:** while threatened, the bot first builds a missing Fortification on the border cell with the most hostile neighbours, then upgrades the Fortification, then builds/upgrades a Barracks or Jammer. These actions may consume the reserve; non-defence spending cannot.
 - **Rebuilding:** a destroyed plan structure is simply missing from the plan and is rebuilt when affordable and placeable; destroyed defensive structures are rebuilt first under threat.
+- **Bot naval strategy:** coastal bots build a Port when a hostile/neutral shore target scores above the naval threshold or land expansion is blocked. With a Port they sample sea-connected shores, score low-supply/low-defense targets, and launch only when the landing cost fits their reserve and attack chance. They avoid wasting the Port-cost-inclusive landing on poor targets.
 - **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available supply.
   - Vengeful bots strongly favor owners that have captured their land.
   - Cautious bots penalize stronger targets and targets holding enough supply to retaliate.
@@ -242,6 +243,8 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Final genomes are bucketed into **poor**, **good**, and **top** (roughly 50/30/20%). Buckets persist locally and feed match difficulty: relaxed → poor, standard → good, ruthless → top.
 - The headless CLI (`pnpm evolution`) writes a CSV spreadsheet with genome traits, module weights, bucket, fitness, land, income, attack, and wins. The client can import that spreadsheet to rerun those genomes or combine selected bucket genomes.
 - **Spectator mode** at `/evolution` runs the same natural-selection loop in-client using paired bot-only simulations; `1×`/`4×`/`16×`/`48×` controls fast-forward. It reuses the WebGPU renderer and shows live genome performance and buckets.
+- **Team AI:** the Evolution Lab can assign cyclic teams. Teammates never attack one another and gain a coordination bonus when joining an ally's target. Team count 1 is free-for-all.
+- **Post-match analysis:** the result modal includes the AI behavior counters (threatened fortifications, deterrence postures, income-gap economy, supply opportunities, Ports/landings), seed copy/replay, standings, and match summary.
 
 ### 4.9 Tick order
 
@@ -379,20 +382,20 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
-- Costs: Artillery **1000**, Barracks **240**, Port **200**, Fortification **30**, Jammer **160**, Command Post **80**, War Academy **60** supply.
+- Card costs and generated values live in [REFERENCE.md](REFERENCE.md).
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
 - Structure placement has an **8 px centre-to-centre exclusion radius**.
 
-| Card          | Cost | Effect                                                             |
-| ------------- | ---- | ------------------------------------------------------------------ |
-| Artillery     | 1000 | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
-| Barracks      | 240  | +1 effective attack level; cost +40, strength +200 per level       |
-| Fortification | 30   | +1 defense to every friendly pixel in its 40 px district; stacks   |
-| Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
-| Command Post  | 80   | +1 supply per second                                               |
-| War Academy   | 60   | +80 supply cap                                                     |
-| Port          | 200  | Shore-only naval landing port and sea-linked protection anchor     |
+| Card          | Effect                                                             |
+| ------------- | ------------------------------------------------------------------ |
+| Artillery     | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
+| Barracks      | +1 effective attack level; cost +40, strength +200 per level       |
+| Fortification | +1 defense to every friendly pixel in its 40 px district; stacks   |
+| Jammer        | Global aura: −1 effective enemy Barracks level per stack           |
+| Command Post  | +1 supply per second                                               |
+| War Academy   | +80 supply cap                                                     |
+| Port          | Shore-only naval landing port and sea-linked protection anchor     |
 
 Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 

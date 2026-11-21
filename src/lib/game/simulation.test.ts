@@ -1520,6 +1520,87 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(internals.chooseBotEconomicAction(player, 1000, 1000)?.type).toBe('fortification');
 	});
 
+	it('counts threatened fortifications and deterrence-triggered posture', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const internals = sim as unknown as {
+			tick: number;
+			botDefensive: Uint8Array;
+			botThreat: Uint16Array;
+			botReserve: Uint8Array;
+			botGold: number[];
+			botPressure: Uint16Array;
+			runBotEconomy(): void;
+		};
+		internals.tick = BOT_BUILD_INTERVAL - 1;
+		internals.botPressure[1] = 1;
+		internals.botDefensive[1] = 1;
+		internals.botThreat[1] = BOT_THREAT_DEFENSIVE;
+		internals.botReserve[1] = BOT_DEFENSE_RESERVE_MAX;
+		internals.botGold[1] = 1000;
+		internals.runBotEconomy();
+		expect(sim.getBotBehaviorTelemetry().threatenedFortificationBuilds).toBeGreaterThan(0);
+
+		const deterrenceSim = new TerritorySimulation({ seed: 1234 });
+		const deterrenceInternals = deterrenceSim as unknown as {
+			claim(index: number, newOwner: number, sourceAttackId?: number): void;
+			botPressure: Uint16Array;
+			botDefensive: Uint8Array;
+			refreshBotThreat(player: PlayerState): void;
+		};
+		const self = deterrenceSim.players[1];
+		const neighbour = deterrenceSim.players[2];
+		expect(self).toBeDefined();
+		expect(neighbour).toBeDefined();
+		if (!self || !neighbour) return;
+		let claimed = -1;
+		for (const index of self.border) {
+			const x = index % deterrenceSim.width;
+			const y = (index - x) / deterrenceSim.width;
+			for (const next of [
+				x > 0 ? index - 1 : -1,
+				x + 1 < deterrenceSim.width ? index + 1 : -1,
+				y > 0 ? index - deterrenceSim.width : -1,
+				y + 1 < deterrenceSim.height ? index + deterrenceSim.width : -1
+			]) {
+				if (next < 0 || (deterrenceSim.owners[next] ?? 0) !== 0) continue;
+				deterrenceInternals.claim(next, neighbour.id);
+				claimed = next;
+				break;
+			}
+			if (claimed >= 0) break;
+		}
+		expect(claimed).toBeGreaterThanOrEqual(0);
+		neighbour.territory += 30_000;
+		deterrenceInternals.botPressure[self.id - 1] = 1;
+		deterrenceInternals.botDefensive[self.id - 1] = 0;
+		deterrenceInternals.refreshBotThreat(self);
+		expect(deterrenceSim.getBotBehaviorTelemetry().deterrencePostures).toBeGreaterThan(0);
+	});
+
+	it('keeps coordinated teams from attacking each other', () => {
+		const sim = new TerritorySimulation({
+			seed: 424242,
+			playerCount: 4,
+			width: 640,
+			height: 360,
+			allPlayersBots: true,
+			teamIds: [1, 1, 2, 2]
+		});
+		for (let tick = 0; tick < 900; tick++) sim.step();
+		const snapshot = sim.getSnapshot();
+		const sameTeamAttack = snapshot.attacks.some((attack) => {
+			const attacker = sim.players[attack.attackerId - 1];
+			const defender = sim.players[attack.defenderId - 1];
+			return (
+				attacker !== undefined &&
+				defender !== undefined &&
+				attacker.teamId !== 0 &&
+				attacker.teamId === defender.teamId
+			);
+		});
+		expect(sameTeamAttack).toBe(false);
+	});
+
 	it('includes bot threat state in the checksum and stays deterministic', () => {
 		const left = new TerritorySimulation({ seed: 424242 });
 		const right = new TerritorySimulation({ seed: 424242 });

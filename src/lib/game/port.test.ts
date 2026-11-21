@@ -107,6 +107,45 @@ describe('ports and naval landings', () => {
 		expect(anchors).toContainEqual({ index: port.index, ownerId: 2 });
 	});
 
+	it('lets a bot choose and launch a worthwhile naval opportunity', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const source = findShore(sim, 2);
+		expect(source).not.toBeNull();
+		if (!source) return;
+		sim.structures.create(
+			'port',
+			2,
+			source.index % sim.width,
+			Math.floor(source.index / sim.width),
+			sim.width
+		);
+		const internals = sim as unknown as {
+			tick: number;
+			botGold: number[];
+			botReserve: Uint8Array;
+			chooseBotNavalTarget(
+				player: (typeof sim.players)[number],
+				usePorts?: boolean
+			): { index: number; score: number } | null;
+			runBotNaval(): void;
+		};
+		internals.botGold[1] = 1000;
+		internals.botReserve[1] = 0;
+		const target = internals.chooseBotNavalTarget(sim.players[1]);
+		expect(target).not.toBeNull();
+		if (!target) return;
+		expect(
+			sim.validateNavalAttack(2, target.index % sim.width, Math.floor(target.index / sim.width)).ok
+		).toBe(true);
+		for (let tick = 10; tick <= 200; tick += 10) {
+			internals.tick = tick;
+			internals.botGold[1] = 1000;
+			internals.runBotNaval();
+			if (sim.getBotBehaviorTelemetry().botNavalLandings > 0) break;
+		}
+		expect(sim.getBotBehaviorTelemetry().botNavalLandings).toBeGreaterThan(0);
+	});
+
 	it('rejects Port construction on inland ground', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });
 		const capital = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');

@@ -33,7 +33,8 @@
 		matchesPerRound: 2,
 		ticks: 1600,
 		width: 1280,
-		height: 720
+		height: 720,
+		teamCount: 1
 	});
 	let sandbox = $state<EvolutionSandbox | null>(null);
 	let currentSimulation = $state<TerritorySimulation | null>(null);
@@ -323,9 +324,20 @@
 							bind:value={config.ticks}
 						/>
 					</label>
+					<label>
+						<span>TEAM AI</span><input
+							type="number"
+							min="1"
+							max="8"
+							bind:value={config.teamCount}
+						/>
+					</label>
 				</div>
 				<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
-				<p class="hint">Fitness = land share + final income + attack strength + wins + survival.</p>
+				<p class="hint">
+					Fitness = land share + final income + attack strength + wins + survival. TEAM AI 1 =
+					free-for-all.
+				</p>
 			</section>
 
 			<section class="panel">

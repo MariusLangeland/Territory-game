@@ -70,6 +70,7 @@ import {
 	BOT_THREAT_RETALIATE_BONUS,
 	BOT_THREAT_SAFE,
 	BOT_THREAT_UNRELATED_PENALTY,
+	BOT_TEAM_COORDINATION_BONUS,
 	DISTRICT_NOISE_CELL,
 	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
@@ -77,6 +78,10 @@ import {
 	INCOME_INTERVAL_TICKS,
 	LEAST_RESISTANCE_SAMPLE_SIZE,
 	NAVAL_SPEED_PX_PER_SECOND,
+	BOT_NAVAL_DISTANCE_PENALTY_DIVISOR,
+	BOT_NAVAL_LAUNCH_CHANCE,
+	BOT_NAVAL_MIN_SCORE,
+	BOT_NAVAL_SEARCH_TRIES,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
@@ -126,6 +131,8 @@ export interface PlayerState {
 	isBot: boolean;
 	alive: boolean;
 	territory: number;
+	/** 0 = free-for-all; equal nonzero ids are allies. */
+	teamId: number;
 	/** Land frontier cells. Derived from owners + land; never trusted across a network. */
 	border: Set<number>;
 }
@@ -157,6 +164,17 @@ export interface AttackState {
 	idleTicks: number;
 	captures: number;
 	done: boolean;
+}
+
+export interface BotBehaviorTelemetry {
+	threatenedFortificationBuilds: number;
+	threatenedFortificationUpgrades: number;
+	deterrencePostures: number;
+	incomeGapCommandPosts: number;
+	incomeGapWarAcademies: number;
+	opportunityAttacks: number;
+	botPortBuilds: number;
+	botNavalLandings: number;
 }
 
 export interface PublicPlayer {
@@ -430,6 +448,8 @@ export interface SimulationOptions {
 	botGenomes?: readonly (BotGenome | null)[];
 	/** Evolution/spectator mode: make every seat, including the human seat, a bot. */
 	allPlayersBots?: boolean;
+	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
+	teamIds?: readonly number[];
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -497,6 +517,17 @@ export class TerritorySimulation {
 	private readonly botIncomeGap: Uint8Array;
 	/** Military-strength deficit versus the strongest bordering neighbour. */
 	private readonly botDeterrence: Uint16Array;
+	/** Non-gameplay counters for AI balancing and post-match analysis. */
+	private readonly botTelemetry: BotBehaviorTelemetry = {
+		threatenedFortificationBuilds: 0,
+		threatenedFortificationUpgrades: 0,
+		deterrencePostures: 0,
+		incomeGapCommandPosts: 0,
+		incomeGapWarAcademies: 0,
+		opportunityAttacks: 0,
+		botPortBuilds: 0,
+		botNavalLandings: 0
+	};
 	/** Grievance total each bot held at the previous threat refresh. */
 	private readonly botGrievanceMark: Uint32Array;
 	/** botAttackers[attacker * PLAYER_COUNT + defender] = 1 while a front is live. */
@@ -508,6 +539,7 @@ export class TerritorySimulation {
 	private readonly landCount: number;
 	private readonly seaComponents: Uint32Array;
 	private readonly seaRouter: SeaRouter;
+	private readonly shoreIndices: number[] = [];
 	/** Scratch land-component labels used for Port annexation protection. */
 	private readonly portComponentOf: Uint32Array;
 	private readonly portComponentQueue: Uint32Array;
@@ -565,6 +597,11 @@ export class TerritorySimulation {
 		this.landCount = this.map.landCount;
 		this.seaComponents = computeSeaComponents(this.land, this.width, this.height);
 		this.seaRouter = new SeaRouter(this.land, this.width, this.height);
+		for (let index = 0; index < this.land.length; index++) {
+			if (isShoreIndex(this.land, this.width, this.height, index)) {
+				this.shoreIndices.push(index);
+			}
+		}
 		this.portComponentOf = new Uint32Array(this.width * this.height);
 		this.portComponentQueue = new Uint32Array(this.width * this.height);
 		this.owners = new Uint16Array(this.width * this.height);
@@ -583,6 +620,7 @@ export class TerritorySimulation {
 			isBot: options.allPlayersBots === true || i !== HUMAN_PLAYER_ID - 1,
 			alive: true,
 			territory: 0,
+			teamId: Math.max(0, Math.trunc(options.teamIds?.[i] ?? 0)),
 			border: new Set<number>()
 		}));
 
@@ -687,6 +725,11 @@ export class TerritorySimulation {
 	/** Public economy read for telemetry and the evolution fitness function. */
 	incomeOf(playerId: number): number {
 		return this.supplyIncomeFor(playerId);
+	}
+
+	/** Non-gameplay AI behavior counters for balancing and analysis. */
+	getBotBehaviorTelemetry(): BotBehaviorTelemetry {
+		return { ...this.botTelemetry };
 	}
 
 	supplyCap(playerId: number): number {
@@ -1600,6 +1643,7 @@ export class TerritorySimulation {
 			// front opened this tick is already visible to the defender.
 			this.updateBotThreat();
 			this.runBotEconomy();
+			this.runBotNaval();
 			this.runBotDecisions();
 			this.runBotArtillery();
 			this.processArtilleryShells();
@@ -1745,6 +1789,7 @@ export class TerritorySimulation {
 			mix(player.id);
 			mix(player.alive ? 1 : 0);
 			mix(player.territory);
+			mix(player.teamId);
 		}
 
 		for (const structure of this.structures.all) {
@@ -3116,9 +3161,21 @@ export class TerritorySimulation {
 				case 'artillery':
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
 					break;
-				case 'port':
+				case 'port': {
+					// A coastal target worth landing on makes a Port useful even
+					// before an enemy fleet exists; blocked land expansion makes it
+					// the only way out.
+					const navalTarget = this.chooseBotNavalTarget(player, false);
 					buildScore += (count === 0 ? 16 : 0) + (player.territory > 4000 ? 6 : 0);
+					if (navalTarget) {
+						buildScore += Math.max(0, navalTarget.score);
+						if (count === 0 && navalTarget.score >= BOT_NAVAL_MIN_SCORE) {
+							buildScore += 80;
+						}
+					}
+					if (this.botNeedsExpansion(player)) buildScore += 60;
 					break;
+				}
 			}
 			// Shared opening ramp: economy structures dominate until the bot has
 			// its first Command Post and War Academy line. Threat still pulls
@@ -3145,6 +3202,7 @@ export class TerritorySimulation {
 				});
 			}
 
+			if (type === 'port') continue; // Port has no district/effect to upgrade.
 			if (count === 0) continue;
 			const lowest = structures.reduce((best, structure) =>
 				structure.stacks < best.stacks ||
@@ -3283,6 +3341,21 @@ export class TerritorySimulation {
 					break;
 				}
 
+				if (defensive && choice.type === 'fortification') {
+					if (choice.kind === 'build') this.botTelemetry.threatenedFortificationBuilds++;
+					else this.botTelemetry.threatenedFortificationUpgrades++;
+				}
+				if (this.botIncomeGap[goldIndex] > 0) {
+					if (choice.type === 'command-post' && choice.kind === 'build') {
+						this.botTelemetry.incomeGapCommandPosts++;
+					} else if (choice.type === 'war-academy' && choice.kind === 'build') {
+						this.botTelemetry.incomeGapWarAcademies++;
+					}
+				}
+				if (choice.type === 'port' && choice.kind === 'build') {
+					this.botTelemetry.botPortBuilds++;
+				}
+
 				if (choice.kind === 'build') {
 					const cell = choice.cell;
 					if (cell === undefined || cell < 0) break;
@@ -3356,18 +3429,31 @@ export class TerritorySimulation {
 	 */
 	private findBotDefenseCell(player: PlayerState): number {
 		const candidates: number[] = [];
+		const incomingTargets = this.attacks
+			.filter((attack) => !attack.done && attack.defenderId === player.id)
+			.map((attack) => ({ x: attack.targetX, y: attack.targetY }));
 		let bestIndex = -1;
-		let bestContact = 0;
+		let bestScore = -1;
 		for (const index of player.border) {
 			if (!this.isBotBuildCellValid(player, index)) continue;
 			const contact = this.hostileNeighbourCount(index, player.id);
-			if (contact > bestContact) {
-				bestContact = contact;
+			const x = index % this.width;
+			const y = (index - x) / this.width;
+			let frontBonus = 0;
+			for (const target of incomingTargets) {
+				if (Math.abs(target.x - x) + Math.abs(target.y - y) <= 48) {
+					frontBonus = 8;
+					break;
+				}
+			}
+			const score = contact * 10 + frontBonus;
+			if (score > bestScore) {
+				bestScore = score;
 				bestIndex = index;
 			}
 			if (contact === 0 && candidates.length < 32) candidates.push(index);
 		}
-		if (bestIndex >= 0) return bestIndex;
+		if (bestIndex >= 0 && bestScore > 0) return bestIndex;
 		if (candidates.length === 0) return -1;
 		return candidates[hash32(this.tick, player.id, this.seed ^ 0x3c6ef372) % candidates.length];
 	}
@@ -3469,10 +3555,11 @@ export class TerritorySimulation {
 			0xffff,
 			Math.floor(strengthGap / BOT_DETERRENCE_STRENGTH_DIVISOR)
 		);
-		threat += Math.min(
+		const deterrenceContribution = Math.min(
 			this.botDeterrence[index] * BOT_THREAT_PER_DETERRENCE,
 			BOT_THREAT_DETERRENCE_CAP
 		);
+		threat += deterrenceContribution;
 
 		// Grievances are cumulative; the delta since the last refresh is the
 		// "recent territory loss" signal and decays on its own once the
@@ -3493,6 +3580,9 @@ export class TerritorySimulation {
 			? this.botThreat[index] > BOT_THREAT_SAFE
 			: this.botThreat[index] >= BOT_THREAT_DEFENSIVE;
 		this.botDefensive[index] = isDefensive ? 1 : 0;
+		if (isDefensive && !wasDefensive && deterrenceContribution > 0) {
+			this.botTelemetry.deterrencePostures++;
+		}
 		this.botReserve[index] = isDefensive ? this.defenseReserveTarget(player) : 0;
 		if (!isDefensive) this.botDefenseStall[index] = 0;
 	}
@@ -3576,6 +3666,131 @@ export class TerritorySimulation {
 		return !this.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING);
 	}
 
+	/** Sea components reachable from a friendly Port. */
+	private botPortSeaComponents(playerId: number): Set<number> {
+		const seas = new Set<number>();
+		const waters: number[] = [];
+		for (const structure of this.structures.forOwner(playerId)) {
+			if (structure.type !== 'port') continue;
+			waters.length = 0;
+			adjacentWater(this.land, this.width, this.height, structure.index, waters);
+			for (const water of waters) {
+				const sea = this.seaComponents[water] ?? 0;
+				if (sea > 0) seas.add(sea);
+			}
+		}
+		return seas;
+	}
+
+	/** Sea components touching owned shoreline, used for proposed Port sites. */
+	private botCoastalSeaComponents(player: PlayerState): Set<number> {
+		const seas = new Set<number>();
+		const waters: number[] = [];
+		for (const index of player.border) {
+			if (!isShoreIndex(this.land, this.width, this.height, index)) continue;
+			waters.length = 0;
+			adjacentWater(this.land, this.width, this.height, index, waters);
+			for (const water of waters) {
+				const sea = this.seaComponents[water] ?? 0;
+				if (sea > 0) seas.add(sea);
+			}
+		}
+		return seas;
+	}
+
+	/**
+	 * Sample coastal targets and score them for a naval landing. This is a
+	 * deterministic opportunity score: supply-starved or weakly defended
+	 * shores win, and poor targets are rejected by the caller's threshold.
+	 */
+	private chooseBotNavalTarget(
+		player: PlayerState,
+		usePorts = true
+	): { index: number; score: number } | null {
+		if (this.shoreIndices.length === 0) return null;
+		const seas = usePorts
+			? this.botPortSeaComponents(player.id)
+			: this.botCoastalSeaComponents(player);
+		if (seas.size === 0) return null;
+		const waters: number[] = [];
+		let bestIndex = -1;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		for (let attempt = 0; attempt < BOT_NAVAL_SEARCH_TRIES; attempt++) {
+			const salt = hash32(hash32(this.tick, player.id, attempt), this.seed ^ 0x68e31da4, 0);
+			const index = this.shoreIndices[salt % this.shoreIndices.length];
+			const owner = this.owners[index];
+			if (owner === player.id || this.structures.at(index)) continue;
+			if (owner > 0 && player.teamId !== 0 && this.players[owner - 1]?.teamId === player.teamId) {
+				continue;
+			}
+			waters.length = 0;
+			adjacentWater(this.land, this.width, this.height, index, waters);
+			let connected = false;
+			for (const water of waters) {
+				const sea = this.seaComponents[water] ?? 0;
+				if (sea > 0 && seas.has(sea)) {
+					connected = true;
+					break;
+				}
+			}
+			if (!connected) continue;
+			const x = index % this.width;
+			const y = (index - x) / this.width;
+			let score = 45 - this.getDefense(x, y) * BOT_ATTACK_DEFENSE_WEIGHT;
+			if (owner > 0) {
+				const supply = this.supplyOf(owner);
+				const cap = Math.max(1, this.supplyCap(owner));
+				if (supply * 100 < cap * 25) score += 25;
+				else if (supply < this.attackSupplyCost(owner, player.id)) score += 12;
+				if (this.estimatePlayerStrength(owner) > this.estimatePlayerStrength(player.id)) {
+					score += 4;
+				}
+			} else {
+				score += 4;
+			}
+			let nearestPort = Number.POSITIVE_INFINITY;
+			for (const structure of this.structures.forOwner(player.id)) {
+				if (structure.type !== 'port') continue;
+				nearestPort = Math.min(nearestPort, Math.abs(structure.x - x) + Math.abs(structure.y - y));
+			}
+			if (Number.isFinite(nearestPort)) {
+				score -= Math.floor(nearestPort / BOT_NAVAL_DISTANCE_PENALTY_DIVISOR);
+			}
+			if (score > bestScore) {
+				bestScore = score;
+				bestIndex = index;
+			}
+		}
+		return bestIndex >= 0 ? { index: bestIndex, score: bestScore } : null;
+	}
+
+	private runBotNaval(): void {
+		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
+		for (const player of this.players) {
+			if (!player.alive || !player.isBot) continue;
+			if (this.structures.forOwnerType(player.id, 'port') === undefined) continue;
+			if (this.navalLandings.some((landing) => landing.ownerId === player.id)) continue;
+			const target = this.chooseBotNavalTarget(player);
+			if (!target || target.score < BOT_NAVAL_MIN_SCORE) continue;
+			const targetOwner = this.owners[target.index] ?? 0;
+			const cost = this.attackSupplyCost(player.id, targetOwner) + STRUCTURE_DEFINITIONS.port.cost;
+			const reserve = this.botReserve[player.id - 1] ?? 0;
+			if (this.supplyOf(player.id) < cost + reserve) continue;
+			const profile = this.botProfiles[player.id - 1];
+			const chance = Math.min(
+				80,
+				BOT_NAVAL_LAUNCH_CHANCE +
+					Math.floor((target.score - BOT_NAVAL_MIN_SCORE) * 0.5) +
+					Math.floor(profile.aggression * 0.2)
+			);
+			const roll = hash32(hash32(this.tick, player.id, target.index), this.seed ^ 0x27d4eb2d, 0);
+			if (roll % 100 >= chance) continue;
+			const x = target.index % this.width;
+			const y = (target.index - x) / this.width;
+			if (this.tryLaunchNaval(player.id, x, y)) this.botTelemetry.botNavalLandings++;
+		}
+	}
+
 	private runBotDecisions(): void {
 		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 
@@ -3653,6 +3868,7 @@ export class TerritorySimulation {
 			);
 			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
 			if (attackRoll >= chance) continue;
+			if (choice.opportunity) this.botTelemetry.opportunityAttacks++;
 			this.createAttack(player.id, choice.index, [choice.index]);
 		}
 	}
@@ -3673,6 +3889,9 @@ export class TerritorySimulation {
 			let bestScore = Number.NEGATIVE_INFINITY;
 			for (const structure of this.structures.all) {
 				if (structure.ownerId === player.id) continue;
+				if (player.teamId !== 0 && this.players[structure.ownerId - 1]?.teamId === player.teamId) {
+					continue;
+				}
 				if (structure.type === 'state') continue;
 				let nearest = Number.POSITIVE_INFINITY;
 				for (const battery of ready) {
@@ -3741,6 +3960,13 @@ export class TerritorySimulation {
 				if (index < 0 || !this.land[index]) continue;
 				const defenderId = this.owners[index];
 				if (defenderId === player.id) continue;
+				if (
+					defenderId > 0 &&
+					player.teamId !== 0 &&
+					this.players[defenderId - 1]?.teamId === player.teamId
+				) {
+					continue;
+				}
 				// Opening economy ramp: expand into neutral ground but avoid
 				// opening state wars before the Command Post/War Academy line.
 				if (neutralOnly && defenderId !== 0) continue;
@@ -3788,6 +4014,12 @@ export class TerritorySimulation {
 			};
 		}
 		if (defenderId === attackerId) return { score: Number.NEGATIVE_INFINITY, opportunity: false };
+		if (
+			this.players[attackerId - 1]?.teamId !== 0 &&
+			this.players[attackerId - 1]?.teamId === this.players[defenderId - 1]?.teamId
+		) {
+			return { score: Number.NEGATIVE_INFINITY, opportunity: false };
+		}
 
 		let score = 25 + Math.floor(profile.aggression * 0.6);
 		const grudge = this.botGrievance[(attackerId - 1) * this.playerCount + (defenderId - 1)];
@@ -3817,6 +4049,9 @@ export class TerritorySimulation {
 		} else if (targetStrength < Math.floor(selfStrength * 0.85)) {
 			score += 10 + Math.floor(profile.opportunist * 0.15);
 		}
+		if (this.teammateAttacking(attackerId, defenderId)) {
+			score += BOT_TEAM_COORDINATION_BONUS;
+		}
 		if (lowSupply) {
 			score += scaledBonus(
 				BOT_OPPORTUNITY_STRONGER_BONUS + Math.floor(profile.opportunist * 0.6),
@@ -3844,6 +4079,18 @@ export class TerritorySimulation {
 			if (grudge === 0 && !counterAttacking) score -= BOT_THREAT_UNRELATED_PENALTY;
 		}
 		return { score, opportunity };
+	}
+
+	/** Team AI coordination: an ally already pressing this defender. */
+	private teammateAttacking(attackerId: number, defenderId: number): boolean {
+		const teamId = this.players[attackerId - 1]?.teamId ?? 0;
+		if (teamId === 0) return false;
+		for (const attack of this.attacks) {
+			if (attack.done || attack.defenderId !== defenderId) continue;
+			if (attack.attackerId === attackerId) continue;
+			if (this.players[attack.attackerId - 1]?.teamId === teamId) return true;
+		}
+		return false;
 	}
 
 	private pickBorderCell(player: PlayerState): number | null {

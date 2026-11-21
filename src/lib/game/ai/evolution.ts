@@ -20,6 +20,8 @@ export interface EvolutionConfig {
 	ticks: number;
 	width: number;
 	height: number;
+	/** 1 = free-for-all; >1 assigns cyclic teams for coordinated bot matches. */
+	teamCount: number;
 }
 
 export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
@@ -30,7 +32,8 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
 	matchesPerRound: 2,
 	ticks: 1600,
 	width: 1280,
-	height: 720
+	height: 720,
+	teamCount: 1
 };
 
 export interface GenomePerformance {
@@ -77,7 +80,8 @@ export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}):
 		matchesPerRound: Math.max(1, Math.min(8, Math.trunc(merged.matchesPerRound))),
 		ticks: Math.max(200, Math.min(30_000, Math.trunc(merged.ticks))),
 		width: Math.max(512, Math.trunc(merged.width)),
-		height: Math.max(256, Math.trunc(merged.height))
+		height: Math.max(256, Math.trunc(merged.height)),
+		teamCount: Math.max(1, Math.min(playerCount, Math.trunc(merged.teamCount)))
 	};
 }
 
@@ -262,6 +266,10 @@ export class EvolutionSandbox {
 			playerCount: this.config.playerCount,
 			allPlayersBots: true,
 			botGenomes: seats,
+			teamIds:
+				this.config.teamCount > 1
+					? seats.map((_, index) => (index % this.config.teamCount) + 1)
+					: undefined,
 			matchDurationTicks: this.config.ticks
 		});
 		return true;

@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.54.0 / protocol 38.  
+**Status:** IMPLEMENTED. Current app version comes from `package.json`; wire protocol from `src/lib/game/net/protocol.ts`.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -250,17 +250,17 @@ captureCost   = max(1, defense − logTier)             // per capture, paid fro
 
 ### 3.5 Structures and cards under Frontage v1
 
-Supply costs and the permanent seven-card hand:
+The permanent seven-card hand; costs live in [REFERENCE.md](REFERENCE.md):
 
-| Card          | Cost | Implemented effect                                                       |
-| ------------- | ---- | ------------------------------------------------------------------------ |
-| Artillery     | 1000 | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
-| Barracks      | 240  | +1 effective level; +200 strength/+40 cost per level, log2 power/pierce. |
-| Fortification | 30   | +1 defense per stack across its district.                                |
-| Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
-| Command Post  | 80   | +1 supply per second per stack.                                          |
-| War Academy   | 60   | +80 supply cap per stack; no global maximum.                             |
-| Port          | 200  | Shore-only naval landing anchor; protects sea-linked land components.    |
+| Card          | Implemented effect                                                       |
+| ------------- | ------------------------------------------------------------------------ |
+| Artillery     | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
+| Barracks      | +1 effective level; +200 strength/+40 cost per level, log2 power/pierce. |
+| Fortification | +1 defense per stack across its district.                                |
+| Jammer        | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
+| Command Post  | +1 supply per second per stack.                                          |
+| War Academy   | +80 supply cap per stack; no global maximum.                             |
+| Port          | Shore-only naval landing anchor; protects sea-linked land components.    |
 
 - `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is

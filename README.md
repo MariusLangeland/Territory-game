@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Ports (v0.54.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**; an optional match timer awards the largest alive state.
+> **Status: Frontage v1 + Ports.** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**; an optional match timer awards the largest alive state.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -21,7 +21,7 @@
 >
 > **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry`, `pnpm balance`, and `pnpm soak` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
 >
-> **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`).
+> **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md).
 
 ---
 
@@ -41,6 +41,8 @@
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
 | Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                               |
 | AI Evolution    | Genome traits + behaviour modules, deterministic selection/pruning/mutation, poor/good/top buckets, CSV, headless + WebGPU spectator lab                       |
+| AI strategy     | Neighbour income/strength pressure, deterrence fortifications, supply opportunities, bot naval campaigns, coordinated team AI, behavior telemetry              |
+| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                          |
 | Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                   |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                       |
@@ -74,6 +76,7 @@ pnpm telemetry  # headless multi-seed match telemetry
 pnpm balance    # personality/ramp/structure balance sweep
 pnpm soak       # 10k-tick deterministic soak test
 pnpm evolution  # headless natural-selection sandbox → CSV spreadsheet
+pnpm ai:balance # 8×6000 AI behavior/balance matrix
 pnpm docs:reference # regenerate docs/REFERENCE.md from code
 pnpm docs:check     # fail if generated rules docs are stale
 pnpm build      # production build via adapter-node
@@ -173,15 +176,17 @@ Each rival state has a **map-anchored supply banner** at its capital showing its
 
 The human commander starts with **90 supply** and **all seven build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures` per second with **no income cap** (+1/s per 3,000 owned pixels); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`7` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 
-| Card          | Cost | Effect                                                       |
-| ------------- | ---- | ------------------------------------------------------------ |
-| Artillery     | 1000 | Active: inaccurate, 300 supply/level, 64 px district         |
-| Barracks      | 240  | +1 effective attack level; +40 cost, +200 strength per level |
-| Fortification | 30   | +1 defense to every friendly pixel in its district; stacks   |
-| Jammer        | 160  | Global −1 enemy effective Barracks level per stack           |
-| Command Post  | 80   | +1 supply per second                                         |
-| War Academy   | 60   | +80 supply cap                                               |
-| Port          | 200  | Shore-only naval landing port; sea-linked annex protection   |
+| Card          | Effect                                                       |
+| ------------- | ------------------------------------------------------------ |
+| Artillery     | Active: inaccurate, 300 supply/level, 64 px district         |
+| Barracks      | +1 effective attack level; +40 cost, +200 strength per level |
+| Fortification | +1 defense to every friendly pixel in its district; stacks   |
+| Jammer        | Global −1 enemy effective Barracks level per stack           |
+| Command Post  | +1 supply per second                                         |
+| War Academy   | +80 supply cap                                               |
+| Port          | Shore-only naval landing port; sea-linked annex protection   |
+
+Card costs and formulas live in [docs/REFERENCE.md](docs/REFERENCE.md).
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 

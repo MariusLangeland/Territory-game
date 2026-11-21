@@ -21,6 +21,7 @@ import {
 } from '../src/lib/game/growth';
 import {
 	TerritorySimulation,
+	type BotBehaviorTelemetry,
 	type GameSnapshot,
 	type PublicPlayer
 } from '../src/lib/game/simulation';
@@ -33,7 +34,7 @@ import {
 const DEFAULT_SEEDS = 3;
 const DEFAULT_START_SEED = 1234;
 const DEFAULT_MAX_TICKS = 1200;
-const REPORT_VERSION = 1;
+const REPORT_VERSION = 2;
 
 const USAGE = `Usage: pnpm exec tsx scripts/telemetry.ts [options]
 
@@ -130,6 +131,7 @@ interface SeedTelemetry {
 	structures: StructureTelemetry;
 	districts: number;
 	grievances: GrievanceStats;
+	botBehavior: BotBehaviorTelemetry;
 	/** Full authoritative state hash at the final tick; useful for regression checks. */
 	checksum: number;
 }
@@ -153,6 +155,7 @@ interface TelemetryAggregate {
 	districts: { average: number; total: number };
 	activity: { attacksLaunched: number; structuresRazed: number };
 	grievances: { total: number; records: number; max: number };
+	botBehavior: BotBehaviorTelemetry;
 }
 
 interface TelemetryReport {
@@ -349,6 +352,7 @@ function runSeed(seed: number, options: RunOptions): SeedTelemetry {
 		structures: summarizeStructures(snapshot.structures),
 		districts: countDistricts(simulation),
 		grievances: summarizeGrievances(internals.botGrievance),
+		botBehavior: simulation.getBotBehaviorTelemetry(),
 		checksum: simulation.checksum()
 	};
 }
@@ -422,6 +426,28 @@ function aggregate(
 			total: seeds.reduce((sum, run) => sum + run.grievances.total, 0),
 			records: seeds.reduce((sum, run) => sum + run.grievances.records, 0),
 			max: Math.max(...seeds.map((run) => run.grievances.max))
+		},
+		botBehavior: {
+			threatenedFortificationBuilds: seeds.reduce(
+				(sum, run) => sum + run.botBehavior.threatenedFortificationBuilds,
+				0
+			),
+			threatenedFortificationUpgrades: seeds.reduce(
+				(sum, run) => sum + run.botBehavior.threatenedFortificationUpgrades,
+				0
+			),
+			deterrencePostures: seeds.reduce((sum, run) => sum + run.botBehavior.deterrencePostures, 0),
+			incomeGapCommandPosts: seeds.reduce(
+				(sum, run) => sum + run.botBehavior.incomeGapCommandPosts,
+				0
+			),
+			incomeGapWarAcademies: seeds.reduce(
+				(sum, run) => sum + run.botBehavior.incomeGapWarAcademies,
+				0
+			),
+			opportunityAttacks: seeds.reduce((sum, run) => sum + run.botBehavior.opportunityAttacks, 0),
+			botPortBuilds: seeds.reduce((sum, run) => sum + run.botBehavior.botPortBuilds, 0),
+			botNavalLandings: seeds.reduce((sum, run) => sum + run.botBehavior.botNavalLandings, 0)
 		}
 	};
 }
@@ -573,6 +599,13 @@ function formatTable(report: TelemetryReport): string {
 		`war: launched ${totals.activity.attacksLaunched}  razed ${totals.activity.structuresRazed}  ` +
 			`grievances: total ${totals.grievances.total}  pairs ${totals.grievances.records}  ` +
 			`max ${totals.grievances.max}`
+	);
+	lines.push(
+		`ai: threatened forts ${totals.botBehavior.threatenedFortificationBuilds} built / ${totals.botBehavior.threatenedFortificationUpgrades} upgraded  ` +
+			`deterrence postures ${totals.botBehavior.deterrencePostures}  ` +
+			`income-gap CP/WA ${totals.botBehavior.incomeGapCommandPosts}/${totals.botBehavior.incomeGapWarAcademies}  ` +
+			`opportunities ${totals.botBehavior.opportunityAttacks}  ` +
+			`ports ${totals.botBehavior.botPortBuilds}  landings ${totals.botBehavior.botNavalLandings}`
 	);
 	return lines.join('\n');
 }
