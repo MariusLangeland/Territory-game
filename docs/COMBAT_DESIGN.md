@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.53.0 / protocol 38.  
+**Status:** IMPLEMENTED in application 0.54.0 / protocol 38.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -354,29 +354,29 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 
 ### 3.11 Complete constant table (proposed)
 
-| Constant                         | Value | Meaning                                                |
-| -------------------------------- | ----- | ------------------------------------------------------ |
-| `SUPPLY_START`                   | 90    | Starting supply, all players                           |
-| `SUPPLY_CAP_BASE`                | 120   | Base cap before territory/structures                   |
-| `SUPPLY_CAP_LAND_DIVISOR`        | 1000  | +1 cap per 1000 land cells                             |
-| `SUPPLY_CAP_PER_ACADEMY_STACK`   | 80    | War Academy cap bonus                                  |
-| `SUPPLY_INCOME_BASE`             | 3     | Supply/s base                                          |
-| `SUPPLY_INCOME_LAND_DIVISOR`     | 3000  | +1 supply/s per 3,000 land cells                       |
-| `NAVAL_LANDING_SURCHARGE`        | 60    | Extra supply over a normal launch for a landing        |
-| `NAVAL_SPEED_PX_PER_SECOND`      | 80    | Boat speed along a sea route                           |
-| `SUPPLY_INCOME_PER_COMMAND_POST` | 2     | Supply/s per Command Post stack                        |
-| `SUPPLY_TICKS_PER_UNIT`          | 10    | Ticks of accrual per supply                            |
-| `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |
-| `LAUNCH_COST_BASE`               | 30    | Supply cost of a base front                            |
-| `LAUNCH_COST_PER_LEVEL`          | 15    | Extra cost per effective level                         |
-| `FRONT_STRENGTH_BASE`            | 1000  | Base strength pool                                     |
-| `FRONT_STRENGTH_PER_LEVEL`       | 200   | Extra strength per effective level                     |
-| `FRONT_POWER_BASE`               | 30    | Base points/tick spending cap                          |
-| `FRONT_POWER_PER_LOG_TIER`       | 15    | Extra power per log2 tier                              |
-| `FRONT_IDLE_TICKS`               | 20    | Consecutive non-contact zero-capture ticks before exit |
-| `CLASH_ATTRITION_BASE`           | 100   | Strength loss per contact tick                         |
-| `CLASH_ATTRITION_PER_LOG_TIER`   | 50    | Extra loss per opponent log2 tier                      |
-| `VICTORY_SHARE_BP`               | 7000  | 70.00% of land wins immediately                        |
+| Constant                       | Value | Meaning                              |
+| ------------------------------ | ----- | ------------------------------------ |
+| `SUPPLY_START`                 | 90    | Starting supply, all players         |
+| `SUPPLY_CAP_BASE`              | 120   | Base cap before territory/structures |
+| `SUPPLY_CAP_LAND_DIVISOR`      | 1000  | +1 cap per 1000 land cells           |
+| `SUPPLY_CAP_PER_ACADEMY_STACK` | 80    | War Academy cap bonus                |
+| `SUPPLY_INCOME_BASE`           | 3     | Supply/s base                        |
+| `SUPPLY_INCOME_LAND_DIVISOR`   | 3000  | +1 supply/s per 3,000 land cells     |
+
+| `NAVAL_SPEED_PX_PER_SECOND` | 80 | Boat speed along a sea route |
+| `SUPPLY_INCOME_PER_COMMAND_POST` | 2 | Supply/s per Command Post stack |
+| `SUPPLY_TICKS_PER_UNIT` | 10 | Ticks of accrual per supply |
+| `FRONT_CAP_PER_PLAYER` | 8 | Concurrent fronts per player |
+| `LAUNCH_COST_BASE` | 30 | Supply cost of a base front |
+| `LAUNCH_COST_PER_LEVEL` | 15 | Extra cost per effective level |
+| `FRONT_STRENGTH_BASE` | 1000 | Base strength pool |
+| `FRONT_STRENGTH_PER_LEVEL` | 200 | Extra strength per effective level |
+| `FRONT_POWER_BASE` | 30 | Base points/tick spending cap |
+| `FRONT_POWER_PER_LOG_TIER` | 15 | Extra power per log2 tier |
+| `FRONT_IDLE_TICKS` | 20 | Consecutive non-contact zero-capture ticks before exit |
+| `CLASH_ATTRITION_BASE` | 100 | Strength loss per contact tick |
+| `CLASH_ATTRITION_PER_LOG_TIER` | 50 | Extra loss per opponent log2 tier |
+| `VICTORY_SHARE_BP` | 7000 | 70.00% of land wins immediately |
 
 ---
 

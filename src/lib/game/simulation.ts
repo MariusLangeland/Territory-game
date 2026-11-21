@@ -61,7 +61,6 @@ import {
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
 	LEAST_RESISTANCE_SAMPLE_SIZE,
-	NAVAL_LANDING_SURCHARGE,
 	NAVAL_SPEED_PX_PER_SECOND,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
@@ -929,7 +928,7 @@ export class TerritorySimulation {
 		if (ports.length === 0) return fail('no-port', 'Build a Port before launching a landing.');
 		const route = this.findNavalRoute(playerId, index);
 		if (!route) return fail('no-sea-path', 'No sea route reaches that shore.');
-		const cost = this.attackSupplyCost(playerId, targetOwner) + NAVAL_LANDING_SURCHARGE;
+		const cost = this.attackSupplyCost(playerId, targetOwner) + STRUCTURE_DEFINITIONS.port.cost;
 		if (
 			this.supplyOf(playerId) -
 				this.pendingAttackSupply(playerId) -
@@ -942,7 +941,9 @@ export class TerritorySimulation {
 	}
 
 	private navalSupplyCost(playerId: number, targetIndex: number): number {
-		return this.attackSupplyCost(playerId, this.owners[targetIndex]) + NAVAL_LANDING_SURCHARGE;
+		return (
+			this.attackSupplyCost(playerId, this.owners[targetIndex]) + STRUCTURE_DEFINITIONS.port.cost
+		);
 	}
 
 	private pendingNavalSupply(playerId: number): number {

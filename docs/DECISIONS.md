@@ -1917,3 +1917,28 @@ The map is mostly ocean, but all attacks were land-frontier attacks. Coastal sta
 - Sea components make "has sea path" cheap to test; A* only runs when a landing is requested.
 - Bots may build Ports through normal utility scoring but do not yet plan naval campaigns.
 - Port has no district, so no card-upgrade loop and no district UI conflict.
+
+---
+
+## ADR-059 — Naval landing pays the Port cost up front
+
+**Status:** accepted and implemented in 0.54.0  
+**Date:** 2026-11-21
+
+### Context
+
+The first naval implementation charged a fixed 60-supply surcharge and auto-built the landing Port for free on arrival. That made the automatic Port effectively free and decoupled the landing cost from the Port's actual 200-supply card cost.
+
+### Decision
+
+- Remove `NAVAL_LANDING_SURCHARGE`.
+- A naval landing costs **normal front launch cost + Port cost (200)** at launch.
+- The auto-built landing Port remains free at arrival because its cost was paid up front.
+- Add a regression assertion that the private naval cost equals `attackStats.cost + STRUCTURE_DEFINITIONS.port.cost`.
+- App 0.54.0; protocol unchanged at 38.
+
+### Consequences
+
+- Naval attacks are a materially larger supply commitment.
+- The upfront cost covers the Port that will exist after landing.
+- No wire or snapshot shape change.

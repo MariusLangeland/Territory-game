@@ -146,8 +146,6 @@ export const BOT_ATTACK_SAVE_KEEP_FRACTION = 0.5;
 export const BOT_ATTACK_SAVE_KEEP_FLOOR = 60;
 /** The next-purchase buffer is capped for attacks so it cannot stack with saves. */
 export const BOT_ATTACK_ECONOMIC_BUFFER_CAP = 40;
-/** Extra supply a naval landing costs above a normal front launch. */
-export const NAVAL_LANDING_SURCHARGE = 60;
 /** Boat speed in map pixels per second along its sea route. */
 export const NAVAL_SPEED_PX_PER_SECOND = 80;
 /** Attack decision weights: target utility, not only a fixed aggression roll. */

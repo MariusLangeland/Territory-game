@@ -53,6 +53,7 @@ describe('ports and naval landings', () => {
 			sim.width
 		);
 		expect(port.type).toBe('port');
+		(sim as unknown as { botGold: number[] }).botGold[1] = 1000;
 
 		let target = -1;
 		for (let index = 0; index < sim.owners.length; index++) {
@@ -68,8 +69,12 @@ describe('ports and naval landings', () => {
 		}
 		expect(target).toBeGreaterThan(-1);
 		if (target < 0) return;
+		const targetOwner = sim.owners[target];
+		const cost = (
+			sim as unknown as { navalSupplyCost: (playerId: number, targetIndex: number) => number }
+		).navalSupplyCost(2, target);
+		expect(cost).toBe(sim.getAttackStats(2, targetOwner).cost + STRUCTURE_DEFINITIONS.port.cost);
 
-		sim.gold = 1000;
 		const queued = sim.enqueueNavalAttack(2, target % sim.width, Math.floor(target / sim.width));
 		expect(queued.ok).toBe(true);
 		const internals = sim as unknown as { navalLandings: unknown[]; attacks: AttackState[] };

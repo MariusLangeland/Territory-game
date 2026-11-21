@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.53.0 (Frontage v1 + siege rework)  
+**Version:** 0.54.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.53.0, map version 4, protocol draft 38  
+**Last synchronized with:** application 0.54.0, map version 4, protocol draft 38  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -399,7 +399,7 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 - **Port:** 200-supply card, no district, buildable only on owned shoreline cells (land with an orthogonally adjacent ocean pixel).
 - With at least one Port, clicking a non-friendly shore that normal land attacks cannot reach attempts a **naval landing**.
 - Validation: target must be a shore, not friendly, not occupied by a structure, and reachable by a 4-neighbour ocean path from a friendly Port.
-- The launch costs a normal front launch plus a **60-supply surcharge**. Supply is spent at launch; the boat carries the landing.
+- The launch costs a normal front launch **plus the 200-supply Port cost**, paid up front. Supply is spent at launch; the boat carries the landing.
 - The boat follows the deterministic shortest sea route at **80 map px/s** and is rendered on the overlay with its owner color and wake.
 - On arrival the target shore becomes a friendly beachhead, a **new Port is automatically built there**, and a regular inward front is opened against the lowest-defense adjacent land. If the target is no longer valid, the landing is cancelled.
 - Ports anchor annexation protection when their friendly-owned land component reaches the owner's State, or when their sea component is shared with such a Port of the same owner.

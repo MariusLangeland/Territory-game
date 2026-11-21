@@ -20,7 +20,7 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:version START -->
 
-- App version: `0.53.0` (from `package.json` `version`).
+- App version: `0.54.0` (from `package.json` `version`).
 
 <!-- AUTOGEN:version END -->
 
@@ -36,7 +36,6 @@ Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.
 - `MAP_WIDTH` — map width in pixels: `2048`.
 - `MAP_HEIGHT` — map height in pixels: `1024`.
 - `PLAYER_COUNT` — maximum states per match: `51`.
-- `NAVAL_LANDING_SURCHARGE` — extra supply over a front launch: `60`.
 - `NAVAL_SPEED_PX_PER_SECOND` — boat speed along a sea route: `80`.
 - `TICK_RATE` — simulation ticks per second: `10`.
 
