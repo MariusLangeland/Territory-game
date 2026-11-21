@@ -197,6 +197,7 @@ describe('evolutionary AI sandbox', () => {
 		if (!source) return;
 		expect(genomes[0].aggression).toBe(source.genome.aggression);
 		expect(genomes[0].modules).toEqual(source.genome.modules);
+		expect(genomes[0].markov).toEqual(source.genome.markov);
 	});
 
 	it('can run an all-bot match with genome-derived profiles', () => {

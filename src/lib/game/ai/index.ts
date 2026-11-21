@@ -42,6 +42,21 @@ export {
 	serializeEvolutionCsv,
 	serializeGenomeRow
 } from './evolution-csv';
+export {
+	cloneMarkov,
+	createRandomMarkov,
+	crossoverMarkov,
+	mutateMarkov,
+	normalizeMarkov,
+	MARKOV_CONDITIONS,
+	MARKOV_MAX_STATES,
+	MARKOV_MIN_STATES,
+	type MarkovBias,
+	type MarkovCondition,
+	type MarkovController,
+	type MarkovState,
+	type MarkovTransition
+} from './markov';
 export { DuelLab, DEFAULT_DUEL_CONFIG, normalizeDuelConfig } from './duel';
 export type {
 	DuelCharacter,

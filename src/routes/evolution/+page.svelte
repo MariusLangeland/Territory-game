@@ -435,7 +435,9 @@
 						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>DESCRIPTOR</th><th>FITNESS</th>
 						<th>LAND</th><th>INCOME</th><th>ECO</th><th>DEF</th><th>NAV</th><th>ATT</th><th>
 							COOP
-						</th><th>KILL</th><th>WEAK</th><th>REPEL</th><th>DMG</th><th>LIN Δ</th><th>WINS</th>
+						</th><th>KILL</th><th>WEAK</th><th>REPEL</th><th>DMG</th><th>LIN Δ</th><th>WINS</th><th>
+							MARKOV
+						</th>
 						<th>MODULES (INC/DEF/DET/OPP/EXP/RET)</th>
 					</tr>
 				</thead>
@@ -464,6 +466,9 @@
 								{row.lineageDelta >= 0 ? '+' : ''}{Math.round(row.lineageDelta)}
 							</td>
 							<td>{row.wins}</td>
+							<td class="mono">
+								{row.genome.markov ? `${row.genome.markov.states.length}s` : '—'}
+							</td>
 							<td class="mono modules">
 								{Math.round(row.genome.modules.income)}/{Math.round(
 									row.genome.modules.defense
@@ -477,7 +482,7 @@
 					{/each}
 					{#if rows.length === 0}
 						<tr>
-							<td colspan="20" class="empty-row">
+							<td colspan="21" class="empty-row">
 								No scores yet. Start a run and finish at least one match.
 							</td>
 						</tr>

@@ -291,6 +291,12 @@
 								<div class="stat-line">
 									<span>MUTATIONS</span><strong>{characters[index].mutations}</strong>
 								</div>
+								<div class="stat-line">
+									<span>MARKOV</span><strong>
+										{nodes.find((node) => node.id === characters[index].currentNodeId)?.genome
+											.markov?.states.length ?? 0}s
+									</strong>
+								</div>
 							{/if}
 						</div>
 					{/each}

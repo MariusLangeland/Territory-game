@@ -118,6 +118,27 @@ meaningfully by combat and defense behavior instead of clustering on raw land.
 The top phenotype is still aggressive (`E0-D0-N0-A2`); defense scoring helps
 explain and rank held positions but does not yet make a defensive archetype win.
 
+## Qualitative genome v2 (semi-Markov controllers)
+
+Genome v2 adds 2–6-state observation-conditioned controllers with structural
+mutation/crossover. A first 12-genome, 6-player, 3,000-tick audit produced:
+
+| Generation | Best fitness |
+| ---------- | -----------: |
+| 1          |       46,885 |
+| 2          |       57,054 |
+| 3          |       88,353 |
+| 4          |       90,104 |
+| 5          |       65,657 |
+
+The best genome each generation had a different controller topology. Final
+survivors included 2-, 3-, and 6-state graphs; the best used a three-state
+coalition/naval/supply loop, while another survivor used a two-state supply loop.
+This is the first audit where the population is meaningfully diverse at the
+**structure** level rather than only in scalar weights. Fitness is noisier
+because transition draws add match variance, so these numbers should be treated
+as a smoke test, not a converged balance result.
+
 ## Interpretation
 
 - Evolution is now mechanically sound: no genome is unobserved, fitness is

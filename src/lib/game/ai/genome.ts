@@ -1,7 +1,14 @@
 import { hash32 } from '../map';
 import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from '../Structures';
+import {
+	cloneMarkov,
+	crossoverMarkov,
+	createRandomMarkov,
+	mutateMarkov,
+	type MarkovController
+} from './markov';
 
-export const BOT_GENOME_VERSION = 1;
+export const BOT_GENOME_VERSION = 2;
 
 export const BOT_MODULE_IDS = [
 	'income',
@@ -30,6 +37,8 @@ export interface BotGenome {
 	opportunist: number;
 	modules: BotModules;
 	structureBias: Record<BuildableStructureType, number>;
+	/** Optional qualitative semi-Markov strategic controller (genome v2). */
+	markov: MarkovController | null;
 }
 
 export const BOT_MODULE_LABELS: Record<BotModuleId, string> = {
@@ -92,7 +101,8 @@ export function createRandomGenome(seed: number, generation = 0): BotGenome {
 		conciliatory: randomTrait(normalized, 7),
 		opportunist: randomTrait(normalized, 8),
 		modules: randomModules(normalized),
-		structureBias: randomStructureBias(normalized)
+		structureBias: randomStructureBias(normalized),
+		markov: createRandomMarkov(normalized ^ 0x165667b1)
 	};
 }
 
@@ -146,7 +156,8 @@ export function mutateGenome(parent: BotGenome, seed: number, generation: number
 		conciliatory: mutateTrait(parent.conciliatory, normalized, 7),
 		opportunist: mutateTrait(parent.opportunist, normalized, 8),
 		modules,
-		structureBias: bias
+		structureBias: bias,
+		markov: parent.markov ? mutateMarkov(parent.markov, normalized ^ 0x85ebca6b) : null
 	};
 }
 
@@ -182,7 +193,15 @@ export function crossoverGenomes(
 		conciliatory: pick(7) ? first.conciliatory : second.conciliatory,
 		opportunist: pick(8) ? first.opportunist : second.opportunist,
 		modules,
-		structureBias: bias
+		structureBias: bias,
+		markov:
+			first.markov && second.markov
+				? crossoverMarkov(first.markov, second.markov, normalized ^ 0x9e3779b9)
+				: first.markov
+					? cloneMarkov(first.markov)
+					: second.markov
+						? cloneMarkov(second.markov)
+						: null
 	};
 	const mutated = mutateGenome(child, normalized ^ 0x27d4eb2d, generation);
 	mutated.parents = [first.id, second.id];
@@ -194,7 +213,8 @@ export function cloneGenome(genome: BotGenome): BotGenome {
 		...genome,
 		parents: [...genome.parents],
 		modules: { ...genome.modules },
-		structureBias: { ...genome.structureBias }
+		structureBias: { ...genome.structureBias },
+		markov: genome.markov ? cloneMarkov(genome.markov) : null
 	};
 }
 

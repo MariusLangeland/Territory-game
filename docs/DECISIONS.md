@@ -2162,3 +2162,32 @@ Fitness rewarded land, income, raw attack strength, wins, and strategic activity
 - Defense can score without requiring capture, but the weights are deliberately conservative and live is required.
 - A defeated state still earns no combat/defense bonus, preserving survival as a gate.
 - The weights remain user-tunable; defaults are initial, not final balance values.
+
+---
+
+## ADR-068 — Semi-Markov controllers as qualitative genome v2
+
+**Status:** accepted and implemented in 0.61.0  
+**Date:** 2026-11-21
+
+### Context
+
+Genome v1 was a fixed 21-scalar vector. Threshold effects could produce different archetypes, but evolution could not add, remove, or rewire a behavior. A pure Markov chain would also be too weak: with no observation input it degenerates into a random mode oscillator, and without dwell time it can flip-flop every decision tick.
+
+### Decision
+
+- Add an optional **observation-conditioned semi-Markov controller** to genome v2.
+- The controller has 2–6 states. Each state selects one strategic option, carries per-state economy/attack/defense/naval/conserve biases, and has a minimum dwell time.
+- Transitions are conditioned on existing observations (threat, income gap, supply ratio, weak neighbour, ally pressure) with a deterministic chance roll.
+- Structural mutation can add/remove states, add/remove transitions, retarget states, and mutate constraints. Crossover aligns states by option label rather than raw index.
+- `normalizeMarkov` repairs invalid graphs: bounded state count, valid options, reachable states, and at least one outgoing edge per state.
+- Controllers drive the strategic-option layer directly; genomes without a controller keep the existing utility-argmax layer.
+- Controller runtime state, dwell entry, and biases are checksummed. Transition rolls use `hash32`, not shared mutable RNG.
+- The CSV stores the controller as a JSON column; the Evolution Lab shows state count.
+
+### Consequences
+
+- Evolution can now add/remove/rewire strategic structure, not only tune numbers.
+- Behavior remains deterministic and inspectable, though probabilistic transitions add match variance.
+- Initial genomes contain random controllers, so the first generations explore genuinely different state graphs.
+- Pure utility-argmax behavior remains fully supported for legacy/v1 genomes.

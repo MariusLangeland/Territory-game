@@ -7,6 +7,7 @@ import {
 	type BotGenome,
 	type BotModules
 } from './genome';
+import { normalizeMarkov } from './markov';
 import type { EvolutionReport, GenomePerformance } from './evolution';
 
 const TRAIT_COLUMNS = [
@@ -45,6 +46,7 @@ export function evolutionCsvHeader(): string[] {
 		'lineage_wins',
 		'lineage_losses',
 		'lineage_delta',
+		'markov',
 		...TRAIT_COLUMNS,
 		...BOT_MODULE_IDS.map((id) => `module_${id}`),
 		...BUILDABLE_STRUCTURE_TYPES.map((type) => `bias_${type}`)
@@ -85,6 +87,7 @@ export function serializeGenomeRow(
 		row.lineageWins,
 		row.lineageLosses,
 		row.lineageDelta.toFixed(0),
+		genome.markov ? JSON.stringify(genome.markov) : '',
 		...TRAIT_COLUMNS.map((column) => genome[column]),
 		...BOT_MODULE_IDS.map((id) => genome.modules[id]),
 		...BUILDABLE_STRUCTURE_TYPES.map((type) => genome.structureBias[type])
@@ -172,6 +175,15 @@ export function parseEvolutionCsv(text: string): BotGenome[] {
 		for (const type of BUILDABLE_STRUCTURE_TYPES) {
 			structureBias[type] = clampTrait(numeric(`bias_${type}`, 20));
 		}
+		let markov: BotGenome['markov'] = null;
+		const markovColumn = indexOf('markov');
+		if (markovColumn >= 0) {
+			try {
+				markov = normalizeMarkov(JSON.parse(cells[markovColumn] ?? 'null'));
+			} catch {
+				markov = null;
+			}
+		}
 		seen.add(id);
 		genomes.push({
 			version: BOT_GENOME_VERSION,
@@ -187,7 +199,8 @@ export function parseEvolutionCsv(text: string): BotGenome[] {
 			conciliatory: clampTrait(numeric('conciliatory', 30)),
 			opportunist: clampTrait(numeric('opportunist', 30)),
 			modules,
-			structureBias
+			structureBias,
+			markov
 		});
 	}
 	return genomes;

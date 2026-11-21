@@ -133,6 +133,7 @@ import {
 	emptyOptionCounts,
 	type BotOptionId
 } from './ai/options';
+import type { MarkovCondition, MarkovController } from './ai/markov';
 
 export interface PlayerState {
 	id: number;
@@ -233,6 +234,7 @@ interface BotProfile {
 	/** Evolvable behaviour-module weights, neutral at 50. */
 	modules: BotModules;
 	genomeId: string | null;
+	markov: MarkovController | null;
 }
 
 const DEFAULT_BOT_MODULES: BotModules = {
@@ -566,6 +568,10 @@ export class TerritorySimulation {
 	private readonly botOption: Uint8Array;
 	private readonly botOptionUntil: Uint32Array;
 	private readonly botOptionTarget: Uint16Array;
+	/** Semi-Markov strategic controller runtime state. */
+	private readonly botMarkovState: Uint8Array;
+	private readonly botMarkovEntry: Uint32Array;
+	private readonly botMarkovBias: Uint8Array;
 	/** Last player to launch a front against this bot (blackboard memory). */
 	private readonly botLastAttacker: Uint16Array;
 	/** Last player to capture one of this player's cells, for elimination credit. */
@@ -685,6 +691,9 @@ export class TerritorySimulation {
 		this.botOption = new Uint8Array(this.playerCount);
 		this.botOptionUntil = new Uint32Array(this.playerCount);
 		this.botOptionTarget = new Uint16Array(this.playerCount);
+		this.botMarkovState = new Uint8Array(this.playerCount);
+		this.botMarkovEntry = new Uint32Array(this.playerCount);
+		this.botMarkovBias = new Uint8Array(this.playerCount * 5);
 		this.botLastAttacker = new Uint16Array(this.playerCount);
 		this.lastAttackerOf = new Uint16Array(this.playerCount);
 		this.botPlayerMetrics = Array.from({ length: this.playerCount }, () => ({
@@ -707,6 +716,10 @@ export class TerritorySimulation {
 			const genome = options.botGenomes?.[index] ?? null;
 			return genome ? this.createProfileFromGenome(genome) : this.createBotProfile(index + 1);
 		});
+		for (let index = 0; index < this.playerCount; index++) {
+			const controller = this.botProfiles[index].markov;
+			if (controller) this.enterBotMarkovState(index, controller.initial);
+		}
 		for (const player of this.players) {
 			if (player.isBot) this.botGold[player.id - 1] = BOT_STARTING_GOLD;
 		}
@@ -803,6 +816,10 @@ export class TerritorySimulation {
 
 	getBotOption(playerId: number): BotOptionId | null {
 		return botOptionFromCode(this.botOption[playerId - 1] ?? 0);
+	}
+
+	getBotMarkovState(playerId: number): number | null {
+		return this.botProfiles[playerId - 1]?.markov ? (this.botMarkovState[playerId - 1] ?? 0) : null;
 	}
 
 	getPlayerBehaviorMetrics(playerId: number): BotPlayerBehaviorMetrics {
@@ -1877,6 +1894,9 @@ export class TerritorySimulation {
 		for (const option of this.botOption) mix(option);
 		for (const until of this.botOptionUntil) mix(until);
 		for (const target of this.botOptionTarget) mix(target);
+		for (const markov of this.botMarkovState) mix(markov);
+		for (const entry of this.botMarkovEntry) mix(entry);
+		for (const bias of this.botMarkovBias) mix(bias);
 		for (const attacker of this.botLastAttacker) mix(attacker);
 		for (const mark of this.botGrievanceMark) mix(mark);
 		for (const orders of this.attackOrders) mix(orders);
@@ -3038,7 +3058,8 @@ export class TerritorySimulation {
 			buildPlan,
 			structureBias,
 			modules: { ...DEFAULT_BOT_MODULES },
-			genomeId: null
+			genomeId: null,
+			markov: null
 		};
 	}
 
@@ -3063,7 +3084,8 @@ export class TerritorySimulation {
 			buildPlan,
 			structureBias,
 			modules,
-			genomeId: genome.id
+			genomeId: genome.id,
+			markov: genome.markov
 		};
 	}
 
@@ -3202,6 +3224,9 @@ export class TerritorySimulation {
 		const deterrence = this.botDeterrence[player.id - 1];
 		const modules = profile.modules ?? DEFAULT_BOT_MODULES;
 		const option = this.currentBotOption(player.id);
+		const markovEconomy = this.markovBiasValue(player.id, 'economy');
+		const markovDefense = this.markovBiasValue(player.id, 'defense');
+		const markovNaval = this.markovBiasValue(player.id, 'naval');
 		const owned = this.structures.forOwner(player.id);
 		const candidates: BotEconomicAction[] = [];
 		const order = new Map(BUILDABLE_STRUCTURE_TYPES.map((type, index) => [type, index] as const));
@@ -3252,6 +3277,7 @@ export class TerritorySimulation {
 					);
 					buildScore += scaledBonus(deterrence * BOT_DETERRENCE_FORT_UTILITY, modules.deterrence);
 					if (option === 'fortify-front') buildScore += 60;
+					buildScore += markovDefense;
 					break;
 				case 'barracks':
 					buildScore +=
@@ -3276,6 +3302,7 @@ export class TerritorySimulation {
 						scaledBonus(BOT_INCOME_UTILITY, modules.income) +
 						scaledBonus(incomeGap * BOT_INCOME_GAP_COMMAND_POST_WEIGHT, modules.income);
 					if (option === 'supply-ramp') buildScore += 60;
+					buildScore += markovEconomy;
 					break;
 				case 'war-academy':
 					buildScore +=
@@ -3284,6 +3311,7 @@ export class TerritorySimulation {
 						(cap < 400 ? 6 : 0) +
 						scaledBonus(incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT, modules.income);
 					if (option === 'supply-ramp') buildScore += 60;
+					buildScore += markovEconomy;
 					break;
 				case 'artillery':
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
@@ -3302,6 +3330,7 @@ export class TerritorySimulation {
 					}
 					if (this.botNeedsExpansion(player)) buildScore += 60;
 					if (option === 'naval-opportunity') buildScore += 80;
+					buildScore += markovNaval;
 					break;
 				}
 			}
@@ -3353,6 +3382,7 @@ export class TerritorySimulation {
 					upgradeScore += scaledBonus(BOT_DEFENSE_FIRST_UTILITY, modules.defense);
 				}
 				if (option === 'fortify-front') upgradeScore += 60;
+				upgradeScore += markovDefense;
 			} else if (type === 'barracks' || type === 'jammer') {
 				upgradeScore += Math.floor((threat * 2 + (defensive ? 12 : 0)) / (1 + lowest.stacks));
 			} else if (type === 'command-post') {
@@ -3361,10 +3391,12 @@ export class TerritorySimulation {
 					modules.income
 				);
 				if (option === 'supply-ramp') upgradeScore += 60;
+				upgradeScore += markovEconomy;
 			} else if (type === 'war-academy') {
 				if (capGap) upgradeScore += 80;
 				upgradeScore += scaledBonus(incomeGap * BOT_INCOME_GAP_WAR_ACADEMY_WEIGHT, modules.income);
 				if (option === 'supply-ramp') upgradeScore += 60;
+				upgradeScore += markovEconomy;
 			}
 			if (
 				(!isDefensive || lowest.stacks < maxLevel) &&
@@ -3452,7 +3484,12 @@ export class TerritorySimulation {
 			const option = this.currentBotOption(player.id);
 			const optionReserve =
 				option === 'fortify-front' || option === 'conserve' ? this.defenseReserveTarget(player) : 0;
-			const reserve = stalled ? 0 : Math.max(this.botReserve[goldIndex], optionReserve);
+			const markovConserveReserve = stalled
+				? 0
+				: Math.max(0, this.markovBiasValue(player.id, 'conserve')) * 4;
+			const reserve = stalled
+				? 0
+				: Math.max(this.botReserve[goldIndex], optionReserve) + markovConserveReserve;
 			const strategicReserve = stalled ? 0 : this.botStrategicReserve(player);
 			// One emergency defensive action per interval; otherwise a bot may
 			// dump its whole reserve into stacked fortifications in one visit.
@@ -3914,6 +3951,84 @@ export class TerritorySimulation {
 		return botOptionFromCode(this.botOption[playerId - 1] ?? 0);
 	}
 
+	private markovBiasValue(
+		playerId: number,
+		key: 'economy' | 'attack' | 'defense' | 'naval' | 'conserve'
+	): number {
+		if (!this.botProfiles[playerId - 1]?.markov) return 0;
+		const offset = ['economy', 'attack', 'defense', 'naval', 'conserve'].indexOf(key);
+		const value = this.botMarkovBias[(playerId - 1) * 5 + offset] ?? 50;
+		return Math.floor((value - 50) / 5);
+	}
+
+	private enterBotMarkovState(index: number, stateId: number): void {
+		const controller = this.botProfiles[index]?.markov;
+		if (!controller || controller.states.length === 0) return;
+		const state = controller.states[Math.max(0, Math.min(controller.states.length - 1, stateId))];
+		if (!state) return;
+		this.botMarkovState[index] = controller.states.indexOf(state);
+		this.botMarkovEntry[index] = this.tick;
+		this.botMarkovBias[index * 5] = state.bias.economy;
+		this.botMarkovBias[index * 5 + 1] = state.bias.attack;
+		this.botMarkovBias[index * 5 + 2] = state.bias.defense;
+		this.botMarkovBias[index * 5 + 3] = state.bias.naval;
+		this.botMarkovBias[index * 5 + 4] = state.bias.conserve;
+		this.botOption[index] = BOT_OPTION_CODES[state.option];
+		this.botOptionUntil[index] = this.tick + state.dwell;
+		this.botOptionTarget[index] = 0;
+		this.botTelemetry.optionSelections[state.option]++;
+	}
+
+	private markovConditionMet(
+		condition: MarkovCondition,
+		player: PlayerState,
+		index: number
+	): boolean {
+		const supplyRatio = this.supplyOf(player.id) / Math.max(1, this.supplyCap(player.id));
+		switch (condition) {
+			case 'always':
+				return true;
+			case 'threat-high':
+				return this.botThreat[index] >= 20;
+			case 'threat-low':
+				return this.botThreat[index] <= 10;
+			case 'income-behind':
+				return this.botIncomeGap[index] > 0;
+			case 'income-ahead': {
+				const ownIncome = this.incomeOf(player.id);
+				const neighbours = this.botNeighborIds(player);
+				return neighbours.length > 0 && neighbours.every((id) => this.incomeOf(id) <= ownIncome);
+			}
+			case 'supply-low':
+				return supplyRatio < 0.35;
+			case 'supply-high':
+				return supplyRatio > 0.75;
+			case 'weak-neighbor':
+				return this.botOpportunityCandidate(player) !== null;
+			case 'ally-pressure':
+				return this.botCoalitionCandidate(player) !== null;
+		}
+	}
+
+	private tryBotMarkovTransition(player: PlayerState, index: number): void {
+		const controller = this.botProfiles[index]?.markov;
+		if (!controller) return;
+		const current = Math.min(controller.states.length - 1, this.botMarkovState[index] ?? 0);
+		const state = controller.states[current];
+		if (!state) return;
+		if (this.tick - this.botMarkovEntry[index] < state.dwell) return;
+		for (let edge = 0; edge < controller.transitions.length; edge++) {
+			const transition = controller.transitions[edge];
+			if (transition.from !== current) continue;
+			if (!this.markovConditionMet(transition.when, player, index)) continue;
+			const roll = hash32(this.tick, player.id, this.seed ^ (edge * 0x9e3779b1)) % 100;
+			if (roll >= transition.chance) continue;
+			this.enterBotMarkovState(index, transition.to);
+			return;
+		}
+		this.botOptionUntil[index] = this.tick + 20;
+	}
+
 	/**
 	 * Strategic/option layer. Options are committed for a short horizon so the
 	 * tactical utility layer executes a coherent plan instead of flip-flopping
@@ -3928,6 +4043,11 @@ export class TerritorySimulation {
 			if (current && this.tick < this.botOptionUntil[index]) continue;
 
 			const profile = this.botProfiles[index];
+			if (profile.markov) {
+				if (this.tick < this.botOptionUntil[index]) continue;
+				this.tryBotMarkovTransition(player, index);
+				continue;
+			}
 			const threat = this.botThreat[index];
 			const supplyRatio = this.supplyOf(player.id) / Math.max(1, this.supplyCap(player.id));
 			const hasPort = this.structures.forOwnerType(player.id, 'port') !== undefined;
@@ -4089,7 +4209,8 @@ export class TerritorySimulation {
 				BOT_NAVAL_LAUNCH_CHANCE +
 					Math.floor((target.score - BOT_NAVAL_MIN_SCORE) * 0.5) +
 					Math.floor(profile.aggression * 0.2) +
-					(option === 'naval-opportunity' ? 15 : 0)
+					(option === 'naval-opportunity' ? 15 : 0) +
+					this.markovBiasValue(player.id, 'naval')
 			);
 			const roll = hash32(hash32(this.tick, player.id, target.index), this.seed ^ 0x27d4eb2d, 0);
 			if (roll % 100 >= chance) continue;
@@ -4170,7 +4291,8 @@ export class TerritorySimulation {
 				(option === 'expand' && defenderId === 0 ? 15 : 0) +
 				(option === 'exploit-weakness' && choice.opportunity ? 15 : 0) +
 				(option === 'coalition-strike' && supportingAlly ? 15 : 0) -
-				(option === 'fortify-front' || option === 'conserve' ? 12 : 0);
+				(option === 'fortify-front' || option === 'conserve' ? 12 : 0) +
+				this.markovBiasValue(player.id, 'attack');
 			const difficultyChance =
 				this.botDifficulty === 'relaxed' ? 0.75 : this.botDifficulty === 'ruthless' ? 1.25 : 1;
 			const chance = Math.max(
