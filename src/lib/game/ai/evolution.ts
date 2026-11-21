@@ -545,26 +545,45 @@ export class EvolutionSandbox {
 	private buildLineageSchedule(): BotGenome[][] {
 		const schedule: BotGenome[][] = [];
 		const passes = Math.max(1, Math.ceil(this.config.matchesPerRound / 2));
+		const seenPairs = new Set<string>();
+		const appeared = new Set<string>();
+		const addPair = (first: BotGenome, second: BotGenome, salt: number): void => {
+			if (first.id === second.id) return;
+			const key = first.id < second.id ? `${first.id}|${second.id}` : `${second.id}|${first.id}`;
+			if (seenPairs.has(key)) return;
+			seenPairs.add(key);
+			appeared.add(first.id);
+			appeared.add(second.id);
+			for (let pass = 0; pass < passes; pass++) {
+				const pairSeed = hash32(hash32(this.config.seed, this.generation, salt), 0x9e3779b9, pass);
+				schedule.push([first, second], [second, first]);
+				this.scheduleSeeds.push(pairSeed, pairSeed);
+			}
+		};
+
+		// Lineage pairs take priority; fallback mirrors only fill genomes that
+		// were not covered as either side of a parent duel.
 		for (let index = 0; index < this.population.length; index++) {
 			const child = this.population[index];
 			const ancestors = child.parents
 				.map((id) => this.genomeBank.get(id))
 				.filter((genome): genome is BotGenome => !!genome && genome.id !== child.id);
-			let opponent: BotGenome | undefined;
-			if (ancestors.length > 0) {
-				const pick = hash32(hash32(this.config.seed, this.generation, index), 0x85ebca6b, index);
-				opponent = ancestors[pick % ancestors.length];
-			} else {
-				opponent = this.population[(index + 1) % this.population.length];
-				if (opponent.id === child.id)
-					opponent = this.population[(index + 2) % this.population.length];
-			}
-			if (!opponent || opponent.id === child.id) continue;
-			for (let pass = 0; pass < passes; pass++) {
-				const pairSeed = hash32(hash32(this.config.seed, this.generation, index), 0x9e3779b9, pass);
-				schedule.push([child, opponent], [opponent, child]);
-				this.scheduleSeeds.push(pairSeed, pairSeed);
-			}
+			if (ancestors.length === 0) continue;
+			const pick = hash32(hash32(this.config.seed, this.generation, index), 0x85ebca6b, index);
+			addPair(child, ancestors[pick % ancestors.length], index);
+		}
+		for (let index = 0; index < this.population.length; index++) {
+			const genome = this.population[index];
+			if (appeared.has(genome.id)) continue;
+			const unseenPair = (candidate: BotGenome): boolean =>
+				candidate.id !== genome.id &&
+				!seenPairs.has(
+					genome.id < candidate.id ? `${genome.id}|${candidate.id}` : `${candidate.id}|${genome.id}`
+				);
+			const opponent =
+				this.population.find((candidate) => !appeared.has(candidate.id) && unseenPair(candidate)) ??
+				this.population.find(unseenPair);
+			if (opponent) addPair(genome, opponent, index);
 		}
 		return schedule;
 	}

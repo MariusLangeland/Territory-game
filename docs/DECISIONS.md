@@ -2070,6 +2070,7 @@ The lab originally scored each generation in mixed schedules and then kept the t
 
 - In 1v1 with lineage duels enabled, every current genome plays one parent in same-seed, seat-swapped matches.
 - The summed fitness margin across same-seed, seat-swapped fights is the lineage result: positive promotes the genome, negative prevents it from entering the survivor pool and from creating a new QD archive slot.
+- Each unordered ancestor/descendant pair is scheduled once per pass; the parent may still be in the live population as a QD elite, but the pair is not duplicated in both directions.
 - The generation still keeps the top half of eligible genomes plus QD elites; a zero margin is neutral and falls back to ordinary fitness.
 - `matchesPerRound` controls the number of mirrored passes (two matches per pass); lineage results are shown as `LIN W-L` and included in CSV.
 - Initial/imported genomes without a known ancestor use a deterministic mirror pairing until the first mutation generation.

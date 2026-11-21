@@ -78,6 +78,36 @@ describe('evolutionary AI sandbox', () => {
 		expect(allRows.some((row) => row.lineageLosses > 0)).toBe(true);
 	}, 10_000);
 
+	it('schedules each mirrored 1v1 pair exactly once', () => {
+		const sandbox = new EvolutionSandbox({
+			seed: 5,
+			populationSize: 4,
+			generations: 2,
+			playerCount: 2,
+			matchesPerRound: 2,
+			ticks: 200,
+			width: 640,
+			height: 360,
+			lineageDuels: true
+		});
+		sandbox.begin();
+		const schedule = (sandbox as unknown as { schedule: Array<Array<{ id: string }>> }).schedule;
+		expect(schedule.length % 2).toBe(0);
+		const pairs = new Set<string>();
+		for (let index = 0; index < schedule.length; index += 2) {
+			const first = schedule[index];
+			const second = schedule[index + 1];
+			expect(first[0].id).toBe(second[1].id);
+			expect(first[1].id).toBe(second[0].id);
+			const key =
+				first[0].id < first[1].id
+					? `${first[0].id}|${first[1].id}`
+					: `${first[1].id}|${first[0].id}`;
+			expect(pairs.has(key)).toBe(false);
+			pairs.add(key);
+		}
+	});
+
 	it('round-trips genomes through the spreadsheet CSV', () => {
 		const report = runEvolution({
 			seed: 7,
