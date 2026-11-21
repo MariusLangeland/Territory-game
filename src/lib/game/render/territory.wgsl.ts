@@ -9,6 +9,8 @@ struct Uniforms {
   zoom: f32,
   dpr: f32,
   mergeDistricts: f32,
+  highlightDistrict: f32,
+  highlightOwner: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -168,18 +170,36 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     let terrainMix = select(0.52, 0.18, owner > 0u);
     color = mix(base * tint, terrainColor * (0.58 + shade * 0.52), terrainMix);
 
-    // Districts are a subtle structure-type wash plus a soft shared boundary.
+    // Districts are a structure-type wash with a bright, high-contrast border.
+    let highlightCode = u32(round(u.highlightDistrict));
+    let highlightOwner = u32(round(u.highlightOwner));
+    let highlighted =
+      highlightCode > 0u &&
+      owner == highlightOwner &&
+      rawDistrict > 0u &&
+      districtTypeBase(rawDistrict) == highlightCode;
     if (owner > 0u && rawDistrict > 0u) {
       let tintCode = select(rawDistrict, districtTypeBase(rawDistrict), u.mergeDistricts > 0.5);
       color = mix(color, districtColor(tintCode), 0.14);
+      if (highlighted) {
+        // Placement preview: pulse matching districts so they cannot be missed.
+        let pulse = 0.55 + 0.45 * sin(u.time * 5.0);
+        color = mix(color, vec3<f32>(1.0, 0.92, 0.62), 0.16 + 0.10 * pulse);
+      }
       let districtEdge =
         districtSeamCode(districtOf(west)) != district ||
         districtSeamCode(districtOf(east)) != district ||
         districtSeamCode(districtOf(north)) != district ||
         districtSeamCode(districtOf(south)) != district;
       if (districtEdge) {
-        // A faint seam, not a state border.
-        color = mix(color, color * 0.82, 0.45);
+        // A sharp cream/amber outline separates districts from terrain and
+        // from each other regardless of how close their fills are.
+        let border = select(
+          vec3<f32>(0.98, 0.94, 0.78),
+          vec3<f32>(1.0, 0.78, 0.30),
+          highlighted
+        );
+        color = mix(color, border, 0.9);
       }
     }
 

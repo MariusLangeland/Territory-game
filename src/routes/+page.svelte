@@ -1053,6 +1053,7 @@
 				{paused}
 				targeting={artilleryTargeting}
 				mergeDistricts={!ctrlHeld}
+				highlightType={draggingCard?.type ?? null}
 				{cameraBridge}
 				onTick={handleTick}
 				onHover={handleHover}
@@ -1594,7 +1595,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.42.0 / PROTOCOL 36</span>
+				<span>BUILD 0.43.0 / PROTOCOL 36</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>

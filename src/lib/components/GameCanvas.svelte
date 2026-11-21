@@ -2,7 +2,11 @@
 	import { onMount } from 'svelte';
 	import { ARTILLERY_RANGE, HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
-	import { STRUCTURE_ACCENTS, type StructureType } from '#lib/game/Structures';
+	import {
+		STRUCTURE_ACCENTS,
+		STRUCTURE_TYPE_CODES,
+		type StructureType
+	} from '#lib/game/Structures';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import { TerritoryRenderer, type RendererFrameStats } from '#lib/game/render/territory-renderer';
 
@@ -28,6 +32,7 @@
 		paused: boolean;
 		targeting?: boolean;
 		mergeDistricts?: boolean;
+		highlightType?: StructureType | null;
 		cameraBridge: GameCameraBridge;
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;
@@ -42,6 +47,7 @@
 		paused,
 		targeting = false,
 		mergeDistricts = true,
+		highlightType = null,
 		cameraBridge,
 		onTick,
 		onHover,
@@ -440,6 +446,10 @@
 			}
 
 			renderer.mergeDistrictSeams = mergeDistricts;
+			renderer.highlightDistrictCode = highlightType
+				? STRUCTURE_TYPE_CODES[highlightType] * 4 - 3
+				: 0;
+			renderer.highlightDistrictOwner = highlightType ? HUMAN_PLAYER_ID : 0;
 			renderer.render(now);
 			drawStructures();
 

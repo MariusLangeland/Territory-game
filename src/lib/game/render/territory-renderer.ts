@@ -58,6 +58,9 @@ export class TerritoryRenderer {
 	hover: { x: number; y: number } | null = null;
 	/** Visual-only: treat touching same-owner districts of one type as one area. */
 	mergeDistrictSeams = true;
+	/** Base district palette code (type group) to highlight during placement. */
+	highlightDistrictCode = 0;
+	highlightDistrictOwner = 0;
 	onDeviceLost?: (message: string) => void;
 
 	private readonly device: GPUDevice;
@@ -364,6 +367,8 @@ export class TerritoryRenderer {
 		u[10] = this.camera.zoom;
 		u[11] = dpr;
 		u[12] = this.mergeDistrictSeams ? 1 : 0;
+		u[13] = this.highlightDistrictCode;
+		u[14] = this.highlightDistrictOwner;
 
 		this.device.queue.writeBuffer(this.uniformBuffer, 0, u);
 

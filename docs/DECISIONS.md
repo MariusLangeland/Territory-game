@@ -1523,3 +1523,34 @@ Upgrades and Barracks levels were underpriced relative to their scaling, while C
 
 - **Change only upgrade step:** would leave Barracks scaling too cheap.
 - **Add a separate attack cap:** there is no such mechanic in the current model and it would be new scope.
+
+---
+
+## ADR-047 — Sharp district outlines and placement-type highlighting
+
+**Status:** accepted and implemented in 0.43.0  
+**Date:** 2026-11-21
+
+### Context
+
+Several structure-type district fills were close to terrain colors, and their boundaries were a subtle darker seam, so districts could disappear visually. During card placement there was also no indication of where the player's existing districts of that type were, making merges and upgrades hard to anticipate.
+
+### Decision
+
+- Replace the subtle district seam with a sharp high-contrast cream outline, using amber for highlighted matching districts. The outline uses the same shader control texture and adds no uploads.
+- Add `highlightDistrict` (base district palette code) and `highlightOwner` uniforms. While a card is in placement mode, the active player's districts matching that structure type pulse with a warm fill wash and amber outline.
+- The 2D canvas reports `draggingCard.type` to `GameCanvas`, which writes the uniform each frame.
+- App 0.43.0; protocol unchanged at 36.
+
+### Consequences
+
+- Districts stay legible over similar terrain without changing fill strength.
+- Placement mode clearly previews which existing same-type districts may be merged/upgraded.
+- Ctrl merge-disabling and the merged-district outline behavior are unchanged.
+- Uniform struct grows from 52 to 60 occupied bytes inside the existing 64-byte buffer.
+
+### Alternatives considered
+
+- **Post-process edge detection:** more expensive and would outline terrain/owner edges too.
+- **2D overlay polygon outlines:** requires per-cell boundary tracing and misses screen-space zoom behavior.
+- **Always highlight all types:** noisy; only the selected card's type is relevant.

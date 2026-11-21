@@ -84,7 +84,7 @@ The alpha channel packs `(districtPalette << 3) | elevationTier`; elevation is n
 - darkens pixels where a neighbour has a different tier, producing subtle contour boundaries;
 - leaves the continuous shade channel for relief grain.
 
-This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle 14% structure-type wash and a faint seam (about 8% darker) at district boundaries, making Voronoi districts readable without hiding terrain, elevation, or state ownership. With the merge uniform on, seam comparisons and tint use the structure-type base code, so touching same-owner/same-type districts become one area; Ctrl restores the variant-level comparison. No extra texture or upload is needed.
+This reuses the existing RGBA control texture and requires no extra upload or texture binding. Defense is not encoded separately; it is derived from elevation plus owner in the HUD and simulation. District palette codes add a subtle 14% structure-type wash and a **sharp cream/amber outline** at district boundaries so districts remain readable even when their fill blends with terrain. With the merge uniform on, seam comparisons and tint use the structure-type base code, so touching same-owner/same-type districts become one area; Ctrl restores the variant-level comparison. During card placement, `highlightDistrict`/`highlightOwner` pulse the player's existing districts of the selected type with a warm wash and amber outline. No extra texture or upload is needed.
 
 Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple and leaves room for static channels without adding another binding. The renderer writes R and packed A for ownership changes; G/B are written at initialization/resync.
 
@@ -162,19 +162,21 @@ No vertex buffers, no index buffers.
 
 ### Uniforms
 
-| Field            | Purpose                                                                     |
-| ---------------- | --------------------------------------------------------------------------- |
-| `resolution`     | Physical framebuffer size                                                   |
-| `camera`         | Map-space center                                                            |
-| `mapSize`        | 2048 × 1024                                                                 |
-| `hover`          | Hovered map cell, negative when none                                        |
-| `scale`          | Physical pixels per map pixel                                               |
-| `time`           | Seconds for ocean animation                                                 |
-| `zoom`           | Camera zoom factor for pixel-grid gating                                    |
-| `dpr`            | Device pixel ratio for screen-constant hover outlines                       |
-| `mergeDistricts` | 1 removes same-type internal district seams and variants; Ctrl sets it to 0 |
+| Field               | Purpose                                                                     |
+| ------------------- | --------------------------------------------------------------------------- |
+| `resolution`        | Physical framebuffer size                                                   |
+| `camera`            | Map-space center                                                            |
+| `mapSize`           | 2048 × 1024                                                                 |
+| `hover`             | Hovered map cell, negative when none                                        |
+| `scale`             | Physical pixels per map pixel                                               |
+| `time`              | Seconds for ocean animation                                                 |
+| `zoom`              | Camera zoom factor for pixel-grid gating                                    |
+| `dpr`               | Device pixel ratio for screen-constant hover outlines                       |
+| `mergeDistricts`    | 1 removes same-type internal district seams and variants; Ctrl sets it to 0 |
+| `highlightDistrict` | Base palette code of the card being placed; 0 when not placing              |
+| `highlightOwner`    | Owner whose matching districts pulse during placement                       |
 
-The uniform struct is 52 bytes occupied in a 64-byte buffer (std140-friendly padding).
+The uniform struct is 60 bytes occupied in a 64-byte buffer (std140-friendly padding).
 
 ### Fragment behavior
 
@@ -187,6 +189,8 @@ The uniform struct is 52 bytes occupied in a 64-byte buffer (std140-friendly pad
    - terrain contours from shade bands;
    - deterministic per-pixel grain;
    - darker one-pixel owner frontier;
+   - bright district outline;
+   - pulsing warm wash + amber outline on matching player districts while placing a card;
    - pale coastline where adjacent to ocean;
    - pixel grid at high zoom.
 5. Ocean:

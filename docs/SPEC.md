@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.42.0 (Frontage v1 + siege rework)  
+**Version:** 0.43.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.42.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.43.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -413,7 +413,7 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 | Command Post  |          32 px | +1 supply/s per stack           |
 | War Academy   |          32 px | +80 supply cap per stack        |
 
-District cells receive a subtle tint, a per-district brightness variant, and a darker boundary, so adjacent same-type districts also remain distinguishable. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code. The shader's merge uniform removes same-type internal seams and variants; Ctrl turns it off. The 2D structure overlay draws one combined icon per multi-structure merged group.
+District cells receive a subtle tint, a per-district brightness variant, and a **sharp high-contrast cream/amber outline**, so adjacent districts remain distinguishable even when their fill resembles terrain. WebGPU control alpha packs 3 elevation bits and a 5-bit district palette code. The shader's merge uniform removes same-type internal seams and variants; Ctrl turns it off. While a card is being placed, the selected type's districts owned by the player pulse with a warm wash and amber outline. The 2D structure overlay draws one combined icon per multi-structure merged group.
 
 Circular and smooth are both radial layers and can look similar. Circular uses exact global Euclidean priority; smooth uses banded distance plus local neighbour scoring, which rounds the edge but does not produce a different overall footprint. Organic is the visually distinct mode.
 
@@ -451,7 +451,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center.
 - A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
-- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Escape and selecting another number also cancel/replace placement.
+- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Escape and selecting another number also cancel/replace placement.
 - First-match onboarding shows three contextual hints: launch a front, drag a card into territory (or press its number then click), then click a district to upgrade. Hints advance on success, can be skipped, and completion is stored locally.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
 - The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.

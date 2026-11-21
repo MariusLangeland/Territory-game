@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.42.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.43.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -198,7 +198,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 
 District extents and borders are perturbed by deterministic integer noise: coherent 8 px value noise plus fine jitter makes each district grow or shrink by roughly two pixels and gives Voronoi splits an irregular edge. The geometry follows the actual coverage used by auras and placement.
 
-District pixels receive a subtle structure-type tint, a per-district brightness variant, and darkened boundaries in the WebGPU territory shader. When merging is active, the shader compares same-owner/same-type districts by type base and drops their internal seams; Ctrl restores the per-district variants and seams.
+District pixels receive a subtle structure-type tint, a per-district brightness variant, and a **sharp contrasting cream/amber border** in the WebGPU territory shader, so districts stay legible against matching terrain. While placing a card, the player's existing districts of that type pulse with a warm highlight and amber outline. When merging is active, the shader compares same-owner/same-type districts by type base and drops their internal seams; Ctrl restores the per-district variants and seams.
 
 Structures must be at least **8 px apart** (centre to centre); dropping a new type too close to any existing structure is rejected. Structure icons are larger now: 15 px radius for the human State, 11 px for AI States, and 10 px for buildables. These are screen-space sizes, so icons do **not** grow as you zoom in.
 
