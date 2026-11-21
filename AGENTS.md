@@ -15,7 +15,7 @@ Orientation for coding agents working on Territory. Read this before changing si
 ## Current status
 
 - **Current model — Frontage v1:** 51 states (1 human + 50 AI). One **supply** resource pays for cards, upgrades, and durable fronts. Supply income/cap derive from territory, Command Posts, and War Academies; the cap has **no global maximum**. Artillery is an active siege structure: 1000 supply to build, 300 supply per level fired, 140 px range, 6 s cooldown, one 2 s shell per level with ±36 px spread, 12 px blast, 64 px district, 16 px build clearance, and immunity for State structures. Cards cost 40/80/120/160/240 supply for Fortification/Command Post/War Academy/Jammer/Barracks, upgrades cost `base + 15 × current level`, and Fortifications add +1 defense. Effective attack levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs `30 + 40 × effective levels` and grants `1000 + 200 × levels` strength; power/piercing use `logTier = floor(log2(levels + 1))`. Jammers suppress enemy attacks globally without adding pixel defense. Captures spend power and strength; mutual contact trades `100 + 50 × opponent logTier` once per pair per tick. No fixed lifetime; 20 idle ticks kill a front. Cancellation refunds `floor(cost × remaining/initial strength)`. Holding 70% of land wins instantly; no time limit. State structures project +20 aura over 16px; districts are bounded noisy Voronoi regions; mutually hostile bots use personality profiles, threat reserves, and staggered build ticks.
-- Implemented: seeded 2048×1024 world, 51 starts, supply economy, durable fronts/attrition/cancellation/70% victory, State/buildable structures, bot personalities/threat defense, districts/auras/noise cleanup, growth layers, claim provenance, determinism/checksums, WebGPU dirty-tile rendering, 51-state HUD, onboarding, keyboard cursor, pinch zoom, telemetry, tests, benchmark.
+- Implemented: seeded 2048×1024 world, 51 starts, supply economy, durable fronts/attrition/cancellation/70% victory, State/buildable structures, bot personalities/threat defense, districts/auras/noise cleanup, growth layers, claim provenance, determinism/checksums, WebGPU dirty-tile rendering, 51-state HUD, rival supply banners, onboarding, keyboard cursor, pinch zoom, telemetry, tests, benchmark.
 - Not implemented: coordinated team bot AI, online server/WebSockets/lobbies/accounts/persistence, replay viewer, fog, audio, 320–430px mobile validation.
 - WebGPU is required. There is no fallback map renderer.
 
@@ -127,6 +127,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
 24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
 25. Test a narrow viewport and scroll the 51-state leaderboard to the bottom.
+26. Confirm each living rival capital shows a name/supply banner, larger states have larger banners, the human has no banner, and banners stay inside the viewport when a capital is near an edge.
 
 ## Style
 

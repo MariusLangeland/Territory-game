@@ -165,7 +165,7 @@ export const BOT_THREAT_COUNTER_BONUS = 40;
 export const BOT_THREAT_UNRELATED_PENALTY = 30;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
-export const PROTOCOL_VERSION = 36;
+export const PROTOCOL_VERSION = 37;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

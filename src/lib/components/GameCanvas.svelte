@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ARTILLERY_RANGE, HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
+	import { formatSupply } from '#lib/format';
 	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
 	import {
 		STRUCTURE_ACCENTS,
@@ -72,6 +73,8 @@
 	let pinchCentreX = 0;
 	let pinchCentreY = 0;
 	let suppressNextTap = false;
+	/** Latest throttled snapshot, used by the 2D supply banners. */
+	let lastSnapshot: GameSnapshot | null = null;
 
 	onMount(() => {
 		let disposed = false;
@@ -305,6 +308,104 @@
 			}
 		}
 
+		/**
+		 * Supply banners are map-anchored at each rival capital and scaled by
+		 * territory. Snapshot throttling keeps 50 banners off the per-tick path.
+		 */
+		function drawSupplyBanners(
+			context: CanvasRenderingContext2D,
+			width: number,
+			height: number
+		): void {
+			const snapshot = lastSnapshot;
+			if (!snapshot) return;
+			const capitalByOwner = new Map<number, { x: number; y: number }>();
+			for (const structure of snapshot.structures) {
+				if (structure.type === 'state') {
+					capitalByOwner.set(structure.ownerId, { x: structure.x, y: structure.y });
+				}
+			}
+			const rivals = snapshot.players.filter(
+				(player) => player.alive && player.id !== HUMAN_PLAYER_ID && player.territory > 0
+			);
+			if (rivals.length === 0) return;
+			const maxTerritory = Math.max(1, ...rivals.map((player) => player.territory));
+			// Smaller states first so the largest banners win overlap.
+			rivals.sort((left, right) => left.territory - right.territory);
+
+			const camera = renderer?.camera;
+			if (!camera) return;
+			for (const player of rivals) {
+				const capital = capitalByOwner.get(player.id) ?? simulation.map.starts[player.id - 1];
+				if (!capital) continue;
+				const point = camera.mapToScreen(capital.x + 0.5, capital.y + 0.5);
+				if (point.x < -80 || point.y < -80 || point.x > width + 80 || point.y > height + 80) {
+					continue;
+				}
+
+				const sizeRatio = Math.sqrt(player.territory / maxTerritory);
+				const scale = 0.75 + sizeRatio;
+				const supplySize = Math.max(11, Math.round(17 * scale));
+				const nameSize = Math.max(7, Math.round(8 * scale));
+				const supplyText = formatSupply(player.supply);
+				const nameText = player.name;
+				const accent = colorForPlayer(player.id).hex;
+
+				context.font = `800 ${supplySize}px ui-monospace, monospace`;
+				const supplyWidth = context.measureText(supplyText).width;
+				context.font = `700 ${nameSize}px ui-monospace, monospace`;
+				const nameWidth = context.measureText(nameText).width;
+				const padding = 8 * scale;
+				const bannerWidth = Math.ceil(Math.max(supplyWidth, nameWidth) + padding * 2);
+				const bannerHeight = Math.ceil(nameSize + supplySize + padding * 2 + 3 * scale);
+				const bannerX = Math.round(
+					Math.min(Math.max(4, point.x - bannerWidth / 2), width - bannerWidth - 4)
+				);
+				const bannerY = Math.round(
+					Math.max(4, Math.min(point.y - 18 - bannerHeight, height - bannerHeight - 4))
+				);
+
+				// A short stem anchors the banner to the capital marker.
+				context.beginPath();
+				context.moveTo(bannerX + bannerWidth / 2, bannerY + bannerHeight);
+				context.lineTo(point.x, point.y - 12);
+				context.lineWidth = Math.max(1, scale);
+				context.strokeStyle = accent;
+				context.globalAlpha = 0.7;
+				context.stroke();
+				context.globalAlpha = 1;
+
+				context.beginPath();
+				context.roundRect(bannerX, bannerY, bannerWidth, bannerHeight, 3 * scale);
+				context.fillStyle = 'rgba(4, 12, 16, 0.9)';
+				context.fill();
+				context.lineWidth = Math.max(1, 1.2 * scale);
+				context.strokeStyle = accent;
+				context.stroke();
+
+				// Owner-colored cap makes even same-colored state fills distinct.
+				context.fillStyle = accent;
+				context.globalAlpha = 0.9;
+				context.fillRect(bannerX + 1, bannerY + 1, bannerWidth - 2, Math.max(1, 2 * scale));
+				context.globalAlpha = 1;
+
+				context.textAlign = 'center';
+				context.textBaseline = 'top';
+				context.font = `700 ${nameSize}px ui-monospace, monospace`;
+				context.fillStyle = accent;
+				context.fillText(nameText, bannerX + bannerWidth / 2, bannerY + padding * 0.5);
+
+				context.textBaseline = 'middle';
+				context.font = `800 ${supplySize}px ui-monospace, monospace`;
+				context.fillStyle = '#fff7df';
+				context.fillText(
+					supplyText,
+					bannerX + bannerWidth / 2,
+					bannerY + bannerHeight - padding - supplySize / 2
+				);
+			}
+		}
+
 		function drawStructures(): void {
 			if (!renderer || !structureCanvas) return;
 			const camera = renderer.camera;
@@ -402,6 +503,8 @@
 				context.strokeStyle = ownerColor.hex;
 				context.stroke();
 			}
+
+			drawSupplyBanners(context, width, height);
 		}
 
 		function frame(now: number): void {
@@ -441,6 +544,7 @@
 					(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
 				) {
 					lastUiUpdate = now;
+					lastSnapshot = latestSnapshot;
 					onTick?.(latestSnapshot, pendingEvents);
 				}
 			}
@@ -504,7 +608,8 @@
 				});
 
 				onReady?.();
-				onTick?.(simulation.getSnapshot(), []);
+				lastSnapshot = simulation.getSnapshot();
+				onTick?.(lastSnapshot, []);
 				lastTime = performance.now();
 				frameId = requestAnimationFrame(frame);
 			} catch (error) {

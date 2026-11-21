@@ -140,6 +140,7 @@ export interface PublicPlayer {
 	alive: boolean;
 	territory: number;
 	landShare: number;
+	supply: number;
 }
 
 interface BotProfile {
@@ -3281,7 +3282,8 @@ export class TerritorySimulation {
 				isBot: player.isBot,
 				alive: player.alive,
 				territory: player.territory,
-				landShare: this.landCount === 0 ? 0 : player.territory / this.landCount
+				landShare: this.landCount === 0 ? 0 : player.territory / this.landCount,
+				supply: this.supplyOf(player.id)
 			};
 		});
 

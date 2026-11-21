@@ -87,7 +87,7 @@ A player joining mid-match needs:
 
 - protocol version, map version, seed;
 - current tick;
-- full public player state;
+- full public player state, including each state's current supply for rival banners;
 - a baseline owner map at that tick;
 - active fronts, live structures, and human supply/cap/income/hand;
 - the last event sequence and current checksum.
@@ -255,7 +255,7 @@ Player economy and cards:
 - the hand is the fixed six-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - continuous supply income, uncapped cap growth, Artillery cooldowns/shells, Barracks/Jammer attack stats, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
-- bots use the same supply economy but their balances are omitted from the public player snapshot.
+- bots use the same supply economy; every public player payload now includes current `supply` so clients can render rival supply banners (protocol 37).
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);

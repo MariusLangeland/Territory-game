@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.44.0 (Frontage v1 + siege rework)  
+**Version:** 0.45.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.44.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.45.0, map version 4, protocol draft 37
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -317,7 +317,7 @@ This removes the small unclaimed specks and coastal slivers that organic growth 
 - A live State structure projects a **16 px defense aura** adding **+20 defense** to land in range owned by that state. The structure cell itself is inside the aura. Auras never buff neutral or enemy land. Overlapping friendly auras do not stack; the strongest applies.
 - Capturing the structure destroys it immediately and removes its aura. The owner keeps any remaining territory, but none of it is annexation-protected until another structure anchors it.
 - Only State structures anchor protection. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies do not prevent annexation.
-- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, teal jammer rings, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
+- State structures are large owner-colored circles with a cream capital star (15 px human / 11 px AI radius). Buildables are 10 px dark badges with an owner-colored ring and a type-accent icon (orange cannon, red swords, cyan shield, teal jammer rings, green command mast, violet academy chevrons). Marker sizes are fixed in screen pixels and do not grow with camera zoom. Each rival capital also carries a supply banner scaled by that state's territory. The HUD shows the human state's `ANCHORED`/`NO ANCHOR` status and a war-feed event when a structure is destroyed.
 - Structure placement, capture, and protection are deterministic and included in checksums.
 
 State is the permanent anchor structure. Artillery, Barracks, Fortifications, Jammers, Command Posts, and War Academies are the player-built structures; construction beyond cards, more types, and ownership transfer are future work.
@@ -438,6 +438,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Human name/color, land share, rank, living-state count.
 - War clock.
 - Pause/resume, field manual, new world.
+- Rival supply banners: a map-anchored name/supply placard at each living rival's capital, updated from 5 Hz snapshots. Banner scale is a deterministic function of the rival's territory relative to the largest living rival, so larger states have larger banners. Offscreen rivals and the human are excluded; banners are clamped inside the viewport.
 - World-control leaderboard: 51 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.
 - War feed for eliminations/victory.
@@ -536,11 +537,11 @@ Current public player fields:
 
 ```ts
 {
-	(id, name, isBot, alive, territory, landShare);
+	(id, name, isBot, alive, territory, landShare, supply);
 }
 ```
 
-No troop or production-cap economy exists. The human snapshot carries supply, cap, income, and hand cards. Bots carry parallel supply/accrual state internally and spend it on fronts and their focus structure; bot balances are not exposed in the public player payload yet.
+No troop or production-cap economy exists. The human snapshot also carries cap, income, and hand cards. Bots carry parallel supply/accrual state internally and spend it on fronts and structures; every player's current supply is exposed for the rival supply banners.
 
 ---
 

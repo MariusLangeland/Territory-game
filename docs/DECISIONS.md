@@ -1584,3 +1584,40 @@ A base front entered with 1,500 durable strength, and each Barracks level added 
 
 - **Only lower the base:** would leave Barracks as the dominant durability purchase.
 - **Only lower the bonus:** would preserve excessive unupgraded front endurance.
+
+---
+
+## ADR-049 — Rival supply banners scaled by state size
+
+**Status:** accepted and implemented in 0.45.0  
+**Date:** 2026-11-21
+
+### Context
+
+The only live supply readout was the human's hand bar. Rival savings were hidden, making it hard to judge which states could afford a launch, a Barracks push, or artillery. A flat label for all 50 rivals would be unreadable and would not communicate relative power.
+
+### Decision
+
+- Expose current `supply` on every `PublicPlayer` snapshot record (protocol 37).
+- Draw a map-anchored banner at each living rival capital on the 2D overlay:
+  - owner-colored border and name,
+  - compact supply value using the existing formatter,
+  - scale derived from `sqrt(territory / largestLivingRivalTerritory)` so larger states get larger banners,
+  - smallest banners drawn first so larger ones win overlap,
+  - viewport clamping with a stem back to the capital,
+  - human and dead/zero-territory states excluded.
+- Refresh from the existing 5 Hz HUD snapshot; no extra simulation work or per-tick DOM updates.
+- App 0.45.0; protocol 37.
+
+### Consequences
+
+- Players can read rival economic pressure at a glance, and large states are visually dominant.
+- 50 banners remain off the 10 Hz per-tick path and are culled by the camera.
+- Banners can overlap in dense clusters; the largest are painted on top and labels stay attached to their capitals.
+- No simulation or checksum behavior changes, but the wire snapshot shape changed.
+
+### Alternatives considered
+
+- **DOM banners:** 51 live elements and layout thrash; the canvas overlay is cheaper.
+- **Flat-size labels:** does not satisfy the size-as-power requirement and becomes noisy.
+- **Leaderboard-only supply column:** hides spatial context; the leaderboard stays territory/rank-focused.

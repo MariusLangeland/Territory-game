@@ -49,6 +49,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
 - when district merging is enabled (Ctrl not held), draws one combined icon at the mean centre of each touching same-owner/same-type group, with the combined stack badge; individual icons return under Ctrl;
+- draws rival supply banners at capitals from the latest 5 Hz snapshot: owner-accented plaque, name plus compact supply, size scaled by territory relative to the largest living rival, smallest first, clamped to the viewport;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);
 - `pointer-events: none`, so attacks/drags still target the WebGPU canvas;

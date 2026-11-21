@@ -214,6 +214,20 @@ describe('map generation', () => {
 });
 
 describe('deterministic simulation', () => {
+	it('exposes current supply for every state in snapshots', () => {
+		const sim = new TerritorySimulation({ seed: 424242 });
+		for (let tick = 0; tick < 10; tick++) sim.step();
+		const snapshot = sim.getSnapshot();
+		const internals = sim as unknown as { botGold: number[] };
+		expect(snapshot.players).toHaveLength(PLAYER_COUNT);
+		expect(snapshot.players[HUMAN_PLAYER_ID - 1].supply).toBe(sim.gold);
+		for (const player of snapshot.players) {
+			expect(Number.isInteger(player.supply)).toBe(true);
+			expect(player.supply).toBeGreaterThanOrEqual(0);
+		}
+		expect(snapshot.players[1].supply).toBe(internals.botGold[1]);
+	});
+
 	it('produces identical checksums for identical seeds and commands', () => {
 		const left = new TerritorySimulation({ seed: 1337 });
 		const right = new TerritorySimulation({ seed: 1337 });
