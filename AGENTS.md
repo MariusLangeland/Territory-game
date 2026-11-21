@@ -45,6 +45,18 @@ pnpm lint
 - `docs/DECISIONS.md` is append-only. Do not rewrite historical ADRs; add a new one.
 - README/AGENTS are process/public summaries and should link to REFERENCE instead of copying numeric tables.
 
+### Documentation change procedure (follow this every time)
+
+1. Change code and tests first.
+2. Run `pnpm docs:reference`; if `docs/REFERENCE.md` did not change, do not edit it.
+3. Update `docs/SPEC.md` only when player-facing behavior or intent changed.
+4. Update README, AGENTS, ARCHITECTURE, DETERMINISM, RENDERING, NETWORKING, or COMBAT_DESIGN only if that specific document now makes a false claim. Do not copy new numbers into them; link to REFERENCE.
+5. Append an ADR only for a real design/architecture decision, not a minor numeric tweak. Never rewrite an old ADR.
+6. Do not bump the app version for every balance prompt; batch version bumps for releases.
+7. Run `pnpm docs:check`, then the normal verification commands.
+
+**Reminder:** a one-line value change should normally touch code, tests, and at most REFERENCE + SPEC. If you are editing six documentation files for a small change, stop and reconsider.
+
 If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provided by the harness (`load_workspace_dependencies`) instead of modifying global PATH assumptions in the repo.
 
 ## Non-negotiable invariants
