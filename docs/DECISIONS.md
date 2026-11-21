@@ -1794,3 +1794,33 @@ The 51-state, 2048×1024 configuration was a stress-test setting, not a selectab
 - **Keep only the 51-state stress format:** simplest, but leaves no usable shipping match flow.
 - **Select states by hiding players on a fixed 51-start map:** changes map density and wastes unused starts.
 - **Global difficulty tuning in constants:** a setup option is explicit and replayable per match.
+
+---
+
+## ADR-055 — Territory supply income reduced to +1 per 3,000 pixels
+
+**Status:** accepted and implemented in 0.51.0  
+**Date:** 2026-11-21
+
+### Context
+
+Land-based supply income at +1/s per 1,000 owned pixels made territory growth too rewarding by itself, letting large states outscale structure-based economy and flattening build choices.
+
+### Decision
+
+- `SUPPLY_INCOME_TERRITORY_DIVISOR` 1,000 → **3,000**.
+- Income becomes `3 + floor(territory/3000) + Command Post stacks` per second. Cap growth remains `120 + territory/1000 + 80 × War Academy stacks`.
+- Update the income test boundaries to 2,999/6,000/12,500 pixels.
+- App 0.51.0; protocol unchanged at 37.
+
+### Consequences
+
+- Territory still raises income without a hard cap, but three times more land is needed per +1/s.
+- Command Posts and early economy structures matter more relative to passive land income.
+- Large empires grow more slowly without supply infrastructure.
+- Bot economy balance and balance-sweep results should be re-checked; no wire or snapshot shape changes.
+
+### Alternatives considered
+
+- **Lower base income instead:** reduces everyone equally and does not address the land-scaling problem.
+- **Cap land income:** violates the uncapped-growth design.

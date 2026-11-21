@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.50.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.51.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.50.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.51.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -84,7 +84,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 - `districtColorCodes: Uint8Array` — 5-bit render palette (type group plus per-district variant) packed into the control texture.
 - Districts are derived from owners + structures by a bounded Voronoi pass; State structures have `districtRange: 0` and are skipped.
 - `defenseAt` = `1 + elevation + occupied + aura`. Capture cost is `max(1, defenseAt − pierce)` paid from power and strength.
-- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + floor(territory/1000) + supply-income effects` per second (+1/s per 1,000 owned pixels) with no income cap; cap is `120 + territory/1000 + 80 × Academy stacks` with no upper bound. `supplyCap` is public.
+- Supply: `gold` holds human supply (legacy field name), `goldAccrual` the human remainder, `botGold`/`botGoldAccrual` the bot equivalents. Income is `3 + floor(territory/3000) + supply-income effects` per second (+1/s per 3,000 owned pixels) with no income cap; cap is `120 + territory/1000 + 80 × Academy stacks` with no upper bound. `supplyCap` is public.
 - No attack-order inventory exists. Front launch cost/strength derive from effective live Barracks levels; power/pierce derive from integer log2 tiers. A defending Jammer subtracts one effective level per stack.
 - `structureStacksByType` caches owner/type stack totals and refreshes only when `StructureRegistry.version` changes, so per-tick income and per-launch attack stats do not scan every structure.
 - Permanent hand: all six buildable types with fixed ids, available for repeat purchases; no draw, consumption, or reroll.

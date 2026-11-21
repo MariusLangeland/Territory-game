@@ -95,7 +95,7 @@ export const BASE_GOLD_INCOME = 3;
 export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
 export const SUPPLY_CAP_BASE = 120;
 export const SUPPLY_CAP_TERRITORY_DIVISOR = 1000;
-export const SUPPLY_INCOME_TERRITORY_DIVISOR = 1000;
+export const SUPPLY_INCOME_TERRITORY_DIVISOR = 3000;
 export const SUPPLY_WIN_SHARE = 70;
 
 /** How far from a click the simulation looks for a shared border. */

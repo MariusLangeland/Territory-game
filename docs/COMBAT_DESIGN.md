@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.50.0 / protocol 37.  
+**Status:** IMPLEMENTED in application 0.51.0 / protocol 37.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -129,7 +129,7 @@ Derived per tick from live territory and structures (same derived-stat style as 
 
 ```text
 supplyCap(player)    = 120 + floor(territory / 1000) + 80 × WarAcademyStacks   // no maximum
-supplyIncome(player) =  3  + floor(territory / 1000) +  2 × CommandPostStacks   // per second, no cap
+supplyIncome(player) =  3  + floor(territory / 3000) +  1 × CommandPostStacks   // per second, no cap
 ```
 
 - Start: `supply = 90` for every player (human and bots). Base cap at spawn (~800 land cells) is 120,
@@ -360,7 +360,7 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `SUPPLY_CAP_LAND_DIVISOR`        | 1000  | +1 cap per 1000 land cells                             |
 | `SUPPLY_CAP_PER_ACADEMY_STACK`   | 80    | War Academy cap bonus                                  |
 | `SUPPLY_INCOME_BASE`             | 3     | Supply/s base                                          |
-| `SUPPLY_INCOME_LAND_DIVISOR`     | 1000  | +1 supply/s per 1 000 land cells                       |
+| `SUPPLY_INCOME_LAND_DIVISOR`     | 3000  | +1 supply/s per 3,000 land cells                       |
 | `SUPPLY_INCOME_PER_COMMAND_POST` | 2     | Supply/s per Command Post stack                        |
 | `SUPPLY_TICKS_PER_UNIT`          | 10    | Ticks of accrual per supply                            |
 | `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |
@@ -535,7 +535,7 @@ The user approved these on 2026-11-20. This table records the shipped choices; e
 | 2   | One resource or two      | **One resource:** supply pays cards, upgrades, and launches.                                                                                |
 | 3   | Victory model            | **Instant win at 70% land**, or last state standing.                                                                                        |
 | 4   | Match time target        | **Arbitrary length**; no score cap or timeout.                                                                                              |
-| 5   | Supply constants         | Income `3 + territory/1000 + structures`/s (+1 per 1,000 pixels), no income cap; stock cap `120 + territory/1000 + 40×Academy`, no maximum. |
+| 5   | Supply constants         | Income `3 + territory/3000 + structures`/s (+1 per 3,000 pixels), no income cap; stock cap `120 + territory/1000 + 80×Academy`, no maximum. |
 | 6   | Refund/cancel            | **Cancel with proportional refund** of remaining strength share.                                                                            |
 | 7   | Reinforcement            | **No reinforcement** in v1.                                                                                                                 |
 | 8   | Fortification stacking   | Unbounded stacks (as before).                                                                                                               |
