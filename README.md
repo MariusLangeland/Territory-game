@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.46.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.47.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -169,7 +169,7 @@ The human commander starts with **90 supply** and **all six build cards** perman
 | Fortification | 40   | +1 defense to every friendly pixel in its district; stacks   |
 | Jammer        | 160  | Global −1 enemy effective Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                         |
-| War Academy   | 120  | +80 supply cap                                               |
+| War Academy   | 60   | +80 supply cap                                               |
 
 There is no deck, draw, or reroll. Built structures are razed when captured.
 

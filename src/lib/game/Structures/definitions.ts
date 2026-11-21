@@ -25,8 +25,8 @@ export const STRUCTURE_TYPES = [
 /** Hand order is ascending card cost. */
 export const BUILDABLE_STRUCTURE_TYPES = [
 	'fortification',
-	'command-post',
 	'war-academy',
+	'command-post',
 	'jammer',
 	'barracks',
 	'artillery'

@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.46.0 / protocol 37.  
+**Status:** IMPLEMENTED in application 0.47.0 / protocol 37.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -259,7 +259,7 @@ Supply costs and the permanent six-card hand:
 | Fortification | 40   | +1 defense per stack across its district.                                |
 | Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
 | Command Post  | 80   | +1 supply per second per stack.                                          |
-| War Academy   | 120  | +80 supply cap per stack; no global maximum.                             |
+| War Academy   | 60   | +80 supply cap per stack; no global maximum.                             |
 
 - `supply-income`, `barracks-power`, and `barracks-suppression` are derived from live stacks via the cache.
 - Capturing a Command Post or War Academy removes its supply rate/cap immediately; current supply is

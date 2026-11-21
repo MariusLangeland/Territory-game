@@ -1656,3 +1656,32 @@ The rival supply banners were opaque plaques with colored borders and minimum fo
 - **Keep opaque plaques and just shrink them:** still occludes small states and retains the border the user rejected.
 - **Remove banners entirely:** loses the rival-supply awareness feature.
 - **Move toasts to a corner:** still a persistent last-action box; the request was to remove it.
+
+---
+
+## ADR-051 — War Academy base cost reduced to 60
+
+**Status:** accepted and implemented in 0.47.0  
+**Date:** 2026-11-21
+
+### Context
+
+War Academy cost 120 supply while providing +80 cap. The cap structure was meant to be an accessible economy choice, but its cost kept early bots and players from raising the cap before expensive Barracks/Artillery aspirations.
+
+### Decision
+
+- War Academy base cost 120 → **60**.
+- Reorder `BUILDABLE_STRUCTURE_TYPES` by ascending cost: Fortification 40, War Academy 60, Command Post 80, Jammer 160, Barracks 240, Artillery 1000. The permanent hand and number-key shortcuts follow this sorted order.
+- App 0.47.0; protocol unchanged at 37.
+
+### Consequences
+
+- Cap growth is available at half the previous price, making War Academy a realistic early economic pick.
+- Bot strategic reserves and cap-bottleneck priorities automatically use the new definition cost.
+- Hand ordering changes: `2` is War Academy and `3` is Command Post.
+- No wire or simulation-format changes; existing saved matches recompute from structure definitions.
+
+### Alternatives considered
+
+- **Lower cap bonus instead:** would weaken the intended payoff rather than improving access.
+- **Keep display order fixed:** would break the established ascending-cost hand; reordering is cheaper and keeps shortcuts predictable.
