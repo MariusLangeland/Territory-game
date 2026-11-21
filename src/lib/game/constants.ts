@@ -216,6 +216,11 @@ export const BOT_THREAT_COUNTER_BONUS = 40;
 export const BOT_THREAT_UNRELATED_PENALTY = 30;
 /** Team AI: reward joining a teammate's target; never attack teammates. */
 export const BOT_TEAM_COORDINATION_BONUS = 30;
+
+/** Strategic option commitments sit above tactical scoring. */
+export const BOT_OPTION_MIN_TICKS = 50;
+export const BOT_OPTION_MAX_TICKS = 90;
+export const BOT_OPTION_SWITCH_MARGIN = 18;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
 export const PROTOCOL_VERSION = 38;

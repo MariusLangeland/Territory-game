@@ -49,6 +49,9 @@ describe('evolutionary AI sandbox', () => {
 		expect(left.final.buckets.good.length).toBeGreaterThan(0);
 		expect(left.final.buckets.poor.length).toBeGreaterThan(0);
 		expect(new Set(left.final.rows.map((row) => row.genome.id)).size).toBe(8);
+		expect(left.final.rows.every((row) => /^E\d-D\d-N\d-A\d$/.test(row.descriptor))).toBe(true);
+		expect(left.archive.length).toBeGreaterThan(0);
+		expect(left.archive.every((row) => /^E\d-D\d-N\d-A\d$/.test(row.descriptor))).toBe(true);
 	});
 
 	it('round-trips genomes through the spreadsheet CSV', () => {

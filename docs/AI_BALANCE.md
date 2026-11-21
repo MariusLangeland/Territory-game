@@ -34,6 +34,19 @@ run, so the AI is not stagnating.
 - **Naval:** bots built 20–40 Ports and launched 20–57 landings across a slice at
   6,000 ticks, so naval expansion is occurring but remains opportunistic.
 
+## Strategic option layer
+
+The option layer was introduced after the original matrix. A one-seed, 3,000-tick check
+selected: `naval-opportunity` 865 times, `fortify-front` 581, `expand` 322,
+`exploit-weakness` 109, and `supply-ramp` 92. `coalition-strike` requires teams and
+`conserve` was not selected in that short, relatively safe run. The same check showed
+Fortified-front share at 53%, reflecting the incoming-front placement change.
+
+After the option layer, the 8×1,800 balance sweep completed the early economy ramp for
+**26.2%** of living bots at tick 1,800 (29.3% before options). This is a deliberate
+trade-off for committed strategic behavior; options still include an explicit supply
+ramp, and the layer should be re-tuned if future runs show economy starvation.
+
 ## Tuning decisions after measurement
 
 - **Defensive placement:** defensive cells now prioritize the intended target area

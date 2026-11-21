@@ -38,6 +38,14 @@ export {
 	serializeGenomeRow
 } from './evolution-csv';
 export {
+	BOT_OPTION_CODES,
+	BOT_OPTION_IDS,
+	BOT_OPTION_LABELS,
+	botOptionFromCode,
+	emptyOptionCounts,
+	type BotOptionId
+} from './options';
+export {
 	bucketCounts,
 	bucketForDifficulty,
 	bucketsFromReport,

@@ -1428,6 +1428,7 @@ describe('bot threat detection and defensive behaviour', () => {
 			sim.width
 		);
 		expect(sim.structures.destroy(destroyed)).toBe(true);
+		internals.botGold[1] = 1000;
 
 		sim.step();
 		expect(sim.structures.forOwnerType(2, economyType)).toBeDefined();
@@ -1599,6 +1600,25 @@ describe('bot threat detection and defensive behaviour', () => {
 			);
 		});
 		expect(sameTeamAttack).toBe(false);
+	});
+
+	it('selects committed strategic options deterministically', () => {
+		const left = new TerritorySimulation({ seed: 424242 });
+		const right = new TerritorySimulation({ seed: 424242 });
+		for (let tick = 0; tick < 300; tick++) {
+			left.step();
+			right.step();
+		}
+		const leftOptions = left.players
+			.filter((player) => player.isBot && player.alive)
+			.map((player) => left.getBotOption(player.id));
+		expect(leftOptions.some((option) => option !== null)).toBe(true);
+		const telemetry = left.getBotBehaviorTelemetry();
+		expect(Object.values(telemetry.optionSelections).some((count) => count > 0)).toBe(true);
+		expect(left.checksum()).toBe(right.checksum());
+		expect(left.getBotBehaviorTelemetry().optionSelections).toEqual(
+			right.getBotBehaviorTelemetry().optionSelections
+		);
 	});
 
 	it('includes bot threat state in the checksum and stays deterministic', () => {

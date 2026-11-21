@@ -378,6 +378,6 @@ more on slower machines).
 
 ## AI behavior counters
 
-Every telemetry record now includes bot behavior counters: threatened Fortification builds/upgrades, deterrence-triggered defensive postures, Command Posts/War Academies built while behind a neighbour's income, opportunity attacks, and bot Port/landing counts. These counters are non-gameplay and are not checksummed.
+Every telemetry record now includes bot behavior counters: threatened Fortification builds/upgrades, deterrence-triggered defensive postures, Command Posts/War Academies built while behind a neighbour's income, opportunity attacks, bot Port/landing counts, and strategic-option selection counts. These counters are non-gameplay and are not checksummed.
 
 `pnpm ai:balance` runs the 8-seed × 6,000-tick matrix across standard/ruthless and organic/circular, writing `reports/ai-balance.json` and `.csv`. Use `--difficulty`, `--mode`, `--seeds`, and `--ticks` to run a slice.

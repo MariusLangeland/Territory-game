@@ -2026,3 +2026,31 @@ The new economy/deterrence/opportunity AI needed measurement before tuning, bots
 - Bots can project power over water without wasting Port-cost-inclusive landings on poor targets.
 - Team games are available in the Evolution Lab without changing free-for-all defaults.
 - Future card-cost changes require code, tests, and generated REFERENCE only.
+
+---
+
+## ADR-063 — Strategic options, blackboard, and quality-diversity evolution
+
+**Status:** accepted and implemented in 0.56.0 (follow-up to ADR-062)  
+**Date:** 2026-11-21
+
+### Context
+
+The tactical utility layer produced context-sensitive decisions, but bots had no explicit committed intent, no lasting opponent memory, and evolution selected mainly on aggregate fitness. The game-AI literature points to hierarchical/temporal abstraction, blackboards/opponent models, and quality-diversity archives for more expressive strategy.
+
+### Decision
+
+- Add a committed **strategic option layer**: supply ramp, fortify front, expand, naval opportunity, exploit weakness, coalition strike, conserve. Options are selected on decision ticks, last 50–90 ticks, and require a utility margin to switch.
+- Options bias the existing tactical utility layer (economy, reserve, target score, attack chance, naval behavior) rather than replacing it.
+- Add blackboard memory for the last attacker, option target, neighbour income/strength signals, and ally targets.
+- Add per-player behavior metrics for evolution: attacks, supported attacks, Fortifications, economy buildings, Ports, and landings.
+- Expand fitness with economy/defense/naval/aggression/cooperation components.
+- Add a MAP-Elites-style archive keyed by `E/D/N/A` strategy descriptors; one elite per descriptor survives alongside top-fitness genomes.
+- Update CSV, spectator table, post-match analysis, and telemetry to expose descriptors, option usage, and per-player behavior.
+
+### Consequences
+
+- Bots pursue coherent short-horizon plans while remaining reactive; options are checksummed deterministic state.
+- Evolution optimizes both outcome and behavioral diversity, reducing collapse to one dominant strategy.
+- Reward metrics now favor multiple viable archetypes, not just land grabbing.
+- The option set is intentionally small and symbolic; richer HTN/GOAP planning and dynamic diplomacy remain future work.

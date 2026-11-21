@@ -298,6 +298,15 @@
 		void snapshot;
 		return sim?.getBotBehaviorTelemetry() ?? null;
 	});
+	let aiOptionSummary = $derived.by(() => {
+		void snapshot;
+		if (!aiPostMatch) return '—';
+		return Object.entries(aiPostMatch.optionSelections)
+			.sort((left, right) => right[1] - left[1])
+			.slice(0, 3)
+			.map(([id, count]) => `${id} ${count}`)
+			.join(' / ');
+	});
 	let seedHex = $derived(currentSeed.toString(16).toUpperCase().padStart(8, '0'));
 	let canDeploy = $derived(phase === 'ready' && rendererReady && sim !== null && !settingsDirty);
 	let deployLabel = $derived(
@@ -1842,6 +1851,9 @@
 							<span>BOT PORTS / LANDINGS</span><strong>
 								{aiPostMatch.botPortBuilds} / {aiPostMatch.botNavalLandings}
 							</strong>
+						</div>
+						<div>
+							<span>STRATEGIC OPTIONS</span><strong>{aiOptionSummary}</strong>
 						</div>
 					</div>
 				{/if}
@@ -4007,7 +4019,7 @@
 
 	.result-ai {
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
+		grid-template-columns: repeat(3, 1fr);
 		margin: 0 0 12px;
 		border: 1px solid var(--line-soft);
 		background: rgba(88, 199, 232, 0.04);

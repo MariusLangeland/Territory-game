@@ -45,18 +45,27 @@ export interface GenomePerformance {
 	income: number;
 	attackStrength: number;
 	fitness: number;
+	/** Quality-diversity descriptor: economy/defense/naval/aggression bins. */
+	descriptor: string;
+	economy: number;
+	defense: number;
+	naval: number;
+	aggression: number;
+	cooperation: number;
 }
 
 export interface GenerationResult {
 	generation: number;
 	rows: GenomePerformance[];
 	buckets: Record<BotBucket, string[]>;
+	archive: GenomePerformance[];
 }
 
 export interface EvolutionReport {
 	config: EvolutionConfig;
 	generations: GenerationResult[];
 	final: GenerationResult;
+	archive: GenomePerformance[];
 }
 
 interface Evaluation {
@@ -67,6 +76,11 @@ interface Evaluation {
 	income: number;
 	attackStrength: number;
 	fitness: number;
+	economy: number;
+	defense: number;
+	naval: number;
+	aggression: number;
+	cooperation: number;
 }
 
 export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}): EvolutionConfig {
@@ -99,15 +113,43 @@ export function genomeFitness(
 	player: PublicPlayer,
 	income: number,
 	attackStrength: number,
-	won: boolean
+	won: boolean,
+	strategy: {
+		economy: number;
+		defense: number;
+		naval: number;
+		aggression: number;
+		cooperation: number;
+	} = { economy: 0, defense: 0, naval: 0, aggression: 0, cooperation: 0 }
 ): number {
 	return Math.round(
 		player.landShare * 120_000 +
 			income * 120 +
 			attackStrength * 0.3 +
 			(won ? 75_000 : 0) +
-			(player.alive ? 1_000 : 0)
+			(player.alive ? 1_000 : 0) +
+			strategy.economy * 8 +
+			strategy.defense * 10 +
+			strategy.naval * 25 +
+			strategy.aggression * 2 +
+			strategy.cooperation * 8
 	);
+}
+
+function descriptorFor(metrics: {
+	economy: number;
+	defense: number;
+	naval: number;
+	aggression: number;
+}): string {
+	const bin = (value: number, low: number, high: number): number =>
+		value >= high ? 2 : value >= low ? 1 : 0;
+	return [
+		`E${bin(metrics.economy, 3, 8)}`,
+		`D${bin(metrics.defense, 3, 8)}`,
+		`N${bin(metrics.naval, 1, 3)}`,
+		`A${bin(metrics.aggression, 5, 12)}`
+	].join('-');
 }
 
 function scoreMatch(
@@ -124,11 +166,29 @@ function scoreMatch(
 		const attackStrength = snapshot.attacks
 			.filter((attack) => attack.attackerId === playerId)
 			.reduce((total, attack) => total + attack.strength, 0);
+		const owned = snapshot.structures.filter((structure) => structure.ownerId === playerId);
+		const behavior = simulation.getPlayerBehaviorMetrics(playerId);
+		const economy = owned
+			.filter((structure) => structure.type === 'command-post' || structure.type === 'war-academy')
+			.reduce((total, structure) => total + structure.stacks, 0);
+		const defense = owned
+			.filter((structure) => structure.type === 'fortification')
+			.reduce((total, structure) => total + structure.stacks, 0);
+		const naval =
+			owned.filter((structure) => structure.type === 'port').length + behavior.navalLandings * 2;
+		const strategy = {
+			economy,
+			defense,
+			naval,
+			aggression: behavior.attacksLaunched,
+			cooperation: behavior.supportedAttacks
+		};
 		const fitness = genomeFitness(
 			player,
 			simulation.incomeOf(playerId),
 			attackStrength,
-			snapshot.winnerId === playerId
+			snapshot.winnerId === playerId,
+			strategy
 		);
 		scored.set(genome.id, {
 			genome,
@@ -137,7 +197,8 @@ function scoreMatch(
 			landShare: player.landShare,
 			income: simulation.incomeOf(playerId),
 			attackStrength,
-			fitness
+			fitness,
+			...strategy
 		});
 	}
 	return scored;
@@ -154,7 +215,18 @@ function aggregateEvaluations(evaluations: Map<string, Evaluation>): GenomePerfo
 		attackStrength: evaluation.matches ? evaluation.attackStrength / evaluation.matches : 0,
 		fitness: evaluation.matches
 			? Math.round((evaluation.fitness / evaluation.matches) * 100) / 100
-			: 0
+			: 0,
+		economy: evaluation.matches ? evaluation.economy / evaluation.matches : 0,
+		defense: evaluation.matches ? evaluation.defense / evaluation.matches : 0,
+		naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
+		aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0,
+		cooperation: evaluation.matches ? evaluation.cooperation / evaluation.matches : 0,
+		descriptor: descriptorFor({
+			economy: evaluation.matches ? evaluation.economy / evaluation.matches : 0,
+			defense: evaluation.matches ? evaluation.defense / evaluation.matches : 0,
+			naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
+			aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0
+		})
 	}));
 	rows.sort((a, b) => b.fitness - a.fitness || a.genome.id.localeCompare(b.genome.id));
 	return rows;
@@ -176,16 +248,35 @@ export function bucketRows(rows: GenomePerformance[]): Record<BotBucket, string[
 function nextPopulation(
 	rows: GenomePerformance[],
 	config: EvolutionConfig,
-	generation: number
+	generation: number,
+	archive: Map<string, GenomePerformance>
 ): BotGenome[] {
 	const survivorCount = Math.max(2, Math.ceil(rows.length * 0.5));
 	const survivors = rows.slice(0, survivorCount).map((row) => row.genome);
 	const eliteCount = Math.max(1, Math.ceil(rows.length * 0.2));
-	const next: BotGenome[] = survivors.slice(0, eliteCount).map((genome) => cloneGenome(genome));
+	const archiveElites = Array.from(archive.values()).sort(
+		(left, right) => right.fitness - left.fitness
+	);
+	const next: BotGenome[] = [];
+	const eliteIds = new Set<string>();
+	for (const row of rows.slice(0, eliteCount)) {
+		if (eliteIds.has(row.genome.id)) continue;
+		eliteIds.add(row.genome.id);
+		next.push(cloneGenome(row.genome));
+	}
+	// Keep one best genome per quality-diversity descriptor in the breeding pool.
+	const descriptorEliteTarget = Math.max(eliteCount, Math.ceil(rows.length * 0.4));
+	for (const row of archiveElites) {
+		if (next.length >= descriptorEliteTarget) break;
+		if (eliteIds.has(row.genome.id)) continue;
+		eliteIds.add(row.genome.id);
+		next.push(cloneGenome(row.genome));
+	}
+	const parentPool = [...rows.slice(0, survivorCount), ...archiveElites];
 	while (next.length < config.populationSize) {
 		const seed = hash32(hash32(config.seed, generation, next.length), 0x27d4eb2d, 0);
-		const first = survivors[seed % survivors.length];
-		const second = survivors[hash32(seed, 1, generation) % survivors.length];
+		const first = parentPool[seed % parentPool.length].genome;
+		const second = parentPool[hash32(seed, 1, generation) % parentPool.length].genome;
 		next.push(
 			next.length % 3 === 0
 				? mutateGenome(first, seed, generation)
@@ -205,6 +296,8 @@ export class EvolutionSandbox {
 	currentMatchIndex = 0;
 	currentMatchSeed = 0;
 	reports: GenerationResult[] = [];
+	/** MAP-Elites-style archive: best fitness per strategy descriptor. */
+	readonly archive = new Map<string, GenomePerformance>();
 	private schedule: BotGenome[][] = [];
 	private evaluations = new Map<string, Evaluation>();
 	private pendingPopulation: BotGenome[] = [];
@@ -220,7 +313,8 @@ export class EvolutionSandbox {
 
 	get progress(): { match: number; matches: number; generation: number } {
 		return {
-			match: this.currentMatchIndex + 1,
+			match:
+				this.schedule.length === 0 ? 0 : Math.min(this.schedule.length, this.currentMatchIndex + 1),
 			matches: this.schedule.length,
 			generation: this.generation + 1
 		};
@@ -241,6 +335,7 @@ export class EvolutionSandbox {
 		}
 		this.population = pool.slice(0, this.config.populationSize);
 		this.reports = [];
+		this.archive.clear();
 		this.generation = 0;
 		this.currentSimulation = null;
 		this.phase = 'idle';
@@ -303,6 +398,11 @@ export class EvolutionSandbox {
 				existing.income += value.income;
 				existing.attackStrength += value.attackStrength;
 				existing.fitness += value.fitness;
+				existing.economy += value.economy;
+				existing.defense += value.defense;
+				existing.naval += value.naval;
+				existing.aggression += value.aggression;
+				existing.cooperation += value.cooperation;
 			}
 		}
 		this.currentSimulation = null;
@@ -336,7 +436,12 @@ export class EvolutionSandbox {
 				landShare: 0,
 				income: 0,
 				attackStrength: 0,
-				fitness: 0
+				fitness: 0,
+				economy: 0,
+				defense: 0,
+				naval: 0,
+				aggression: 0,
+				cooperation: 0
 			});
 		}
 		this.startNextMatch();
@@ -363,13 +468,27 @@ export class EvolutionSandbox {
 	private completeGeneration(): void {
 		const rows = aggregateEvaluations(this.evaluations);
 		const buckets = bucketRows(rows);
-		this.reports.push({ generation: this.generation, rows, buckets });
+		for (const row of rows) {
+			const existing = this.archive.get(row.descriptor);
+			if (!existing || row.fitness > existing.fitness) {
+				this.archive.set(row.descriptor, { ...row });
+			}
+		}
+		const archiveRows = Array.from(this.archive.values()).sort(
+			(left, right) => right.fitness - left.fitness
+		);
+		this.reports.push({
+			generation: this.generation,
+			rows,
+			buckets,
+			archive: archiveRows
+		});
 		if (this.generation + 1 >= this.config.generations) {
 			this.phase = 'finished';
 			this.pendingPopulation = [];
 			return;
 		}
-		this.pendingPopulation = nextPopulation(rows, this.config, this.generation + 1);
+		this.pendingPopulation = nextPopulation(rows, this.config, this.generation + 1, this.archive);
 		this.phase = 'generation-complete';
 	}
 
@@ -385,7 +504,8 @@ export class EvolutionSandbox {
 		return {
 			config: this.config,
 			generations: this.reports,
-			final: this.reports[this.reports.length - 1]
+			final: this.reports[this.reports.length - 1],
+			archive: Array.from(this.archive.values()).sort((left, right) => right.fitness - left.fitness)
 		};
 	}
 }

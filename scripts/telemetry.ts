@@ -25,6 +25,7 @@ import {
 	type GameSnapshot,
 	type PublicPlayer
 } from '../src/lib/game/simulation';
+import { BOT_OPTION_IDS, emptyOptionCounts } from '../src/lib/game/ai/options';
 import {
 	STRUCTURE_TYPES,
 	type PublicStructure,
@@ -447,7 +448,11 @@ function aggregate(
 			),
 			opportunityAttacks: seeds.reduce((sum, run) => sum + run.botBehavior.opportunityAttacks, 0),
 			botPortBuilds: seeds.reduce((sum, run) => sum + run.botBehavior.botPortBuilds, 0),
-			botNavalLandings: seeds.reduce((sum, run) => sum + run.botBehavior.botNavalLandings, 0)
+			botNavalLandings: seeds.reduce((sum, run) => sum + run.botBehavior.botNavalLandings, 0),
+			optionSelections: BOT_OPTION_IDS.reduce((counts, option) => {
+				for (const run of seeds) counts[option] += run.botBehavior.optionSelections[option];
+				return counts;
+			}, emptyOptionCounts())
 		}
 	};
 }
@@ -605,7 +610,8 @@ function formatTable(report: TelemetryReport): string {
 			`deterrence postures ${totals.botBehavior.deterrencePostures}  ` +
 			`income-gap CP/WA ${totals.botBehavior.incomeGapCommandPosts}/${totals.botBehavior.incomeGapWarAcademies}  ` +
 			`opportunities ${totals.botBehavior.opportunityAttacks}  ` +
-			`ports ${totals.botBehavior.botPortBuilds}  landings ${totals.botBehavior.botNavalLandings}`
+			`ports ${totals.botBehavior.botPortBuilds}  landings ${totals.botBehavior.botNavalLandings}  ` +
+			`options ${BOT_OPTION_IDS.map((id) => `${id} ${totals.botBehavior.optionSelections[id]}`).join(' / ')}`
 	);
 	return lines.join('\n');
 }

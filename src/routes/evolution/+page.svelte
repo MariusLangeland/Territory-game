@@ -60,6 +60,12 @@
 		void revision;
 		return sandbox?.latestRows ?? [];
 	});
+	let archiveRows = $derived.by(() => {
+		void revision;
+		return Array.from(sandbox?.archive.values() ?? []).sort(
+			(left, right) => right.fitness - left.fitness
+		);
+	});
 	let progress = $derived.by(() => {
 		void revision;
 		return sandbox?.progress ?? { match: 0, matches: 0, generation: 0 };
@@ -335,8 +341,8 @@
 				</div>
 				<button class="primary" type="button" onclick={start}>START EVOLUTION</button>
 				<p class="hint">
-					Fitness = land share + final income + attack strength + wins + survival. TEAM AI 1 =
-					free-for-all.
+					Fitness = land + income + attack + wins + survival +
+					economy/defense/naval/aggression/cooperation. TEAM AI 1 = free-for-all.
 				</p>
 			</section>
 
@@ -386,7 +392,7 @@
 				</button>
 				<p class="hint">
 					Relaxed difficulty uses poor, standard good, ruthless top. Finished buckets are saved
-					locally and used by the main match setup.
+					locally and used by the main match setup. QD archive: {archiveRows.length} strategy descriptors.
 				</p>
 			</section>
 		</aside>
@@ -402,8 +408,10 @@
 			<table>
 				<thead>
 					<tr>
-						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>FITNESS</th>
-						<th>LAND</th><th>INCOME</th><th>ATTACK</th><th>WINS</th>
+						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>DESCRIPTOR</th><th>FITNESS</th>
+						<th>LAND</th><th>INCOME</th><th>ECO</th><th>DEF</th><th>NAV</th><th>ATT</th><th>
+							COOP
+						</th><th>WINS</th>
 						<th>MODULES (INC/DEF/DET/OPP/EXP/RET)</th>
 					</tr>
 				</thead>
@@ -414,10 +422,15 @@
 							<td class="mono">{row.genome.id}</td>
 							<td>{row.genome.generation}</td>
 							<td><span class={`pill ${row.bucket}`}>{row.bucket}</span></td>
+							<td class="mono">{row.descriptor}</td>
 							<td>{row.fitness.toFixed(1)}</td>
 							<td>{(row.landShare * 100).toFixed(2)}%</td>
 							<td>{row.income.toFixed(1)}/s</td>
-							<td>{Math.round(row.attackStrength)}</td>
+							<td>{row.economy.toFixed(1)}</td>
+							<td>{row.defense.toFixed(1)}</td>
+							<td>{row.naval.toFixed(1)}</td>
+							<td>{Math.round(row.aggression)}</td>
+							<td>{Math.round(row.cooperation)}</td>
 							<td>{row.wins}</td>
 							<td class="mono modules">
 								{Math.round(row.genome.modules.income)}/{Math.round(
@@ -432,7 +445,7 @@
 					{/each}
 					{#if rows.length === 0}
 						<tr>
-							<td colspan="10" class="empty-row">
+							<td colspan="15" class="empty-row">
 								No scores yet. Start a run and finish at least one match.
 							</td>
 						</tr>

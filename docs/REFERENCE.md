@@ -20,7 +20,7 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:version START -->
 
-- App version: `0.55.0` (from `package.json` `version`).
+- App version: `0.56.0` (from `package.json` `version`).
 
 <!-- AUTOGEN:version END -->
 

@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TICK_RATE } from '../src/lib/game/constants';
 import type { GrowthMode } from '../src/lib/game/growth';
+import { BOT_OPTION_IDS, emptyOptionCounts } from '../src/lib/game/ai/options';
 import {
 	TerritorySimulation,
 	type BotBehaviorTelemetry,
@@ -94,7 +95,8 @@ function emptyBehavior(): BotBehaviorTelemetry {
 		incomeGapWarAcademies: 0,
 		opportunityAttacks: 0,
 		botPortBuilds: 0,
-		botNavalLandings: 0
+		botNavalLandings: 0,
+		optionSelections: emptyOptionCounts()
 	};
 }
 
@@ -168,8 +170,16 @@ function stdDev(values: readonly number[]): number {
 function aggregate(runs: RunMetrics[]): Aggregate {
 	const behavior = emptyBehavior();
 	for (const run of runs) {
-		for (const key of Object.keys(behavior) as Array<keyof BotBehaviorTelemetry>) {
-			behavior[key] += run.botBehavior[key];
+		behavior.threatenedFortificationBuilds += run.botBehavior.threatenedFortificationBuilds;
+		behavior.threatenedFortificationUpgrades += run.botBehavior.threatenedFortificationUpgrades;
+		behavior.deterrencePostures += run.botBehavior.deterrencePostures;
+		behavior.incomeGapCommandPosts += run.botBehavior.incomeGapCommandPosts;
+		behavior.incomeGapWarAcademies += run.botBehavior.incomeGapWarAcademies;
+		behavior.opportunityAttacks += run.botBehavior.opportunityAttacks;
+		behavior.botPortBuilds += run.botBehavior.botPortBuilds;
+		behavior.botNavalLandings += run.botBehavior.botNavalLandings;
+		for (const option of BOT_OPTION_IDS) {
+			behavior.optionSelections[option] += run.botBehavior.optionSelections[option];
 		}
 	}
 	return {
@@ -218,7 +228,8 @@ function csv(rows: RunMetrics[]): string {
 		'incomeGapWarAcademies',
 		'opportunityAttacks',
 		'botPortBuilds',
-		'botNavalLandings'
+		'botNavalLandings',
+		...BOT_OPTION_IDS.map((id) => `option_${id}`)
 	];
 	const lines = [header.join(',')];
 	for (const row of rows) {
@@ -243,7 +254,15 @@ function csv(rows: RunMetrics[]): string {
 				row.ports,
 				row.averageBotIncome.toFixed(2),
 				row.fortifiedFrontShare.toFixed(3),
-				...Object.values(row.botBehavior)
+				row.botBehavior.threatenedFortificationBuilds,
+				row.botBehavior.threatenedFortificationUpgrades,
+				row.botBehavior.deterrencePostures,
+				row.botBehavior.incomeGapCommandPosts,
+				row.botBehavior.incomeGapWarAcademies,
+				row.botBehavior.opportunityAttacks,
+				row.botBehavior.botPortBuilds,
+				row.botBehavior.botNavalLandings,
+				...BOT_OPTION_IDS.map((id) => row.botBehavior.optionSelections[id])
 			].join(',')
 		);
 	}

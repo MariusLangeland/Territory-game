@@ -222,6 +222,8 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - **Defensive spending:** while threatened, the bot first builds a missing Fortification on the border cell with the most hostile neighbours, then upgrades the Fortification, then builds/upgrades a Barracks or Jammer. These actions may consume the reserve; non-defence spending cannot.
 - **Rebuilding:** a destroyed plan structure is simply missing from the plan and is rebuilt when affordable and placeable; destroyed defensive structures are rebuilt first under threat.
 - **Bot naval strategy:** coastal bots build a Port when a hostile/neutral shore target scores above the naval threshold or land expansion is blocked. With a Port they sample sea-connected shores, score low-supply/low-defense targets, and launch only when the landing cost fits their reserve and attack chance. They avoid wasting the Port-cost-inclusive landing on poor targets.
+- **Strategic option layer:** every decision tick a bot commits to one option for 50–90 ticks: supply ramp, fortify front, expand, naval opportunity, exploit weakness, coalition strike, or conserve. Options bias economy, reserve, attack chance, target selection, and naval behavior; a switch requires a meaningful utility margin over the current option.
+- **Blackboard memory:** bots remember the last attacker, the strongest bordering income/strength signals, active ally targets, and the selected option's target. These beliefs feed threat, target, and option scoring rather than being recomputed as isolated snapshots.
 - **Target scoring:** each sampled border target is scored from neutral expansion, the attacker's grudge against that owner, target strength relative to self, the number of active attacks already hitting the target, and the target's available supply.
   - Vengeful bots strongly favor owners that have captured their land.
   - Cautious bots penalize stronger targets and targets holding enough supply to retaliate.
@@ -244,6 +246,8 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - The headless CLI (`pnpm evolution`) writes a CSV spreadsheet with genome traits, module weights, bucket, fitness, land, income, attack, and wins. The client can import that spreadsheet to rerun those genomes or combine selected bucket genomes.
 - **Spectator mode** at `/evolution` runs the same natural-selection loop in-client using paired bot-only simulations; `1×`/`4×`/`16×`/`48×` controls fast-forward. It reuses the WebGPU renderer and shows live genome performance and buckets.
 - **Team AI:** the Evolution Lab can assign cyclic teams. Teammates never attack one another and gain a coordination bonus when joining an ally's target. Team count 1 is free-for-all.
+- **Quality-diversity archive:** genomes are also archived by strategy descriptor (`E` economy, `D` defense, `N` naval, `A` aggression bins). The archive preserves one best genome per descriptor, and those elites seed later generations alongside the fitness top half.
+- **Reward metrics:** fitness combines land share, income, active attack strength, wins, survival, economy structures, Fortification levels, naval Ports/landings, launched attacks, and allied support. Descriptor metrics are reported in the lab, spreadsheet, and CSV.
 - **Post-match analysis:** the result modal includes the AI behavior counters (threatened fortifications, deterrence postures, income-gap economy, supply opportunities, Ports/landings), seed copy/replay, standings, and match summary.
 
 ### 4.9 Tick order
