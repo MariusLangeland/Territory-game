@@ -1,6 +1,6 @@
 # Combat Design — Frontage v1 (IMPLEMENTED)
 
-**Status:** IMPLEMENTED in application 0.43.0 / protocol 36.  
+**Status:** IMPLEMENTED in application 0.44.0 / protocol 36.  
 **Proposal version:** 1.0 — 2026-11-20  
 **Replaces:** EXP-001 attack semantics ([EXPERIMENTS.md](EXPERIMENTS.md))  
 **Scope:** attack/combat rules only. Economy beyond supply, progression, networking, and UI polish are out of scope.
@@ -162,7 +162,7 @@ On the next tick the command is applied in `(sequence, playerId)` order:
 effectiveLevels = max(0, attacker Barracks stacks − defender Jammer stacks)
 logTier         = 31 - clz32(effectiveLevels + 1)        // floor(log2(levels + 1))
 launchCost      = 30 + 40 × effectiveLevels              // no cap
-strength        = 1500 + 450 × effectiveLevels           // no cap
+strength        = 1000 + 200 × effectiveLevels           // no cap
 powerPerTick    = 30 + 15 × logTier
 pierce          = logTier
 supply         -= launchCost
@@ -175,11 +175,10 @@ supply         -= launchCost
 - The order inventory, order cap, and 10-second order grant are removed. Command Post and War Academy
   are repurposed (§3.5).
 
-**Worked example — base front vs neutral lowland.** `effectiveLevels = 0`, launch cost 30, strength 1500,
+**Worked example — base front vs neutral lowland.** `effectiveLevels = 0`, launch cost 30, strength 1000,
 power 30/tick, pierce 0. Lowland neutral defense = `1 + 0 + 0 = 1`; occupied defense = 2. The front
-spends 30 points/tick and can capture at least `1500 / 2 = 750` occupied/lowland pixels, spread over
-as many ticks as its frontier allows (minimum 50 ticks at full spend). That is the same total point
-budget as the current base front (30 × 50), but it is now durable rather than time-boxed.
+spends 30 points/tick and can capture at least `1000 / 2 = 500` occupied/lowland pixels, spread over
+as many ticks as its frontier allows (minimum 34 ticks at full spend). It is durable rather than time-boxed.
 
 ### 3.3 Front processing per tick
 
@@ -241,11 +240,11 @@ captureCost   = max(1, defense − logTier)             // per capture, paid fro
 - Fortification: +1 per stack over every cell of its own district (additive, friendly-only).
 - Jammer: global enemy suppression, −1 effective Barracks level per stack; never alters pixel defense.
 - Districts, structure spacing (8 px), stacking, and razing rules are unchanged.
-- Barracks is the offensive scaler: each level adds +450 strength and +40 launch cost; each log2 tier
+- Barracks is the offensive scaler: each level adds +200 strength and +40 launch cost; each log2 tier
   adds +15 power and +1 piercing. Scaling never caps
   cost (see 3.6).
 - Example: State-aura highland occupied pixel with `logTier = 0` costs `max(1, 1+3+1+20) = 25`
-  strength; a base front of 1500 strength can take 60 such pixels — a real, readable price.
+  strength; a base front of 1000 strength can take 60 such pixels — a real, readable price.
 - Because strength is finite, a high-defense wall can outlast a front. This is intentional; whether
   Fortification stacking needs a cap or a siege rule is an open decision (§8).
 
@@ -256,7 +255,7 @@ Supply costs and the permanent six-card hand:
 | Card          | Cost | Implemented effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: 300 supply/level, ±36 px spread, 64 px district, State-immune.   |
-| Barracks      | 240  | +1 effective level; +450 strength/+40 cost per level, log2 power/pierce. |
+| Barracks      | 240  | +1 effective level; +200 strength/+40 cost per level, log2 power/pierce. |
 | Fortification | 40   | +1 defense per stack across its district.                                |
 | Jammer        | 160  | Global −1 effective enemy Barracks level per stack; no pixel defense.    |
 | Command Post  | 80   | +1 supply per second per stack.                                          |
@@ -287,9 +286,9 @@ if B.strength == 0 -> remove B after exchange
 - Each side loses strength based on the **opponent's** Barracks investment (100 to 350 per contact
   tick), so barracks advantage compounds: it increases your damage and your pool.
 - Neither front captures during a contact-held tick; the contact line is the border.
-- A base-vs-base contact kills both fronts in 15 exchange ticks (1500 / 100) if neither spends
-  strength elsewhere. A max-Barracks front (3750 strength, 350 damage) beats a base front in about
-  5 exchanges and survives with ~3250 strength. That asymmetry is the point.
+- A base-vs-base contact kills both fronts in 10 exchange ticks (1000 / 100) if neither spends
+  strength elsewhere. A high-level Barracks front (for example 2600 strength and 250 contact damage)
+  beats a base front in roughly 4 exchanges and survives with most of its pool. That asymmetry is the point.
 - A defender with no counter-front is not helpless: it pays no attrition, but the attacker pays
   capture cost from its own finite strength. Terrain, State auras, and Fortifications are the passive
   defense.
@@ -367,8 +366,8 @@ Bots use exactly the same supply, front-cap, strength, and attrition rules. Only
 | `FRONT_CAP_PER_PLAYER`           | 8     | Concurrent fronts per player                           |
 | `LAUNCH_COST_BASE`               | 30    | Supply cost of a base front                            |
 | `LAUNCH_COST_PER_LEVEL`          | 15    | Extra cost per effective level                         |
-| `FRONT_STRENGTH_BASE`            | 1500  | Base strength pool                                     |
-| `FRONT_STRENGTH_PER_LEVEL`       | 450   | Extra strength per effective level                     |
+| `FRONT_STRENGTH_BASE`            | 1000  | Base strength pool                                     |
+| `FRONT_STRENGTH_PER_LEVEL`       | 200   | Extra strength per effective level                     |
 | `FRONT_POWER_BASE`               | 30    | Base points/tick spending cap                          |
 | `FRONT_POWER_PER_LOG_TIER`       | 15    | Extra power per log2 tier                              |
 | `FRONT_IDLE_TICKS`               | 20    | Consecutive non-contact zero-capture ticks before exit |

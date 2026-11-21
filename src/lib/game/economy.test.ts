@@ -578,7 +578,7 @@ describe('player economy and cards', () => {
 			cost: 30,
 			power: 30,
 			pierce: 0,
-			strength: 1500
+			strength: 1000
 		});
 
 		const { index } = buildCard(sim, 'barracks');
@@ -587,7 +587,7 @@ describe('player economy and cards', () => {
 			cost: 70,
 			power: 45,
 			pierce: 1,
-			strength: 1950
+			strength: 1200
 		});
 
 		const structure = sim.structures.at(index);
@@ -599,7 +599,7 @@ describe('player economy and cards', () => {
 		expect(infinite.cost).toBe(830);
 		expect(infinite.power).toBe(90);
 		expect(infinite.pierce).toBe(4);
-		expect(infinite.strength).toBe(10_500);
+		expect(infinite.strength).toBe(5000);
 	});
 
 	it('jammers suppress enemy Barracks scaling without adding pixel defense', () => {
@@ -622,7 +622,7 @@ describe('player economy and cards', () => {
 		const unsuppressed = sim.getAttackStats(2, 0);
 		expect(unsuppressed.effectiveLevels).toBe(5);
 		expect(unsuppressed.cost).toBe(230);
-		expect(unsuppressed.strength).toBe(3750);
+		expect(unsuppressed.strength).toBe(2000);
 
 		const jammer = sim.structures.create(
 			'jammer',
@@ -636,7 +636,7 @@ describe('player economy and cards', () => {
 		expect(suppressed.levels).toBe(5);
 		expect(suppressed.effectiveLevels).toBe(3);
 		expect(suppressed.cost).toBe(150);
-		expect(suppressed.strength).toBe(2850);
+		expect(suppressed.strength).toBe(1600);
 		expect(sim.getDefense(x, y)).toBe(defenseBefore);
 	});
 

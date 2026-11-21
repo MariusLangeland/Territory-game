@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.43.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.44.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -100,7 +100,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 1. Click a target cell near your frontier.
 2. The simulation finds up to 96 target-owned cells within 34 px that touch your territory.
 3. Effective levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs **30 supply + 40 per effective level**.
-4. Each front gains durable strength `1500 + 450 × effective levels`. Speed and piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Repeated clicks create separate fronts.
+4. Each front gains durable strength `1000 + 200 × effective levels`. Speed and piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Repeated clicks create separate fronts.
 5. Each capture costs `max(1, defense − logTier)` from both the per-tick power and the durable strength pool.
 6. A front captures connected target-owned pixels while it has power and strength. High ground and occupied land fall more slowly.
 7. Every captured pixel must still touch the attacker's territory at capture time. Cut connections discard queued pixels.
@@ -124,7 +124,7 @@ The map has six discrete elevation tiers: **lowland, plains, hills, highlands, m
 | Occupied bonus           | `+1`                                      |
 | State aura               | `+20` within 16 px, max once              |
 | Supply launch cost       | `30 + 40 × effective levels`              |
-| Durable strength         | `1500 + 450 × effective levels`           |
+| Durable strength         | `1000 + 200 × effective levels`           |
 | Speed / piercing tier    | `floor(log2(effective levels + 1))`       |
 | Power per front per tick | `30 + 15 × logTier`                       |
 | Capture cost             | `max(1, defense − logTier)`               |
@@ -162,7 +162,7 @@ The human commander starts with **90 supply** and **all six build cards** perman
 | Card          | Cost | Effect                                                       |
 | ------------- | ---- | ------------------------------------------------------------ |
 | Artillery     | 1000 | Active: inaccurate, 300 supply/level, 64 px district         |
-| Barracks      | 240  | +1 effective attack level; +40 cost, +450 strength per level |
+| Barracks      | 240  | +1 effective attack level; +40 cost, +200 strength per level |
 | Fortification | 40   | +1 defense to every friendly pixel in its district; stacks   |
 | Jammer        | 160  | Global −1 enemy effective Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                         |
@@ -204,7 +204,7 @@ Structures must be at least **8 px apart** (centre to centre); dropping a new ty
 
 The hand is presented as free-floating CCG-style cards at the bottom center, with no enclosing tray and no empty placeholders: cards enter from below, lift on hover, and tilt while dragged. The hand sinks to a semi-hidden peeking strip when the pointer leaves and rises when the pointer returns to it. The native drag ghost is suppressed; a curved accent arrow follows the cursor, and the landing circle shows the 8 px exclusion radius in green or red. Supply is a horizontal bar that fills toward the cap, with current supply inline on the left and max on the right. It sits just above the collapsed hand and slides behind raised cards. Hovering a valid attack, upgrade, or artillery target overlays the impending cost as a red segment with a label. Income, cancellation, and FIRE controls share the meta row.
 
-The HUD shows **supply / cap** as a horizontal fill bar plus an artillery `FIRE` control; the old supply/front/defense panel is gone. Supply accrues from territory and structures; Command Posts add +1/s, War Academies +40 cap with no maximum. Barracks levels add +40 launch cost and +450 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires inaccurate 300-supply shells and cannot destroy a State.
+The HUD shows **supply / cap** as a horizontal fill bar plus an artillery `FIRE` control; the old supply/front/defense panel is gone. Supply accrues from territory and structures; Command Posts add +1/s, War Academies +40 cap with no maximum. Barracks levels add +40 launch cost and +200 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires inaccurate 300-supply shells and cannot destroy a State.
 
 This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
 

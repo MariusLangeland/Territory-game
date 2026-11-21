@@ -1554,3 +1554,33 @@ Several structure-type district fills were close to terrain colors, and their bo
 - **Post-process edge detection:** more expensive and would outline terrain/owner edges too.
 - **2D overlay polygon outlines:** requires per-cell boundary tracing and misses screen-space zoom behavior.
 - **Always highlight all types:** noisy; only the selected card's type is relevant.
+
+---
+
+## ADR-048 — Lower base attack strength and weaker Barracks strength scaling
+
+**Status:** accepted and implemented in 0.44.0  
+**Date:** 2026-11-21
+
+### Context
+
+A base front entered with 1,500 durable strength, and each Barracks level added another 450. This made fronts very long-lived and made Barracks the dominant way to buy combat endurance rather than a more measured offensive upgrade.
+
+### Decision
+
+- `ATTACK_STRENGTH_BASE` 1500 → **1000**.
+- `ATTACK_STRENGTH_BONUS` 450 → **200** per effective Barracks level.
+- Strength is now `1000 + 200 × effective levels`; launch cost remains `30 + 40 × levels`. Power, piercing, and all other formulas are unchanged.
+- App 0.44.0; protocol unchanged at 36.
+
+### Consequences
+
+- Base fronts cover less ground and die faster in mirror contact.
+- Barracks still adds strength, but at less than half the previous rate per level, so higher attack tiers are more about cost, power/piercing, and commitment than raw durability.
+- Defensive terrain and Fortifications become comparatively stronger; cancellation refunds track the smaller strength pool.
+- Existing direct fixture values in tests are unchanged where they represent arbitrary injected fronts; generated attack stats and economy assertions use the new values.
+
+### Alternatives considered
+
+- **Only lower the base:** would leave Barracks as the dominant durability purchase.
+- **Only lower the bonus:** would preserve excessive unupgraded front endurance.

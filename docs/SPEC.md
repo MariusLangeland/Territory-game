@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.43.0 (Frontage v1 + siege rework)  
+**Version:** 0.44.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.43.0, map version 4, protocol draft 36
+**Last synchronized with:** application 0.44.0, map version 4, protocol draft 36
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -141,7 +141,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 5. Seeds are sorted by squared distance from the click, then by pixel index, and capped at 96.
 6. The attack's geometric growth anchor is the **rounded centroid of the seed contact line**, not the clicked cell. The click chooses target/search area; growth always starts from the border contact.
 7. Launching costs **supply** `30 + 40 × effective Barracks levels`. Effective levels are the attacker's live Barracks stacks minus the defender's live Jammer stacks (floor 0). Supply is the only resource and also pays for cards and upgrades.
-8. Each front buys durable strength `1500 + 450 × effective levels`. Speed and defense piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Scaling is infinite, with logarithmic fall-off for speed/piercing. Repeated clicks create separate fronts; they never reinforce an existing one.
+8. Each front buys durable strength `1000 + 200 × effective levels`. Speed and defense piercing use `logTier = floor(log2(effective levels + 1))`: power `30 + 15 × logTier`, piercing `logTier`. Scaling is infinite, with logarithmic fall-off for speed/piercing. Repeated clicks create separate fronts; they never reinforce an existing one.
 9. Each tick, the growth layer nominates candidates up to the front's power budget. Each capture costs `max(1, defense − piercing)` from **both** the per-tick power and the durable strength. The sampler takes the cheapest of up to 10 candidates; ties keep growth priority.
 10. Before every capture, the cell must still share a land edge with territory owned by the attacker. A front can never create a detached enclave.
 11. Mutual fronts trade strength simultaneously: each loses `100 + 50 × opponent logTier`, once per pair per tick. A front at 0 strength dies; the survivor pauses on the contact line. See section 4.13.
@@ -332,7 +332,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 | State aura               | `+20` within 16 px; overlapping auras do not stack                      |
 | Effective levels         | `max(0, attacker Barracks stacks − defender Jammer stacks)`             |
 | Supply launch cost       | `30 + 40 × effective levels`                                            |
-| Durable strength         | `1500 + 450 × effective levels`                                         |
+| Durable strength         | `1000 + 200 × effective levels`                                         |
 | Speed tier               | `logTier = floor(log2(effective levels + 1))`                           |
 | Power per front per tick | `30 + 15 × logTier`                                                     |
 | Capture cost             | `max(1, defense − logTier)` from power and strength                     |
@@ -342,7 +342,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 
 - Elevation tiers are assigned by land-height quantiles; most land is lowland, peaks are rare.
 - Elevation is static map data. Defense is derived from elevation plus current ownership, so capturing a pixel changes future defense there but not the map.
-- A base front has 30 power and 1500 strength per launch. Each effective Barracks level adds 450 strength and 15 launch cost; each doubling tier adds 15 power and 1 piercing. Scaling never caps. Cheap neutral lowland with a base front can capture 30 points per tick; defended peaks and aura-covered high ground consume more power and strength.
+- A base front has 30 power and 1000 strength per launch. Each effective Barracks level adds 200 strength and 15 launch cost; each doubling tier adds 15 power and 1 piercing. Scaling never caps. Cheap neutral lowland with a base front can capture 30 points per tick; defended peaks and aura-covered high ground consume more power and strength.
 - Pixel defense inspection was part of the old supply/front/defense panel; that panel is removed in favor of the supply bar.
 - Elevation is rendered as a six-color terrain palette with boundary contours, tinting owner colors rather than replacing them.
 - Aura circles are not rendered; district tint and boundaries communicate territorial structure.
@@ -370,7 +370,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 | Card          | Cost | Effect                                                             |
 | ------------- | ---- | ------------------------------------------------------------------ |
 | Artillery     | 1000 | Active: inaccurate, 300 supply/level, 140 px range, 64 px district |
-| Barracks      | 240  | +1 effective attack level; cost +40, strength +450 per level       |
+| Barracks      | 240  | +1 effective attack level; cost +40, strength +200 per level       |
 | Fortification | 40   | +1 defense to every friendly pixel in its 40 px district; stacks   |
 | Jammer        | 160  | Global aura: −1 effective enemy Barracks level per stack           |
 | Command Post  | 80   | +1 supply per second                                               |

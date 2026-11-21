@@ -570,7 +570,7 @@ describe('attack stress mode', () => {
 			expect(attack.initialOrders).toBe(2);
 			expect(attack.power).toBe(45);
 			expect(attack.pierce).toBe(1);
-			expect(attack.initialStrength).toBe(1950);
+			expect(attack.initialStrength).toBe(1200);
 		}
 	});
 
