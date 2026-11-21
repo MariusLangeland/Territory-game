@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.48.0 (Frontage v1 + siege rework)  
+**Version:** 0.49.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.48.0, map version 4, protocol draft 37
+**Last synchronized with:** application 0.49.0, map version 4, protocol draft 37
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -200,7 +200,9 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
   - **caution** (retaliation fear),
   - **conciliation** (avoid stronger opponents),
   - **opportunism** (join existing wars).
-- Every bot derives a **per-type affinity** (`structureBias`) with a per-type hash jitter, plus a display-oriented preference order. The order is not a fixed build script: economic actions are scored each build interval from affinity, threat response, income/cap pressure, novelty vs repeat penalty, efficiency, and affordability.
+- **Common opening economy ramp:** every bot first alternates Command Posts and War Academies until it owns two of each (or the opening window expires). During this phase it prefers neutral expansion over opening state wars, but falls back to the best hostile border when no neutral ground is reachable. A small early reserve keeps attacks from draining the next economy structure.
+- After the opening, every bot derives a **per-type affinity** (`structureBias`) with a per-type hash jitter, plus a display-oriented preference order. The order is not a fixed build script: economic actions are scored each build interval from affinity, threat response, income/cap pressure, novelty vs repeat penalty, efficiency, and affordability.
+- **Attack ground preference:** border candidates are scored by target utility minus a penalty proportional to that cell's defense, so bots favor the cheapest contact ground on their preferred target.
 - **Strategic savings:** after two buildables, a bot reserves supply for its highest-scoring missing type. If that type's cost exceeds the stock cap, it saves for and prioritizes War Academy cap growth instead; the reserve releases as soon as the target is affordable. Attacks respect this reserve and a cheapest-next-purchase buffer.
 - **Expansion pressure:** if a missing type has no legal site because existing districts cover the bot's owned cells, expansion becomes the priority and attacks may draw from the economic reserve.
 - **Utility attacks:** bots sample border targets, score them, then derive attack chance from target score, aggression, supply pressure, and held reserves. High-value retaliation/opportunity targets are attacked more often; low-value or expensive targets and threatened/saving bots hold supply.

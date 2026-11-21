@@ -127,6 +127,17 @@ export const BOT_ACTION_REPEAT_PENALTY = 9;
 export const BOT_ACTION_MAX_PER_INTERVAL = 2;
 /** After this many buildables, bots keep a strategic reserve for their next aspiration. */
 export const BOT_STRATEGIC_SAVE_MIN_STRUCTURES = 2;
+/**
+ * Shared opening strategy: every bot first builds a line of Command Posts and
+ * War Academies (two of each) before personality-driven branching.
+ */
+export const BOT_EARLY_ECONOMY_PER_TYPE = 2;
+export const BOT_EARLY_ECONOMY_TICK_LIMIT = 1200;
+export const BOT_EARLY_ECONOMY_UTILITY = 20_000;
+/** Leave early attacks some room while the bot saves for economy. */
+export const BOT_EARLY_ECONOMY_RESERVE_MAX = 40;
+/** Attack ground preference: subtract this much per point of pixel defense. */
+export const BOT_ATTACK_DEFENSE_WEIGHT = 6;
 /** Attack decision weights: target utility, not only a fixed aggression roll. */
 export const BOT_ATTACK_BASE_CHANCE = 3;
 export const BOT_ATTACK_SCORE_CENTER = 45;

@@ -1,12 +1,12 @@
 # Architecture
 
-This document describes the code as it exists in v0.48.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
+This document describes the code as it exists in v0.49.0. For current rules, the attack experiment, and future online design, read [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md), and [NETWORKING.md](NETWORKING.md).
 
 ---
 
 ## 1. High-level shape
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.48.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in v0.49.0. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -180,11 +180,12 @@ No rendering, DOM, timers, or promises are present in this path.
 Each bot receives a deterministic `BotProfile` derived from `hash32` of the player id and world seed: aggression, economy, fortification, command, vengeance, caution, conciliation, opportunism, and a per-type `structureBias` (with a display-only sorted `buildPlan`). No new RNG stream is introduced.
 
 - At every `BOT_DECISION_INTERVAL` (10 ticks), `updateBotThreat` refreshes active-attacker pressure and a per-bot integer threat score: active fronts (25 each, cap 50), hostile border contact (1 each, cap 8), and recent grievance deltas (2 each, cap 20). Posture enters at 20 and leaves at 10, with a 40-supply defensive reserve and a 3-interval stall release.
+- **Shared opening ramp:** `botEarlyEconomyType` alternates Command Posts and War Academies until the bot has `BOT_EARLY_ECONOMY_PER_TYPE` of each, or until `BOT_EARLY_ECONOMY_TICK_LIMIT`. The next economy structure receives a dominant utility score and a capped strategic reserve. `inBotEarlyEconomyRamp` also restricts attack targeting to neutral ground while possible, falling back to hostile borders only when neutral expansion is blocked.
 - Each bot evaluates construction once per `BOT_BUILD_INTERVAL` (30 ticks), staggered by player id. `chooseBotEconomicAction` scores every build and upgrade candidate from affinity, novelty / repeated-copy penalty, threat response (diluted by existing defense stacks), income and cap pressure, and a small cost-efficiency term. It picks the highest-scoring placeable action. Threat is a utility input, not a forced Fortification→Barracks order.
 - Strategic savings: after two buildables, `botAspiration` selects the highest-affinity missing type with a cap-overrun penalty. `botStrategicReserve` holds its cost (or War Academy cap-growth cost when the stock cap is the bottleneck) until affordable. `botEconomicBuffer` also prevents attack spending from draining the next economic purchase. Up to two non-defensive actions execute per interval; a threatened bot executes at most one defensive action, and defensive candidates may use the defensive reserve.
 - Expansion: when any missing type has no legal build cell, `botNeedsExpansion` makes expansion the priority; attack spending then ignores the economic/aspiration reserves.
 - Each new/destroyed buildable refreshes districts only within its own range; aura rebuilds batch once after all bots act.
-- `runBotDecisions` computes player strength (`territory/4 + structure levels*300 + supply*2`), samples border neighbours, and uses `scoreBotTarget`. Attack chance is then derived from target score, aggression, supply pressure, and held reserves, replacing the old flat aggression roll. Threat biases retaliation: a grudge holder gains a large bonus, an active attacker a counter bonus, and unrelated neighbours a penalty.
+- `runBotDecisions` computes player strength (`territory/4 + structure levels*300 + supply*2`), samples border neighbours, and uses `scoreBotTarget`. Candidate contact cells subtract `BOT_ATTACK_DEFENSE_WEIGHT × pixel defense`, so the selected ground is the least-defended part of the best target. Attack chance is then derived from the unpenalized target score, aggression, supply pressure, and held reserves, replacing the old flat aggression roll. Threat biases retaliation: a grudge holder gains a large bonus, an active attacker a counter bonus, and unrelated neighbours a penalty.
 - `scoreBotTarget` combines neutral-expansion score, aggression, stored grievances, opportunism × target pressure, and caution/conciliation penalties against stronger targets or targets holding launch supply. Vengeful bots retaliate, cautious bots avoid retaliation-capable targets, conciliatory bots avoid stronger neighbours, and opportunistic bots pile onto contested or weak targets.
 - Captures increment `botGrievance[defender * PLAYER_COUNT + attacker]`, capped at 65,535.
 - Profiles, affinities, and utility decisions are hash-derived/deterministic; bot supply, accrual, grievance counts, threat, posture, reserve, stall counters, and grievance marks are checksummed.

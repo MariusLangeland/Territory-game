@@ -1716,3 +1716,39 @@ War Academy cost 120 supply while providing +80 cap. The cap structure was meant
 
 - **Overscroll only half a viewport:** still limits how far an edge state can escape wide HUD panels.
 - **UI-aware camera padding:** helps some panels but does not let the player choose a comfortable composition and adds coupling.
+
+---
+
+## ADR-053 — Common early supply ramp and least-defense attack ground
+
+**Status:** accepted and implemented in 0.49.0  
+**Date:** 2026-11-21
+
+### Context
+
+Bots branched immediately into personality-driven structures, so many skipped the supply economy and could not afford later Barracks/Artillery pushes. Attack target choice scored the defender but not the contact cell, so bots could repeatedly open fronts into fortified or elevated ground.
+
+### Decision
+
+- Add a shared opening strategy for every bot:
+  - alternate Command Posts and War Academies until each has `BOT_EARLY_ECONOMY_PER_TYPE` (2) stacks, or until `BOT_EARLY_ECONOMY_TICK_LIMIT`,
+  - give the next early economy structure a dominant utility score (`BOT_EARLY_ECONOMY_UTILITY`),
+  - keep a capped early reserve (`BOT_EARLY_ECONOMY_RESERVE_MAX`) so attacks do not drain the next economy purchase,
+  - restrict attack targeting to neutral expansion during the ramp, falling back to hostile borders only when neutral ground is blocked.
+- Add `BOT_ATTACK_DEFENSE_WEIGHT`: candidate contact cells are scored as target utility minus `weight × pixel defense`. The unpenalized target score still drives attack chance.
+- Add assertions that midgame bots build both Command Posts and War Academies and retain ≥3 structure types.
+- App 0.49.0; protocol unchanged at 37.
+
+### Consequences
+
+- Bot openings are more consistent and economy-focused; personality still controls the post-opening build mix.
+- Early state wars are delayed while neutral expansion exists, reducing pointless opening attrition.
+- Bots prefer cheap contact ground on valuable targets instead of fortifications/high ground.
+- Early forts still appear when utility or active threat warrants them; this is not a hard build order.
+- No wire changes; deterministic behavior remains hash-based.
+
+### Alternatives considered
+
+- **Forced fixed CP/WA build order:** too rigid and ignores threat/site constraints.
+- **No early reserve:** attack spending overwhelms the ramp.
+- **Defense-only target scoring:** would make bots ignore valuable grudge targets.

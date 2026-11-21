@@ -31,6 +31,6 @@ This directory is the long-term reference for the project. Start with the specif
 | ---------------------- | ----------- | -------------------------------------------------------- |
 | Map + start generation | `4`         | `MAP_VERSION` in `src/lib/game/constants.ts`             |
 | Wire protocol draft    | `36`        | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application            | `0.48.0`    | `package.json`                                           |
+| Application            | `0.49.0`    | `package.json`                                           |
 | Simulation tick rate   | 10 Hz       | `TICK_RATE` in `src/lib/game/constants.ts`               |
 | Combat model           | Frontage v1 | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                     |

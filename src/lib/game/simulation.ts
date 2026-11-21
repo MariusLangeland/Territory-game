@@ -27,6 +27,11 @@ import {
 	BOT_STRATEGIC_SAVE_MIN_STRUCTURES,
 	BOT_ATTACK_AGGRESSION_WEIGHT,
 	BOT_ATTACK_BASE_CHANCE,
+	BOT_ATTACK_DEFENSE_WEIGHT,
+	BOT_EARLY_ECONOMY_PER_TYPE,
+	BOT_EARLY_ECONOMY_RESERVE_MAX,
+	BOT_EARLY_ECONOMY_TICK_LIMIT,
+	BOT_EARLY_ECONOMY_UTILITY,
 	BOT_ATTACK_SCORE_CENTER,
 	BOT_ATTACK_SCORE_WEIGHT,
 	BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT,
@@ -2458,6 +2463,34 @@ export class TerritorySimulation {
 	}
 
 	/**
+	 * Common opening strategy: alternate Command Posts and War Academies until
+	 * both have two structures, then branch into personality-driven choices.
+	 * This gives every bot a supply ramp before it starts expensive wars.
+	 */
+	private inBotEarlyEconomyRamp(player: PlayerState): boolean {
+		if (this.tick > BOT_EARLY_ECONOMY_TICK_LIMIT) return false;
+		const command = this.structures.forOwnerType(player.id, 'command-post');
+		const academy = this.structures.forOwnerType(player.id, 'war-academy');
+		return (
+			(command?.stacks ?? 0) < BOT_EARLY_ECONOMY_PER_TYPE ||
+			(academy?.stacks ?? 0) < BOT_EARLY_ECONOMY_PER_TYPE
+		);
+	}
+
+	private botEarlyEconomyType(player: PlayerState): BuildableStructureType | null {
+		if (!this.inBotEarlyEconomyRamp(player)) return null;
+		const command = this.structures.forOwnerType(player.id, 'command-post');
+		const academy = this.structures.forOwnerType(player.id, 'war-academy');
+		const commandStacks = command?.stacks ?? 0;
+		const academyStacks = academy?.stacks ?? 0;
+		const type: BuildableStructureType =
+			commandStacks <= academyStacks ? 'command-post' : 'war-academy';
+		// If districts currently leave no site, fall back to normal utility so
+		// the reserve cannot deadlock outside expansion pressure.
+		return this.findBotBuildCell(player, type) >= 0 ? type : null;
+	}
+
+	/**
 	 * Supply a bot keeps back for its highest-affinity missing structure once it
 	 * has a basic economy. Without this, cheap affordable upgrades consume every
 	 * interval and expensive strategic types are never reached.
@@ -2523,9 +2556,14 @@ export class TerritorySimulation {
 	}
 
 	private botStrategicReserve(player: PlayerState): number {
+		const gold = this.botGold[player.id - 1];
+		const earlyType = this.botEarlyEconomyType(player);
+		if (earlyType) {
+			const earlyCost = STRUCTURE_DEFINITIONS[earlyType].cost;
+			return gold >= earlyCost ? 0 : Math.min(earlyCost, BOT_EARLY_ECONOMY_RESERVE_MAX);
+		}
 		const aspiration = this.botAspiration(player);
 		if (!aspiration) return 0;
-		const gold = this.botGold[player.id - 1];
 		const cap = Math.max(1, this.supplyCap(player.id));
 		if (aspiration.cost > cap) {
 			// The stock cap, not income, is the bottleneck. Set the save target
@@ -2554,6 +2592,7 @@ export class TerritorySimulation {
 		const supplyRatio = this.supplyOf(player.id) / cap;
 		const aspiration = this.botAspiration(player);
 		const capGap = aspiration !== null && aspiration.cost > cap;
+		const earlyType = this.botEarlyEconomyType(player);
 		const owned = this.structures.forOwner(player.id);
 		const candidates: BotEconomicAction[] = [];
 		const order = new Map(BUILDABLE_STRUCTURE_TYPES.map((type, index) => [type, index] as const));
@@ -2620,6 +2659,10 @@ export class TerritorySimulation {
 					buildScore += (profile.aggression > 65 ? 12 : 0) + (player.territory > 5000 ? 4 : 0);
 					break;
 			}
+			// Shared opening ramp: economy structures dominate until the bot has
+			// its first Command Post and War Academy line. Threat still pulls
+			// defensive actions through the separate defensive budget path.
+			if (type === earlyType) buildScore += BOT_EARLY_ECONOMY_UTILITY;
 			// Cheap actions get a small efficiency nudge without making them
 			// dominate expensive strategic choices.
 			buildScore += Math.floor(1200 / (definition.cost + 100));
@@ -2995,12 +3038,19 @@ export class TerritorySimulation {
 			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id, 0)) continue;
 			if (player.border.size === 0) continue;
 			const profile = this.botProfiles[player.id - 1];
-			const choice = this.chooseBotAttackTarget(
+			const neutralOnly = this.inBotEarlyEconomyRamp(player);
+			let choice = this.chooseBotAttackTarget(
 				player,
 				profile,
 				strengths[player.id - 1],
-				strengths
+				strengths,
+				neutralOnly
 			);
+			// If neutral expansion is fully blocked, the economy opening must not
+			// deadlock: fall back to the best hostile border.
+			if (choice === null && neutralOnly) {
+				choice = this.chooseBotAttackTarget(player, profile, strengths[player.id - 1], strengths);
+			}
 			if (choice === null) continue;
 
 			// Attack frequency is a utility judgement, not a flat aggression
@@ -3021,7 +3071,7 @@ export class TerritorySimulation {
 				Math.min(
 					75,
 					BOT_ATTACK_BASE_CHANCE +
-						Math.floor((choice.score - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
+						Math.floor((choice.targetScore - BOT_ATTACK_SCORE_CENTER) * BOT_ATTACK_SCORE_WEIGHT) +
 						Math.floor(profile.aggression * BOT_ATTACK_AGGRESSION_WEIGHT) +
 						pressure
 				)
@@ -3092,10 +3142,12 @@ export class TerritorySimulation {
 		player: PlayerState,
 		profile: BotProfile,
 		selfStrength: number,
-		strengths: Uint32Array
-	): { index: number; score: number } | null {
+		strengths: Uint32Array,
+		neutralOnly = false
+	): { index: number; score: number; targetScore: number } | null {
 		let bestIndex = -1;
 		let bestScore = Number.NEGATIVE_INFINITY;
+		let bestTargetScore = 0;
 		const samples = BOT_SEARCH_TRIES * 3;
 		for (let attempt = 0; attempt < samples; attempt++) {
 			const borderIndex = this.pickBorderCell(player);
@@ -3113,14 +3165,30 @@ export class TerritorySimulation {
 				if (index < 0 || !this.land[index]) continue;
 				const defenderId = this.owners[index];
 				if (defenderId === player.id) continue;
-				const score = this.scoreBotTarget(player.id, profile, defenderId, selfStrength, strengths);
+				// Opening economy ramp: expand into neutral ground but avoid
+				// opening state wars before the Command Post/War Academy line.
+				if (neutralOnly && defenderId !== 0) continue;
+				const targetScore = this.scoreBotTarget(
+					player.id,
+					profile,
+					defenderId,
+					selfStrength,
+					strengths
+				);
+				// Prefer the cheapest ground on the preferred target: fortified
+				// or elevated contact cells are deprioritized.
+				const defense = this.getDefense(x, y);
+				const score = targetScore - defense * BOT_ATTACK_DEFENSE_WEIGHT;
 				if (score > bestScore) {
 					bestScore = score;
+					bestTargetScore = targetScore;
 					bestIndex = index;
 				}
 			}
 		}
-		return bestIndex >= 0 ? { index: bestIndex, score: bestScore } : null;
+		return bestIndex >= 0
+			? { index: bestIndex, score: bestScore, targetScore: bestTargetScore }
+			: null;
 	}
 
 	private scoreBotTarget(

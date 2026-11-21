@@ -13,9 +13,9 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.48.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.49.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
-> **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
+> **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
 > The current build runs **51 states** (1 human + 50 AI) with three switchable growth layers: **circular**, **smooth**, and **organic**. Online multiplayer remains specified but **not wired up**.
 >

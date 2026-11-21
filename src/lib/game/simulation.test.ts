@@ -507,6 +507,8 @@ describe('attack stress mode', () => {
 				.map((structure) => structure.type)
 		);
 		expect(builtTypes.size).toBeGreaterThanOrEqual(3);
+		expect(builtTypes.has('command-post')).toBe(true);
+		expect(builtTypes.has('war-academy')).toBe(true);
 		const human = sim.players[HUMAN_PLAYER_ID - 1];
 		expect(human.alive).toBe(true);
 	});
@@ -1361,18 +1363,18 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(rebuilt?.id).not.toBe(destroyed.id);
 	});
 
-	it('rebuilds a destroyed plan structure when affordable and a site exists', () => {
+	it('rebuilds a destroyed early-economy structure when affordable and a site exists', () => {
 		const sim = new TerritorySimulation({ seed: 314159 });
 		const internals = sim as unknown as BotDefenseInternals;
 		stepUntilTick(sim, BOT_BUILD_INTERVAL - 2);
 		expect(internals.botDefensive[1]).toBe(0);
 
-		const planType = internals.botProfiles[1].buildPlan[0];
+		const economyType = 'command-post';
 		const [cell] = findBareOwnedCells(sim, 2, 1);
 		expect(cell).toBeDefined();
 		if (cell === undefined) return;
 		const destroyed = sim.structures.create(
-			planType,
+			economyType,
 			2,
 			cell % sim.width,
 			Math.floor(cell / sim.width),
@@ -1381,7 +1383,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(sim.structures.destroy(destroyed)).toBe(true);
 
 		sim.step();
-		expect(sim.structures.forOwnerType(2, planType)).toBeDefined();
+		expect(sim.structures.forOwnerType(2, economyType)).toBeDefined();
 	});
 
 	it('biases high-threat targeting toward the grudge holder and attacker', () => {
