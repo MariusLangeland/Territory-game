@@ -1621,3 +1621,38 @@ The only live supply readout was the human's hand bar. Rival savings were hidden
 - **DOM banners:** 51 live elements and layout thrash; the canvas overlay is cheaper.
 - **Flat-size labels:** does not satisfy the size-as-power requirement and becomes noisy.
 - **Leaderboard-only supply column:** hides spatial context; the leaderboard stays territory/rank-focused.
+
+---
+
+## ADR-050 — Banner de-emphasis and removal of the last-action toast
+
+**Status:** accepted and implemented in 0.46.0  
+**Date:** 2026-11-21
+
+### Context
+
+The rival supply banners were opaque plaques with colored borders and minimum font sizes. At overview zoom a state's territory is only a few pixels wide, so those plaques were much larger than the state itself and obscured the map. The floating last-action toast also opened a box over the play area after every command.
+
+### Decision
+
+- Make supply banners transparent text with a text shadow and a faint owner-colored stem.
+- Remove the plaque fill, border, and accent cap.
+- Cap banner dimensions by an estimate of the state's on-screen footprint:
+  - equivalent screen radius = `sqrt(territory / π) × camera.scale`,
+  - width ≤ 1.05 × radius, height ≤ 0.75 × radius,
+  - shrink to fit; hide when the resulting text would be illegible.
+- Remove the floating last-action toast markup and styles. Existing `showToast` call sites are retained as a no-op feedback sink until inline HUD feedback replaces them.
+- App 0.46.0; protocol unchanged at 37.
+
+### Consequences
+
+- Banners no longer cover the overview map; they appear only when zoomed enough for the state boundary to carry legible text.
+- Larger states still get larger text when it fits.
+- Runtime feedback is now carried by the map, HUD, and event feed without a center-screen box.
+- No simulation, snapshot, or wire changes.
+
+### Alternatives considered
+
+- **Keep opaque plaques and just shrink them:** still occludes small states and retains the border the user rejected.
+- **Remove banners entirely:** loses the rival-supply awareness feature.
+- **Move toasts to a corner:** still a persistent last-action box; the request was to remove it.

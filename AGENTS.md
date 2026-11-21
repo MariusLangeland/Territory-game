@@ -106,7 +106,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 2. Open a seeded URL such as `/?seed=1234` in current Chrome/Edge.
 3. Confirm the intro appears, WebGPU error modal is absent, and DEPLOY is enabled.
 4. Deploy, confirm the 51-state virtualized leaderboard and active-front count; scroll it to the last rank.
-5. Click a frontier, confirm a success toast and territory growth.
+5. Click a frontier and confirm territory growth with no floating last-action box.
 6. Pause with Space and confirm the tick freezes.
 7. Switch the growth layer through CIRCULAR / SMOOTH / ORGANIC and confirm new attacks use it while in-flight orders keep theirs.
 8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and attacks divert into cheaper frontier cells instead of stalling on a high-defense strongpoint.
@@ -127,7 +127,7 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
 24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch.
 25. Test a narrow viewport and scroll the 51-state leaderboard to the bottom.
-26. Confirm each living rival capital shows a name/supply banner, larger states have larger banners, the human has no banner, and banners stay inside the viewport when a capital is near an edge.
+26. Confirm rival supply text has a transparent background and no plaque/border, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
 
 ## Style
 

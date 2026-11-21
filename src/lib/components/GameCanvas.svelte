@@ -343,66 +343,85 @@
 					continue;
 				}
 
+				// The banner must fit inside the state's on-screen footprint. At
+				// overview zoom a state is only a few pixels wide, so hide its
+				// banner instead of letting text cover the map.
+				const territoryRadiusPx = Math.sqrt(player.territory / Math.PI) * camera.scale;
+				// Stay inside the state footprint even for irregular territory:
+				// half its equivalent radius for width, most of it for height.
+				const maxBannerWidth = territoryRadiusPx * 1.05;
+				const maxBannerHeight = territoryRadiusPx * 0.75;
+				if (maxBannerWidth < 26 || maxBannerHeight < 16) continue;
+
 				const sizeRatio = Math.sqrt(player.territory / maxTerritory);
-				const scale = 0.75 + sizeRatio;
-				const supplySize = Math.max(11, Math.round(17 * scale));
-				const nameSize = Math.max(7, Math.round(8 * scale));
+				let scale = 0.75 + sizeRatio;
 				const supplyText = formatSupply(player.supply);
 				const nameText = player.name;
 				const accent = colorForPlayer(player.id).hex;
+				const measure = (fontScale: number) => {
+					const supplySize = Math.max(1, Math.round(17 * fontScale));
+					const nameSize = Math.max(1, Math.round(8 * fontScale));
+					const padding = 6 * fontScale;
+					context.font = `800 ${supplySize}px ui-monospace, monospace`;
+					const supplyWidth = context.measureText(supplyText).width;
+					context.font = `700 ${nameSize}px ui-monospace, monospace`;
+					const nameWidth = context.measureText(nameText).width;
+					return {
+						supplySize,
+						nameSize,
+						padding,
+						width: Math.ceil(Math.max(supplyWidth, nameWidth) + padding * 2),
+						height: Math.ceil(nameSize + supplySize + padding * 2)
+					};
+				};
+				let metrics = measure(scale);
+				const fit = Math.min(1, maxBannerWidth / metrics.width, maxBannerHeight / metrics.height);
+				// Below this the text is not legible; the state boundary is too
+				// small to carry a banner at the current zoom.
+				if (fit < 0.72) continue;
+				scale *= fit;
+				metrics = measure(scale);
+				if (metrics.width > maxBannerWidth || metrics.height > maxBannerHeight) continue;
 
-				context.font = `800 ${supplySize}px ui-monospace, monospace`;
-				const supplyWidth = context.measureText(supplyText).width;
-				context.font = `700 ${nameSize}px ui-monospace, monospace`;
-				const nameWidth = context.measureText(nameText).width;
-				const padding = 8 * scale;
-				const bannerWidth = Math.ceil(Math.max(supplyWidth, nameWidth) + padding * 2);
-				const bannerHeight = Math.ceil(nameSize + supplySize + padding * 2 + 3 * scale);
 				const bannerX = Math.round(
-					Math.min(Math.max(4, point.x - bannerWidth / 2), width - bannerWidth - 4)
+					Math.min(Math.max(4, point.x - metrics.width / 2), width - metrics.width - 4)
 				);
 				const bannerY = Math.round(
-					Math.max(4, Math.min(point.y - 18 - bannerHeight, height - bannerHeight - 4))
+					Math.max(4, Math.min(point.y - 18 - metrics.height, height - metrics.height - 4))
 				);
 
-				// A short stem anchors the banner to the capital marker.
+				// A faint stem anchors the text to the capital marker.
 				context.beginPath();
-				context.moveTo(bannerX + bannerWidth / 2, bannerY + bannerHeight);
+				context.moveTo(bannerX + metrics.width / 2, bannerY + metrics.height);
 				context.lineTo(point.x, point.y - 12);
-				context.lineWidth = Math.max(1, scale);
+				context.lineWidth = 1;
 				context.strokeStyle = accent;
-				context.globalAlpha = 0.7;
+				context.globalAlpha = 0.35;
 				context.stroke();
 				context.globalAlpha = 1;
 
-				context.beginPath();
-				context.roundRect(bannerX, bannerY, bannerWidth, bannerHeight, 3 * scale);
-				context.fillStyle = 'rgba(4, 12, 16, 0.9)';
-				context.fill();
-				context.lineWidth = Math.max(1, 1.2 * scale);
-				context.strokeStyle = accent;
-				context.stroke();
-
-				// Owner-colored cap makes even same-colored state fills distinct.
-				context.fillStyle = accent;
-				context.globalAlpha = 0.9;
-				context.fillRect(bannerX + 1, bannerY + 1, bannerWidth - 2, Math.max(1, 2 * scale));
-				context.globalAlpha = 1;
-
+				// No plaque and no border: legibility comes from a text shadow
+				// instead of an opaque box that would occlude the map.
+				context.save();
+				context.shadowColor = 'rgba(0, 0, 0, 0.92)';
+				context.shadowBlur = Math.max(2, 2 * scale);
+				context.shadowOffsetY = 1;
 				context.textAlign = 'center';
+
 				context.textBaseline = 'top';
-				context.font = `700 ${nameSize}px ui-monospace, monospace`;
+				context.font = `700 ${metrics.nameSize}px ui-monospace, monospace`;
 				context.fillStyle = accent;
-				context.fillText(nameText, bannerX + bannerWidth / 2, bannerY + padding * 0.5);
+				context.fillText(nameText, bannerX + metrics.width / 2, bannerY + metrics.padding * 0.5);
 
 				context.textBaseline = 'middle';
-				context.font = `800 ${supplySize}px ui-monospace, monospace`;
+				context.font = `800 ${metrics.supplySize}px ui-monospace, monospace`;
 				context.fillStyle = '#fff7df';
 				context.fillText(
 					supplyText,
-					bannerX + bannerWidth / 2,
-					bannerY + bannerHeight - padding - supplySize / 2
+					bannerX + metrics.width / 2,
+					bannerY + metrics.height - metrics.padding - metrics.supplySize / 2
 				);
+				context.restore();
 			}
 		}
 

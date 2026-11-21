@@ -13,7 +13,7 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.45.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.46.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Each economy tick they score build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then save for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll: high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
@@ -33,7 +33,7 @@
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                             |
 | Supply economy  | 90 starting supply, uncapped maximum, six cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                 |
 | Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism         |
-| Rival banners   | Map-anchored name/supply placards at every rival capital, sized by territory; the human's own supply stays in the hand bar                                     |
+| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                 |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
@@ -158,7 +158,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-Each rival state has a **map-anchored supply banner** at its capital showing its name and current supply; banners scale with territory, so larger states get larger placards. The human state is intentionally excluded because its supply is shown in the hand bar.
+Each rival state has a **map-anchored supply banner** at its capital showing its name and current supply. Banners scale with territory but are capped by the state's on-screen footprint, so zooming out shrinks or hides them instead of covering the map. They use transparent backgrounds with no border or plaque; larger states still get larger text. The human state is intentionally excluded because its supply is shown in the hand bar.
 
 The human commander starts with **90 supply** and **all six build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/1000) + structures` per second with **no income cap** (+1/s per 1,000 owned pixels); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`6` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 

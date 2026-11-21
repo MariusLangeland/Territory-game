@@ -44,12 +44,6 @@
 		defense: number;
 	}
 
-	interface Toast {
-		id: number;
-		message: string;
-		tone: 'success' | 'error' | 'warn';
-	}
-
 	let sim = $state<TerritorySimulation | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let phase = $state<'loading' | 'ready' | 'error'>('loading');
@@ -76,7 +70,6 @@
 		frames: 0
 	});
 	let eventFeed = $state<SimEvent[]>([]);
-	let toast = $state<Toast | null>(null);
 	let currentSeed = $state(0);
 	let seedInput = $state('');
 	let rankScrollEl = $state<HTMLDivElement | null>(null);
@@ -125,9 +118,7 @@
 	const RANK_ROW_HEIGHT = 28;
 	const RANK_OVERSCAN = 3;
 
-	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	let worldTimer: ReturnType<typeof setTimeout> | undefined;
-	let toastSequence = 0;
 
 	const cameraBridge = new GameCameraBridge();
 	cameraBridge.onView = (view) => {
@@ -445,10 +436,8 @@
 		growthMode = DEFAULT_GROWTH_MODE;
 		clearDragState();
 		eventFeed = [];
-		toast = null;
 		currentSeed = seed >>> 0;
 		seedInput = seedHexFor(seed);
-		clearTimeout(toastTimer);
 
 		// Yield once so the loading screen paints before the CPU builds the map.
 		worldTimer = setTimeout(() => {
@@ -506,13 +495,11 @@
 		createWorld(parsed);
 	}
 
-	function showToast(message: string, tone: Toast['tone'] = 'success'): void {
-		clearTimeout(toastTimer);
-		toast = { id: ++toastSequence, message, tone };
-		toastTimer = setTimeout(() => {
-			toast = null;
-		}, 2800);
-	}
+	/**
+	 * The floating last-action box was removed. Keep this as a no-op sink for
+	 * existing command feedback paths until they get inline HUD treatment.
+	 */
+	function showToast(_message: string, _tone: 'success' | 'error' | 'warn' = 'success'): void {}
 
 	function handleTick(next: GameSnapshot, events: SimEvent[]): void {
 		snapshot = next;
@@ -1010,7 +997,6 @@
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('pointermove', handleWindowPointerMove);
 			clearTimeout(worldTimer);
-			clearTimeout(toastTimer);
 			cameraBridge.onView = undefined;
 		};
 	});
@@ -1595,7 +1581,7 @@
 			</div>
 
 			<div class="intro-footbar">
-				<span>BUILD 0.45.0 / PROTOCOL 37</span>
+				<span>BUILD 0.46.0 / PROTOCOL 37</span>
 				<span>WEBGPU RENDERER REQUIRED</span>
 				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
 			</div>
@@ -1809,18 +1795,6 @@
 					<span>WEBGPU / DETERMINISTIC CORE</span>
 				</div>
 			</article>
-		</div>
-	{/if}
-
-	{#if toast}
-		<div
-			class="toast"
-			class:toast-error={toast.tone === 'error'}
-			class:toast-warn={toast.tone === 'warn'}
-			role="status"
-		>
-			<i></i>
-			<span>{toast.message}</span>
 		</div>
 	{/if}
 </main>
@@ -3921,53 +3895,6 @@
 		border-color: rgba(255, 120, 103, 0.5);
 	}
 
-	.toast {
-		position: fixed;
-		z-index: 120;
-		left: 50%;
-		bottom: 300px;
-		transform: translateX(-50%);
-		display: flex;
-		align-items: center;
-		gap: 9px;
-		padding: 10px 15px;
-		border: 1px solid rgba(220, 233, 149, 0.36);
-		background: rgba(5, 14, 15, 0.92);
-		box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35);
-		font-family: var(--font-mono);
-		font-size: 9px;
-		letter-spacing: 0.03em;
-		color: var(--ink);
-		backdrop-filter: blur(15px);
-		animation: toast-in 220ms ease-out both;
-	}
-
-	.toast i {
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		background: var(--signal);
-		box-shadow: 0 0 7px var(--signal);
-	}
-
-	.toast-error {
-		border-color: rgba(255, 120, 103, 0.45);
-	}
-
-	.toast-error i {
-		background: var(--danger);
-		box-shadow: 0 0 7px var(--danger);
-	}
-
-	.toast-warn {
-		border-color: rgba(255, 209, 102, 0.4);
-	}
-
-	.toast-warn i {
-		background: #ffd166;
-		box-shadow: 0 0 7px #ffd166;
-	}
-
 	@keyframes hud-in {
 		from {
 			opacity: 0;
@@ -4410,13 +4337,6 @@
 
 		.deploy-button {
 			width: 100%;
-		}
-
-		.toast {
-			bottom: 226px;
-			width: calc(100vw - 40px);
-			justify-content: center;
-			text-align: center;
 		}
 	}
 

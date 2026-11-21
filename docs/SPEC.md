@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
-**Version:** 0.45.0 (Frontage v1 + siege rework)  
+**Version:** 0.46.0 (Frontage v1 + siege rework)  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** application 0.45.0, map version 4, protocol draft 37
+**Last synchronized with:** application 0.46.0, map version 4, protocol draft 37
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
 
@@ -438,7 +438,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Human name/color, land share, rank, living-state count.
 - War clock.
 - Pause/resume, field manual, new world.
-- Rival supply banners: a map-anchored name/supply placard at each living rival's capital, updated from 5 Hz snapshots. Banner scale is a deterministic function of the rival's territory relative to the largest living rival, so larger states have larger banners. Offscreen rivals and the human are excluded; banners are clamped inside the viewport.
+- Rival supply banners: map-anchored transparent name/supply text at each living rival's capital, updated from 5 Hz snapshots. Text scale is a deterministic function of the rival's territory relative to the largest living rival, so larger states have larger text. The banner must fit inside the state's on-screen footprint: it shrinks to fit, then hides if the footprint is too small to hold legible text. There is no plaque, background fill, or colored border. Offscreen rivals and the human are excluded; visible banners are clamped inside the viewport.
 - World-control leaderboard: 51 logical rows in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.
 - War feed for eliminations/victory.
@@ -488,8 +488,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.5 Feedback
 
-- Valid order → toast.
-- Invalid order → specific reason toast.
+- Valid/invalid orders do not open a floating last-action box; the map, HUD, and target feedback carry the result.
 - Human attack targets drawn on minimap.
 - Hover outline and ownership label.
 - Human supply/cap in the horizontal supply bar, with FIRE and CANCEL FRONT at its right edge.

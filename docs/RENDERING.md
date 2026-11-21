@@ -49,7 +49,7 @@ Structures are not encoded in the ownership texture. A transparent 2D canvas sit
 - renders buildables as dark badges with owner-colored rings and per-type accent colors, so shape and color both distinguish the six structure types;
 - uses 15/11 px radii for human/AI State capitals, 10 px for buildables, plus an extra human capital halo. Radii are screen pixels and intentionally do not scale with camera zoom;
 - when district merging is enabled (Ctrl not held), draws one combined icon at the mean centre of each touching same-owner/same-type group, with the combined stack badge; individual icons return under Ctrl;
-- draws rival supply banners at capitals from the latest 5 Hz snapshot: owner-accented plaque, name plus compact supply, size scaled by territory relative to the largest living rival, smallest first, clamped to the viewport;
+- draws rival supply banners at capitals from the latest 5 Hz snapshot: transparent name plus compact supply with a text shadow but no plaque or border, size scaled by territory and capped to the state's on-screen footprint, smallest first, hidden when the state is too small to hold legible text, clamped to the viewport;
 - culls offscreen markers;
 - resizes with the map viewport and DPR (capped at 2);
 - `pointer-events: none`, so attacks/drags still target the WebGPU canvas;
@@ -313,7 +313,7 @@ Automated browser smoke checks used during development:
 3. Assert no error overlay appears.
 4. Deploy and wait for a few ticks.
 5. Assert the HUD appears and the perf readout is nonzero.
-6. Click a border cell and assert a success toast.
+6. Click a border cell and assert territory growth with no floating last-action box.
 7. Toggle pause and assert the tick counter freezes.
 8. Resize to a mobile viewport and assert no horizontal overflow.
 
