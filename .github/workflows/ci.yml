@@ -35,6 +35,9 @@ jobs:
       - name: Type and Svelte checks
         run: pnpm check
 
+      - name: Generated docs are current
+        run: pnpm docs:check
+
       - name: Unit tests
         run: pnpm test
 

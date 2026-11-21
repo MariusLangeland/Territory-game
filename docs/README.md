@@ -27,10 +27,11 @@ This directory is the long-term reference for the project. Start with the specif
 
 ## Version map
 
-| Surface                | Version     | Defined in                                               |
-| ---------------------- | ----------- | -------------------------------------------------------- |
-| Map + start generation | `4`         | `MAP_VERSION` in `src/lib/game/constants.ts`             |
-| Wire protocol draft    | `36`        | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts` |
-| Application            | `0.51.0`    | `package.json`                                           |
-| Simulation tick rate   | 10 Hz       | `TICK_RATE` in `src/lib/game/constants.ts`               |
-| Combat model           | Frontage v1 | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                     |
+| Surface                | Version        | Defined in                                                 |
+| ---------------------- | -------------- | ---------------------------------------------------------- |
+| Map + start generation | `4`            | `MAP_VERSION` in `src/lib/game/constants.ts`               |
+| Wire protocol draft    | `36`           | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts`   |
+| Application            | `0.52.0`       | `package.json`                                             |
+| Generated rules        | `REFERENCE.md` | `scripts/docs-reference.ts` (code/tests are authoritative) |
+| Simulation tick rate   | 10 Hz          | `TICK_RATE` in `src/lib/game/constants.ts`                 |
+| Combat model           | Frontage v1    | [COMBAT_DESIGN.md](COMBAT_DESIGN.md)                       |

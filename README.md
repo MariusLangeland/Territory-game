@@ -13,13 +13,15 @@
 
 </details>
 
-> **Status: Frontage v1 + Artillery (v0.51.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
+> **Status: Frontage v1 + Artillery (v0.52.0).** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**. There is no match time limit.
 >
 > **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
 >
 > The current build runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, three growth layers, optional match timers, and three bot difficulties. Online multiplayer remains specified but **not wired up**.
 >
 > **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry`, `pnpm balance`, and `pnpm soak` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
+>
+> **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`).
 
 ---
 
@@ -69,6 +71,8 @@ pnpm bench      # map/tick/checksum benchmark
 pnpm telemetry  # headless multi-seed match telemetry
 pnpm balance    # personality/ramp/structure balance sweep
 pnpm soak       # 10k-tick deterministic soak test
+pnpm docs:reference # regenerate docs/REFERENCE.md from code
+pnpm docs:check     # fail if generated rules docs are stale
 pnpm build      # production build via adapter-node
 pnpm preview    # preview the production build
 pnpm lint       # Prettier check

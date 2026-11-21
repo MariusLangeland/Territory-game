@@ -138,6 +138,14 @@ export const BOT_EARLY_ECONOMY_UTILITY = 20_000;
 export const BOT_EARLY_ECONOMY_RESERVE_MAX = 40;
 /** Attack ground preference: subtract this much per point of pixel defense. */
 export const BOT_ATTACK_DEFENSE_WEIGHT = 6;
+/**
+ * Attacks may spend above this fraction of an aspiration save. Without this,
+ * saving for expensive structures freezes expansion for minutes.
+ */
+export const BOT_ATTACK_SAVE_KEEP_FRACTION = 0.5;
+export const BOT_ATTACK_SAVE_KEEP_FLOOR = 60;
+/** The next-purchase buffer is capped for attacks so it cannot stack with saves. */
+export const BOT_ATTACK_ECONOMIC_BUFFER_CAP = 40;
 /** Attack decision weights: target utility, not only a fixed aggression roll. */
 export const BOT_ATTACK_BASE_CHANCE = 3;
 export const BOT_ATTACK_SCORE_CENTER = 45;

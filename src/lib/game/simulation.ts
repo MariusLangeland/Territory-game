@@ -28,6 +28,9 @@ import {
 	BOT_ATTACK_AGGRESSION_WEIGHT,
 	BOT_ATTACK_BASE_CHANCE,
 	BOT_ATTACK_DEFENSE_WEIGHT,
+	BOT_ATTACK_ECONOMIC_BUFFER_CAP,
+	BOT_ATTACK_SAVE_KEEP_FLOOR,
+	BOT_ATTACK_SAVE_KEEP_FRACTION,
 	BOT_EARLY_ECONOMY_PER_TYPE,
 	BOT_EARLY_ECONOMY_RESERVE_MAX,
 	BOT_EARLY_ECONOMY_TICK_LIMIT,
@@ -3077,9 +3080,19 @@ export class TerritorySimulation {
 			const supply = this.supplyOf(player.id);
 			const cost = this.attackSupplyCost(player.id, defenderId);
 			const expand = this.botNeedsExpansion(player);
-			const strategicReserve = expand ? 0 : this.botStrategicReserve(player);
-			const economicBuffer = expand ? 0 : this.botEconomicBuffer(player);
-			const available = supply - this.botReserve[player.id - 1] - strategicReserve - economicBuffer;
+			// Saving for an aspiration must not freeze expansion. Keep at most
+			// half the stock (or a small floor) for the save and cap the
+			// next-purchase buffer; take max instead of stacking both.
+			const saveKeep = Math.max(
+				BOT_ATTACK_SAVE_KEEP_FLOOR,
+				Math.floor(supply * BOT_ATTACK_SAVE_KEEP_FRACTION)
+			);
+			const strategicReserve = expand ? 0 : Math.min(this.botStrategicReserve(player), saveKeep);
+			const economicBuffer = expand
+				? 0
+				: Math.min(this.botEconomicBuffer(player), BOT_ATTACK_ECONOMIC_BUFFER_CAP);
+			const reservedForEconomy = Math.max(strategicReserve, economicBuffer);
+			const available = supply - this.botReserve[player.id - 1] - reservedForEconomy;
 			if (available < cost) continue;
 			const cap = Math.max(1, this.supplyCap(player.id));
 			const pressure = Math.floor((supply / cap) * BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT);

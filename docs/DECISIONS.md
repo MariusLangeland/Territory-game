@@ -1824,3 +1824,65 @@ Land-based supply income at +1/s per 1,000 owned pixels made territory growth to
 
 - **Lower base income instead:** reduces everyone equally and does not address the land-scaling problem.
 - **Cap land income:** violates the uncapped-growth design.
+
+---
+
+## ADR-056 — Attacks keep half of aspiration savings
+
+**Status:** accepted and implemented in 0.52.0  
+**Date:** 2026-11-21
+
+### Context
+
+Bots reserved the full cost of their next aspiration plus the full next-purchase buffer before attacking. At tick 6,000 in seed 1234, 23 of 50 living bots had a valid target but were blocked by these reserves, and only 2 were attack-ready. With land income reduced to +1 per 3,000 pixels, filling a 1,000-supply Artillery aspiration took even longer, so territory and front growth froze.
+
+### Decision
+
+- Before an attack, keep at most `max(60, floor(currentSupply × 0.5))` for the aspiration.
+- Cap the next-purchase buffer at 40 for the attack gate.
+- Use `max(strategicReserve, economicBuffer)` instead of summing both.
+- Economy spending still uses the full aspiration reserve, so builds are not weakened.
+- Add a 3,000-tick regression test requiring active expansion and at least one elimination.
+- App 0.52.0; protocol unchanged at 37.
+
+### Consequences
+
+- Seed 1234 at tick 6,000 after the fix: 16 fronts vs 6, average territory 20,076 vs 9,099, 30 alive vs 46. Bots expand and eliminate each other instead of hoarding.
+- Bots can delay an expensive aspiration under pressure but cannot freeze permanently.
+- Attack spending may slow aspiration progress; that is the intended trade-off for steady map growth.
+
+### Alternatives considered
+
+- **Remove reserves entirely:** expensive structures would never be reached.
+- **Only cap the absolute reserve:** still blocks low-income bots for long periods.
+- **Force attacks on a timer:** less adaptive than a supply-share rule.
+
+---
+
+## ADR-057 — Generated rules reference and narrowed documentation policy
+
+**Status:** accepted and implemented in 0.52.0  
+**Date:** 2026-11-21
+
+### Context
+
+Value and formula changes required manual edits across README, SPEC, ARCHITECTURE, COMBAT_DESIGN, DETERMINISM, AGENTS, and generated-looking tables. The duplication caused drift and made minor balance changes expensive.
+
+### Decision
+
+- Code and tests are the source of truth for constants, structure definitions, formulas, and match presets.
+- Add `scripts/docs-reference.ts` and `docs/REFERENCE.md` with six `AUTOGEN` sections: version, constants, economy, structures, formulas, match.
+- Add `pnpm docs:reference` (write) and `pnpm docs:check` (CI drift check).
+- Documentation policy:
+  - SPEC owns intent and player-facing semantics.
+  - ARCHITECTURE owns boundaries.
+  - DECISIONS is append-only.
+  - README/AGENTS link to REFERENCE instead of copying numeric tables.
+  - Historical ADRs are never retro-edited.
+- App 0.52.0.
+
+### Consequences
+
+- Most value changes require only a source change and `pnpm docs:reference`.
+- CI fails when generated docs drift.
+- Human prose still changes for genuinely new behavior, but no longer for every number.

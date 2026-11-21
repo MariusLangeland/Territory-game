@@ -536,6 +536,16 @@ describe('attack stress mode', () => {
 		expect(human.alive).toBe(true);
 	});
 
+	it('keeps bot expansion flowing while they save for expensive aspirations', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		for (let tick = 0; tick < 3000; tick++) sim.step();
+		const snapshot = sim.getSnapshot();
+		expect(snapshot.attacks.length).toBeGreaterThan(10);
+		expect(snapshot.players.filter((player) => player.alive).length).toBeLessThan(
+			snapshot.players.length
+		);
+	}, 20_000);
+
 	it('weights grudges, caution, conciliation, and opportunity in bot targeting', () => {
 		const sim = new TerritorySimulation({ seed: 918273 });
 		const internals = sim as unknown as {
