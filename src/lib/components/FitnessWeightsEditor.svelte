@@ -50,7 +50,10 @@
 	<div class="weight-actions">
 		<button type="button" onclick={reset}>RESET WEIGHTS</button>
 	</div>
-	<p class="hint">Land defaults to 60k (was 120k). All terms are independent.</p>
+	<p class="hint">
+		Land defaults to 60k (was 120k). Combat terms reward eliminations and weak-state attacks;
+		defense terms reward repelled fronts and damage absorbed. All terms are independent.
+	</p>
 </div>
 
 <style>

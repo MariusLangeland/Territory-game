@@ -22,6 +22,10 @@ export interface FitnessWeights {
 	naval: number;
 	aggression: number;
 	cooperation: number;
+	eliminations: number;
+	weakAttacks: number;
+	defenseStops: number;
+	defenseDamage: number;
 }
 
 export const FITNESS_WEIGHT_KEYS = [
@@ -34,7 +38,11 @@ export const FITNESS_WEIGHT_KEYS = [
 	'defense',
 	'naval',
 	'aggression',
-	'cooperation'
+	'cooperation',
+	'eliminations',
+	'weakAttacks',
+	'defenseStops',
+	'defenseDamage'
 ] as const;
 
 export const FITNESS_WEIGHT_LABELS: Record<keyof FitnessWeights, string> = {
@@ -47,7 +55,11 @@ export const FITNESS_WEIGHT_LABELS: Record<keyof FitnessWeights, string> = {
 	defense: 'Defense structures',
 	naval: 'Naval reach',
 	aggression: 'Attacks launched',
-	cooperation: 'Allied support'
+	cooperation: 'Allied support',
+	eliminations: 'State eliminations',
+	weakAttacks: 'Weak-state attacks',
+	defenseStops: 'Attacks repelled',
+	defenseDamage: 'Defense damage'
 };
 
 /**
@@ -64,7 +76,11 @@ export const DEFAULT_FITNESS_WEIGHTS: FitnessWeights = {
 	defense: 10,
 	naval: 25,
 	aggression: 2,
-	cooperation: 8
+	cooperation: 8,
+	eliminations: 20_000,
+	weakAttacks: 25,
+	defenseStops: 1_000,
+	defenseDamage: 0.1
 };
 
 export function normalizeFitnessWeights(
@@ -130,6 +146,10 @@ export interface GenomePerformance {
 	naval: number;
 	aggression: number;
 	cooperation: number;
+	eliminations: number;
+	weakAttacks: number;
+	defenseStops: number;
+	defenseDamage: number;
 	/** Direct parent-duel record; zero matches means no lineage duel was played. */
 	lineageWins: number;
 	lineageLosses: number;
@@ -163,6 +183,10 @@ interface Evaluation {
 	naval: number;
 	aggression: number;
 	cooperation: number;
+	eliminations: number;
+	weakAttacks: number;
+	defenseStops: number;
+	defenseDamage: number;
 	lineageWins: number;
 	lineageLosses: number;
 	lineageDelta: number;
@@ -204,7 +228,21 @@ export function genomeFitness(
 		naval: number;
 		aggression: number;
 		cooperation: number;
-	} = { economy: 0, defense: 0, naval: 0, aggression: 0, cooperation: 0 },
+		eliminations: number;
+		weakAttacks: number;
+		defenseStops: number;
+		defenseDamage: number;
+	} = {
+		economy: 0,
+		defense: 0,
+		naval: 0,
+		aggression: 0,
+		cooperation: 0,
+		eliminations: 0,
+		weakAttacks: 0,
+		defenseStops: 0,
+		defenseDamage: 0
+	},
 	weights: FitnessWeights = DEFAULT_FITNESS_WEIGHTS
 ): number {
 	return Math.round(
@@ -217,7 +255,11 @@ export function genomeFitness(
 			strategy.defense * weights.defense +
 			strategy.naval * weights.naval +
 			strategy.aggression * weights.aggression +
-			strategy.cooperation * weights.cooperation
+			strategy.cooperation * weights.cooperation +
+			strategy.eliminations * weights.eliminations +
+			strategy.weakAttacks * weights.weakAttacks +
+			strategy.defenseStops * weights.defenseStops +
+			strategy.defenseDamage * weights.defenseDamage
 	);
 }
 
@@ -267,7 +309,14 @@ function scoreMatch(
 			defense,
 			naval,
 			aggression: behavior.attacksLaunched,
-			cooperation: behavior.supportedAttacks
+			cooperation: behavior.supportedAttacks,
+			// Combat/defense credit only applies while the state is still alive;
+			// otherwise a zero-territory corpse could outrank survivors on the
+			// strength of damage it absorbed before dying.
+			eliminations: player.alive ? behavior.statesEliminated : 0,
+			weakAttacks: player.alive ? behavior.attacksVsWeakerStates : 0,
+			defenseStops: player.alive ? behavior.attacksRepelled : 0,
+			defenseDamage: player.alive ? behavior.defenseDamage : 0
 		};
 		const fitness = genomeFitness(
 			player,
@@ -333,6 +382,10 @@ function aggregateEvaluations(
 			naval: evaluation.matches ? evaluation.naval / evaluation.matches : 0,
 			aggression: evaluation.matches ? evaluation.aggression / evaluation.matches : 0,
 			cooperation: evaluation.matches ? evaluation.cooperation / evaluation.matches : 0,
+			eliminations: evaluation.matches ? evaluation.eliminations / evaluation.matches : 0,
+			weakAttacks: evaluation.matches ? evaluation.weakAttacks / evaluation.matches : 0,
+			defenseStops: evaluation.matches ? evaluation.defenseStops / evaluation.matches : 0,
+			defenseDamage: evaluation.matches ? evaluation.defenseDamage / evaluation.matches : 0,
 			lineageWins: evaluation.lineageDelta > 0 ? 1 : 0,
 			lineageLosses: evaluation.lineageDelta < 0 ? 1 : 0,
 			lineageDelta: evaluation.lineageDelta,
@@ -539,6 +592,10 @@ export class EvolutionSandbox {
 				existing.naval += value.naval;
 				existing.aggression += value.aggression;
 				existing.cooperation += value.cooperation;
+				existing.eliminations += value.eliminations;
+				existing.weakAttacks += value.weakAttacks;
+				existing.defenseStops += value.defenseStops;
+				existing.defenseDamage += value.defenseDamage;
 				existing.lineageDelta += value.lineageDelta;
 			}
 		}
@@ -580,6 +637,10 @@ export class EvolutionSandbox {
 				naval: 0,
 				aggression: 0,
 				cooperation: 0,
+				eliminations: 0,
+				weakAttacks: 0,
+				defenseStops: 0,
+				defenseDamage: 0,
 				lineageWins: 0,
 				lineageLosses: 0,
 				lineageDelta: 0

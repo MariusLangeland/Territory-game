@@ -83,6 +83,28 @@ dominant phenotype: the top genomes remain aggressor builds (`E0-D0-N0-A2`). Thi
 means the default weight change alone does not fix the concentration; it gives
 the user a direct control to test alternatives.
 
+## Attack and defense reward update
+
+New fitness terms were added for state eliminations, attacks against materially
+weaker states, attacks repelled, and defense damage. Combat/defense credit is
+zeroed for eliminated states.
+
+Re-running seed 2026 with the new defaults:
+
+| Generation | Best fitness | Median fitness |
+| ---------- | -----------: | -------------: |
+| 1          |      115,190 |         12,924 |
+| 2          |      105,027 |         15,385 |
+| 3          |      121,774 |         16,014 |
+| 4          |      125,447 |         10,026 |
+| 5          |      124,192 |         12,932 |
+
+The final top genome reaches 31.5% land, 40.5 supply/s, wins both matches, and
+records one elimination. Winners still lead, but non-winners now separate
+meaningfully by combat and defense behavior instead of clustering on raw land.
+The top phenotype is still aggressive (`E0-D0-N0-A2`); defense scoring helps
+explain and rank held positions but does not yet make a defensive archetype win.
+
 ## Interpretation
 
 - Evolution is now mechanically sound: no genome is unobserved, fitness is

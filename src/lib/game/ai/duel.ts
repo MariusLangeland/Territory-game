@@ -122,7 +122,11 @@ function seatFitness(
 			defense,
 			naval,
 			aggression: behavior.attacksLaunched,
-			cooperation: behavior.supportedAttacks
+			cooperation: behavior.supportedAttacks,
+			eliminations: player.alive ? behavior.statesEliminated : 0,
+			weakAttacks: player.alive ? behavior.attacksVsWeakerStates : 0,
+			defenseStops: player.alive ? behavior.attacksRepelled : 0,
+			defenseDamage: player.alive ? behavior.defenseDamage : 0
 		},
 		weights
 	);

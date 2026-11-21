@@ -197,6 +197,14 @@ export interface BotPlayerBehaviorMetrics {
 	warAcademiesBuilt: number;
 	portsBuilt: number;
 	navalLandings: number;
+	/** Opponent states erased by this player's pressure. */
+	statesEliminated: number;
+	/** Attacks launched against a materially weaker state. */
+	attacksVsWeakerStates: number;
+	/** Hostile fronts that died in combat or stalled out against this player. */
+	attacksRepelled: number;
+	/** Durable strength this player's defense forced attacking fronts to spend. */
+	defenseDamage: number;
 }
 
 export interface PublicPlayer {
@@ -559,6 +567,8 @@ export class TerritorySimulation {
 	private readonly botOptionTarget: Uint16Array;
 	/** Last player to launch a front against this bot (blackboard memory). */
 	private readonly botLastAttacker: Uint16Array;
+	/** Last player to capture one of this player's cells, for elimination credit. */
+	private readonly lastAttackerOf: Uint16Array;
 	private readonly botPlayerMetrics: BotPlayerBehaviorMetrics[];
 	/** Grievance total each bot held at the previous threat refresh. */
 	private readonly botGrievanceMark: Uint32Array;
@@ -674,6 +684,7 @@ export class TerritorySimulation {
 		this.botOptionUntil = new Uint32Array(this.playerCount);
 		this.botOptionTarget = new Uint16Array(this.playerCount);
 		this.botLastAttacker = new Uint16Array(this.playerCount);
+		this.lastAttackerOf = new Uint16Array(this.playerCount);
 		this.botPlayerMetrics = Array.from({ length: this.playerCount }, () => ({
 			attacksLaunched: 0,
 			supportedAttacks: 0,
@@ -682,7 +693,11 @@ export class TerritorySimulation {
 			commandPostsBuilt: 0,
 			warAcademiesBuilt: 0,
 			portsBuilt: 0,
-			navalLandings: 0
+			navalLandings: 0,
+			statesEliminated: 0,
+			attacksVsWeakerStates: 0,
+			attacksRepelled: 0,
+			defenseDamage: 0
 		}));
 		this.botGrievanceMark = new Uint32Array(this.playerCount);
 		this.botAttackers = new Uint8Array(this.playerCount * this.playerCount);
@@ -800,7 +815,11 @@ export class TerritorySimulation {
 					commandPostsBuilt: 0,
 					warAcademiesBuilt: 0,
 					portsBuilt: 0,
-					navalLandings: 0
+					navalLandings: 0,
+					statesEliminated: 0,
+					attacksVsWeakerStates: 0,
+					attacksRepelled: 0,
+					defenseDamage: 0
 				};
 	}
 
@@ -2632,10 +2651,15 @@ export class TerritorySimulation {
 				}
 
 				const index = sampled[chosenPosition];
+				const cellOwner = this.owners[index] ?? 0;
 				this.claim(index, attack.attackerId, attack.id);
 				attackPoints -= chosenCost;
 				attack.strength -= chosenCost;
 				attack.captures++;
+				if (cellOwner > 0 && cellOwner !== attack.attackerId) {
+					const defenderMetrics = this.botPlayerMetrics[cellOwner - 1];
+					if (defenderMetrics) defenderMetrics.defenseDamage += chosenCost;
+				}
 				capturedThisTick++;
 
 				const x = index % this.width;
@@ -2649,6 +2673,10 @@ export class TerritorySimulation {
 			if (clashHeld || capturedThisTick > 0) attack.idleTicks = 0;
 			else attack.idleTicks++;
 			if (attack.strength <= 0 || attack.idleTicks > ATTACK_IDLE_TICKS) {
+				if (attack.idleTicks > ATTACK_IDLE_TICKS && attack.defenderId > 0) {
+					const defenderMetrics = this.botPlayerMetrics[attack.defenderId - 1];
+					if (defenderMetrics) defenderMetrics.attacksRepelled++;
+				}
 				attack.done = true;
 			}
 		}
@@ -2731,11 +2759,23 @@ export class TerritorySimulation {
 		other.strength -= damageToOther;
 		attack.idleTicks = 0;
 		other.idleTicks = 0;
-		if (other.strength <= 0) other.done = true;
+		if (other.strength <= 0) {
+			other.done = true;
+			const defenderMetrics = this.botPlayerMetrics[attack.attackerId - 1];
+			if (defenderMetrics) {
+				defenderMetrics.attacksRepelled++;
+				defenderMetrics.defenseDamage += damageToOther;
+			}
+		}
 
 		if (attack.strength <= 0) {
 			attack.done = true;
 			this.annexRequested = true;
+			const defenderMetrics = this.botPlayerMetrics[other.attackerId - 1];
+			if (defenderMetrics) {
+				defenderMetrics.attacksRepelled++;
+				defenderMetrics.defenseDamage += damageToAttack;
+			}
 			return 'halted';
 		}
 		return 'blocked';
@@ -2844,6 +2884,7 @@ export class TerritorySimulation {
 		if (previousOwner === newOwner) return;
 
 		if (previousOwner > 0) {
+			if (newOwner > 0) this.lastAttackerOf[previousOwner - 1] = newOwner;
 			const previous = this.players[previousOwner - 1];
 			previous.territory--;
 			previous.border.delete(index);
@@ -4150,6 +4191,14 @@ export class TerritorySimulation {
 			if (metrics) {
 				metrics.attacksLaunched++;
 				if (supportingAlly) metrics.supportedAttacks++;
+				if (defenderId > 0) {
+					const weaker =
+						choice.opportunity ||
+						this.estimatePlayerStrength(defenderId) * 100 <
+							this.estimatePlayerStrength(player.id) * 85 ||
+						this.supplyOf(defenderId) * 10 < this.supplyOf(player.id) * 6;
+					if (weaker) metrics.attacksVsWeakerStates++;
+				}
 			}
 			this.createAttack(player.id, choice.index, [choice.index]);
 		}
@@ -4543,6 +4592,11 @@ export class TerritorySimulation {
 			if (!player.alive || player.territory > 0) continue;
 			player.alive = false;
 			player.border.clear();
+			const killer = this.lastAttackerOf[player.id - 1];
+			if (killer > 0 && killer !== player.id) {
+				const killerMetrics = this.botPlayerMetrics[killer - 1];
+				if (killerMetrics) killerMetrics.statesEliminated++;
+			}
 			this.pushEvent('elimination', `${player.name} has been erased from the map.`, player.id);
 		}
 

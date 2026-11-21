@@ -37,7 +37,11 @@ describe('evolutionary AI sandbox', () => {
 			defense: 10,
 			naval: 2,
 			aggression: 10,
-			cooperation: 5
+			cooperation: 5,
+			eliminations: 1,
+			weakAttacks: 3,
+			defenseStops: 2,
+			defenseDamage: 100
 		};
 		const baseline = genomeFitness(player, 10, 100, true, strategy);
 		const zeroed = genomeFitness(player, 10, 100, true, strategy, {
@@ -50,7 +54,11 @@ describe('evolutionary AI sandbox', () => {
 			defense: 0,
 			naval: 0,
 			aggression: 0,
-			cooperation: 0
+			cooperation: 0,
+			eliminations: 0,
+			weakAttacks: 0,
+			defenseStops: 0,
+			defenseDamage: 0
 		});
 		expect(baseline).toBeGreaterThan(0);
 		expect(zeroed).toBe(0);

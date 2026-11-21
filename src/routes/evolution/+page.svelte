@@ -435,7 +435,7 @@
 						<th>#</th><th>GENOME</th><th>GEN</th><th>BUCKET</th><th>DESCRIPTOR</th><th>FITNESS</th>
 						<th>LAND</th><th>INCOME</th><th>ECO</th><th>DEF</th><th>NAV</th><th>ATT</th><th>
 							COOP
-						</th><th>LIN Δ</th><th>WINS</th>
+						</th><th>KILL</th><th>WEAK</th><th>REPEL</th><th>DMG</th><th>LIN Δ</th><th>WINS</th>
 						<th>MODULES (INC/DEF/DET/OPP/EXP/RET)</th>
 					</tr>
 				</thead>
@@ -455,6 +455,10 @@
 							<td>{row.naval.toFixed(1)}</td>
 							<td>{Math.round(row.aggression)}</td>
 							<td>{Math.round(row.cooperation)}</td>
+							<td>{row.eliminations.toFixed(1)}</td>
+							<td>{Math.round(row.weakAttacks)}</td>
+							<td>{Math.round(row.defenseStops)}</td>
+							<td>{Math.round(row.defenseDamage)}</td>
 							<td class="mono">
 								{row.lineageWins > 0 ? 'W' : row.lineageLosses > 0 ? 'L' : '—'}
 								{row.lineageDelta >= 0 ? '+' : ''}{Math.round(row.lineageDelta)}
@@ -473,7 +477,7 @@
 					{/each}
 					{#if rows.length === 0}
 						<tr>
-							<td colspan="16" class="empty-row">
+							<td colspan="20" class="empty-row">
 								No scores yet. Start a run and finish at least one match.
 							</td>
 						</tr>
@@ -559,13 +563,14 @@
 	.lab-body {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 320px;
+		align-items: start;
 		gap: 12px;
 		padding: 12px;
 		min-height: 420px;
 	}
 	.viewport {
 		position: relative;
-		min-height: 440px;
+		height: clamp(420px, calc(100vh - 140px), 720px);
 		border: 1px solid rgba(247, 238, 208, 0.12);
 		background: #03080a;
 		overflow: hidden;
@@ -814,7 +819,7 @@
 			grid-template-columns: 1fr;
 		}
 		.viewport {
-			min-height: 340px;
+			height: clamp(340px, calc(100vh - 220px), 560px);
 		}
 	}
 </style>

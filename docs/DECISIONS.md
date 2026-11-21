@@ -2134,3 +2134,31 @@ Evolution fitness had all reward scales hardcoded, with land at 120,000. That ma
 - Users can test whether a strategy is selected because of the simulation or because land/win scale swamped the rest.
 - Changing weights changes ranking and mutation choice but remains deterministic for a fixed configuration.
 - The default shift alone did not remove the aggressive-phenotype concentration in the audit; further reward design is still a balance task.
+
+---
+
+## ADR-067 — Attack and defense reward terms
+
+**Status:** accepted and implemented in 0.60.0  
+**Date:** 2026-11-21
+
+### Context
+
+Fitness rewarded land, income, raw attack strength, wins, and strategic activity, but it did not distinguish successful aggression (erasing a state, attacking a materially weaker one) from unsuccessful aggression, nor successful defense (repelling a front, making an attack expensive). That made a defensive phenotype invisible unless it won the map, and rewarded raw attack launches regardless of outcome.
+
+### Decision
+
+- Track per-player `statesEliminated`, `attacksVsWeakerStates`, `attacksRepelled`, and `defenseDamage`.
+- Credit elimination to the last player who captured the eliminated state's land.
+- Count a launch as a weak-state attack when the defender is at least 15% weaker in estimated strength or 40% lower in supply than the attacker.
+- Credit a repel when an attacking front stalls out or dies against the defender, and count durable strength spent against defended cells as defense damage.
+- Add four explicit fitness weights: eliminations (20,000), weak-state attacks (25), repelled attacks (1,000), and defense damage (0.1).
+- Zero all four combat/defense terms if the scored state is dead at snapshot time, so a zero-land corpse cannot outrank survivors by absorbing damage.
+- Expose the new terms in both lab weight editors and through `--weight-eliminations`, `--weight-weakAttacks`, `--weight-defenseStops`, and `--weight-defenseDamage`.
+
+### Consequences
+
+- Successful aggression and successful defense now have direct fitness value independent of a match win.
+- Defense can score without requiring capture, but the weights are deliberately conservative and live is required.
+- A defeated state still earns no combat/defense bonus, preserving survival as a gate.
+- The weights remain user-tunable; defaults are initial, not final balance values.

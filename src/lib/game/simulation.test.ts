@@ -1621,6 +1621,20 @@ describe('bot threat detection and defensive behaviour', () => {
 		);
 	});
 
+	it('records successful attack and defense reward metrics', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		for (let tick = 0; tick < 2500; tick++) sim.step();
+		const metrics = sim.players.map((player) => sim.getPlayerBehaviorMetrics(player.id));
+		const total = (key: keyof (typeof metrics)[number]): number =>
+			metrics.reduce((sum, entry) => sum + entry[key], 0);
+		expect(total('attacksVsWeakerStates')).toBeGreaterThan(0);
+		expect(total('attacksRepelled')).toBeGreaterThan(0);
+		expect(total('defenseDamage')).toBeGreaterThan(0);
+		const erased = sim.players.filter((player) => !player.alive).length;
+		expect(total('statesEliminated')).toBeGreaterThan(0);
+		expect(total('statesEliminated')).toBeLessThanOrEqual(erased);
+	}, 15_000);
+
 	it('includes bot threat state in the checksum and stays deterministic', () => {
 		const left = new TerritorySimulation({ seed: 424242 });
 		const right = new TerritorySimulation({ seed: 424242 });
