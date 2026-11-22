@@ -2219,3 +2219,34 @@ The Evolution Lab only started fresh runs, placed controls in the scrolling page
 - The lab is usable as a persistent experiment workspace instead of a single-shot setup page.
 - Continue is in-memory for the current session; a page reload still starts with no resumable run.
 - Canvas selection is only meaningful for genomes in the current match; selecting a retired genome still shows its graph in the spreadsheet.
+
+---
+
+## ADR-070 — Evolution Lab simulation worker
+
+**Status:** accepted and implemented in 0.63.0  
+**Date:** 2026-11-22
+
+### Context
+
+The Evolution Lab drove `EvolutionSandbox` and `TerritorySimulation` directly from the Svelte page. Fast-forward therefore blocked the main thread, delaying pan, zoom, speed changes, setup edits, and selection. Reducing renderer work was not enough because simulation stepping itself was the blocker.
+
+### Decision
+
+- Move the Evolution Lab sandbox, match scheduling, scoring, mutation, and simulation stepping into a dedicated Web Worker (`evolution.worker.ts`).
+- The worker steps under an 8 ms per-turn budget and posts:
+  - compact packed owner changes and district palette tiles,
+  - full owner/district arrays only after an overflow,
+  - a plain snapshot for overlays and HUD,
+  - generation/report state at match and generation boundaries.
+- The main thread keeps a read-only `RemoteEvolutionSimulation` mirror for the WebGPU renderer, camera, hover readout, structure overlay, and selection.
+- `GameCanvas` gains a remote mode that does not step the simulation; it applies posted deltas and renders.
+- Speed, pause/resume, start, continue, CSV import, and bucket populations are worker commands.
+- Visual cadence is roughly 60 Hz below 1000× and every 1000 ticks at 1000×.
+
+### Consequences
+
+- Pan, zoom, speed switching, and setup edits stay responsive while simulation runs.
+- Determinism is preserved because the same simulation code runs with the same seeds and ordered worker messages; wall-clock timing only controls how many steps happen per turn, not their sequence.
+- The main thread no longer has direct access to the live simulation; any new renderer-visible state must be added to the worker payload/mirror.
+- Worker startup and message ordering become part of the lab boundary and must be verified in a browser.

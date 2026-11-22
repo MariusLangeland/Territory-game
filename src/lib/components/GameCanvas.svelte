@@ -28,9 +28,22 @@
 		defense: number;
 	}
 
+	interface RemoteVisual {
+		revision: number;
+		tick: number;
+		snapshot: GameSnapshot;
+		changes: Uint32Array;
+		changeCount: number;
+		overflow: boolean;
+		districtTiles: number[];
+	}
+
 	interface Props {
 		simulation: TerritorySimulation;
 		paused: boolean;
+		/** When false, the simulation is advanced by a worker instead of this frame loop. */
+		simulate?: boolean;
+		remoteVisual?: RemoteVisual | null;
 		targeting?: boolean;
 		mergeDistricts?: boolean;
 		highlightType?: StructureType | null;
@@ -54,6 +67,8 @@
 	let {
 		simulation,
 		paused,
+		simulate = true,
+		remoteVisual = null,
 		targeting = false,
 		mergeDistricts = true,
 		highlightType = null,
@@ -88,6 +103,29 @@
 	let suppressNextTap = false;
 	/** Latest throttled snapshot, used by the 2D supply banners. */
 	let lastSnapshot: GameSnapshot | null = null;
+	let lastRemoteRevision = -1;
+
+	function applyRemoteVisual(visual: RemoteVisual): void {
+		if (!renderer || visual.revision === lastRemoteRevision) return;
+		lastRemoteRevision = visual.revision;
+		if (visual.overflow) {
+			renderer.syncFromSimulation();
+		} else {
+			renderer.applyChanges(
+				visual.changes,
+				visual.changeCount,
+				false,
+				visual.districtTiles.length > 0,
+				visual.districtTiles
+			);
+		}
+		lastSnapshot = visual.snapshot;
+	}
+
+	$effect(() => {
+		if (!simulate || !remoteVisual) return;
+		applyRemoteVisual(remoteVisual);
+	});
 
 	onMount(() => {
 		let disposed = false;
@@ -643,62 +681,66 @@
 			// useful visual updates. Applying every tick's renderer delta dominates
 			// the frame; instead resync the whole control texture once per 1000
 			// ticks and let the renderer upload it in chunks.
-			const renderStride = speedMultiplier >= 1000 ? 1000 : 1;
-
-			// Leaving 1000× can leave the renderer up to 1000 ticks behind. Resync
-			// once before resuming per-tick deltas so the shadow cannot stay stale.
-			if (renderStride === 1 && simulation.tick !== lastSyncedTick) {
-				renderer.syncFromSimulation();
-				lastSyncedTick = simulation.tick;
-			}
-
-			if (paused || simulation.ended) {
+			if (!simulate) {
 				accumulator = 0;
-				if (simulation.tick !== lastSyncedTick) {
-					renderer.syncFromSimulation();
-					lastSyncedTick = simulation.tick;
-				}
 			} else {
-				accumulator += delta * speedMultiplier;
-				let steps = 0;
-				let latestSnapshot: GameSnapshot | null = null;
-				const pendingEvents: SimEvent[] = [];
+				const renderStride = speedMultiplier >= 1000 ? 1000 : 1;
 
-				while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
-					const result = simulation.step();
-					if (renderStride === 1) {
-						renderer.applyChanges(
-							result.changes,
-							result.changeCount,
-							result.changesOverflow,
-							result.districtsChanged,
-							result.districtTiles
-						);
-					}
-					latestSnapshot = result.snapshot;
-					pendingEvents.push(...result.events);
-					accumulator -= TICK_MS;
-					steps++;
-				}
-				if (steps >= maxStepsPerFrame) accumulator = 0;
-
-				if (renderStride === 1) {
-					lastSyncedTick = simulation.tick;
-				} else if (simulation.tick - lastSyncedTick >= renderStride) {
+				// Leaving 1000× can leave the renderer up to 1000 ticks behind. Resync
+				// once before resuming per-tick deltas so the shadow cannot stay stale.
+				if (renderStride === 1 && simulation.tick !== lastSyncedTick) {
 					renderer.syncFromSimulation();
 					lastSyncedTick = simulation.tick;
 				}
 
-				// Territory rendering updates every tick, but rebuilding 51 HUD
-				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
-				// to Svelte at 5 Hz, or immediately on elimination/victory events.
-				if (
-					latestSnapshot &&
-					(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
-				) {
-					lastUiUpdate = now;
-					lastSnapshot = latestSnapshot;
-					onTick?.(latestSnapshot, pendingEvents);
+				if (paused || simulation.ended) {
+					accumulator = 0;
+					if (simulation.tick !== lastSyncedTick) {
+						renderer.syncFromSimulation();
+						lastSyncedTick = simulation.tick;
+					}
+				} else {
+					accumulator += delta * speedMultiplier;
+					let steps = 0;
+					let latestSnapshot: GameSnapshot | null = null;
+					const pendingEvents: SimEvent[] = [];
+
+					while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
+						const result = simulation.step();
+						if (renderStride === 1) {
+							renderer.applyChanges(
+								result.changes,
+								result.changeCount,
+								result.changesOverflow,
+								result.districtsChanged,
+								result.districtTiles
+							);
+						}
+						latestSnapshot = result.snapshot;
+						pendingEvents.push(...result.events);
+						accumulator -= TICK_MS;
+						steps++;
+					}
+					if (steps >= maxStepsPerFrame) accumulator = 0;
+
+					if (renderStride === 1) {
+						lastSyncedTick = simulation.tick;
+					} else if (simulation.tick - lastSyncedTick >= renderStride) {
+						renderer.syncFromSimulation();
+						lastSyncedTick = simulation.tick;
+					}
+
+					// Territory rendering updates every tick, but rebuilding 51 HUD
+					// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
+					// to Svelte at 5 Hz, or immediately on elimination/victory events.
+					if (
+						latestSnapshot &&
+						(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
+					) {
+						lastUiUpdate = now;
+						lastSnapshot = latestSnapshot;
+						onTick?.(latestSnapshot, pendingEvents);
+					}
 				}
 			}
 
@@ -730,6 +772,8 @@
 					renderer = null;
 					return;
 				}
+
+				if (!simulate && remoteVisual) applyRemoteVisual(remoteVisual);
 
 				const camera = renderer.camera;
 				const humanStart = simulation.map.starts[HUMAN_PLAYER_ID - 1];

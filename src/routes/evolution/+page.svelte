@@ -1,12 +1,18 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
 	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
+	import { RemoteEvolutionSimulation } from '#lib/game/ai/evolution-view';
+	import type {
+		EvolutionWorkerCommand,
+		EvolutionWorkerMessage,
+		WorkerEvolutionState,
+		WorkerVisual
+	} from '#lib/game/ai/evolution-worker-protocol';
 	import {
 		BOT_BUCKETS,
 		DEFAULT_FITNESS_WEIGHTS,
-		EvolutionSandbox,
 		bucketCounts,
 		bucketsFromReport,
 		emptyBuckets,
@@ -17,7 +23,9 @@
 		type BotBucket,
 		type BotGenome,
 		type EvolutionBuckets,
-		type EvolutionConfig
+		type EvolutionConfig,
+		type EvolutionReport,
+		type GenomePerformance
 	} from '#lib/game/ai';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
 	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
@@ -32,6 +40,16 @@
 		{ label: '1000×', steps: 1000 }
 	] as const;
 
+	interface RemoteVisual {
+		revision: number;
+		tick: number;
+		snapshot: GameSnapshot;
+		changes: Uint32Array;
+		changeCount: number;
+		overflow: boolean;
+		districtTiles: number[];
+	}
+
 	let config = $state<EvolutionConfig>({
 		seed: 1234,
 		populationSize: 16,
@@ -45,18 +63,28 @@
 		lineageDuels: true,
 		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS }
 	});
-	let sandbox = $state<EvolutionSandbox | null>(null);
-	let currentSimulation = $state<TerritorySimulation | null>(null);
+	let worker: Worker | null = null;
+	let started = $state(false);
+	let phase = $state<'idle' | 'match' | 'generation-complete' | 'finished'>('idle');
+	let generation = $state(0);
+	let progress = $state({ match: 0, matches: 0, generation: 0 });
+	let currentSeats = $state<BotGenome[]>([]);
+	let population = $state<BotGenome[]>([]);
+	let rows = $state<GenomePerformance[]>([]);
+	let archiveRows = $state<GenomePerformance[]>([]);
+	let markovStates = $state<(number | null)[]>([]);
+	let lastReport = $state<EvolutionReport | null>(null);
+	let remoteView = $state<RemoteEvolutionSimulation | null>(null);
+	let remoteVisual = $state<RemoteVisual | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let cameraBridge = new GameCameraBridge();
 	let running = $state(false);
 	let speed = $state(4);
 	let matchKey = $state(0);
-	let revision = $state(0);
+	let activeMatchId = -1;
+	let visualRevision = 0;
 	let status = $state('Configure a population and start natural selection.');
 	let notice = $state('');
-	let matchHandled = false;
-	let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 	let fileInput: HTMLInputElement | null = null;
 	let buckets = $state<EvolutionBuckets>(emptyBuckets());
 	let selectedBuckets = $state<Record<BotBucket, boolean>>({
@@ -66,96 +94,146 @@
 	});
 	let selectedGenomeId = $state<string | null>(null);
 
-	let rows = $derived.by(() => {
-		void revision;
-		return sandbox?.latestRows ?? [];
-	});
-	let archiveRows = $derived.by(() => {
-		void revision;
-		return Array.from(sandbox?.archive.values() ?? []).sort(
-			(left, right) => right.fitness - left.fitness
-		);
-	});
-	let progress = $derived.by(() => {
-		void revision;
-		return sandbox?.progress ?? { match: 0, matches: 0, generation: 0 };
-	});
 	let counts = $derived(bucketCounts(buckets));
-	let phase = $derived.by(() => {
-		void revision;
-		return sandbox?.phase ?? 'idle';
-	});
 	let selectedOwnerId = $derived.by(() => {
-		void revision;
-		if (!sandbox || !selectedGenomeId) return null;
-		const seat = sandbox.currentSeats.findIndex((genome) => genome.id === selectedGenomeId);
+		if (!selectedGenomeId) return null;
+		const seat = currentSeats.findIndex((genome) => genome.id === selectedGenomeId);
 		return seat >= 0 ? seat + 1 : null;
 	});
 	let selectedGenome = $derived.by<BotGenome | null>(() => {
-		void revision;
 		if (!selectedGenomeId) return null;
 		return (
-			sandbox?.population.find((genome) => genome.id === selectedGenomeId) ??
-			sandbox?.currentSeats.find((genome) => genome.id === selectedGenomeId) ??
+			population.find((genome) => genome.id === selectedGenomeId) ??
+			currentSeats.find((genome) => genome.id === selectedGenomeId) ??
 			rows.find((row) => row.genome.id === selectedGenomeId)?.genome ??
 			null
 		);
 	});
 	let selectedMarkovState = $derived.by(() => {
-		void revision;
-		if (!currentSimulation || !selectedOwnerId) return null;
-		return currentSimulation.getBotMarkovState(selectedOwnerId);
+		if (!selectedOwnerId) return null;
+		return markovStates[selectedOwnerId - 1] ?? null;
 	});
 
+	function send(command: EvolutionWorkerCommand): void {
+		worker?.postMessage(command);
+	}
+
+	function applyState(state: WorkerEvolutionState): void {
+		phase = state.phase;
+		generation = state.generation;
+		progress = state.progress;
+		currentSeats = state.seats;
+		population = state.population;
+		rows = state.rows;
+		archiveRows = state.archiveRows;
+		markovStates = state.markovStates;
+		started = true;
+		if (state.report) {
+			lastReport = state.report;
+			buckets = bucketsFromReport(state.report);
+			saveEvolutionBuckets(buckets);
+		}
+		if (!selectedGenomeId && currentSeats.length > 0) selectedGenomeId = currentSeats[0].id;
+		if (phase === 'finished') {
+			running = false;
+			status = 'Evolution complete. Buckets saved locally.';
+		} else if (phase === 'generation-complete') {
+			status = `Generation ${generation + 1} complete — preparing next generation…`;
+		} else if (phase === 'match') {
+			status = `Generation ${generation + 1} · match ${progress.match}/${progress.matches || '?'}`;
+		}
+	}
+
+	function handleMessage(message: EvolutionWorkerMessage): void {
+		switch (message.type) {
+			case 'state':
+				applyState(message.state);
+				break;
+			case 'match':
+				activeMatchId = message.matchId;
+				remoteView = new RemoteEvolutionSimulation(message.init);
+				snapshot = message.init.snapshot;
+				remoteVisual = null;
+				matchKey++;
+				break;
+			case 'visual': {
+				if (!remoteView || message.visual.matchId !== activeMatchId) return;
+				const visual: WorkerVisual = message.visual;
+				remoteView.applyVisual(visual);
+				snapshot = visual.snapshot;
+				markovStates = visual.markovStates;
+				remoteVisual = {
+					revision: ++visualRevision,
+					tick: visual.tick,
+					snapshot: visual.snapshot,
+					changes: visual.changes,
+					changeCount: visual.changeCount,
+					overflow: visual.overflow,
+					districtTiles: visual.districtTiles
+				};
+				break;
+			}
+			case 'error':
+				notice = message.message;
+				running = false;
+				status = 'Evolution worker stopped.';
+				break;
+		}
+	}
+
+	function connectWorker(): Worker {
+		const instance = new Worker(new URL('../../lib/game/ai/evolution.worker.ts', import.meta.url), {
+			type: 'module'
+		});
+		instance.onmessage = (event: MessageEvent<EvolutionWorkerMessage>) => handleMessage(event.data);
+		instance.onerror = (event) => {
+			notice = event.message || 'Evolution worker failed to start.';
+			running = false;
+			status = 'Evolution worker error.';
+		};
+		return instance;
+	}
+
 	function start(): void {
-		stopTimer();
-		const next = new EvolutionSandbox(config);
-		next.begin();
-		sandbox = next;
-		currentSimulation = next.currentSimulation;
-		running = true;
-		matchHandled = false;
-		snapshot = null;
-		matchKey++;
-		revision++;
-		status = 'Generation 1 — natural selection in progress.';
 		selectedGenomeId = null;
+		notice = '';
+		lastReport = null;
+		rows = [];
+		archiveRows = [];
+		population = [];
+		currentSeats = [];
+		remoteView = null;
+		remoteVisual = null;
+		started = true;
+		running = true;
+		send({ type: 'speed', speed });
+		send({ type: 'start', config: { ...config, fitnessWeights: { ...config.fitnessWeights } } });
+		status = 'Starting a new evolution…';
 	}
 
 	function continueEvolution(): void {
-		if (!sandbox) {
+		if (!started) {
 			notice = 'No previous evolution to continue. Start a new evolution first.';
 			return;
 		}
-		stopTimer();
-		if (sandbox.phase === 'match' && currentSimulation?.ended) {
-			sandbox.finishMatch();
-		}
-		if (sandbox.phase === 'finished') {
-			if (!sandbox.continueEvolution(1)) {
-				notice = 'This run reached the maximum generation count.';
-				return;
-			}
-		}
-		if (sandbox.phase === 'generation-complete') {
-			sandbox.nextMatch();
-		}
-		currentSimulation = sandbox.currentSimulation;
+		send({ type: 'continue' });
 		running = true;
-		matchHandled = false;
-		snapshot = null;
-		matchKey++;
-		revision++;
-		status =
-			sandbox.phase === 'finished'
-				? 'Evolution complete. Buckets saved locally.'
-				: `Continuing generation ${sandbox.generation + 1} — match ${
-						sandbox.currentMatchIndex + 1
-					}/${sandbox.progress.matches || '?'}.`;
-		if (sandbox.phase === 'generation-complete' || sandbox.phase === 'finished') {
-			buckets = bucketsFromReport(sandbox.report());
-			saveEvolutionBuckets(buckets);
+		status = 'Continuing the previous run…';
+	}
+
+	function toggleRunning(): void {
+		if (!started) {
+			start();
+			return;
 		}
+		running = !running;
+		send({ type: running ? 'resume' : 'pause' });
+		if (running) status = 'Resuming evolution…';
+	}
+
+	function setSpeed(value: number): void {
+		speed = value;
+		send({ type: 'speed', speed: value });
 	}
 
 	function selectGenome(id: string | null): void {
@@ -163,73 +241,30 @@
 	}
 
 	function selectOwner(ownerId: number | null): void {
-		if (!sandbox || !ownerId) {
+		if (!ownerId) {
 			selectedGenomeId = null;
 			notice = 'Canvas selection cleared.';
 			return;
 		}
-		const genome = sandbox.currentSeats[ownerId - 1];
+		const genome = currentSeats[ownerId - 1];
 		selectedGenomeId = genome?.id ?? null;
 		notice = genome ? `Selected ${genome.id} from the map.` : 'No genome is seated there.';
 	}
 
-	function stopTimer(): void {
-		if (pendingTimer !== null) {
-			clearTimeout(pendingTimer);
-			pendingTimer = null;
-		}
-	}
-
-	function handleTick(nextSnapshot: GameSnapshot): void {
-		snapshot = nextSnapshot;
-		if (!nextSnapshot.ended || matchHandled || !sandbox) return;
-		matchHandled = true;
-		status = 'Match complete — scoring genomes…';
-		const continueDelay = speed >= 480 ? 20 : speed >= 120 ? 70 : speed >= 48 ? 160 : 650;
-		pendingTimer = setTimeout(() => {
-			pendingTimer = null;
-			if (!sandbox) return;
-			sandbox.finishMatch();
-			if (sandbox.phase === 'generation-complete' || sandbox.phase === 'finished') {
-				buckets = bucketsFromReport(sandbox.report());
-				saveEvolutionBuckets(buckets);
-			}
-			revision++;
-			if (sandbox.phase === 'finished') {
-				running = false;
-				status = 'Evolution complete. Buckets saved locally.';
-				return;
-			}
-			sandbox.nextMatch();
-			currentSimulation = sandbox.currentSimulation;
-			matchKey++;
-			matchHandled = false;
-			status = `Generation ${sandbox.generation + 1} · match ${
-				sandbox.currentMatchIndex + 1
-			}/${sandbox.progress.matches || '?'}`;
-			revision++;
-		}, continueDelay);
-	}
-
-	function toggleRunning(): void {
-		if (!sandbox) {
-			start();
+	function downloadCsv(): void {
+		if (!lastReport) {
+			notice = 'Finish at least one generation before exporting.';
 			return;
 		}
-		running = !running;
-	}
-
-	function downloadCsv(): void {
-		if (!sandbox) return;
-		const csv = serializeEvolutionCsv(sandbox.report());
+		const csv = serializeEvolutionCsv(lastReport);
 		const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `territory-evolution-${sandbox.config.seed}.csv`;
+		link.download = `territory-evolution-${lastReport.config.seed}.csv`;
 		link.click();
 		URL.revokeObjectURL(url);
-		notice = 'Spreadsheet exported. Import it later to resume or inspect.';
+		notice = 'Spreadsheet exported.';
 	}
 
 	async function importCsv(event: Event): Promise<void> {
@@ -243,24 +278,23 @@
 			return;
 		}
 		const playerCount = Math.max(2, Math.min(config.playerCount, genomes.length));
-		const next = new EvolutionSandbox({
+		const nextConfig = {
 			...config,
 			playerCount,
 			populationSize: Math.max(playerCount, genomes.length)
-		});
-		if (!next.setPopulation(genomes)) {
-			notice = 'The spreadsheet needs at least as many genomes as players.';
-			return;
-		}
-		sandbox = next;
-		currentSimulation = next.currentSimulation;
+		};
+		selectedGenomeId = null;
+		lastReport = null;
+		rows = [];
+		archiveRows = [];
+		remoteView = null;
+		remoteVisual = null;
+		started = true;
 		running = true;
-		matchHandled = false;
-		matchKey++;
-		revision++;
+		send({ type: 'speed', speed });
+		send({ type: 'set-population', config: nextConfig, genomes });
 		notice = `Imported ${genomes.length} genomes from spreadsheet.`;
 		status = 'Imported population — running.';
-		selectedGenomeId = null;
 	}
 
 	function useBuckets(): void {
@@ -270,20 +304,22 @@
 			return;
 		}
 		const playerCount = Math.max(2, Math.min(config.playerCount, pool.length));
-		const next = new EvolutionSandbox({
+		const nextConfig = {
 			...config,
 			playerCount,
 			populationSize: Math.max(playerCount, pool.length)
-		});
-		if (!next.setPopulation(pool)) return;
-		sandbox = next;
-		currentSimulation = next.currentSimulation;
-		running = true;
-		matchHandled = false;
-		matchKey++;
-		revision++;
-		notice = `Loaded ${pool.length} genomes from selected buckets.`;
+		};
 		selectedGenomeId = null;
+		lastReport = null;
+		rows = [];
+		archiveRows = [];
+		remoteView = null;
+		remoteVisual = null;
+		started = true;
+		running = true;
+		send({ type: 'speed', speed });
+		send({ type: 'set-population', config: nextConfig, genomes: pool });
+		notice = `Loaded ${pool.length} genomes from selected buckets.`;
 	}
 
 	function selectAll(bucket: BotBucket, enabled: boolean): void {
@@ -296,11 +332,13 @@
 
 	onMount(() => {
 		buckets = loadEvolutionBuckets();
-	});
-
-	onDestroy(() => {
-		stopTimer();
-		cameraBridge.detach();
+		worker = connectWorker();
+		return () => {
+			send({ type: 'dispose' });
+			worker?.terminate();
+			worker = null;
+			cameraBridge.detach();
+		};
 	});
 </script>
 
@@ -326,18 +364,17 @@
 
 	<main class="lab-body">
 		<section class="viewport">
-			{#if currentSimulation}
+			{#if remoteView}
 				{#key matchKey}
 					<GameCanvas
-						simulation={currentSimulation}
+						simulation={remoteView as unknown as TerritorySimulation}
 						paused={!running}
+						simulate={false}
+						{remoteVisual}
 						{cameraBridge}
-						speedMultiplier={speed}
-						maxStepsPerFrame={Math.max(4, Math.min(4096, speed * 2))}
 						cameraFocus="map"
 						{selectedOwnerId}
 						onSelectOwner={selectOwner}
-						onTick={handleTick}
 					/>
 				{/key}
 			{:else}
@@ -354,14 +391,14 @@
 					<span>MATCH</span><strong>{progress.match || '—'}/{progress.matches || '—'}</strong>
 				</div>
 				<div class="stat">
-					<span>POP</span><strong>{sandbox?.population.length ?? config.populationSize}</strong>
+					<span>POP</span><strong>{population.length || config.populationSize}</strong>
 				</div>
 				<div class="speed-row">
 					{#each SPEEDS as option (option.steps)}
 						<button
 							class:active={speed === option.steps}
 							type="button"
-							onclick={() => (speed = option.steps)}
+							onclick={() => setSpeed(option.steps)}
 						>
 							{option.label}
 						</button>
@@ -376,7 +413,7 @@
 		<aside class="context">
 			<div class="context-actions">
 				<button class="primary" type="button" onclick={start}>NEW EVOLUTION</button>
-				<button class="continue" type="button" onclick={continueEvolution} disabled={!sandbox}>
+				<button class="continue" type="button" onclick={continueEvolution} disabled={!started}>
 					CONTINUE EVOLUTION
 				</button>
 			</div>
@@ -462,7 +499,7 @@
 					<summary>SPREADSHEET ({rows.length})</summary>
 					<div class="panel-body">
 						<div class="button-row">
-							<button type="button" onclick={downloadCsv} disabled={!sandbox}>EXPORT CSV</button>
+							<button type="button" onclick={downloadCsv} disabled={!lastReport}>EXPORT CSV</button>
 							<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
 						</div>
 						<input

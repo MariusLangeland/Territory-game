@@ -1,5 +1,10 @@
 import { hash32 } from '../map';
-import { TerritorySimulation, type GameSnapshot, type PublicPlayer } from '../simulation';
+import {
+	TerritorySimulation,
+	type GameSnapshot,
+	type PublicPlayer,
+	type StepResult
+} from '../simulation';
 import {
 	createRandomGenome,
 	crossoverGenomes,
@@ -557,6 +562,20 @@ export class EvolutionSandbox {
 			matchDurationTicks: this.config.ticks
 		});
 		return true;
+	}
+
+	/**
+	 * Advance exactly one simulation tick and return its renderer-visible
+	 * result. The worker uses this so it can stream changes without replaying
+	 * the whole match on the main thread.
+	 */
+	stepOnce(): StepResult | null {
+		if (!this.currentSimulation) {
+			if (!this.startNextMatch()) return null;
+		}
+		const simulation = this.currentSimulation;
+		if (!simulation) return null;
+		return simulation.step();
 	}
 
 	/** Advance the current match. Returns true when the match is complete. */

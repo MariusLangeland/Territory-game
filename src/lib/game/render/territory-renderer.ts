@@ -1,5 +1,15 @@
 import { PALETTE, RENDER_TILE_SIZE } from '../constants';
-import type { TerritorySimulation } from '../simulation';
+
+/** Minimal simulation surface needed to upload and sample the control texture. */
+export interface TerritoryRenderSource {
+	width: number;
+	height: number;
+	owners: Uint16Array;
+	terrain: Uint8Array;
+	terrainShade: Uint8Array;
+	terrainElevation: Uint8Array;
+	districtColorCodes: Uint8Array;
+}
 import { MapCamera } from './camera';
 import { TERRITORY_SHADER } from './territory.wgsl';
 
@@ -93,7 +103,7 @@ export class TerritoryRenderer {
 
 	private constructor(
 		private readonly canvas: HTMLCanvasElement,
-		private readonly simulation: TerritorySimulation,
+		private readonly simulation: TerritoryRenderSource,
 		device: GPUDevice,
 		context: GPUCanvasContext,
 		format: GPUTextureFormat,
@@ -127,7 +137,7 @@ export class TerritoryRenderer {
 
 	static async create(
 		canvas: HTMLCanvasElement,
-		simulation: TerritorySimulation
+		simulation: TerritoryRenderSource
 	): Promise<TerritoryRenderer> {
 		if (!('gpu' in navigator) || !navigator.gpu) {
 			throw new WebGPUUnavailableError(
