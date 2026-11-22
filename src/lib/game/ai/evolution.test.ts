@@ -169,6 +169,25 @@ describe('evolutionary AI sandbox', () => {
 		expect(new Set(sandbox.population.map((genome) => genome.id)).size).toBe(64);
 	});
 
+	it('stops and resumes a gauntlet without clearing the population', () => {
+		const sandbox = new EvolutionSandbox({
+			mode: 'gauntlet',
+			populationSize: 8,
+			width: 640,
+			height: 360
+		});
+		sandbox.begin();
+		const population = sandbox.population.map((genome) => genome.id);
+		expect(sandbox.requestStop()).toBe(false);
+		sandbox.stopImmediately();
+		expect(sandbox.phase).toBe('finished');
+		expect(sandbox.population.map((genome) => genome.id)).toEqual(population);
+		expect(sandbox.continueEvolution()).toBe(true);
+		expect(sandbox.phase).toBe('generation-complete');
+		expect(sandbox.nextMatch()).toBe(true);
+		expect(sandbox.phase).toBe('match');
+	});
+
 	it('runs a gauntlet round with global lives', () => {
 		const sandbox = new EvolutionSandbox({
 			mode: 'gauntlet',

@@ -423,6 +423,29 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 				accumulator = 0;
 				lastTime = performance.now();
 				break;
+			case 'stop':
+				if (!sandbox) return;
+				if (sandbox.requestStop()) {
+					running = false;
+					stopLoop();
+					activeSimulation = null;
+					nextMatchAt = 0;
+					postState();
+					persistCurrentSession();
+				} else {
+					postState();
+				}
+				break;
+			case 'stop-now':
+				if (!sandbox) return;
+				running = false;
+				stopLoop();
+				activeSimulation = null;
+				nextMatchAt = 0;
+				sandbox.stopImmediately();
+				postState();
+				persistCurrentSession();
+				break;
 			case 'visual-ack':
 				if (command.matchId !== matchId) break;
 				visualInFlight = false;

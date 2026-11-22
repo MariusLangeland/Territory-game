@@ -106,6 +106,7 @@
 		top: true
 	});
 	let selectedGenomeId = $state<string | null>(null);
+	const simulationActive = $derived(started && phase === 'match');
 
 	let counts = $derived(bucketCounts(buckets));
 	let selectedOwnerId = $derived.by(() => {
@@ -304,6 +305,16 @@
 		}
 	}
 
+	function stopRun(): void {
+		send({ type: 'stop' });
+		notice = 'Finishing the current run, then stopping.';
+	}
+
+	function stopNow(): void {
+		send({ type: 'stop-now' });
+		notice = 'Simulation stopped immediately.';
+	}
+
 	function fillSeats(): void {
 		if (config.mode !== 'gauntlet' || emptySeats === 0 || phase === 'match') {
 			notice = 'Fill seats between gauntlet runs.';
@@ -341,10 +352,6 @@
 	}
 
 	function continueEvolution(): void {
-		if (config.mode === 'gauntlet' && phase === 'finished') {
-			notice = 'Gauntlets end when the remaining-bot target is reached.';
-			return;
-		}
 		if (!started) {
 			notice = 'No previous evolution to continue. Start a new evolution first.';
 			return;
@@ -555,14 +562,19 @@
 
 		<aside class="context">
 			<div class="context-actions">
-				<button class="primary" type="button" onclick={start}>
-					{config.mode === 'gauntlet' ? 'NEW GAUNTLET' : 'NEW EVOLUTION'}
-				</button>
+				{#if simulationActive}
+					<button class="stop" type="button" onclick={stopRun}>STOP</button>
+					<button class="stop-now" type="button" onclick={stopNow}>STOP IMMEDIATE</button>
+				{:else}
+					<button class="primary" type="button" onclick={start}>
+						{config.mode === 'gauntlet' ? 'NEW GAUNTLET' : 'NEW EVOLUTION'}
+					</button>
+				{/if}
 				<button
 					class="continue"
 					type="button"
 					onclick={continueEvolution}
-					disabled={!started || (config.mode === 'gauntlet' && phase === 'finished')}
+					disabled={!started || (config.mode === 'gauntlet' && population.length < 2)}
 				>
 					CONTINUE
 				</button>
@@ -996,6 +1008,18 @@
 		flex: 1;
 		color: #58c7e8;
 		border-color: rgba(88, 199, 232, 0.45);
+	}
+	.context-actions .stop {
+		flex: 1;
+		color: #f3b74d;
+		border-color: rgba(243, 183, 77, 0.5);
+		font-size: 8px;
+	}
+	.context-actions .stop-now {
+		flex: 1;
+		color: #ff625f;
+		border-color: rgba(255, 98, 95, 0.5);
+		font-size: 8px;
 	}
 	.context-actions .discard {
 		flex: none;

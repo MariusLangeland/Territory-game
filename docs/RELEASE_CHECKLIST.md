@@ -55,6 +55,9 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] GAUNTLET LIFE column, life loss, zero-life removal, and top-16 recovery work.
 - [ ] GAUNTLET runs continue without a max-run cutoff; PAUSE/DISCARD stops them.
 - [ ] FILL EMPTY SEATS adds fresh random genomes with full lives between runs.
+- [ ] NEW is hidden while a run is active; STOP finishes the run and STOP IMMEDIATE aborts it without discarding data.
+- [ ] CONTINUE resumes a stopped gauntlet while at least two genomes remain.
+- [ ] Zero-life genomes disappear from the live roster and survivor pool.
 - [ ] Reload between gauntlet runs and CONTINUE resumes the survivor pool.
 
 ## 4. Persistence and failure behavior

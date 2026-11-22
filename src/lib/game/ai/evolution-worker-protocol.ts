@@ -54,6 +54,8 @@ export type EvolutionWorkerCommand =
 	| { type: 'resume' }
 	| { type: 'speed'; speed: number }
 	| { type: 'fill-seats' }
+	| { type: 'stop' }
+	| { type: 'stop-now' }
 	| { type: 'visual-ack'; matchId: number }
 	| { type: 'discard-session' }
 	| { type: 'dispose' };

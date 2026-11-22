@@ -2616,3 +2616,34 @@ fast-forward backlog.
 - Visual frequency is bounded by renderer throughput rather than postMessage
   queue growth.
 - Returning to `1×` is immediate and does not replay a backlog.
+
+---
+
+## ADR-082 — Stop controls and removed-genome cleanup
+
+**Status:** accepted and implemented in 0.69.3  
+**Date:** 2026-11-22
+
+### Context
+
+An active Evolution/Gauntlet simulation had no stop control, and NEW was still
+available during a run, allowing an accidental replacement of live data. Bots at
+zero gauntlet lives were removed from the next schedule but their genome objects
+remained in the live genome bank and their rows stayed visible in the roster.
+
+### Decision
+
+- Hide NEW while a simulation is active; only DISCARD deletes the current run.
+- Add STOP: finish the current run/generation, process its result, then stop.
+- Add STOP IMMEDIATE: abort the active simulation without processing remaining
+  ticks and preserve the existing reports/population.
+- CONTINUE resumes a stopped gauntlet while at least two genomes remain.
+- When a gauntlet genome reaches zero lives, remove it from the population, the
+  global lives map, and the genome bank. Its historical report row is retained
+  for audit, but the live roster filters it out.
+
+### Consequences
+
+- Users can stop without discarding data.
+- New runs cannot replace an active run by accident.
+- Zero-life genomes are no longer referenced by live selection state.

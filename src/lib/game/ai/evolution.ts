@@ -587,6 +587,7 @@ export class EvolutionSandbox {
 	private pendingPopulation: BotGenome[] = [];
 	/** Gauntlet lives by genome id, global across every run. */
 	private gauntletLives = new Map<string, number>();
+	private stopRequested = false;
 
 	constructor(config: Partial<EvolutionConfig> = {}) {
 		this.config = normalizeEvolutionConfig(config);
@@ -599,7 +600,10 @@ export class EvolutionSandbox {
 	}
 
 	get latestRows(): GenomePerformance[] {
-		return this.reports.length > 0 ? this.reports[this.reports.length - 1].rows : [];
+		const rows = this.reports.length > 0 ? this.reports[this.reports.length - 1].rows : [];
+		if (this.config.mode !== 'gauntlet') return rows;
+		const activeIds = new Set(this.population.map((genome) => genome.id));
+		return rows.filter((row) => activeIds.has(row.genome.id));
 	}
 
 	get progress(): { match: number; matches: number; generation: number } {
@@ -688,6 +692,37 @@ export class EvolutionSandbox {
 			this.pendingPopulation = [];
 		}
 		return added;
+	}
+
+	/**
+	 * Graceful stop. During a run, finish the current run/generation and then
+	 * stop. Between runs/generations, stop immediately. Returns true when the
+	 * sandbox is already stopped.
+	 */
+	requestStop(): boolean {
+		if (this.phase === 'generation-complete') {
+			this.phase = 'finished';
+			this.pendingPopulation = [];
+			this.stopRequested = false;
+			return true;
+		}
+		if (this.phase === 'match') {
+			this.stopRequested = true;
+			return false;
+		}
+		return this.phase === 'finished';
+	}
+
+	/** Abort the active run without processing its remaining ticks. */
+	stopImmediately(): void {
+		this.stopRequested = false;
+		this.currentSimulation = null;
+		this.currentSeats = [];
+		this.pendingPopulation = [];
+		this.evaluations = new Map();
+		this.schedule = [];
+		this.scheduleSeeds = [];
+		this.phase = 'finished';
 	}
 
 	startNextMatch(): boolean {
@@ -822,14 +857,23 @@ export class EvolutionSandbox {
 		this.currentSimulation = null;
 		this.currentSeats = [];
 		this.currentMatchIndex++;
-		this.population = this.population.filter(
-			(genome) => (this.gauntletLives.get(genome.id) ?? 0) > 0
-		);
+		const removed: string[] = [];
+		this.population = this.population.filter((genome) => {
+			if ((this.gauntletLives.get(genome.id) ?? 0) > 0) return true;
+			removed.push(genome.id);
+			return false;
+		});
+		for (const id of removed) {
+			this.gauntletLives.delete(id);
+			this.genomeBank.delete(id);
+		}
 		this.generation++;
 		if (
+			this.stopRequested ||
 			this.population.length <= this.config.gauntletRemainingTarget ||
 			this.population.length < 2
 		) {
+			this.stopRequested = false;
 			this.phase = 'finished';
 			this.pendingPopulation = [];
 			return;
@@ -990,6 +1034,12 @@ export class EvolutionSandbox {
 			buckets,
 			archive: archiveRows
 		});
+		if (this.stopRequested) {
+			this.stopRequested = false;
+			this.phase = 'finished';
+			this.pendingPopulation = [];
+			return;
+		}
 		if (this.generation + 1 >= this.config.generations) {
 			this.phase = 'finished';
 			this.pendingPopulation = [];
@@ -1005,7 +1055,13 @@ export class EvolutionSandbox {
 	 */
 	continueEvolution(extraGenerations = 1): boolean {
 		if (this.config.mode === 'gauntlet') {
-			if (this.phase !== 'generation-complete' || this.population.length < 2) return false;
+			if (this.population.length < 2) return false;
+			if (this.phase === 'finished') {
+				this.phase = 'generation-complete';
+				this.stopRequested = false;
+				return true;
+			}
+			if (this.phase !== 'generation-complete') return false;
 			this.phase = 'match';
 			this.currentSimulation = null;
 			this.schedule = [this.population];
