@@ -1,7 +1,12 @@
 import type { StartPoint } from '../map';
 import type { GameSnapshot } from '../simulation';
 import type { BotGenome } from './genome';
-import type { EvolutionConfig, EvolutionReport, GenomePerformance } from './evolution';
+import type {
+	EvolutionConfig,
+	EvolutionReport,
+	EvolutionSessionSnapshot,
+	GenomePerformance
+} from './evolution';
 
 export interface WorkerEvolutionState {
 	phase: 'idle' | 'match' | 'generation-complete' | 'finished';
@@ -56,6 +61,7 @@ export type EvolutionWorkerCommand =
 	| { type: 'fill-seats' }
 	| { type: 'stop' }
 	| { type: 'stop-now' }
+	| { type: 'import-state'; snapshot: EvolutionSessionSnapshot }
 	| { type: 'visual-ack'; matchId: number }
 	| { type: 'discard-session' }
 	| { type: 'dispose' };
@@ -65,4 +71,5 @@ export type EvolutionWorkerMessage =
 	| { type: 'match'; matchId: number; init: WorkerMatchInit }
 	| { type: 'visual'; visual: WorkerVisual }
 	| { type: 'idle' }
+	| { type: 'reset' }
 	| { type: 'error'; message: string };

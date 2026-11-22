@@ -29,6 +29,7 @@
 		type EvolutionConfig,
 		type EvolutionMode,
 		type EvolutionReport,
+		type EvolutionSessionSnapshot,
 		type GenomePerformance
 	} from '#lib/game/ai';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
@@ -98,7 +99,8 @@
 	let visualRevision = 0;
 	let status = $state('Configure a population and start natural selection.');
 	let notice = $state('');
-	let fileInput: HTMLInputElement | null = null;
+	let fileInput = $state<HTMLInputElement | null>(null);
+	let stateFileInput = $state<HTMLInputElement | null>(null);
 	let buckets = $state<EvolutionBuckets>(emptyBuckets());
 	let selectedBuckets = $state<Record<BotBucket, boolean>>({
 		poor: false,
@@ -237,6 +239,17 @@
 				];
 				break;
 			}
+			case 'reset':
+				activeMatchId = -1;
+				remoteView = null;
+				remoteVisualQueue = [];
+				snapshot = null;
+				matchKey++;
+				running = false;
+				markovStates = [];
+				selectedGenomeId = null;
+				resetThroughput();
+				break;
 			case 'idle':
 				activeMatchId = -1;
 				remoteView = null;
@@ -408,6 +421,75 @@
 		link.click();
 		URL.revokeObjectURL(url);
 		notice = 'Spreadsheet exported.';
+	}
+
+	function exportGauntletState(): void {
+		if (config.mode !== 'gauntlet' || !lastReport || simulationActive) {
+			notice = 'Finish or stop a gauntlet run before exporting its state.';
+			return;
+		}
+		const activeIds = new Set(population.map((genome) => genome.id));
+		const lives: Record<string, number> = {};
+		for (const row of rows) {
+			if (!activeIds.has(row.genome.id)) continue;
+			lives[row.genome.id] = row.gauntletLives ?? config.gauntletLives;
+		}
+		const snapshot: EvolutionSessionSnapshot = {
+			version: 1,
+			config: {
+				...config,
+				mode: 'gauntlet',
+				fitnessWeights: { ...config.fitnessWeights }
+			},
+			population,
+			reports: lastReport.generations,
+			archive: lastReport.archive,
+			generation,
+			phase: phase === 'finished' ? 'finished' : 'generation-complete',
+			gauntletLives: lives
+		};
+		const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+			type: 'application/json;charset=utf-8'
+		});
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `territory-gauntlet-${config.seed}-run-${generation}.json`;
+		link.click();
+		URL.revokeObjectURL(url);
+		notice = 'Gauntlet state exported.';
+	}
+
+	async function importGauntletState(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		try {
+			const parsed = JSON.parse(await file.text()) as Partial<EvolutionSessionSnapshot>;
+			input.value = '';
+			if (
+				parsed.version !== 1 ||
+				parsed.config?.mode !== 'gauntlet' ||
+				!Array.isArray(parsed.population) ||
+				!Array.isArray(parsed.reports) ||
+				parsed.reports.length === 0 ||
+				!Array.isArray(parsed.archive) ||
+				typeof parsed.gauntletLives !== 'object' ||
+				parsed.gauntletLives === null ||
+				(parsed.phase !== 'finished' && parsed.phase !== 'generation-complete')
+			) {
+				notice = 'That file is not a valid gauntlet state export.';
+				return;
+			}
+			send({
+				type: 'import-state',
+				snapshot: parsed as EvolutionSessionSnapshot
+			});
+			notice = 'Importing gauntlet state…';
+		} catch {
+			input.value = '';
+			notice = 'Could not read that gauntlet state file.';
+		}
 	}
 
 	async function importCsv(event: Event): Promise<void> {
@@ -729,21 +811,45 @@
 				<details class="panel" open>
 					<summary>SPREADSHEET ({rows.length})</summary>
 					<div class="panel-body">
-						{#if config.mode === 'evolution'}
+						{#if config.mode === 'gauntlet'}
+							<div class="button-row">
+								<button
+									type="button"
+									onclick={exportGauntletState}
+									disabled={!lastReport || simulationActive}
+								>
+									EXPORT STATE
+								</button>
+								<button
+									type="button"
+									onclick={() => stateFileInput?.click()}
+									disabled={simulationActive}
+								>
+									IMPORT STATE
+								</button>
+							</div>
+							<input
+								bind:this={stateFileInput}
+								class="hidden-file"
+								type="file"
+								accept=".json,application/json"
+								onchange={importGauntletState}
+							/>
+						{:else}
 							<div class="button-row">
 								<button type="button" onclick={downloadCsv} disabled={!lastReport}>
 									EXPORT CSV
 								</button>
 								<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
 							</div>
+							<input
+								bind:this={fileInput}
+								class="hidden-file"
+								type="file"
+								accept=".csv,text/csv"
+								onchange={importCsv}
+							/>
 						{/if}
-						<input
-							bind:this={fileInput}
-							class="hidden-file"
-							type="file"
-							accept=".csv,text/csv"
-							onchange={importCsv}
-						/>
 						{#if notice}<p class="notice">{notice}</p>{/if}
 
 						<div class="spreadsheet" class:gauntlet={config.mode === 'gauntlet'}>

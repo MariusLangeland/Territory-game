@@ -2675,3 +2675,35 @@ settings were ignored until a new run was started.
 - Setup edits are honored by CONTINUE without discarding results.
 - A current in-flight simulation is not mutated mid-tick; changes apply on the
   next match/generation.
+
+---
+
+## ADR-084 — Export/import gauntlet state as JSON
+
+**Status:** accepted and implemented in 0.69.5  
+**Date:** 2026-11-22
+
+### Context
+
+Evolution Lab CSV only carries genome rows. Gauntlet sessions also need the
+survivor pool, per-genome lives, run history, and setup; there was no way to
+back up or move that state.
+
+### Decision
+
+- Add EXPORT STATE / IMPORT STATE in gauntlet mode.
+- Export a JSON `EvolutionSessionSnapshot` containing setup, surviving
+  population, gauntlet lives, reports, archive, run index, and terminal phase.
+- Only export at a run boundary; exporting an active simulation would omit the
+  in-flight run.
+- Import creates a restored sandbox, clears the current canvas, restores the
+  state paused, updates the IndexedDB checkpoint, and leaves the user to
+  CONTINUE.
+- Reject files that are not version-1 gauntlet snapshots.
+
+### Consequences
+
+- Gauntlet state can be backed up, inspected, and moved between browsers.
+- Imports preserve prior report history and lives.
+- Active in-progress ticks are not part of the export; stop or finish the run
+  first.

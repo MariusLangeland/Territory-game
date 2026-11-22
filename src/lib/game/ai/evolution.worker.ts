@@ -424,6 +424,25 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 				accumulator = 0;
 				lastTime = performance.now();
 				break;
+			case 'import-state': {
+				const restored = new EvolutionSandbox(command.snapshot.config);
+				if (!restored.restoreSession(command.snapshot)) {
+					scope.postMessage({ type: 'error', message: 'Could not restore that state file.' });
+					return;
+				}
+				running = false;
+				stopLoop();
+				activeSimulation = null;
+				nextMatchAt = 0;
+				resetPending();
+				visualInFlight = false;
+				sandbox = restored;
+				restoredConfig = { ...command.snapshot.config };
+				scope.postMessage({ type: 'reset' });
+				postState();
+				persistCurrentSession();
+				break;
+			}
 			case 'stop':
 				if (!sandbox) return;
 				if (sandbox.requestStop()) {

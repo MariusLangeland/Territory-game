@@ -33,6 +33,7 @@ export {
 	type EvolutionConfig,
 	type EvolutionMode,
 	type EvolutionReport,
+	type EvolutionSessionSnapshot,
 	type FitnessWeights,
 	type GenerationResult,
 	type GenomePerformance

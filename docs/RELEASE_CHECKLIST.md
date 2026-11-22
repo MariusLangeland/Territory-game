@@ -59,6 +59,7 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] CONTINUE resumes a stopped gauntlet while at least two genomes remain.
 - [ ] Edit ticks/fitness/gauntlet settings and confirm CONTINUE applies them.
 - [ ] Zero-life genomes disappear from the live roster and survivor pool.
+- [ ] EXPORT STATE produces a JSON gauntlet snapshot; IMPORT STATE restores its survivors, lives, and run history paused.
 - [ ] Reload between gauntlet runs and CONTINUE resumes the survivor pool.
 
 ## 4. Persistence and failure behavior
