@@ -36,11 +36,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
 		out: 'reports/evolution.csv'
 	};
 	const weightFlag = (arg: string): keyof FitnessWeights | null => {
-		const match =
-			/^--weight-(land|income|attack|win|survival|economy|defense|naval|aggression|cooperation)$/.exec(
-				arg
-			);
-		return match ? (match[1] as keyof FitnessWeights) : null;
+		if (!arg.startsWith('--weight-')) return null;
+		const key = arg.slice('--weight-'.length) as keyof FitnessWeights;
+		return FITNESS_WEIGHT_KEYS.includes(key) ? key : null;
 	};
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index];
