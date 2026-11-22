@@ -15,6 +15,7 @@ import {
 
 export type BotBucket = 'poor' | 'good' | 'top';
 export const BOT_BUCKETS: readonly BotBucket[] = ['poor', 'good', 'top'];
+export const GAUNTLET_SEATS = 64;
 
 export interface FitnessWeights {
 	land: number;
@@ -128,8 +129,6 @@ export interface EvolutionConfig {
 	gauntletRecoveryCount: number;
 	/** Gauntlet: finish once at most this many genomes remain. */
 	gauntletRemainingTarget: number;
-	/** Safety cap; normal runs stop on the remaining-bot target. */
-	gauntletMaxRuns: number;
 }
 
 export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
@@ -147,8 +146,7 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
 	fitnessWeights: DEFAULT_FITNESS_WEIGHTS,
 	gauntletLives: 3,
 	gauntletRecoveryCount: 16,
-	gauntletRemainingTarget: 16,
-	gauntletMaxRuns: 50
+	gauntletRemainingTarget: 16
 };
 
 export interface GenomePerformance {
@@ -264,8 +262,7 @@ export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}):
 		fitnessWeights: normalizeFitnessWeights(merged.fitnessWeights),
 		gauntletLives: Math.max(1, Math.min(9, Math.trunc(merged.gauntletLives))),
 		gauntletRecoveryCount: Math.max(1, Math.min(64, Math.trunc(merged.gauntletRecoveryCount))),
-		gauntletRemainingTarget: Math.max(1, Math.min(64, Math.trunc(merged.gauntletRemainingTarget))),
-		gauntletMaxRuns: Math.max(1, Math.min(200, Math.trunc(merged.gauntletMaxRuns)))
+		gauntletRemainingTarget: Math.max(1, Math.min(64, Math.trunc(merged.gauntletRemainingTarget)))
 	};
 }
 
@@ -653,6 +650,46 @@ export class EvolutionSandbox {
 		return true;
 	}
 
+	/**
+	 * Refill gauntlet slots with fresh random genomes. Only allowed between
+	 * runs; new genomes start with the configured number of lives.
+	 */
+	fillGauntletSeats(target = GAUNTLET_SEATS): number {
+		if (
+			this.config.mode !== 'gauntlet' ||
+			this.currentSimulation ||
+			this.population.length >= target
+		) {
+			return 0;
+		}
+		const existing = new Set(this.population.map((genome) => genome.id));
+		let added = 0;
+		let salt = 0;
+		while (this.population.length < target && added < target && salt < target * 4) {
+			const seed = hash32(
+				hash32(this.config.seed, this.generation, this.population.length),
+				0x27d4eb2d,
+				salt++
+			);
+			const genome = createRandomGenome(seed, this.generation);
+			if (existing.has(genome.id)) continue;
+			existing.add(genome.id);
+			this.population.push(genome);
+			this.gauntletLives.set(genome.id, this.config.gauntletLives);
+			this.registerGenomes([genome]);
+			added++;
+		}
+		if (
+			added > 0 &&
+			this.phase === 'finished' &&
+			this.population.length > this.config.gauntletRemainingTarget
+		) {
+			this.phase = 'generation-complete';
+			this.pendingPopulation = [];
+		}
+		return added;
+	}
+
 	startNextMatch(): boolean {
 		if (this.phase !== 'match' || this.currentSimulation) return false;
 		if (this.currentMatchIndex >= this.schedule.length) return false;
@@ -791,8 +828,7 @@ export class EvolutionSandbox {
 		this.generation++;
 		if (
 			this.population.length <= this.config.gauntletRemainingTarget ||
-			this.population.length < 2 ||
-			this.generation >= this.config.gauntletMaxRuns
+			this.population.length < 2
 		) {
 			this.phase = 'finished';
 			this.pendingPopulation = [];

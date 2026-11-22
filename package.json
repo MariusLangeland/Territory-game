@@ -1,6 +1,6 @@
 {
 	"name": "territory",
-	"version": "0.69.0",
+	"version": "0.69.1",
 	"private": true,
 	"description": "A deterministic, WebGPU-rendered pixel territory war.",
 	"type": "module",

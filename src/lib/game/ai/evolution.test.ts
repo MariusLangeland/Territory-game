@@ -153,6 +153,22 @@ describe('evolutionary AI sandbox', () => {
 		expect(sandbox.generation).toBe(1);
 	});
 
+	it('fills empty gauntlet seats with fresh genomes', () => {
+		const sandbox = new EvolutionSandbox({
+			mode: 'gauntlet',
+			populationSize: 8,
+			width: 640,
+			height: 360
+		});
+		const before = new Set(sandbox.population.map((genome) => genome.id));
+		expect(sandbox.fillGauntletSeats()).toBe(56);
+		expect(sandbox.population).toHaveLength(64);
+		expect([...before].every((id) => sandbox.population.some((genome) => genome.id === id))).toBe(
+			true
+		);
+		expect(new Set(sandbox.population.map((genome) => genome.id)).size).toBe(64);
+	});
+
 	it('runs a gauntlet round with global lives', () => {
 		const sandbox = new EvolutionSandbox({
 			mode: 'gauntlet',

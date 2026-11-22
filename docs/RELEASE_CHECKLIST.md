@@ -52,6 +52,8 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] CSV export/import and saved-bucket loading still work.
 - [ ] Switch to GAUNTLET; a 64-bot run seats 64 states and advances runs.
 - [ ] GAUNTLET LIFE column, life loss, zero-life removal, and top-16 recovery work.
+- [ ] GAUNTLET runs continue without a max-run cutoff; PAUSE/DISCARD stops them.
+- [ ] FILL EMPTY SEATS adds fresh random genomes with full lives between runs.
 - [ ] Reload between gauntlet runs and CONTINUE resumes the survivor pool.
 
 ## 4. Persistence and failure behavior

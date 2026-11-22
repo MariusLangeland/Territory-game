@@ -2553,3 +2553,33 @@ generational breeding.
   pressure is strongest on low-fitness genomes.
 - Large 64-seat maps cost more setup and per-tick work; the lab reports measured
   ticks/s.
+
+---
+
+## ADR-080 — Uncapped gauntlet runs and seat refill
+
+**Status:** accepted and implemented in 0.69.1  
+**Date:** 2026-11-22
+
+### Context
+
+The first gauntlet implementation stopped after a fixed run cap. That made the
+survival tournament terminate for an artificial reason rather than the state of
+the population. The population also only shrank, with no way to replenish empty
+seats.
+
+### Decision
+
+- Remove the gauntlet run cap. Runs continue until the player pauses/discards or
+  the survivor target is reached.
+- Add a FILL EMPTY SEATS command between runs that creates deterministic fresh
+  random genomes up to 64 seats, each with the configured starting lives.
+- Refilling a finished tournament reopens it; refilling between runs leaves the
+  next run ready to start.
+
+### Consequences
+
+- A gauntlet can run indefinitely; PAUSE, DISCARD, or the remaining target are
+  the only stops.
+- New genomes enter with full lives and are distinguishable by their new ids.
+- Refilling is only valid between runs; an active simulation is not mutated.

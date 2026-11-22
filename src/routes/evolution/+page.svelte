@@ -15,6 +15,7 @@
 	import {
 		BOT_BUCKETS,
 		DEFAULT_FITNESS_WEIGHTS,
+		GAUNTLET_SEATS,
 		bucketCounts,
 		bucketsFromReport,
 		emptyBuckets,
@@ -68,8 +69,7 @@
 		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS },
 		gauntletLives: 3,
 		gauntletRecoveryCount: 16,
-		gauntletRemainingTarget: 16,
-		gauntletMaxRuns: 50
+		gauntletRemainingTarget: 16
 	});
 	let worker: Worker | null = null;
 	let started = $state(false);
@@ -83,6 +83,7 @@
 	let archiveRows = $state<GenomePerformance[]>([]);
 	let markovStates = $state<(number | null)[]>([]);
 	let lastReport = $state<EvolutionReport | null>(null);
+	const emptySeats = $derived(Math.max(0, GAUNTLET_SEATS - population.length));
 	let remoteView = $state<RemoteEvolutionSimulation | null>(null);
 	let remoteVisual = $state<RemoteVisual | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
@@ -293,6 +294,15 @@
 			config.width = 1280;
 			config.height = 720;
 		}
+	}
+
+	function fillSeats(): void {
+		if (config.mode !== 'gauntlet' || emptySeats === 0 || phase === 'match') {
+			notice = 'Fill seats between gauntlet runs.';
+			return;
+		}
+		send({ type: 'fill-seats' });
+		notice = `Adding ${emptySeats} random genomes…`;
 	}
 
 	function discardSession(): void {
@@ -595,14 +605,6 @@
 									/>
 								</label>
 								<label>
-									<span>MAX RUNS</span><input
-										type="number"
-										min="1"
-										max="200"
-										bind:value={config.gauntletMaxRuns}
-									/>
-								</label>
-								<label>
 									<span>TICKS / RUN</span><input
 										type="number"
 										min="200"
@@ -677,6 +679,16 @@
 								losing record is culled.
 							{/if}
 						</p>
+						{#if config.mode === 'gauntlet'}
+							<button
+								class="fill-seats"
+								type="button"
+								onclick={fillSeats}
+								disabled={emptySeats === 0 || phase === 'match'}
+							>
+								FILL {emptySeats} EMPTY SEAT{emptySeats === 1 ? '' : 'S'}
+							</button>
+						{/if}
 					</div>
 				</details>
 
@@ -1064,6 +1076,13 @@
 		color: #9bb3bd;
 		font-size: 9px;
 		letter-spacing: 0.08em;
+	}
+	.fill-seats {
+		width: 100%;
+		margin-top: 7px;
+		border-color: rgba(115, 200, 143, 0.45);
+		color: #73c88f;
+		font-size: 9px;
 	}
 	.hint,
 	.notice {

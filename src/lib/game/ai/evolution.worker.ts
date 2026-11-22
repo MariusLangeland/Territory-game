@@ -415,6 +415,13 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 			case 'speed':
 				speed = Math.max(1, Math.min(1000, Math.round(command.speed)));
 				break;
+			case 'fill-seats':
+				if (!sandbox) return;
+				if (sandbox.fillGauntletSeats() > 0) {
+					postState();
+					persistCurrentSession();
+				}
+				break;
 			case 'discard-session':
 				running = false;
 				stopLoop();

@@ -53,6 +53,7 @@ export type EvolutionWorkerCommand =
 	| { type: 'pause' }
 	| { type: 'resume' }
 	| { type: 'speed'; speed: number }
+	| { type: 'fill-seats' }
 	| { type: 'discard-session' }
 	| { type: 'dispose' };
 
