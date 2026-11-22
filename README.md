@@ -13,13 +13,11 @@
 
 </details>
 
-> **Status: Frontage v1 + Ports.** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**; an optional match timer awards the largest alive state.
+> **Status: Frontage v1 + Ports + Evolution Gauntlet.** One **supply** resource pays for cards, upgrades, and durable fronts. Fronts trade strength on contact, idle out after 20 captureless ticks, and can be cancelled for a proportional refund. Holding **70% of land wins instantly**; an optional match timer awards the largest alive state.
 >
-> **AI commanders:** 50 bots receive deterministic personality traits and per-type structure affinities. Every bot opens with a shared supply ramp: alternate early Command Posts and War Academies until it has two of each, expanding into neutral ground without opening state wars where possible. After that, each economy tick scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, then saves for a strategic aspiration instead of permanently buying the cheapest option. Attack frequency is target-utility driven rather than a flat aggression roll; target selection also prefers the lowest-defense contact ground. High-value grudges/opportunities attract attacks, while threatened or saving bots hold supply. Bots also prioritise expansion when existing districts leave no legal site for a missing structure.
+> **AI commanders:** main-game bots are seeded from **21 gauntlet survivors** (seed 1236, run 24), followed by any locally saved Evolution Lab buckets. Genomes carry deterministic personality traits, per-type structure affinities, and optional semi-Markov strategic controllers. Every bot opens with a shared supply ramp, scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, and converts strategic modes into build/attack priorities. Attack frequency is target-utility driven rather than a flat aggression roll; high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply.
 >
-> The current build runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, three growth layers, optional match timers, and three bot difficulties. Online multiplayer remains specified but **not wired up**.
->
-> **Combat replacement:** the next attack model is proposed in [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md); it is not implemented. Headless balance data comes from `pnpm telemetry`, `pnpm balance`, and `pnpm soak` ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
+> The main game runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, three growth layers, optional match timers, and three bot difficulties. The **Evolution Lab** runs worker-driven population evolution and a **64-bot, 3-life gauntlet** with top-16 life recovery, JSON state export/import, and IndexedDB session restore. Online multiplayer remains specified but **not wired up**.
 >
 > **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md); headless evolution findings live in [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md).
 
@@ -27,28 +25,28 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                                                  |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                      |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically  |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                              |
-| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                |
-| Bot commanders  | 50 deterministic utility-driven bots with personality affinities, strategic savings, threat response, expansion pressure, retaliation, and opportunism          |
-| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                  |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                         |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                              |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                        |
-| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                |
-| AI Evolution    | Worker-driven evolution sandbox, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, history, IndexedDB restore, CSV                               |
-| AI strategy     | Main-game bot roster seeded by 21 gauntlet survivors, then saved evolution buckets; committed options/blackboard, deterrence, naval campaigns, teams, telemetry |
-| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                           |
-| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                    |
-| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout             |
-| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                        |
-| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                     |
-| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                         |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest determinism/stress tests, benchmark + headless telemetry scripts, CI workflow                                       |
+| Area            | Implementation                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                     |
+| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                           |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically       |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                   |
+| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                     |
+| Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism |
+| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                       |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                              |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                   |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                             |
+| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                     |
+| AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer    |
+| AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry            |
+| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                |
+| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                         |
+| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                  |
+| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                             |
+| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                          |
+| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                              |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest fast/stress suites, benchmark/telemetry/soak scripts, release checklist, CI workflow                                     |
 
 ## Quick start
 
@@ -65,12 +63,16 @@ Open the URL printed by Vite (normally <http://localhost:5173>). Append a seed t
 http://localhost:5173/?seed=1234
 ```
 
+Open the Evolution Lab at <http://localhost:5173/evolution>.
+
 ### Commands
 
 ```sh
 pnpm dev        # Vite dev server (HMR)
 pnpm check      # svelte-check + TypeScript
-pnpm test       # deterministic + 50-bot stress tests
+pnpm test       # full deterministic, stress, economy, and AI-evolution suite
+pnpm test:fast  # fast suite; excludes the long simulation/evolution stress files
+pnpm test:stress # only simulation + evolution stress tests
 pnpm bench      # map/tick/checksum benchmark
 pnpm telemetry  # headless multi-seed match telemetry
 pnpm balance    # personality/ramp/structure balance sweep
@@ -227,117 +229,151 @@ The hand is presented as free-floating CCG-style cards at the bottom center, wit
 
 The HUD shows **supply / cap** as a horizontal fill bar plus an artillery `FIRE` control; the old supply/front/defense panel is gone. Supply accrues from territory and structures; Command Posts add +1/s, War Academies +80 cap with no maximum. Barracks levels add +40 launch cost and +200 strength each; power and piercing grow by log2 tiers. Jammers suppress enemy effective Barracks levels globally. Artillery fires inaccurate 300-supply shells and cannot destroy a State.
 
-This is deliberately provisional. See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for the stress rules and the exit plan.
+## Evolution Lab and Gauntlet
+
+Open `/evolution` to run the AI laboratory:
+
+- **Evolution mode** scores rotating all-bot matches, breeds survivors with mutation/crossover, and maintains a QD archive, fitness history, spreadsheet import/export, and local difficulty buckets.
+- **Gauntlet mode** starts up to 64 genomes in one free-for-all. Every genome has three global lives; eliminated states lose one and zero-life genomes are removed. After each run, the top 16 surviving fitness genomes recover one life.
+- Gauntlet runs continue until the remaining-bot target is reached or the user stops them. `STOP` finishes the current run; `STOP IMMEDIATE` aborts it; `CONTINUE` resumes while at least two genomes remain; `DISCARD` deletes the checkpoint.
+- Empty gauntlet seats can be refilled with fresh random genomes.
+- Sessions checkpoint to IndexedDB after completed generations/runs and can also be exported/imported as JSON.
+
+The main game uses the committed gauntlet survivor pool as its base bot roster, then appends locally saved Evolution Lab buckets.
 
 ## Architecture at a glance
 
 ```text
-Svelte UI (+page.svelte)
+Main game — Svelte UI (+page.svelte)
   └── GameCanvas.svelte ......... fixed-step driver, pointer input, camera bridge
         ├── TerritorySimulation .. pure deterministic game core
         │     ├── generateMap .... seeded, versioned configurable atlas + state starts
-        │     ├── TerritoryRng ... mulberry32
+        │     ├── TerritoryRng ... deterministic PRNG
         │     ├── growth/ ........ circular / smooth / organic frontier layers
         │     ├── Structures/ .... one file per structure type + registry
         │     ├── integrity.ts ... annexation + neutral-pocket cleanup
+        │     ├── ai/ ............ genomes, Markov options, buckets, bot profiles
         │     └── attacks ........ durable fronts, strength attrition, refunds
         ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
         └── MapCamera ............ CSS-pixel camera, zoom, free overscroll pan
   └── Minimap.svelte ............ 2D overview, throttled independent redraw
+
+Evolution Lab — routes/evolution
+  ├── evolution.worker.ts ....... match loop, evolution/gauntlet sandbox, IndexedDB checkpoints
+  ├── evolution-view.ts ......... main-thread render mirror
+  └── GameCanvas.svelte ......... acknowledged ordered visual deltas
 ```
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module responsibilities and data flow.
 
-## Measured baseline
+## Performance
 
-Ballpark figures from the included benchmark on the development machine (Windows, Node 24, headless Chrome with hardware acceleration). Treat them as regression baselines, not universal claims.
+Current budgets, browser baselines, the 51-state stress profile, and Evolution-worker A/B results live in [docs/PERFORMANCE.md](docs/PERFORMANCE.md). Performance work is measured with:
 
-| Measurement                               | Result                                               |
-| ----------------------------------------- | ---------------------------------------------------- |
-| Map generation + 51 starts                | ~230 ms, one-time on world creation                  |
-| Default (circular) all-bot attack tick    | ~1.3 ms                                              |
-| Smooth-layer all-bot attack tick          | ~1.3 ms                                              |
-| Organic-layer all-bot attack tick         | ~1.1 ms                                              |
-| Full-state checksum                       | ~18.1 ms (on-demand; includes claim provenance)      |
-| Browser render loop with cards + auras    | 142 fps; p99 7.1 ms; isolated cleanup spikes         |
-| Upload strategy under stress              | adaptive full-texture chunks: ~21M px/s, ~80 calls/s |
-| Full control texture                      | 8 MiB VRAM + 8 MiB CPU shadow                        |
-| Node benchmark RSS (all benchmark worlds) | ~296 MiB                                             |
+```sh
+pnpm bench
+pnpm telemetry
+pnpm soak
+```
 
-At 10 Hz, the attack-heavy simulation uses roughly 2.6–3.3% of a 100 ms tick budget depending on growth layer. Territory-integrity scans run once per second, with neutral-pocket cleanup every 10 seconds. Panning smoothness is protected by spreading heavy texture uploads across frames and by keeping the 51-row leaderboard virtualized to the visible window. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+The main game uses hot-path caches for bot decisions, district/aura state, and build sites while keeping the deterministic tick contract. The Evolution Lab runs its simulation in a worker under an 8 ms work budget with acknowledged visual deltas and measured ticks/s; a requested `1000×` speed is not a guaranteed throughput.
 
 ## Determinism guarantees
 
-1. Every client and server runs the same simulation code at the same fixed 10 Hz tick.
+1. Every simulation runs the same code at the same fixed 10 Hz tick.
 2. The map is generated deterministically from a 32-bit seed and a **map version**. Changing map or start generation requires bumping `MAP_VERSION`.
 3. Attack outcomes depend on integer positions, ownership, queue order, and command order — never on frame rate, camera, or rendering.
-4. Bots draw from one seeded PRNG in a fixed player order.
+4. Bot traits, strategic options, and Markov transitions are derived from seeded hashes/PRNG in a fixed order; they never use `Math.random` or wall-clock time.
 5. Commands are applied at tick boundaries in a stable order.
-6. State checksums can be compared across clients and servers; a mismatch forces a resync rather than silently diverging.
+6. State checksums can be compared between independent runs; a mismatch means a determinism bug, not a silent resync.
+7. Evolution/gauntlet scoring, life loss/removal, top-16 recovery, and checkpoints are deterministic.
 
-The attack experiment is still subject to the full determinism contract in [docs/DETERMINISM.md](docs/DETERMINISM.md).
+See the full contract in [docs/DETERMINISM.md](docs/DETERMINISM.md).
 
 ## Project map
 
 ```text
 src/
-  app.css                        design tokens and resets
   routes/
-    +page.svelte                 game shell, HUD, overlays, controls
-    +page.ts                     client-only route (ssr = false)
+    +page.svelte                 main game shell, HUD, overlays, controls
+    +page.ts                     client-only main route
+    evolution/+page.svelte       Evolution Lab + gauntlet UI
   lib/
     components/
-      GameCanvas.svelte          canvas lifecycle, fixed loop, pointer handling
+      GameCanvas.svelte          canvas lifecycle, input, main/worker visual consumption
       Minimap.svelte             throttled 2D overview
+      MarkovGraph.svelte         selected genome strategic-state graph
+      FitnessHistoryGraph.svelte fitness history chart
+      FitnessWeightsEditor.svelte reward-weight editor
     game/
-      constants.ts               Frontage/supply rules, 51-state palette/names
+      constants.ts               rules, version, 64-seat names/palette
       rng.ts                     deterministic PRNG
-      map.ts                     configurable map generation and start placement
+      map.ts                     seeded configurable map + cached generation
       simulation.ts              world state, fronts, bots, checksums
       simulation.test.ts         determinism, ownership, frontier, stress tests
-      growth/                    switchable circular/smooth/organic frontier layers
+      integrity.ts               annexation + neutral-pocket cleanup
+      growth/                    circular/smooth/organic frontier layers
+      Structures/                structure definitions + spatial registry
+      ai/
+        genome.ts                traits, modules, mutation/crossover
+        markov.ts                semi-Markov strategic controllers
+        evolution.ts             population evolution + gauntlet sandbox
+        evolution.worker.ts      worker match loop + IndexedDB checkpoints
+        evolution-view.ts        main-thread render mirror
+        gauntlet-survivors.ts    committed main-game survivor roster loader
+        buckets.ts               saved difficulty buckets
+        evolution-csv.ts         CSV round-trip
       net/protocol.ts            multiplayer wire protocol draft
       render/
         camera.ts                pan / zoom / free overscroll camera
         camera-bridge.ts         imperative bridge for Svelte controls
         territory.wgsl.ts        full-screen WGSL map shader
         territory-renderer.ts    WebGPU setup, control texture, dirty uploads
+static/
+  gauntlet-survivors.json        21 survivor genomes for the main-game bot roster
 docs/
   SPEC.md                        canonical product + technical specification
-  EXPERIMENTS.md                 retired EXP-001 history and exit plan
   ARCHITECTURE.md                module responsibilities and data flow
   DETERMINISM.md                 invariants, replay, multiplayer rules
   RENDERING.md                   WebGPU pipeline and upload strategy
   NETWORKING.md                  authoritative online architecture
   PERFORMANCE.md                 budgets, benchmarks, profiling
-  ROADMAP.md                     phased delivery plan
+  RELEASE_CHECKLIST.md           release verification runbook
   DECISIONS.md                   architecture decision records
   README.md                      documentation index
 scripts/
   benchmark.ts                   attack tick/map/checksum benchmark
+  telemetry.ts / balance-sweep.ts / soak.ts / ai-balance.ts
+  evolution.ts                   headless evolution CLI
 AGENTS.md                        orientation for future coding agents
 ```
 
 ## Current limitations
 
-- The economy and final attack semantics are intentionally missing; this build is not game-balanced.
+- Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
 - Match setup chooses states/map/difficulty/growth/timer, but there is no server lobby yet.
-- Online play, accounts, matchmaking, and persistence are specified but not implemented.
-- TODO: replay/post-match analysis; accessibility and 320–430px mobile validation; diplomacy/coordinated team AI. No audio/fog/spectator camera UI yet.
+- Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
+- The main game still runs on the main thread; only the Evolution Lab uses a worker.
+- Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.
+- Further accessibility/WCAG work and richer diplomacy are still deferred.
+- No audio or fog.
+- WebGPU is required; there is no WebGL/Canvas2D fallback.
 - Touch pan/tap and two-finger pinch zoom are supported.
-- WebGPU is required. There is no WebGL/Canvas2D fallback.
-- The simulation runs on the main thread.
 
 ## Documentation index
 
-| Document                                     | Read it for                                         |
-| -------------------------------------------- | --------------------------------------------------- |
-| [docs/SPEC.md](docs/SPEC.md)                 | The canonical game and technical specification      |
-| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)   | Retired EXP-001 history, findings, and exit plan    |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, data flow, extension points               |
-| [docs/DETERMINISM.md](docs/DETERMINISM.md)   | Rules that keep every client in lockstep            |
-| [docs/RENDERING.md](docs/RENDERING.md)       | WebGPU pipeline, texture layout, upload batching    |
-| [docs/NETWORKING.md](docs/NETWORKING.md)     | Authoritative server, protocol, latency, anti-cheat |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)   | Budgets, measured baseline, profiling playbook      |
-| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phased plan and acceptance criteria                 |
-| [docs/DECISIONS.md](docs/DECISIONS.md)       | Why the stack and engine work this way              |
+| Document                                               | Read it for                                         |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| [docs/SPEC.md](docs/SPEC.md)                           | The canonical game and technical specification      |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)             | Retired EXP-001 history, findings, and exit plan    |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)           | Code map, data flow, extension points               |
+| [docs/DETERMINISM.md](docs/DETERMINISM.md)             | Rules that keep simulation runs deterministic       |
+| [docs/RENDERING.md](docs/RENDERING.md)                 | WebGPU pipeline, texture layout, upload batching    |
+| [docs/NETWORKING.md](docs/NETWORKING.md)               | Authoritative server, protocol, latency, anti-cheat |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)             | Budgets, benchmarks, profiling playbook             |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                     | Phased plan and acceptance criteria                 |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                 | Why the stack and engine work this way              |
+| [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md)         | Implemented Frontage v1 combat design               |
+| [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release verification runbook                        |
+| [docs/AI_BALANCE.md](docs/AI_BALANCE.md)               | Headless AI behavior balance results                |
+| [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md)     | Evolution selection/fitness audit                   |
