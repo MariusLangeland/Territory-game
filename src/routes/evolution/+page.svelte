@@ -2,7 +2,9 @@
 	import { onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
+	import FitnessHistoryGraph from '#lib/components/FitnessHistoryGraph.svelte';
 	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
+	import { buildFitnessHistory } from '#lib/game/ai/fitness-history';
 	import { RemoteEvolutionSimulation } from '#lib/game/ai/evolution-view';
 	import type {
 		EvolutionWorkerCommand,
@@ -113,6 +115,9 @@
 		if (!selectedOwnerId) return null;
 		return markovStates[selectedOwnerId - 1] ?? null;
 	});
+	let historyPoints = $derived(
+		buildFitnessHistory(lastReport?.generations ?? [], selectedGenomeId)
+	);
 
 	function send(command: EvolutionWorkerCommand): void {
 		worker?.postMessage(command);
@@ -557,6 +562,13 @@
 								</p>
 							{/if}
 						</div>
+					</div>
+				</details>
+
+				<details class="panel" open>
+					<summary>FITNESS HISTORY</summary>
+					<div class="panel-body">
+						<FitnessHistoryGraph points={historyPoints} />
 					</div>
 				</details>
 
