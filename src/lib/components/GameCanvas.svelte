@@ -122,11 +122,6 @@
 		lastSnapshot = visual.snapshot;
 	}
 
-	$effect(() => {
-		if (!simulate || !remoteVisual) return;
-		applyRemoteVisual(remoteVisual);
-	});
-
 	onMount(() => {
 		let disposed = false;
 		let frameId = 0;
@@ -674,6 +669,11 @@
 
 		function frame(now: number): void {
 			if (disposed || !renderer) return;
+			// Poll the latest worker visual every frame. This deliberately does not
+			// rely on prop-effect timing: the visual can arrive before the renderer
+			// finishes initializing, and the animation loop is the one consumer that
+			// must observe the newest revision.
+			if (!simulate && remoteVisual) applyRemoteVisual(remoteVisual);
 			const delta = Math.min(250, Math.max(0, now - lastTime));
 			lastTime = now;
 
