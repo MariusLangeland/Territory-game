@@ -2,21 +2,22 @@
 
 This directory is the long-term reference for the project. Start with the specification, then follow the topic you are changing.
 
-| Document                                 | Authority                                   | Use it when                                                                        |
-| ---------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [SPEC.md](SPEC.md)                       | Canonical product + technical specification | You need the intended game rules, systems, contracts, or acceptance criteria       |
-| [EXPERIMENTS.md](EXPERIMENTS.md)         | Retired experiment history                  | You need the EXP-001 context and exit record                                       |
-| [ARCHITECTURE.md](ARCHITECTURE.md)       | Current code structure                      | You are adding a feature and need to know which module owns what                   |
-| [DETERMINISM.md](DETERMINISM.md)         | Non-negotiable simulation rules             | You touch ticks, random numbers, commands, attacks, map generation, or checksums   |
-| [RENDERING.md](RENDERING.md)             | Renderer contract                           | You touch WebGPU, shaders, textures, camera, upload budgets, or visual effects     |
-| [NETWORKING.md](NETWORKING.md)           | Target online design (not yet implemented)  | You start the authoritative server, protocol, rooms, reconnect, or anti-cheat work |
-| [PERFORMANCE.md](PERFORMANCE.md)         | Budgets and measurement practice            | You need to know whether a change is fast enough or how to profile it              |
-| [ROADMAP.md](ROADMAP.md)                 | Delivery plan and acceptance criteria       | You are choosing the next milestone                                                |
-| [DECISIONS.md](DECISIONS.md)             | Architecture decision records               | You want to know why a choice was made before revisiting it                        |
-| [COMBAT_DESIGN.md](COMBAT_DESIGN.md)     | Implemented Frontage v1 design              | You are tuning supply, front strength, attrition, or victory rules                 |
-| [TELEMETRY.md](TELEMETRY.md)             | Headless match telemetry                    | You need repeatable outcome/balance metrics across seeds                           |
-| [AI_BALANCE.md](AI_BALANCE.md)           | AI behavior matrix results                  | You are tuning bot economy, defence, naval strategy, or targeting                  |
-| [EVOLUTION_AUDIT.md](EVOLUTION_AUDIT.md) | Headless evolution audit results            | You are validating selection, scheduling, or fitness trends                        |
+| Document                                     | Authority                                   | Use it when                                                                        |
+| -------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [SPEC.md](SPEC.md)                           | Canonical product + technical specification | You need the intended game rules, systems, contracts, or acceptance criteria       |
+| [EXPERIMENTS.md](EXPERIMENTS.md)             | Retired experiment history                  | You need the EXP-001 context and exit record                                       |
+| [ARCHITECTURE.md](ARCHITECTURE.md)           | Current code structure                      | You are adding a feature and need to know which module owns what                   |
+| [DETERMINISM.md](DETERMINISM.md)             | Non-negotiable simulation rules             | You touch ticks, random numbers, commands, attacks, map generation, or checksums   |
+| [RENDERING.md](RENDERING.md)                 | Renderer contract                           | You touch WebGPU, shaders, textures, camera, upload budgets, or visual effects     |
+| [NETWORKING.md](NETWORKING.md)               | Target online design (not yet implemented)  | You start the authoritative server, protocol, rooms, reconnect, or anti-cheat work |
+| [PERFORMANCE.md](PERFORMANCE.md)             | Budgets and measurement practice            | You need to know whether a change is fast enough or how to profile it              |
+| [ROADMAP.md](ROADMAP.md)                     | Delivery plan and acceptance criteria       | You are choosing the next milestone                                                |
+| [DECISIONS.md](DECISIONS.md)                 | Architecture decision records               | You want to know why a choice was made before revisiting it                        |
+| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Release verification runbook                | You are preparing a version bump, tag, or deployment                               |
+| [COMBAT_DESIGN.md](COMBAT_DESIGN.md)         | Implemented Frontage v1 design              | You are tuning supply, front strength, attrition, or victory rules                 |
+| [TELEMETRY.md](TELEMETRY.md)                 | Headless match telemetry                    | You need repeatable outcome/balance metrics across seeds                           |
+| [AI_BALANCE.md](AI_BALANCE.md)               | AI behavior matrix results                  | You are tuning bot economy, defence, naval strategy, or targeting                  |
+| [EVOLUTION_AUDIT.md](EVOLUTION_AUDIT.md)     | Headless evolution audit results            | You are validating selection, scheduling, or fitness trends                        |
 
 ## Documentation rules
 

@@ -67,6 +67,7 @@
 	});
 	let worker: Worker | null = null;
 	let started = $state(false);
+	let restoredSession = $state(false);
 	let phase = $state<'idle' | 'match' | 'generation-complete' | 'finished'>('idle');
 	let generation = $state(0);
 	let progress = $state({ match: 0, matches: 0, generation: 0 });
@@ -82,6 +83,9 @@
 	let cameraBridge = new GameCameraBridge();
 	let running = $state(false);
 	let speed = $state(4);
+	let effectiveTps = $state(0);
+	let effectiveTpsTick = 0;
+	let effectiveTpsAt = 0;
 	let matchKey = $state(0);
 	let activeMatchId = -1;
 	let visualRevision = 0;
@@ -123,12 +127,33 @@
 		worker?.postMessage(command);
 	}
 
+	function resetThroughput(): void {
+		effectiveTps = 0;
+		effectiveTpsTick = 0;
+		effectiveTpsAt = 0;
+	}
+
+	function sampleThroughput(tick: number): void {
+		const now = performance.now();
+		if (effectiveTpsAt === 0 || tick < effectiveTpsTick) {
+			effectiveTpsTick = tick;
+			effectiveTpsAt = now;
+			return;
+		}
+		const elapsed = now - effectiveTpsAt;
+		if (elapsed < 250) return;
+		effectiveTps = Math.round(((tick - effectiveTpsTick) * 1000) / elapsed);
+		effectiveTpsTick = tick;
+		effectiveTpsAt = now;
+	}
+
 	function applyState(state: WorkerEvolutionState): void {
 		if (state.restoredConfig) {
 			config = {
 				...state.restoredConfig,
 				fitnessWeights: { ...state.restoredConfig.fitnessWeights }
 			};
+			restoredSession = true;
 			notice = 'Restored the last saved Evolution Lab session.';
 		}
 		phase = state.phase;
@@ -166,6 +191,7 @@
 				remoteView = new RemoteEvolutionSimulation(message.init);
 				snapshot = message.init.snapshot;
 				remoteVisual = null;
+				resetThroughput();
 				matchKey++;
 				break;
 			case 'visual': {
@@ -174,6 +200,7 @@
 				remoteView.applyVisual(visual);
 				snapshot = visual.snapshot;
 				markovStates = visual.markovStates;
+				sampleThroughput(visual.tick);
 				remoteVisual = {
 					revision: ++visualRevision,
 					tick: visual.tick,
@@ -185,6 +212,28 @@
 				};
 				break;
 			}
+			case 'idle':
+				activeMatchId = -1;
+				remoteView = null;
+				remoteVisual = null;
+				snapshot = null;
+				started = false;
+				restoredSession = false;
+				phase = 'idle';
+				generation = 0;
+				progress = { match: 0, matches: 0, generation: 0 };
+				currentSeats = [];
+				population = [];
+				rows = [];
+				archiveRows = [];
+				markovStates = [];
+				lastReport = null;
+				selectedGenomeId = null;
+				running = false;
+				resetThroughput();
+				status = 'Configure a population and start natural selection.';
+				notice = 'Saved session discarded.';
+				break;
 			case 'error':
 				notice = message.message;
 				running = false;
@@ -206,8 +255,18 @@
 		return instance;
 	}
 
+	function discardSession(): void {
+		if (!started) {
+			notice = 'There is no saved Evolution Lab session to discard.';
+			return;
+		}
+		send({ type: 'discard-session' });
+	}
+
 	function start(): void {
 		selectedGenomeId = null;
+		restoredSession = false;
+		resetThroughput();
 		notice = '';
 		lastReport = null;
 		rows = [];
@@ -296,6 +355,8 @@
 			populationSize: Math.max(playerCount, genomes.length)
 		};
 		selectedGenomeId = null;
+		restoredSession = false;
+		resetThroughput();
 		lastReport = null;
 		rows = [];
 		archiveRows = [];
@@ -322,6 +383,8 @@
 			populationSize: Math.max(playerCount, pool.length)
 		};
 		selectedGenomeId = null;
+		restoredSession = false;
+		resetThroughput();
 		lastReport = null;
 		rows = [];
 		archiveRows = [];
@@ -370,6 +433,7 @@
 			<span class:live={running} class="live-dot"></span>
 			<span>{status}</span>
 			<span class="phase">{phase.toUpperCase()}</span>
+			{#if restoredSession}<span class="restored">RESTORED</span>{/if}
 		</div>
 	</header>
 
@@ -404,6 +468,9 @@
 				<div class="stat">
 					<span>POP</span><strong>{population.length || config.populationSize}</strong>
 				</div>
+				<div class="stat">
+					<span>RATE</span><strong>{effectiveTps > 0 ? `${effectiveTps}/s` : '—'}</strong>
+				</div>
 				<div class="speed-row">
 					{#each SPEEDS as option (option.steps)}
 						<button
@@ -426,6 +493,9 @@
 				<button class="primary" type="button" onclick={start}>NEW EVOLUTION</button>
 				<button class="continue" type="button" onclick={continueEvolution} disabled={!started}>
 					CONTINUE EVOLUTION
+				</button>
+				<button class="discard" type="button" onclick={discardSession} disabled={!started}>
+					DISCARD
 				</button>
 			</div>
 
@@ -782,6 +852,19 @@
 		flex: 1;
 		color: #58c7e8;
 		border-color: rgba(88, 199, 232, 0.45);
+	}
+	.context-actions .discard {
+		flex: none;
+		padding-inline: 7px;
+		color: rgba(247, 238, 208, 0.55);
+		font-size: 8px;
+	}
+	.restored {
+		padding: 2px 5px;
+		border: 1px solid rgba(115, 200, 143, 0.45);
+		color: #73c88f;
+		font-size: 8px;
+		letter-spacing: 0.08em;
 	}
 	.context-scroll {
 		min-height: 0;

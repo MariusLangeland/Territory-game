@@ -2479,3 +2479,39 @@ reset every tick, even when ownership and structures had not changed.
 - Active wars still invalidate the cache on captures.
 - A/B: 8-player 1,000-tick run improved from 829 ms to 781 ms (−5.8%) with
   identical owned-pixel counts.
+
+---
+
+## ADR-078 — Tick-independent build-site and map caches
+
+**Status:** accepted and implemented in 0.68.0  
+**Date:** 2026-11-22
+
+### Context
+
+Bot build-site lookups dominated the worker profile. Port sites and the first
+legal inner-ring site for Command Posts, War Academies, and Artillery are
+deterministic functions of ownership and structure layout, not of the tick hash.
+They were still recomputed on every tick. `generateMap` also regenerated a map
+for lineage match pairs that share a seed.
+
+### Decision
+
+- Cache Port and inner-ring sites across ticks, keyed by ownership version and
+  structure/layout versions.
+- Keep the per-tick border-candidate fallback separate because it uses the tick
+  hash.
+- Reset only labels written by the previous integrity pass instead of clearing
+  the full component array.
+- Keep a small LRU of generated maps keyed by seed/width/height/player count.
+  Maps are treated as immutable after generation.
+
+### Consequences
+
+- Stable periods avoid repeated ring scans; active wars invalidate the cache on
+  captures as intended.
+- Repeated lineage seeds reuse maps and skip map generation.
+- Unique seeds still pay map setup.
+- Measured 51-state, 500-tick improvement: 1,276 ms to 1,251 ms (−2.0%).
+  Active 8-player timing was unchanged because the cache is invalidated every
+  capture.

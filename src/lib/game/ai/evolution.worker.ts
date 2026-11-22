@@ -415,6 +415,16 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 			case 'speed':
 				speed = Math.max(1, Math.min(1000, Math.round(command.speed)));
 				break;
+			case 'discard-session':
+				running = false;
+				stopLoop();
+				sandbox = null;
+				activeSimulation = null;
+				restoredConfig = null;
+				resetPending();
+				void clearSessionSnapshot();
+				scope.postMessage({ type: 'idle' });
+				break;
 			case 'dispose':
 				running = false;
 				stopLoop();

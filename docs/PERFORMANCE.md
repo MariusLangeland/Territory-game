@@ -141,18 +141,22 @@ A later cross-tick cache for `botNeedsExpansion` (valid until ownership,
 structure, or layout versions change) reduced an 8-player 1,000-tick run from
 829 ms to 781 ms (−5.8%) with identical owned-pixel counts.
 
-Active matches still pay the integrity scan when territory changes, so the
-largest improvement is in stable late-game or paused-ownership periods.
-`computeBotBuildCell`, `labelComponents`, and pocket cleanup remain the top
-profile entries; the first two are candidates for further structural work, and
-map generation is still a fixed 130–155 ms per match setup.
+The next round added a tick-independent cache for Port and inner-ring build
+sites (invalidated by ownership/structure/layout changes) and reset-only
+component labels. The 51-state, 500-tick run moved from 1,276 ms to 1,251 ms
+(−2.0%); the 8-player active-run time stayed at ~528 ms because captures
+invalidate the site cache every tick. The wins are largest in stable late-game
+periods; active wars still pay the integrity scan. The lab now reports measured
+ticks/s instead of implying the requested `1000×` is always achieved. Match maps
+are kept in a small LRU, so repeated lineage seeds avoid another 130–155 ms
+generation pass; unique seeds still pay it.
 
 Remaining follow-ups:
 
-- Cache or pre-generate Evolution maps when match seeds repeat.
-- Consider an incremental component update for integrity during active wars.
-- Report effective ticks/s in the lab instead of implying `1000×` is always
-  achieved.
+- Incremental or region-scoped component updates for integrity during active
+  wars.
+- Replace the remaining 80 px build-site ring scan with a small candidate index
+  for very large territories.
 
 ### 2.4 What these numbers do not cover
 
@@ -361,11 +365,9 @@ Before merging a performance-sensitive change:
 
 ## 9. Future optimizations (ranked)
 
-1. Replace the bot build-site ring scan with a small candidate set or a cached legal-site index.
-2. Make active-war integrity component labeling incremental or region-scoped.
-3. Cache or pre-generate maps to remove the 130–155 ms per-match setup cost.
-4. Expose effective ticks/s in the Evolution Lab; `1000×` is a requested multiplier, not a guaranteed rate.
-5. Render-on-demand idle mode.
-6. Adaptive DPR/resolution.
-7. GPU timestamp queries and automated performance gates.
-8. WebGL2 fallback only if support data justifies it.
+1. Make active-war integrity component labeling incremental or region-scoped.
+2. Replace the remaining ring scan for very large territories with a candidate index.
+3. Render-on-demand idle mode.
+4. Adaptive DPR/resolution.
+5. GPU timestamp queries and automated performance gates.
+6. WebGL2 fallback only if support data justifies it.

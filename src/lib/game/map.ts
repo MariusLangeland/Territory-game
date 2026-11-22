@@ -258,6 +258,9 @@ function chooseStarts(
  * same `land` mask from the same seed. If this algorithm changes, increment
  * MAP_VERSION in constants.ts.
  */
+const MAP_CACHE_LIMIT = 6;
+const mapCache = new Map<string, GeneratedMap>();
+
 export function generateMap(seed: number, options: MapGenerationOptions = {}): GeneratedMap {
 	const width = options.width ?? MAP_WIDTH;
 	const height = options.height ?? MAP_HEIGHT;
@@ -266,6 +269,13 @@ export function generateMap(seed: number, options: MapGenerationOptions = {}): G
 		throw new Error(`Map dimensions must be at least 256 x 256, received ${width} x ${height}.`);
 	}
 	if (playerCount < 2) throw new Error('A match needs at least two states.');
+	const cacheKey = `${seed >>> 0}:${width}x${height}:${playerCount}`;
+	const cached = mapCache.get(cacheKey);
+	if (cached) {
+		mapCache.delete(cacheKey);
+		mapCache.set(cacheKey, cached);
+		return cached;
+	}
 	const pixelCount = width * height;
 	const elevations = new Uint16Array(pixelCount);
 	const histogram = new Uint32Array(1024);
@@ -336,8 +346,13 @@ export function generateMap(seed: number, options: MapGenerationOptions = {}): G
 	detailSeed = (detailSeed + 1) >>> 0;
 
 	const starts = chooseStarts(land, seed, playerCount, width, height);
-
-	return { width, height, land, shade, elevation, landCount, starts };
+	const map = { width, height, land, shade, elevation, landCount, starts };
+	mapCache.set(cacheKey, map);
+	if (mapCache.size > MAP_CACHE_LIMIT) {
+		const oldest = mapCache.keys().next().value;
+		if (oldest !== undefined) mapCache.delete(oldest);
+	}
+	return map;
 }
 
 /** Quantile cutoffs for the five boundaries between the six elevation tiers. */

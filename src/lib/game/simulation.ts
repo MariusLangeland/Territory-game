@@ -617,6 +617,11 @@ export class TerritorySimulation {
 	private buildSiteCacheTick = -1;
 	private buildSiteCacheVersion = -1;
 	private buildSiteCacheLayoutVersion = -1;
+	/** Port/core sites are tick-independent and can survive across ticks. */
+	private stableBuildSiteCache = new Int32Array(0);
+	private stableBuildSiteCacheOwnershipVersion = -1;
+	private stableBuildSiteCacheVersion = -1;
+	private stableBuildSiteCacheLayoutVersion = -1;
 	private readonly integrity: TerritoryIntegrity;
 	readonly structures: StructureRegistry;
 	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
@@ -689,6 +694,7 @@ export class TerritorySimulation {
 		this.buildSiteCache = new Int32Array(this.playerCount * BUILDABLE_STRUCTURE_TYPES.length).fill(
 			-2
 		);
+		this.stableBuildSiteCache = new Int32Array(this.playerCount * 4).fill(-2);
 		this.needsExpansionCache = new Int8Array(this.playerCount).fill(-1);
 		this.botGoldAccrual = new Uint16Array(this.playerCount);
 		this.botGrievance = new Uint16Array(this.playerCount * this.playerCount);
@@ -3862,18 +3868,64 @@ export class TerritorySimulation {
 		this.buildSiteCache.fill(-2);
 	}
 
+	private stableBuildTypeIndex(type: BuildableStructureType): number {
+		switch (type) {
+			case 'port':
+				return 0;
+			case 'artillery':
+				return 1;
+			case 'command-post':
+				return 2;
+			case 'war-academy':
+				return 3;
+			default:
+				return -1;
+		}
+	}
+
+	private ensureStableBuildSiteCache(): void {
+		const version = this.structures.version;
+		const layoutVersion = this.structures.layoutVersion;
+		if (
+			this.stableBuildSiteCacheOwnershipVersion === this.ownershipVersion &&
+			this.stableBuildSiteCacheVersion === version &&
+			this.stableBuildSiteCacheLayoutVersion === layoutVersion
+		) {
+			return;
+		}
+		this.stableBuildSiteCacheOwnershipVersion = this.ownershipVersion;
+		this.stableBuildSiteCacheVersion = version;
+		this.stableBuildSiteCacheLayoutVersion = layoutVersion;
+		this.stableBuildSiteCache.fill(-2);
+	}
+
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
+		const stableTypeIndex = this.stableBuildTypeIndex(type);
+		if (stableTypeIndex >= 0) {
+			this.ensureStableBuildSiteCache();
+			const stableCacheIndex = (player.id - 1) * 4 + stableTypeIndex;
+			const stableCached = this.stableBuildSiteCache[stableCacheIndex];
+			if (stableCached >= 0) return stableCached;
+			if (stableCached === -2) {
+				const stableSite = this.computeStableBotBuildCell(player, type);
+				this.stableBuildSiteCache[stableCacheIndex] = stableSite;
+				if (stableSite >= 0) return stableSite;
+			}
+			if (type === 'port') return -1;
+		}
+
 		this.ensureBuildSiteCache();
 		const typeIndex = BUILDABLE_STRUCTURE_TYPES.indexOf(type);
 		const cacheIndex = (player.id - 1) * BUILDABLE_STRUCTURE_TYPES.length + typeIndex;
 		const cached = this.buildSiteCache[cacheIndex];
 		if (cached !== -2) return cached;
-		const result = this.computeBotBuildCell(player, type);
+		const result = this.computeBotBorderBuildCell(player);
 		this.buildSiteCache[cacheIndex] = result;
 		return result;
 	}
 
-	private computeBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
+	/** Port and inner-ring sites do not depend on the tick hash, only on ownership/layout. */
+	private computeStableBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
 		if (type === 'port') {
 			for (const index of player.border) {
 				if (!isShoreIndex(this.land, this.width, this.height, index)) continue;
@@ -3881,24 +3933,25 @@ export class TerritorySimulation {
 			}
 			return -1;
 		}
-		if (type === 'artillery' || type === 'command-post' || type === 'war-academy') {
-			const state = this.structures.forOwnerType(player.id, 'state');
-			if (state) {
-				for (let radius = STRUCTURE_MIN_SPACING; radius <= 80; radius++) {
-					for (let dy = -radius; dy <= radius; dy++) {
-						for (let dx = -radius; dx <= radius; dx++) {
-							if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
-							const x = state.x + dx;
-							const y = state.y + dy;
-							if (x < 0 || y < 0 || x >= this.width || y >= this.height) continue;
-							const index = y * this.width + x;
-							if (this.isBotBuildCellValid(player, index)) return index;
-						}
-					}
+		const state = this.structures.forOwnerType(player.id, 'state');
+		if (!state) return -1;
+		for (let radius = STRUCTURE_MIN_SPACING; radius <= 80; radius++) {
+			for (let dy = -radius; dy <= radius; dy++) {
+				for (let dx = -radius; dx <= radius; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+					const x = state.x + dx;
+					const y = state.y + dy;
+					if (x < 0 || y < 0 || x >= this.width || y >= this.height) continue;
+					const index = y * this.width + x;
+					if (this.owners[index] !== player.id) continue;
+					if (this.isBotBuildCellValid(player, index)) return index;
 				}
 			}
 		}
+		return -1;
+	}
 
+	private computeBotBorderBuildCell(player: PlayerState): number {
 		const candidates: number[] = [];
 		for (const index of player.border) {
 			if (!this.isBotBuildCellValid(player, index)) continue;

@@ -26,6 +26,8 @@ pnpm install
 pnpm dev
 pnpm check
 pnpm test
+pnpm test:fast
+pnpm test:stress
 pnpm bench
 pnpm telemetry
 pnpm balance
@@ -172,8 +174,8 @@ WebGPU is not available in jsdom. Verify visually and interactively:
 26. Confirm rival supply text has a transparent background and no plaque/border, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
 27. On the intro, change state count, map preset, bot difficulty, growth layer, and timer; click REBUILD MATCH and confirm the intro stats, HUD state count, atlas dimensions, leaderboard, and countdown reflect the new settings. Reload and confirm the settings persisted.
 28. Build a Port on owned shoreline, click a distant non-friendly shore with a sea route, confirm a boat sails along the sea, claims a beachhead, auto-builds a second Port, and starts an inland front. Confirm inland Port placement is rejected.
-29. Open `/evolution`: confirm the canvas fills the left area, `NEW EVOLUTION` and `CONTINUE EVOLUTION` are pinned at the top of the scrollable context menu, panels collapse, the spreadsheet is shown in the context menu, row and canvas selection stay linked, the selected genome's Markov graph renders, and the fitness-history chart plots best/average/selected fitness after each completed generation. Confirm the simulation runs in a worker: pan/zoom and toggle panels while a `1000×` match runs and the UI stays responsive. Finish a short run, click CONTINUE EVOLUTION, confirm it extends from the final population, then verify CSV export/import and saved buckets appear in the main match difficulty path.
-30. Reload `/evolution` after a completed generation and confirm the saved session is restored without auto-running. Click CONTINUE EVOLUTION, confirm the next generation starts, and verify starting a NEW EVOLUTION replaces the saved checkpoint.
+29. Open `/evolution`: confirm the canvas fills the left area, `NEW EVOLUTION` and `CONTINUE EVOLUTION` are pinned at the top of the scrollable context menu, panels collapse, the spreadsheet is shown in the context menu, row and canvas selection stay linked, the selected genome's Markov graph renders, and the fitness-history chart plots best/average/selected fitness after each completed generation. Confirm the simulation runs in a worker: pan/zoom and toggle panels while a `1000×` match runs and the UI stays responsive. Confirm the HUD RATE reports measured ticks/s rather than the requested multiplier. Finish a short run, click CONTINUE EVOLUTION, confirm it extends from the final population, then verify CSV export/import and saved buckets appear in the main match difficulty path.
+30. Reload `/evolution` after a completed generation and confirm the saved session is restored without auto-running and RESTORED is visible. Click CONTINUE EVOLUTION, confirm the next generation starts. Click DISCARD and confirm the checkpoint clears and the lab returns to idle. Verify starting a NEW EVOLUTION replaces the saved checkpoint.
 
 ## Style
 

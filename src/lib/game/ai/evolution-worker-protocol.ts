@@ -53,10 +53,12 @@ export type EvolutionWorkerCommand =
 	| { type: 'pause' }
 	| { type: 'resume' }
 	| { type: 'speed'; speed: number }
+	| { type: 'discard-session' }
 	| { type: 'dispose' };
 
 export type EvolutionWorkerMessage =
 	| { type: 'state'; state: WorkerEvolutionState }
 	| { type: 'match'; matchId: number; init: WorkerMatchInit }
 	| { type: 'visual'; visual: WorkerVisual }
+	| { type: 'idle' }
 	| { type: 'error'; message: string };

@@ -69,8 +69,7 @@ export class TerritoryIntegrity {
 		anchors: readonly IntegrityAnchor[],
 		onAnnex: (index: number, newOwner: number) => void
 	): IntegrityResult {
-		this.componentOf.fill(0);
-		this.cellCount = 0;
+		this.resetComponentLabels();
 		this.components.length = 0;
 
 		this.labelComponents(owners, land);
@@ -116,8 +115,7 @@ export class TerritoryIntegrity {
 		maxArea: number,
 		onClaim: (index: number, newOwner: number) => void
 	): UnclaimedCleanupResult {
-		this.componentOf.fill(0);
-		this.cellCount = 0;
+		this.resetComponentLabels();
 		let filledComponents = 0;
 		let filledCells = 0;
 		const width = this.width;
@@ -184,6 +182,15 @@ export class TerritoryIntegrity {
 		}
 
 		return { filledComponents, filledCells };
+	}
+
+	/**
+	 * Clear only labels written by the previous pass. A full-map fill costs a
+	 * fixed multi-megabyte write even though owned cells are a small fraction.
+	 */
+	private resetComponentLabels(): void {
+		for (let i = 0; i < this.cellCount; i++) this.componentOf[this.cellOrder[i]] = 0;
+		this.cellCount = 0;
 	}
 
 	private visitUnclaimed(index: number, id: number, owners: Uint16Array, land: Uint8Array): void {
