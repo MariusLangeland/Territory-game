@@ -42,6 +42,7 @@
 	} from '#lib/game/Structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
 	import { difficultyGenomes, loadEvolutionBuckets } from '#lib/game/ai/buckets';
+	import { loadGauntletSurvivors } from '#lib/game/ai/gauntlet-survivors';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 
 	interface HoverState {
@@ -502,13 +503,15 @@
 		seedInput = seedHexFor(seed);
 
 		// Yield once so the loading screen paints before the CPU builds the map.
-		worldTimer = setTimeout(() => {
+		worldTimer = setTimeout(async () => {
 			try {
+				const survivorPool = await loadGauntletSurvivors();
 				const evolvedPool = difficultyGenomes(loadEvolutionBuckets(), normalized.difficulty);
+				const botPool = [...survivorPool, ...evolvedPool];
 				const botGenomes =
-					evolvedPool.length > 0
+					botPool.length > 0
 						? Array.from({ length: normalized.states }, (_, index) =>
-								index === 0 ? null : evolvedPool[(seed + index) % evolvedPool.length]
+								index === 0 ? null : botPool[(seed + index) % botPool.length]
 							)
 						: undefined;
 				const next = new TerritorySimulation({

@@ -1,6 +1,6 @@
 {
 	"name": "territory",
-	"version": "0.69.5",
+	"version": "0.70.0",
 	"private": true,
 	"description": "A deterministic, WebGPU-rendered pixel territory war.",
 	"type": "module",
@@ -23,7 +23,7 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "vitest run",
-		"test:fast": "vitest run src/lib/format.test.ts src/lib/game/integrity.test.ts src/lib/game/naval.test.ts src/lib/game/match-config.test.ts src/lib/game/render/camera.test.ts src/lib/game/ai/evolution-view.test.ts src/lib/game/ai/fitness-history.test.ts src/lib/game/ai/markov.test.ts src/lib/game/Structures/registry.test.ts src/lib/game/growth/growth.test.ts src/lib/game/port.test.ts src/lib/game/artillery.test.ts src/lib/game/economy.test.ts",
+		"test:fast": "vitest run src/lib/format.test.ts src/lib/game/integrity.test.ts src/lib/game/naval.test.ts src/lib/game/match-config.test.ts src/lib/game/render/camera.test.ts src/lib/game/ai/evolution-view.test.ts src/lib/game/ai/fitness-history.test.ts src/lib/game/ai/gauntlet-survivors.test.ts src/lib/game/ai/markov.test.ts src/lib/game/Structures/registry.test.ts src/lib/game/growth/growth.test.ts src/lib/game/port.test.ts src/lib/game/artillery.test.ts src/lib/game/economy.test.ts",
 		"test:stress": "vitest run src/lib/game/simulation.test.ts src/lib/game/ai/evolution.test.ts",
 		"bench": "tsx scripts/benchmark.ts",
 		"telemetry": "tsx scripts/telemetry.ts",

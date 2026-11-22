@@ -2707,3 +2707,37 @@ back up or move that state.
 - Imports preserve prior report history and lives.
 - Active in-progress ticks are not part of the export; stop or finish the run
   first.
+
+---
+
+## ADR-085 — Seed the main-game bot roster from gauntlet survivors
+
+**Status:** accepted and implemented in 0.70.0  
+**Date:** 2026-11-22
+
+### Context
+
+A gauntlet export from seed 1236, run 24 retained 21 genomes after 64 starting
+bots and 24 runs. Those genomes encode the strategic behaviour that survived the
+survival tournament. The main game only used locally saved evolution buckets and
+fell back to procedural bot profiles when none existed.
+
+### Decision
+
+- Extract the 21 survivor genomes from the gauntlet export into
+  `static/gauntlet-survivors.json` with source metadata.
+- Load that pool lazily on the main page and use it as the base roster for bot
+  seats.
+- Append locally saved Evolution Lab bucket genomes after the survivor pool so
+  user-generated buckets still influence matches.
+- Fill seats deterministically by cycling the combined pool with the match seed.
+- Keep the full multi-megabyte gauntlet report out of the repository/client;
+  only the genome payload is committed.
+
+### Consequences
+
+- Main-game bots now start from genomes that survived live free-for-all
+  elimination pressure.
+- The static asset is small enough to fetch on demand and is cached.
+- If the asset is unavailable, the game falls back to saved buckets or
+  procedural bots.

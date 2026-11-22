@@ -33,6 +33,7 @@ Verify in current Chrome or Edge with WebGPU enabled.
 
 - [ ] Open `/?seed=1234`; no WebGPU error modal; DEPLOY enabled.
 - [ ] Deploy; HUD, leaderboard, minimap, and supply bar match the selected settings.
+- [ ] Verify `/gauntlet-survivors.json` returns 200 and main-game bots use the survivor pool without load errors.
 - [ ] Attack a frontier, pause/resume, and confirm no floating last-action box.
 - [ ] Build and upgrade a structure; confirm supply/cost feedback and district highlight.
 - [ ] Build a Port and launch a naval landing.
