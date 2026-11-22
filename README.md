@@ -125,7 +125,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 10. **Cancellation:** cancel the latest front with `X` or the HUD button. Refund = `floor(launchCost × remainingStrength / initialStrength)`.
 11. **Mutual fronts attrit:** both sides lose `100 + 50 × opponent logTier` strength simultaneously, once per pair per tick. A front at zero dies; the survivor holds the contact line.
 12. **Artillery:** costs 1000 supply, needs 16 px of district-free ground, and covers a 64 px district. `A` or FIRE, then click a raw aim point (no snapping). Every ready battery in 140 px fires one shell per level at 300 supply per level; after 2 s each shell lands with ±36 px spread and removes one level from a non-State structure within 12 px. Batteries reload for 6 s; States are immune.
-13. **Ports:** Ports cost 200 supply and can only be built on owned shoreline. A Port lets you click any non-friendly shore with a sea route; the landing costs a normal attack plus the 200-supply Port cost up front. A boat sails there at 80 px/s, claims a beachhead, auto-builds the landing Port, and opens a regular inward front. Ports whose land reaches your State protect their component, as do ports sharing a sea with such a port.
+13. **Ports:** Ports cost 200 supply and snap to the nearest valid owned shoreline within 24 px, so clicks on nearby water or a few pixels inland work. Ports may be placed inside unrelated districts. A Port lets you click any non-friendly shore with a sea route; the landing costs a normal attack plus the 200-supply Port cost up front. A boat sails there at 80 px/s, claims a beachhead, auto-builds the landing Port, and opens a regular inward front. Ports whose land reaches your State protect their component, as do ports sharing a sea with such a port.
 14. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins; an optional match timer awards the largest alive state.
 15. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
 16. **Detached land is annexed:** every second, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
@@ -186,7 +186,7 @@ The human commander starts with **90 supply** and **all seven build cards** perm
 | Jammer        | Global −1 enemy effective Barracks level per stack           |
 | Command Post  | +1 supply per second                                         |
 | War Academy   | +80 supply cap                                               |
-| Port          | Shore-only naval landing port; sea-linked annex protection   |
+| Port          | Shore-snapped naval port; may sit inside other districts     |
 
 Card costs and formulas live in [docs/REFERENCE.md](docs/REFERENCE.md).
 
@@ -205,7 +205,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - multiple structures and districts of the same type are allowed;
 - dropping the same type inside a district **stacks** onto that district's structure, multiplying its effect;
 - dropping the same type outside all districts creates another structure/district;
-- a different type cannot be dropped inside any existing district;
+- a different type cannot be dropped inside any existing district, except Ports, which are point anchors and may overlap districts;
 - touching districts of the **same owner and type** merge visually: internal seams and fill variants disappear, and one combined-level icon replaces the individual icons;
 - clicking a merged district upgrades its **lowest-level structure first** (five-level batches spread across the lowest structures); holding **Ctrl** disables merging, restores individual borders/icons, and upgrades whichever structure is under the cursor.
 

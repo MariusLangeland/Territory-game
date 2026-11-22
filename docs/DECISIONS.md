@@ -2741,3 +2741,33 @@ fell back to procedural bot profiles when none existed.
 - The static asset is small enough to fetch on demand and is cached.
 - If the asset is unavailable, the game falls back to saved buckets or
   procedural bots.
+
+---
+
+## ADR-086 — Port placement snapping and district overlap
+
+**Status:** accepted and implemented in 0.71.0  
+**Date:** 2026-11-22
+
+### Context
+
+Ports required a click on one exact owned shoreline pixel and could not be placed
+inside any existing district, even though Ports do not claim districts. This made
+coastal placement unnecessarily fiddly.
+
+### Decision
+
+- Resolve a Port drop to the nearest valid owned shoreline cell within
+  `PORT_BUILD_SNAP_RADIUS` (24 px), including clicks on nearby water.
+- Use the resolved cell for validation, placement preview feedback, and the
+  actual structure creation.
+- Exempt Ports from the “cannot build inside another district” rule, while still
+  requiring owned shoreline, no structure occupancy, and 8 px spacing.
+- Apply the same district exemption to bot Port placement.
+
+### Consequences
+
+- Players can click near a coast rather than hunting an exact shoreline pixel.
+- Ports may sit visually inside unrelated districts without joining or upgrading
+  them.
+- A Port still cannot be placed inland or on top of another structure.

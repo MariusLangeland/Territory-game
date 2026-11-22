@@ -768,9 +768,11 @@
 		const cellX = Math.floor(mapX);
 		const cellY = Math.floor(mapY);
 		const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
+		const targetX = validation.targetX ?? cellX;
+		const targetY = validation.targetY ?? cellY;
 		return {
-			x: cameraView.viewportWidth / 2 + (cellX + 0.5 - cameraView.centerX) * cameraView.scale,
-			y: cameraView.viewportHeight / 2 + (cellY + 0.5 - cameraView.centerY) * cameraView.scale,
+			x: cameraView.viewportWidth / 2 + (targetX + 0.5 - cameraView.centerX) * cameraView.scale,
+			y: cameraView.viewportHeight / 2 + (targetY + 0.5 - cameraView.centerY) * cameraView.scale,
 			radius: STRUCTURE_MIN_SPACING * cameraView.scale,
 			ok: validation.ok
 		};

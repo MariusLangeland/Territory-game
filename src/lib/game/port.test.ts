@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HUMAN_PLAYER_ID } from './constants';
 import { TerritorySimulation, type AttackState } from './simulation';
-import { STRUCTURE_DEFINITIONS } from './Structures';
+import { STRUCTURE_DEFINITIONS, type Structure } from './Structures';
 
 function findShore(sim: TerritorySimulation, ownerId: number, maxDistance = 0) {
 	const state = sim.structures.forOwnerType(ownerId, 'state');
@@ -144,6 +144,91 @@ describe('ports and naval landings', () => {
 			if (sim.getBotBehaviorTelemetry().botNavalLandings > 0) break;
 		}
 		expect(sim.getBotBehaviorTelemetry().botNavalLandings).toBeGreaterThan(0);
+	});
+
+	it('snaps Port placement from a nearby water tile to owned shoreline', () => {
+		const sim = new TerritorySimulation({ seed: 2 });
+		const card = sim.hand.find((entry) => entry.type === 'port');
+		expect(card).toBeDefined();
+		if (!card) return;
+		sim.gold = STRUCTURE_DEFINITIONS.port.cost * 4;
+		let found = false;
+		for (let index = 0; index < sim.owners.length && !found; index++) {
+			if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
+			const x = index % sim.width;
+			const y = Math.floor(index / sim.width);
+			if (!sim.isShore(x, y)) continue;
+			const neighbours: Array<[number, number]> = [
+				[x - 1, y],
+				[x + 1, y],
+				[x, y - 1],
+				[x, y + 1]
+			];
+			for (const [wx, wy] of neighbours) {
+				if (wx < 0 || wy < 0 || wx >= sim.width || wy >= sim.height) continue;
+				const water = wy * sim.width + wx;
+				if (sim.owners[water] !== 0 || sim.map.land[water] !== 0) continue;
+				const result = sim.validateBuild(HUMAN_PLAYER_ID, card.id, wx, wy);
+				if (!result.ok) continue;
+				expect(result.targetX).toBe(x);
+				expect(result.targetY).toBe(y);
+				found = true;
+				break;
+			}
+		}
+		expect(found).toBe(true);
+	});
+
+	it('allows a Port inside another structure district', () => {
+		const sim = new TerritorySimulation({ seed: 2 });
+		const card = sim.hand.find((entry) => entry.type === 'port');
+		expect(card).toBeDefined();
+		if (!card) return;
+		sim.gold = STRUCTURE_DEFINITIONS.port.cost * 4;
+		const shore = findShore(sim, HUMAN_PLAYER_ID);
+		expect(shore).not.toBeNull();
+		if (!shore) return;
+		const shoreX = shore.index % sim.width;
+		const shoreY = Math.floor(shore.index / sim.width);
+		let fortification: Structure | null = null;
+		for (let radius = 8; radius <= 30 && !fortification; radius++) {
+			for (let dy = -radius; dy <= radius && !fortification; dy++) {
+				for (let dx = -radius; dx <= radius; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+					const x = shoreX + dx;
+					const y = shoreY + dy;
+					if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) continue;
+					const index = y * sim.width + x;
+					if (sim.owners[index] !== HUMAN_PLAYER_ID || sim.structures.at(index)) continue;
+					if (sim.structures.hasWithinRadius(x, y, 8)) continue;
+					fortification = sim.structures.create('fortification', HUMAN_PLAYER_ID, x, y, sim.width);
+					break;
+				}
+			}
+		}
+		expect(fortification).not.toBeNull();
+		if (!fortification) return;
+		const internals = sim as unknown as {
+			refreshDistrictsAround: (structure: Structure) => void;
+			districtStructureIds: Uint16Array;
+		};
+		internals.refreshDistrictsAround(fortification);
+
+		let validated = false;
+		for (let index = 0; index < sim.owners.length && !validated; index++) {
+			if (sim.owners[index] !== HUMAN_PLAYER_ID) continue;
+			if (internals.districtStructureIds[index] === 0) continue;
+			const x = index % sim.width;
+			const y = Math.floor(index / sim.width);
+			if (!sim.isShore(x, y)) continue;
+			const result = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y);
+			if (!result.ok) continue;
+			const targetX = result.targetX ?? x;
+			const targetY = result.targetY ?? y;
+			expect(internals.districtStructureIds[targetY * sim.width + targetX]).not.toBe(0);
+			validated = true;
+		}
+		expect(validated).toBe(true);
 	});
 
 	it('rejects Port construction on inland ground', () => {

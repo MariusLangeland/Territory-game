@@ -405,7 +405,7 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 | Jammer        | Global aura: −1 effective enemy Barracks level per stack           |
 | Command Post  | +1 supply per second                                               |
 | War Academy   | +80 supply cap                                                     |
-| Port          | Shore-only naval landing port and sea-linked protection anchor     |
+| Port          | Shore-snapped naval landing port; may overlap other districts      |
 
 Every live Barracks level adds attack strength and launch cost linearly. Speed and piercing use integer `log2` tiers, so both scale without a cap but fall off. A defending Jammer subtracts one effective Barracks level per stack from every attacker, reducing their strength, cost, power, and piercing without raising pixel defense.
 
@@ -423,7 +423,7 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 
 ### 4.17c Ports and naval landings
 
-- **Port:** 200-supply card, no district, buildable only on owned shoreline cells (land with an orthogonally adjacent ocean pixel).
+- **Port:** 200-supply card, no district, placement snaps to a valid owned shoreline cell within 24 px and is allowed inside unrelated districts. It still requires land with an orthogonally adjacent ocean pixel, no occupying structure, and 8 px spacing.
 - With at least one Port, clicking a non-friendly shore that normal land attacks cannot reach attempts a **naval landing**.
 - Validation: target must be a shore, not friendly, not occupied by a structure, and reachable by a 4-neighbour ocean path from a friendly Port.
 - The launch costs a normal front launch **plus the 200-supply Port cost**, paid up front. Supply is spent at launch; the boat carries the landing.

@@ -89,6 +89,7 @@ import {
 	MAX_PLAYER_COUNT,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
+	PORT_BUILD_SNAP_RADIUS,
 	RENDER_TILE_SIZE,
 	STARTING_GOLD,
 	START_RADIUS,
@@ -431,6 +432,9 @@ export interface BuildOrderResult {
 	ok: boolean;
 	reason?: BuildFailure;
 	message: string;
+	/** Resolved cell when a Port snap moves the build away from the cursor. */
+	targetX?: number;
+	targetY?: number;
 }
 
 export interface UpgradeQuote extends BuildOrderResult {
@@ -1459,6 +1463,50 @@ export class TerritorySimulation {
 		return false;
 	}
 
+	private isPortBuildSite(player: PlayerState, index: number): boolean {
+		if (index < 0 || index >= this.owners.length) return false;
+		if (this.owners[index] !== player.id) return false;
+		if (!this.land[index] || !isShoreIndex(this.land, this.width, this.height, index)) {
+			return false;
+		}
+		if (this.structures.at(index)) return false;
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		return !this.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING);
+	}
+
+	/**
+	 * Ports are hard to place pixel-perfectly. Resolve a nearby valid owned
+	 * shoreline cell around the cursor (including water clicks near the coast)
+	 * so the player does not need to hit a specific shoreline pixel.
+	 */
+	private resolvePortBuildCell(player: PlayerState, clickedIndex: number): number {
+		if (this.isPortBuildSite(player, clickedIndex)) return clickedIndex;
+		const clickedX = clickedIndex % this.width;
+		const clickedY = Math.floor(clickedIndex / this.width);
+		let best = -1;
+		let bestDistance = Number.POSITIVE_INFINITY;
+		const minX = Math.max(0, clickedX - PORT_BUILD_SNAP_RADIUS);
+		const maxX = Math.min(this.width - 1, clickedX + PORT_BUILD_SNAP_RADIUS);
+		const minY = Math.max(0, clickedY - PORT_BUILD_SNAP_RADIUS);
+		const maxY = Math.min(this.height - 1, clickedY + PORT_BUILD_SNAP_RADIUS);
+		for (let y = minY; y <= maxY; y++) {
+			for (let x = minX; x <= maxX; x++) {
+				const dx = x - clickedX;
+				const dy = y - clickedY;
+				const distance = dx * dx + dy * dy;
+				if (distance > PORT_BUILD_SNAP_RADIUS * PORT_BUILD_SNAP_RADIUS) continue;
+				const index = y * this.width + x;
+				if (!this.isPortBuildSite(player, index)) continue;
+				if (distance < bestDistance || (distance === bestDistance && index < best)) {
+					best = index;
+					bestDistance = distance;
+				}
+			}
+		}
+		return best;
+	}
+
 	/** Validate a card drop for immediate UI feedback. */
 	validateBuild(playerId: number, cardId: number, x: number, y: number): BuildOrderResult {
 		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
@@ -1477,21 +1525,34 @@ export class TerritorySimulation {
 		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
 			return { ok: false, reason: 'invalid', message: 'Drop the card inside the map.' };
 		}
-		const index = roundedY * this.width + roundedX;
-		if (!this.land[index]) {
-			return { ok: false, reason: 'ocean', message: 'Structures need land.' };
+		let index: number;
+		let targetX = roundedX;
+		let targetY = roundedY;
+		if (card.type === 'port') {
+			index = this.resolvePortBuildCell(player, roundedY * this.width + roundedX);
+			if (index < 0) {
+				return {
+					ok: false,
+					reason: 'not-shore',
+					message: `Ports need owned shoreline within ${PORT_BUILD_SNAP_RADIUS} px with ${STRUCTURE_MIN_SPACING} px clearance.`
+				};
+			}
+			targetX = index % this.width;
+			targetY = (index - targetX) / this.width;
+		} else {
+			index = roundedY * this.width + roundedX;
+			if (!this.land[index]) {
+				return { ok: false, reason: 'ocean', message: 'Structures need land.' };
+			}
+			if (this.owners[index] !== playerId) {
+				return {
+					ok: false,
+					reason: 'not-owned',
+					message: 'Drop the card inside your controlled territory.'
+				};
+			}
 		}
-		if (this.owners[index] !== playerId) {
-			return {
-				ok: false,
-				reason: 'not-owned',
-				message: 'Drop the card inside your controlled territory.'
-			};
-		}
-		if (card.type === 'port' && !isShoreIndex(this.land, this.width, this.height, index)) {
-			return { ok: false, reason: 'not-shore', message: 'Ports must be built on a shoreline.' };
-		}
-		const districtId = this.districtStructureIds[index];
+		const districtId = card.type === 'port' ? 0 : this.districtStructureIds[index];
 		if (districtId !== 0) {
 			const districtStructure = this.structures.byId(districtId);
 			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
@@ -1533,7 +1594,7 @@ export class TerritorySimulation {
 		if (this.structures.at(index)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
 		}
-		if (this.structures.hasWithinRadius(roundedX, roundedY, STRUCTURE_MIN_SPACING)) {
+		if (this.structures.hasWithinRadius(targetX, targetY, STRUCTURE_MIN_SPACING)) {
 			return {
 				ok: false,
 				reason: 'too-close',
@@ -1551,7 +1612,9 @@ export class TerritorySimulation {
 
 		return {
 			ok: true,
-			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${baseCost} supply.`
+			message: `Build ${STRUCTURE_DEFINITIONS[card.type].label} for ${baseCost} supply.`,
+			targetX: card.type === 'port' ? targetX : undefined,
+			targetY: card.type === 'port' ? targetY : undefined
 		};
 	}
 
@@ -2015,7 +2078,9 @@ export class TerritorySimulation {
 				if (!validation.ok) continue;
 				const card = this.hand.find((entry) => entry.id === command.cardId);
 				if (!card) continue;
-				const targetIndex = command.y * this.width + command.x;
+				const targetX = validation.targetX ?? command.x;
+				const targetY = validation.targetY ?? command.y;
+				const targetIndex = targetY * this.width + targetX;
 				const districtId = this.districtStructureIds[targetIndex];
 				const districtStructure = districtId ? this.structures.byId(districtId) : undefined;
 				const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
@@ -2035,8 +2100,8 @@ export class TerritorySimulation {
 				const structure = this.structures.create(
 					card.type,
 					command.playerId,
-					command.x,
-					command.y,
+					targetX,
+					targetY,
 					this.width
 				);
 				this.refreshDistrictsAround(structure);
@@ -3930,7 +3995,7 @@ export class TerritorySimulation {
 		if (type === 'port') {
 			for (const index of player.border) {
 				if (!isShoreIndex(this.land, this.width, this.height, index)) continue;
-				if (this.isBotBuildCellValid(player, index)) return index;
+				if (this.isBotBuildCellValid(player, index, true)) return index;
 			}
 			return -1;
 		}
@@ -3963,9 +4028,10 @@ export class TerritorySimulation {
 		return candidates[hash32(this.tick, player.id, this.seed ^ 0x51ed270b) % candidates.length];
 	}
 
-	private isBotBuildCellValid(player: PlayerState, index: number): boolean {
+	private isBotBuildCellValid(player: PlayerState, index: number, ignoreDistrict = false): boolean {
 		if (!this.land[index] || this.owners[index] !== player.id) return false;
-		if (this.structures.at(index) || this.districtStructureIds[index] !== 0) return false;
+		if (this.structures.at(index)) return false;
+		if (!ignoreDistrict && this.districtStructureIds[index] !== 0) return false;
 		const x = index % this.width;
 		const y = (index - x) / this.width;
 		return !this.structures.hasWithinRadius(x, y, STRUCTURE_MIN_SPACING);
