@@ -567,7 +567,7 @@ function nextPopulation(
 }
 
 export class EvolutionSandbox {
-	readonly config: EvolutionConfig;
+	config: EvolutionConfig;
 	population: BotGenome[];
 	generation = 0;
 	phase: 'idle' | 'match' | 'generation-complete' | 'finished' = 'idle';
@@ -692,6 +692,24 @@ export class EvolutionSandbox {
 			this.pendingPopulation = [];
 		}
 		return added;
+	}
+
+	/**
+	 * Apply run-setup edits before continuing. The mode is fixed for the life of
+	 * a sandbox; all other settings take effect on the next match/generation.
+	 */
+	applyConfig(config: Partial<EvolutionConfig>): void {
+		const next = normalizeEvolutionConfig({
+			...this.config,
+			...config,
+			mode: this.config.mode
+		});
+		this.config = next;
+		if (next.mode === 'gauntlet') {
+			for (const [id, lives] of this.gauntletLives) {
+				if (lives > next.gauntletLives) this.gauntletLives.set(id, next.gauntletLives);
+			}
+		}
 	}
 
 	/**

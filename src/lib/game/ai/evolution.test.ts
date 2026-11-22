@@ -188,6 +188,23 @@ describe('evolutionary AI sandbox', () => {
 		expect(sandbox.phase).toBe('match');
 	});
 
+	it('applies edited setup settings when continuing', () => {
+		const sandbox = new EvolutionSandbox({
+			seed: 41,
+			populationSize: 4,
+			generations: 1,
+			playerCount: 2,
+			matchesPerRound: 1,
+			ticks: 200,
+			width: 640,
+			height: 360
+		});
+		sandbox.applyConfig({ ticks: 900, gauntletRemainingTarget: 3 });
+		expect(sandbox.config.ticks).toBe(900);
+		expect(sandbox.config.gauntletRemainingTarget).toBe(3);
+		expect(sandbox.config.mode).toBe('evolution');
+	});
+
 	it('runs a gauntlet round with global lives', () => {
 		const sandbox = new EvolutionSandbox({
 			mode: 'gauntlet',

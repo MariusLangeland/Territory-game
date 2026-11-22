@@ -49,7 +49,7 @@ export interface WorkerVisual {
 export type EvolutionWorkerCommand =
 	| { type: 'start'; config: EvolutionConfig }
 	| { type: 'set-population'; config: EvolutionConfig; genomes: BotGenome[] }
-	| { type: 'continue' }
+	| { type: 'continue'; config?: EvolutionConfig }
 	| { type: 'pause' }
 	| { type: 'resume' }
 	| { type: 'speed'; speed: number }

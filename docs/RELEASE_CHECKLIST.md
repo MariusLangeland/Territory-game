@@ -57,6 +57,7 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] FILL EMPTY SEATS adds fresh random genomes with full lives between runs.
 - [ ] NEW is hidden while a run is active; STOP finishes the run and STOP IMMEDIATE aborts it without discarding data.
 - [ ] CONTINUE resumes a stopped gauntlet while at least two genomes remain.
+- [ ] Edit ticks/fitness/gauntlet settings and confirm CONTINUE applies them.
 - [ ] Zero-life genomes disappear from the live roster and survivor pool.
 - [ ] Reload between gauntlet runs and CONTINUE resumes the survivor pool.
 

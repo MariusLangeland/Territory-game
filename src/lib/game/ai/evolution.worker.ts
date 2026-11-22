@@ -369,8 +369,9 @@ function setPopulation(
 	queueLoop();
 }
 
-function resumeRun(): void {
+function resumeRun(config?: EvolutionConfig): void {
 	if (!sandbox) return;
+	if (config) sandbox.applyConfig(config);
 	if (sandbox.phase === 'finished') {
 		if (!sandbox.continueEvolution(1)) {
 			scope.postMessage({
@@ -401,7 +402,7 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 				setPopulation(command.config, command.genomes);
 				break;
 			case 'continue':
-				resumeRun();
+				resumeRun(command.config);
 				break;
 			case 'pause':
 				running = false;

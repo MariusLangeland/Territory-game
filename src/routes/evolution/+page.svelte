@@ -356,7 +356,10 @@
 			notice = 'No previous evolution to continue. Start a new evolution first.';
 			return;
 		}
-		send({ type: 'continue' });
+		send({
+			type: 'continue',
+			config: { ...config, fitnessWeights: { ...config.fitnessWeights } }
+		});
 		running = true;
 		status = 'Continuing the previous run…';
 	}

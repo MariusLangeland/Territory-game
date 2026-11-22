@@ -2647,3 +2647,31 @@ remained in the live genome bank and their rows stayed visible in the roster.
 - Users can stop without discarding data.
 - New runs cannot replace an active run by accident.
 - Zero-life genomes are no longer referenced by live selection state.
+
+---
+
+## ADR-083 — Apply edited run setup on CONTINUE
+
+**Status:** accepted and implemented in 0.69.4  
+**Date:** 2026-11-22
+
+### Context
+
+The Evolution Lab's CONTINUE command carried no configuration. Edits to ticks,
+fitness weights, seed, dimensions, gauntlet lives/recovery/target, or generation
+settings were ignored until a new run was started.
+
+### Decision
+
+- Send the current setup with the CONTINUE command.
+- Apply it to the sandbox before resuming or starting the next match.
+- Keep the sandbox mode immutable for the life of a session; mode changes take
+  effect only on NEW.
+- Gauntlet life edits clamp existing lives to the new maximum. Other settings
+  affect the next match/generation.
+
+### Consequences
+
+- Setup edits are honored by CONTINUE without discarding results.
+- A current in-flight simulation is not mutated mid-tick; changes apply on the
+  next match/generation.
