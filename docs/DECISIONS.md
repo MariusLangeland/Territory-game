@@ -2360,3 +2360,33 @@ posted once per 1000 ticks at `1000×`, making the map visibly choppy.
 - The Evolution Lab continues to benefit from worker separation and 60 Hz
   visual updates at 1000×; worker transfer volume rises, which is acceptable
   for the lab.
+
+---
+
+## ADR-074 — Revert locality-banded least resistance
+
+**Status:** accepted and implemented in 0.66.2  
+**Date:** 2026-11-22
+
+### Context
+
+ADR-072 restricted least-resistance choices to an 8-pixel Manhattan band around
+the nearest sampled cell. The intent was to stop organic fronts drifting away
+from their start area, but the hard Manhattan gate made organic growth break
+into diamond-shaped lobes and lose its irregular character.
+
+### Decision
+
+- Remove `LEAST_RESISTANCE_LOCALITY_BAND` and the selector helper.
+- Restore the previous behavior: sample the top ten candidates in growth order
+  and capture the integer-cheapest effective defense, with sample-order ties.
+- Keep all other attack rules unchanged, including requeueing, affordability,
+  clash handling, and anchor-based growth.
+
+### Consequences
+
+- Organic growth returns to its irregular, non-diamond shape.
+- Least resistance can again choose a weakly defended lane anywhere inside the
+  sampled growth window.
+- ADR-072 is superseded; the locality experiment should not be reintroduced
+  without a non-Manhattan-friendly approach and fresh visual/balance evidence.

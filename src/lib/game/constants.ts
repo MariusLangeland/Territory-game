@@ -55,13 +55,6 @@ export const ATTACK_IDLE_TICKS = 20;
  * which cells are candidates; defense decides which sampled lane advances.
  */
 export const LEAST_RESISTANCE_SAMPLE_SIZE = 10;
-/**
- * How much farther from the attack's border anchor a sampled cell may be than
- * the nearest valid sample and still compete on defense. This keeps a front
- * flowing around local strongpoints without letting it chase a weak pixel far
- * away from where the attack started.
- */
-export const LEAST_RESISTANCE_LOCALITY_BAND = 8;
 
 /** Six visual/gameplay tiers, from lowland (0) to peak (5). */
 export const ELEVATION_LEVELS = 6;

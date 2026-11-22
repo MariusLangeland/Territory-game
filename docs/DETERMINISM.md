@@ -323,7 +323,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 25. Supply cap has no global maximum; it is derived from territory and live War Academy stacks, and a cap reduction clamps current supply. Effective attack levels are Barracks stacks minus defender Jammer stacks; strength/cost scale linearly and power/pierce by integer log2 tier.
 26. District assignment is a deterministic bounded Voronoi pass over current owners; ties use type code then structure id, and stacking never changes geometry.
 27. Dropping a type inside a same-type district increments that district's structure stacks; dropping it outside all districts creates another structure/district. A different type inside any district is rejected.
-28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, restricts selection to an 8-pixel Manhattan locality band around the nearest sampled cell to the attack anchor, compares integer effective costs inside that band, and breaks ties by sample order. It must not use randomness or mutate defense.
+28. Least-resistance sampling uses a fixed 10 candidates in growth priority order, integer effective costs, and sample-order ties. It must not use randomness or mutate defense.
 
 Commands to run:
 

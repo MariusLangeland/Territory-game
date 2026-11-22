@@ -76,7 +76,6 @@ import {
 	BOT_SEARCH_TRIES,
 	HUMAN_PLAYER_ID,
 	INCOME_INTERVAL_TICKS,
-	LEAST_RESISTANCE_LOCALITY_BAND,
 	LEAST_RESISTANCE_SAMPLE_SIZE,
 	NAVAL_SPEED_PX_PER_SECOND,
 	BOT_NAVAL_DISTANCE_PENALTY_DIVISOR,
@@ -2624,13 +2623,12 @@ export class TerritorySimulation {
 			let attackPoints = attack.power;
 			while (attackPoints > 0) {
 				// Sample a small batch of the highest-priority frontier cells.
-				// Geometry decides who is eligible; within a locality band around
-				// the attack anchor, the cheapest sampled defense decides which
-				// lane advances. This lets a front slide around a nearby
-				// strongpoint without chasing weak pixels far from its start area.
+				// Geometry decides who is eligible; the cheapest sampled defense
+				// decides which lane advances. This lets a front slide around a
+				// costly strongpoint instead of spending its whole tick there.
 				const sampled: number[] = [];
-				const sampledCosts: number[] = [];
-				const sampledDistances: number[] = [];
+				let chosenPosition = -1;
+				let chosenCost = Number.POSITIVE_INFINITY;
 				let halted = false;
 
 				for (let sample = 0; sample < LEAST_RESISTANCE_SAMPLE_SIZE; sample++) {
@@ -2658,21 +2656,14 @@ export class TerritorySimulation {
 					}
 
 					const cost = Math.max(1, this.defenseAt(index) - attack.pierce);
-					const x = index % this.width;
-					const y = (index - x) / this.width;
 					sampled.push(index);
-					sampledCosts.push(cost);
-					sampledDistances.push(Math.abs(x - attack.anchorX) + Math.abs(y - attack.anchorY));
+					if (cost < chosenCost) {
+						chosenCost = cost;
+						chosenPosition = sampled.length - 1;
+					}
 				}
 
 				if (halted) break;
-
-				const chosenPosition = selectLeastResistancePosition(
-					sampledCosts,
-					sampledDistances,
-					LEAST_RESISTANCE_LOCALITY_BAND
-				);
-				const chosenCost = chosenPosition >= 0 ? sampledCosts[chosenPosition] : Infinity;
 
 				// A clash pauses the front for this tick, but does not discard the
 				// sampled candidates; they may still be reachable next tick.
@@ -5049,31 +5040,6 @@ export class TerritorySimulation {
 
 function fail(reason: AttackFailure, message: string): AttackOrderResult {
 	return { ok: false, reason, message };
-}
-
-/**
- * Pick the cheapest sampled cell within a locality band around the nearest
- * sampled cell. Candidates farther than `localityBand` Manhattan pixels from
- * the attack anchor's closest candidate cannot pull the front away from the
- * area where it started, even if they are weakly defended.
- */
-export function selectLeastResistancePosition(
-	costs: readonly number[],
-	distances: readonly number[],
-	localityBand: number
-): number {
-	let nearest = Number.POSITIVE_INFINITY;
-	for (const distance of distances) nearest = Math.min(nearest, distance);
-	let chosen = -1;
-	let chosenCost = Number.POSITIVE_INFINITY;
-	for (let index = 0; index < costs.length; index++) {
-		if (distances[index] > nearest + localityBand) continue;
-		if (costs[index] < chosenCost) {
-			chosenCost = costs[index];
-			chosen = index;
-		}
-	}
-	return chosen;
 }
 
 function growthModeCode(mode: GrowthMode): number {
