@@ -13,6 +13,8 @@ export interface WorkerEvolutionState {
 	archiveRows: GenomePerformance[];
 	report: EvolutionReport | null;
 	markovStates: (number | null)[];
+	/** Present once when the worker restores a saved session. */
+	restoredConfig: EvolutionConfig | null;
 }
 
 export interface WorkerMatchInit {

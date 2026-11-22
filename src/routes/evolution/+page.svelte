@@ -124,6 +124,13 @@
 	}
 
 	function applyState(state: WorkerEvolutionState): void {
+		if (state.restoredConfig) {
+			config = {
+				...state.restoredConfig,
+				fitnessWeights: { ...state.restoredConfig.fitnessWeights }
+			};
+			notice = 'Restored the last saved Evolution Lab session.';
+		}
 		phase = state.phase;
 		generation = state.generation;
 		progress = state.progress;
@@ -363,7 +370,6 @@
 			<span class:live={running} class="live-dot"></span>
 			<span>{status}</span>
 			<span class="phase">{phase.toUpperCase()}</span>
-			<a class="header-link" href="/duel">DUEL LAB</a>
 		</div>
 	</header>
 

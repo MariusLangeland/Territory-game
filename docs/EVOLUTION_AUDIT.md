@@ -36,8 +36,7 @@ treated as the POV.
 
 All-bot matches now route player 1 through `botGold` like every other bot,
 credit its income once, set `snapshot.humanId = 0`, and show its supply banner.
-Duel starts are also mirrored and terrain-mirrored. Seat-1 win rate changed from
-20/20 to roughly 8–12/20 in sampled runs.
+Seat-1 win rate changed from 20/20 to roughly 8–12/20 in sampled runs.
 
 ## Results after the fixes
 
@@ -79,7 +78,7 @@ clearer selection signal.
 ## Fitness-weight update
 
 The original land weight was 120k. It is now **60k** by default and every term is
-editable in both labs (and via `--weight-<name>` in headless runs).
+editable in the Evolution Lab (and via `--weight-<name>` in headless runs).
 
 Re-running seed 2026 with the new default:
 

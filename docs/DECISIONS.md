@@ -2390,3 +2390,92 @@ into diamond-shaped lobes and lose its irregular character.
   sampled growth window.
 - ADR-072 is superseded; the locality experiment should not be reintroduced
   without a non-Manhattan-friendly approach and fresh visual/balance evidence.
+
+---
+
+## ADR-075 — Remove the Duel Lab
+
+**Status:** accepted and implemented in 0.67.0  
+**Date:** 2026-11-22
+
+### Context
+
+The Duel Lab duplicated the Evolution Lab's simulation, rendering, mutation
+graph, and fitness machinery to support a two-character 1v1 mode. Population
+evolution already supports 2-player ancestry duels, and maintaining a second
+execution path increased UI, determinism, and performance surface area.
+
+### Decision
+
+- Remove the `/duel` route, `ai/duel.ts`, its tests, and the main-thread Duel
+  simulation loop.
+- Remove the Duel-specific `duelStarts` simulation option and mirrored-map/start
+  preparation.
+- Keep lineage duels inside Evolution Lab as a 1v1 selection mechanism.
+- Historical ADRs mentioning the removed lab remain as design history.
+
+### Consequences
+
+- One simulation/render/evolution path remains.
+- The Duel Lab mutation graph, character naming, and block-mutation UI are gone.
+- 1v1 experimentation continues through Evolution Lab lineage mode and CSV
+  imports.
+
+---
+
+## ADR-076 — IndexedDB session checkpoints for the Evolution Lab
+
+**Status:** accepted and implemented in 0.67.0  
+**Date:** 2026-11-22
+
+### Context
+
+Continue Evolution only worked while the page remained open. Reloading lost the
+population, archive, reports, and generation budget.
+
+### Decision
+
+- Capture a serializable checkpoint when a generation reaches
+  `generation-complete` or `finished`.
+- Store it in the worker's IndexedDB database, not localStorage.
+- Restore it paused on worker startup and publish the saved configuration and
+  state to the UI.
+- Save only generation boundaries; a partially simulated match is not resumed.
+- Clear the checkpoint when NEW EVOLUTION or an imported/bucket population
+  starts.
+
+### Consequences
+
+- Reloading `/evolution` restores the last completed generation with Continue
+  available.
+- Checkpoints contain genomes and reports and may be a few megabytes; IndexedDB
+  avoids the localStorage quota.
+- Persistence is best-effort: an unavailable IndexedDB does not block a run.
+
+---
+
+## ADR-077 — Cross-tick bot expansion-site cache
+
+**Status:** accepted and implemented in 0.67.0  
+**Date:** 2026-11-22
+
+### Context
+
+`botNeedsExpansion` was recomputed on every query and its per-player cache was
+reset every tick, even when ownership and structures had not changed.
+
+### Decision
+
+- Keep the boolean needs-expansion cache valid across ticks while the ownership
+  version and structure/layout versions remain unchanged.
+- Invalidate all entries when ownership changes or structures appear, disappear,
+  reinforce, or change district layout.
+- Keep the per-tick build-site cache separate because site selection can depend
+  on the tick hash.
+
+### Consequences
+
+- Stable periods avoid repeated build-site searches.
+- Active wars still invalidate the cache on captures.
+- A/B: 8-player 1,000-tick run improved from 829 ms to 781 ms (−5.8%) with
+  identical owned-pixel counts.

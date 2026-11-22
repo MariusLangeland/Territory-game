@@ -482,8 +482,6 @@ export interface SimulationOptions {
 	allPlayersBots?: boolean;
 	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
 	teamIds?: readonly number[];
-	/** 1v1 duel spectators: put both starts close together near the map centre. */
-	duelStarts?: boolean;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -609,9 +607,13 @@ export class TerritorySimulation {
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
 	private ownershipChangedSinceAnnex = true;
 	private ownershipChangedSinceCleanup = true;
+	private ownershipVersion = 0;
 	/** Per-player/type build-site lookups valid for one tick and structure layout. */
 	private buildSiteCache = new Int32Array(0);
 	private needsExpansionCache = new Int8Array(0);
+	private needsExpansionCacheOwnershipVersion = -1;
+	private needsExpansionCacheStructureVersion = -1;
+	private needsExpansionCacheLayoutVersion = -1;
 	private buildSiteCacheTick = -1;
 	private buildSiteCacheVersion = -1;
 	private buildSiteCacheLayoutVersion = -1;
@@ -653,9 +655,6 @@ export class TerritorySimulation {
 		this.shade = this.map.shade;
 		this.elevation = this.map.elevation;
 		this.landCount = this.map.landCount;
-		if (options.duelStarts && this.playerCount === 2) {
-			this.prepareDuelMap();
-		}
 		this.seaComponents = computeSeaComponents(this.land, this.width, this.height);
 		this.seaRouter = new SeaRouter(this.land, this.width, this.height);
 		for (let index = 0; index < this.land.length; index++) {
@@ -3009,6 +3008,7 @@ export class TerritorySimulation {
 	private recordChange(index: number, owner: number): void {
 		this.ownershipChangedSinceAnnex = true;
 		this.ownershipChangedSinceCleanup = true;
+		this.ownershipVersion++;
 		if (this.changeCount >= CHANGE_BUFFER_SIZE) {
 			this.changesOverflow = true;
 			return;
@@ -3170,10 +3170,23 @@ export class TerritorySimulation {
 
 	/** A missing type with no legal build cell means expansion is the priority. */
 	private botNeedsExpansion(player: PlayerState): boolean {
-		this.ensureBuildSiteCache();
+		const structureVersion = this.structures.version;
+		const layoutVersion = this.structures.layoutVersion;
 		const cacheIndex = player.id - 1;
-		const cached = this.needsExpansionCache[cacheIndex];
-		if (cached >= 0) return cached === 1;
+		if (
+			this.needsExpansionCacheOwnershipVersion === this.ownershipVersion &&
+			this.needsExpansionCacheStructureVersion === structureVersion &&
+			this.needsExpansionCacheLayoutVersion === layoutVersion
+		) {
+			const cached = this.needsExpansionCache[cacheIndex];
+			if (cached >= 0) return cached === 1;
+		} else {
+			this.needsExpansionCacheOwnershipVersion = this.ownershipVersion;
+			this.needsExpansionCacheStructureVersion = structureVersion;
+			this.needsExpansionCacheLayoutVersion = layoutVersion;
+			this.needsExpansionCache.fill(-1);
+		}
+		this.ensureBuildSiteCache();
 		const result = this.computeBotNeedsExpansion(player);
 		this.needsExpansionCache[cacheIndex] = result ? 1 : 0;
 		return result;
@@ -3847,7 +3860,6 @@ export class TerritorySimulation {
 		this.buildSiteCacheVersion = version;
 		this.buildSiteCacheLayoutVersion = layoutVersion;
 		this.buildSiteCache.fill(-2);
-		this.needsExpansionCache.fill(-1);
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
@@ -4628,195 +4640,6 @@ export class TerritorySimulation {
 		return null;
 	}
 
-	/**
-	 * Duel maps are mirrored across the vertical centre line. Both players
-	 * therefore get the same land, elevation and expansion room; seat order is
-	 * the only remaining asymmetry.
-	 */
-	private prepareDuelMap(): void {
-		const map = this.map;
-		const cx = Math.floor(map.width / 2);
-		for (let y = 0; y < map.height; y++) {
-			const row = y * map.width;
-			for (let x = 0; x < cx; x++) {
-				const source = row + (map.width - 1 - x);
-				const target = row + x;
-				map.land[target] = map.land[source];
-				map.shade[target] = map.shade[source];
-				map.elevation[target] = map.elevation[source];
-			}
-		}
-		let landCount = 0;
-		for (let index = 0; index < map.land.length; index++) {
-			if (map.land[index]) landCount++;
-		}
-		map.landCount = landCount;
-		this.landCount = landCount;
-
-		const localLand = (x: number, y: number): number => {
-			let count = 0;
-			for (let dy = -8; dy <= 8; dy++) {
-				for (let dx = -8; dx <= 8; dx++) {
-					const sx = x + dx;
-					const sy = y + dy;
-					if (sx < 0 || sy < 0 || sx >= map.width || sy >= map.height) continue;
-					if (map.land[sy * map.width + sx]) count++;
-				}
-			}
-			return count;
-		};
-		const cy = Math.floor(map.height / 2);
-		let best: StartPoint[] | null = null;
-		let bestScore = Number.POSITIVE_INFINITY;
-		for (let radius = 0; radius < Math.min(map.height / 2, 240); radius += 2) {
-			for (const y of radius === 0 ? [cy] : [cy - radius, cy + radius]) {
-				if (y < 0 || y >= map.height) continue;
-				for (let offset = 40; offset <= 180; offset += 2) {
-					const x = cx - offset;
-					const mirrorX = map.width - 1 - x;
-					if (x < 0 || mirrorX >= map.width) continue;
-					if (!map.land[y * map.width + x] || !map.land[y * map.width + mirrorX]) {
-						continue;
-					}
-					if (localLand(x, y) < 230 || localLand(mirrorX, y) < 230) continue;
-					const score = radius * 2 + Math.abs(offset - 52) * 3;
-					if (score < bestScore) {
-						bestScore = score;
-						best = [
-							{ index: y * map.width + x, x, y },
-							{ index: y * map.width + mirrorX, x: mirrorX, y }
-						];
-					}
-				}
-			}
-			if (best) break;
-		}
-		const chosen = best as StartPoint[] | null;
-		map.starts =
-			chosen && this.landConnected(chosen[0].index, chosen[1].index)
-				? chosen
-				: this.chooseDuelStarts();
-	}
-
-	private landConnected(first: number, second: number): boolean {
-		const visited = new Uint8Array(this.land.length);
-		const queue = new Int32Array(this.land.length);
-		let head = 0;
-		let tail = 0;
-		visited[first] = 1;
-		queue[tail++] = first;
-		while (head < tail) {
-			const index = queue[head++];
-			if (index === second) return true;
-			const x = index % this.width;
-			const y = (index - x) / this.width;
-			const neighbours = [
-				x > 0 ? index - 1 : -1,
-				x + 1 < this.width ? index + 1 : -1,
-				y > 0 ? index - this.width : -1,
-				y + 1 < this.height ? index + this.width : -1
-			];
-			for (const next of neighbours) {
-				if (next < 0 || !this.land[next] || visited[next]) continue;
-				visited[next] = 1;
-				queue[tail++] = next;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Fallback for maps where the mirrored search cannot find a local pair.
-	 * Both states still begin within a few start-radii of the centre.
-	 */
-	private chooseDuelStarts(): StartPoint[] {
-		const cx = this.width / 2;
-		const cy = this.height / 2;
-		const searchRadius = Math.min(this.width, this.height) * 0.32;
-		const candidates: Array<StartPoint & { distance: number }> = [];
-		for (let y = 0; y < this.height; y++) {
-			const dy = y + 0.5 - cy;
-			for (let x = 0; x < this.width; x++) {
-				const dx = x + 0.5 - cx;
-				const distance = dx * dx + dy * dy;
-				if (distance > searchRadius * searchRadius) continue;
-				const index = y * this.width + x;
-				if (!this.land[index]) continue;
-				candidates.push({ index, x, y, distance });
-			}
-		}
-		candidates.sort((left, right) => left.distance - right.distance || left.index - right.index);
-		const first = candidates[0];
-		if (!first) return this.map.starts;
-		// Both starts must share a land component; a centre spawn pair on two
-		// islands would still be a no-interaction run.
-		const reachable = new Uint8Array(this.land.length);
-		const queue = new Int32Array(this.land.length);
-		let head = 0;
-		let tail = 0;
-		reachable[first.index] = 1;
-		queue[tail++] = first.index;
-		while (head < tail) {
-			const index = queue[head++];
-			const x = index % this.width;
-			const y = (index - x) / this.width;
-			if (x > 0) {
-				const next = index - 1;
-				if (this.land[next] && !reachable[next]) {
-					reachable[next] = 1;
-					queue[tail++] = next;
-				}
-			}
-			if (x + 1 < this.width) {
-				const next = index + 1;
-				if (this.land[next] && !reachable[next]) {
-					reachable[next] = 1;
-					queue[tail++] = next;
-				}
-			}
-			if (y > 0) {
-				const next = index - this.width;
-				if (this.land[next] && !reachable[next]) {
-					reachable[next] = 1;
-					queue[tail++] = next;
-				}
-			}
-			if (y + 1 < this.height) {
-				const next = index + this.width;
-				if (this.land[next] && !reachable[next]) {
-					reachable[next] = 1;
-					queue[tail++] = next;
-				}
-			}
-		}
-		const wanted = START_RADIUS * 6;
-		const minimum = START_RADIUS * 3;
-		const maximum = START_RADIUS * 11;
-		let second: StartPoint | null = null;
-		let bestScore = Number.POSITIVE_INFINITY;
-		for (const candidate of candidates) {
-			if (candidate.index === first.index || !reachable[candidate.index]) continue;
-			const dx = candidate.x + 0.5 - (first.x + 0.5);
-			const dy = candidate.y + 0.5 - (first.y + 0.5);
-			const separation = Math.sqrt(dx * dx + dy * dy);
-			if (separation < minimum || separation > maximum) continue;
-			const score = Math.abs(separation - wanted) * 1_000 + candidate.distance;
-			if (score < bestScore) {
-				bestScore = score;
-				second = candidate;
-			}
-		}
-		const fallback = candidates.find(
-			(candidate) => candidate.index !== first.index && reachable[candidate.index]
-		);
-		const chosenSecond = second ?? fallback;
-		if (!chosenSecond) return this.map.starts;
-		return [
-			{ index: first.index, x: first.x, y: first.y },
-			{ index: chosenSecond.index, x: chosenSecond.x, y: chosenSecond.y }
-		];
-	}
-
 	private placeStartingTerritories(starts: StartPoint[]): void {
 		for (let i = 0; i < this.players.length; i++) {
 			const start = starts[i % starts.length];
@@ -4832,9 +4655,7 @@ export class TerritorySimulation {
 
 					// Perturb the frontier with an integer hash so beachheads read
 					// as rough coastline rather than perfect circles.
-					// Relative-to-start wobble keeps mirrored duel starts identical;
-					// a player-indexed absolute hash made one side's beachhead
-					// systematically larger and snowballed the first seat.
+					// Relative-to-start wobble keeps beachheads equally rough for every state.
 					const wobble =
 						0.82 + (hash32(Math.abs(dx), dy + outerRadius, this.seed ^ 0x9e37) & 0xff) / 1450;
 					const radius = START_RADIUS * wobble;

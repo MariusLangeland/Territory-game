@@ -1652,8 +1652,7 @@ describe('bot threat detection and defensive behaviour', () => {
 			width: 640,
 			height: 360,
 			playerCount: 2,
-			allPlayersBots: true,
-			duelStarts: true
+			allPlayersBots: true
 		});
 		const internals = sim as unknown as { botGold: number[] };
 		const snapshot = sim.getSnapshot();

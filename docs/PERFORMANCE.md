@@ -4,7 +4,7 @@ Territory exists because a huge pixel map is only fun if it stays fast. This doc
 
 All numbers are from the development machine unless stated otherwise. They are directional, not guarantees.
 
-> The current build is `EXP-001`: 51 states, free attacks, and light human/bot build economies. This is intentionally harsher than the target game. See [EXPERIMENTS.md](EXPERIMENTS.md).
+> The current build is Frontage v1. The 51-state all-bot stress configuration remains the harshest benchmark and is intentionally harsher than the target match.
 
 ---
 
@@ -24,7 +24,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 | Browser JS/GPU memory                        | < 300 MiB for stress build              | > 500 MiB                     |
 | Click-to-visible update                      | ≤ 2 ticks                               | > 4 ticks                     |
 
-The Evolution Lab runs its entire sandbox and match loop in a Web Worker. The worker steps under an 8 ms frame budget and posts visual updates at roughly 60 Hz at every speed; the main thread only applies those deltas, renders, and handles camera/input. The animation loop polls and applies the newest visual revision each frame, so a visual that arrives while the renderer is initializing cannot leave the control texture frozen at an early revision. Panning, zooming, speed changes, setup edits, and selection therefore do not wait behind simulation steps. Pausing flushes a final visual and state.
+The Evolution Lab runs its entire sandbox and match loop in a Web Worker. The worker steps under an 8 ms frame budget and posts visual updates at roughly 60 Hz at every speed; the main thread only applies those deltas, renders, and handles camera/input. The animation loop polls and applies the newest visual revision each frame, so a visual that arrives while the renderer is initializing cannot leave the control texture frozen at an early revision. Panning, zooming, speed changes, setup edits, and selection therefore do not wait behind simulation steps. Pausing flushes a final visual and state. The worker saves a generation-boundary session checkpoint to IndexedDB, making reload-and-continue possible without replaying completed generations.
 
 Bot construction refreshes districts only within the new structure's radius and batches auras once per 3-second decision tick; a full-map district rebuild under 50 simultaneous bot builds cost ~200 ms and is no longer used for construction. District palette changes are reported as 32 × 32 tiles, so the renderer rewrites alpha for a few tiles instead of rebuilding the 2.1M-pixel control texture. Bot build ticks are staggered across the 3-second interval; in a 300-tick sample the worst district batch was 32 tiles (previously up to 549 when all 50 bots built together). The 10 Hz simulation has a 100 ms budget per tick. It uses ~2.6–3.3% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second. The merged-district union scan costs ~2.7 ms over the 2.1M-cell map and is throttled to at most once per 5 ticks (twice per second) from render/UI reads; it is never part of the 10 Hz simulation tick or checksums.
 
@@ -136,6 +136,10 @@ A/B measurements on the same machine and seeds, with behavior unchanged
 | 51 states, 500 ticks                             | 7,209 ms | 6,308 ms | −12.5% |
 | 8-player evolution, 1,000 ticks                  |   708 ms |   618 ms | −12.7% |
 | Idle/no-ownership-change simulation, 1,000 ticks |   605 ms |    52 ms |   −91% |
+
+A later cross-tick cache for `botNeedsExpansion` (valid until ownership,
+structure, or layout versions change) reduced an 8-player 1,000-tick run from
+829 ms to 781 ms (−5.8%) with identical owned-pixel counts.
 
 Active matches still pay the integrity scan when territory changes, so the
 largest improvement is in stable late-game or paused-ownership periods.
@@ -349,7 +353,6 @@ Before merging a performance-sensitive change:
 - [ ] Pausing does not leave a busy simulation loop.
 - [ ] Memory does not grow per tick (frontiers, marks, frontier sets).
 - [ ] 51 leaderboard rows remain usable.
-- [ ] The build still clearly identifies itself as an attack experiment.
 - [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
 - [ ] All three growth layers were sampled in `pnpm bench`.
 - [ ] Organic run with active conflicts: p99 frame 7.1 ms, max 13.8 ms, 1/1008 frames >10 ms.
@@ -358,12 +361,11 @@ Before merging a performance-sensitive change:
 
 ## 9. Future optimizations (ranked)
 
-1. Decide the final attack model so load can be bounded by design, not only caps.
-2. Adaptive tile size or per-front dirty regions if upload calls become limiting.
-3. Move simulation to a Web Worker.
-4. Render-on-demand idle mode.
-5. Adaptive DPR/resolution.
-6. Pre-baked maps to remove generation cost and portability risk.
-7. Virtualize/harden the 51-state leaderboard.
-8. GPU timestamp queries and automated performance gates.
-9. WebGL2 fallback only if support data justifies it.
+1. Replace the bot build-site ring scan with a small candidate set or a cached legal-site index.
+2. Make active-war integrity component labeling incremental or region-scoped.
+3. Cache or pre-generate maps to remove the 130–155 ms per-match setup cost.
+4. Expose effective ticks/s in the Evolution Lab; `1000×` is a requested multiplier, not a guaranteed rate.
+5. Render-on-demand idle mode.
+6. Adaptive DPR/resolution.
+7. GPU timestamp queries and automated performance gates.
+8. WebGL2 fallback only if support data justifies it.

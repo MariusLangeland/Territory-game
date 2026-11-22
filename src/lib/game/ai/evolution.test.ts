@@ -101,6 +101,43 @@ describe('evolutionary AI sandbox', () => {
 		expect(sandbox.generation).toBe(1);
 	});
 
+	it('captures and restores a generation-boundary session', () => {
+		const sandbox = new EvolutionSandbox({
+			seed: 73,
+			populationSize: 4,
+			generations: 1,
+			playerCount: 2,
+			matchesPerRound: 1,
+			ticks: 200,
+			width: 640,
+			height: 360
+		});
+		sandbox.begin();
+		let guard = 0;
+		while (sandbox.phase !== 'finished' && guard++ < 200) {
+			if (!sandbox.currentSimulation && !sandbox.nextMatch()) break;
+			while (!sandbox.step(200)) {
+				// Run round to completion.
+			}
+			sandbox.finishMatch();
+			sandbox.nextMatch();
+		}
+		const snapshot = sandbox.captureSession();
+		expect(snapshot).not.toBeNull();
+		if (!snapshot) return;
+		expect(snapshot.config.seed).toBe(73);
+		expect(snapshot.reports).toHaveLength(1);
+
+		const restored = new EvolutionSandbox(snapshot.config);
+		expect(restored.restoreSession(snapshot)).toBe(true);
+		expect(restored.phase).toBe('finished');
+		expect(restored.latestRows).toEqual(sandbox.latestRows);
+		expect(restored.archive.size).toBe(sandbox.archive.size);
+		expect(restored.continueEvolution()).toBe(true);
+		expect(restored.nextMatch()).toBe(true);
+		expect(restored.generation).toBe(1);
+	});
+
 	it('runs deterministic selection, pruning, and bucket assignment', () => {
 		const config = {
 			seed: 42,

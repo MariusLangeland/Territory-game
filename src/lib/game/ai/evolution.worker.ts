@@ -1,4 +1,4 @@
-import { EvolutionSandbox, type EvolutionConfig } from './evolution';
+import { EvolutionSandbox, type EvolutionConfig, type EvolutionSessionSnapshot } from './evolution';
 import type { TerritorySimulation, StepResult } from '../simulation';
 import type {
 	EvolutionWorkerCommand,
@@ -12,6 +12,9 @@ const DISTANCE_TILE_SIZE = 32;
 const FRAME_BUDGET_MS = 8;
 const VISUAL_INTERVAL_MS = 16;
 const MAX_PENDING_CHANGES = 250_000;
+const SESSION_DB = 'territory-evolution';
+const SESSION_STORE = 'session';
+const SESSION_KEY = 'last';
 
 const scope = self as unknown as {
 	postMessage(message: EvolutionWorkerMessage, transfer?: Transferable[]): void;
@@ -33,6 +36,77 @@ let pendingChanges: Uint32Array[] = [];
 let pendingChangeCount = 0;
 let pendingOverflow = false;
 const pendingDistrictTiles = new Set<number>();
+let restoredConfig: EvolutionConfig | null = null;
+let sessionReady = false;
+const pendingCommands: EvolutionWorkerCommand[] = [];
+let sessionDb: Promise<IDBDatabase> | null = null;
+
+function openSessionDb(): Promise<IDBDatabase> {
+	if (sessionDb) return sessionDb;
+	sessionDb = new Promise((resolve, reject) => {
+		const request = indexedDB.open(SESSION_DB, 1);
+		request.onupgradeneeded = () => {
+			if (!request.result.objectStoreNames.contains(SESSION_STORE)) {
+				request.result.createObjectStore(SESSION_STORE);
+			}
+		};
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+	return sessionDb;
+}
+
+async function loadSessionSnapshot(): Promise<EvolutionSessionSnapshot | null> {
+	try {
+		const db = await openSessionDb();
+		return await new Promise((resolve, reject) => {
+			const request = db
+				.transaction(SESSION_STORE, 'readonly')
+				.objectStore(SESSION_STORE)
+				.get(SESSION_KEY);
+			request.onsuccess = () =>
+				resolve((request.result as EvolutionSessionSnapshot | undefined) ?? null);
+			request.onerror = () => reject(request.error);
+		});
+	} catch {
+		return null;
+	}
+}
+
+async function saveSessionSnapshot(snapshot: EvolutionSessionSnapshot | null): Promise<void> {
+	if (!snapshot) return;
+	try {
+		const db = await openSessionDb();
+		await new Promise<void>((resolve, reject) => {
+			const transaction = db.transaction(SESSION_STORE, 'readwrite');
+			transaction.objectStore(SESSION_STORE).put(snapshot, SESSION_KEY);
+			transaction.oncomplete = () => resolve();
+			transaction.onerror = () => reject(transaction.error);
+		});
+	} catch {
+		// Persistence is best-effort; a run must continue without it.
+	}
+}
+
+async function clearSessionSnapshot(): Promise<void> {
+	try {
+		const db = await openSessionDb();
+		await new Promise<void>((resolve, reject) => {
+			const transaction = db.transaction(SESSION_STORE, 'readwrite');
+			transaction.objectStore(SESSION_STORE).delete(SESSION_KEY);
+			transaction.oncomplete = () => resolve();
+			transaction.onerror = () => reject(transaction.error);
+		});
+	} catch {
+		// Best-effort cleanup.
+	}
+}
+
+function persistCurrentSession(): void {
+	if (!sandbox) return;
+	const snapshot = sandbox.captureSession();
+	if (snapshot) void saveSessionSnapshot(snapshot);
+}
 
 function queueLoop(): void {
 	if (timer !== null) return;
@@ -73,9 +147,11 @@ function postState(): void {
 			report: terminal ? sandbox.report() : null,
 			markovStates: sandbox.currentSeats.map(
 				(_, index) => sandbox?.currentSimulation?.getBotMarkovState(index + 1) ?? null
-			)
+			),
+			restoredConfig
 		}
 	});
+	restoredConfig = null;
 }
 
 function postMatchInit(simulation: TerritorySimulation): void {
@@ -231,6 +307,7 @@ function loop(): void {
 				flushVisual();
 				sandbox.finishMatch();
 				postState();
+				persistCurrentSession();
 				activeSimulation = null;
 				accumulator = 0;
 				if (sandbox.phase === 'finished') {
@@ -252,6 +329,7 @@ function loop(): void {
 
 function begin(config: EvolutionConfig): void {
 	stopLoop();
+	void clearSessionSnapshot();
 	sandbox = new EvolutionSandbox(config);
 	sandbox.begin();
 	running = true;
@@ -270,6 +348,7 @@ function setPopulation(
 	genomes: Parameters<EvolutionSandbox['setPopulation']>[0]
 ): void {
 	stopLoop();
+	void clearSessionSnapshot();
 	const next = new EvolutionSandbox(config);
 	if (!next.setPopulation(genomes)) {
 		scope.postMessage({ type: 'error', message: 'Population is smaller than the player count.' });
@@ -308,8 +387,7 @@ function resumeRun(): void {
 	queueLoop();
 }
 
-scope.onmessage = (event) => {
-	const command = event.data;
+function handleCommand(command: EvolutionWorkerCommand): void {
 	try {
 		switch (command.type) {
 			case 'start':
@@ -349,4 +427,35 @@ scope.onmessage = (event) => {
 			message: error instanceof Error ? error.message : 'Evolution worker failed.'
 		});
 	}
+}
+
+scope.onmessage = (event) => {
+	if (!sessionReady) {
+		pendingCommands.push(event.data);
+		return;
+	}
+	handleCommand(event.data);
 };
+
+async function initializeSession(): Promise<void> {
+	try {
+		const snapshot = await loadSessionSnapshot();
+		if (snapshot) {
+			const restored = new EvolutionSandbox(snapshot.config);
+			if (restored.restoreSession(snapshot)) {
+				sandbox = restored;
+				running = false;
+				restoredConfig = snapshot.config;
+				postState();
+			}
+		}
+	} catch {
+		// A corrupt or unavailable checkpoint must not block the lab.
+	} finally {
+		sessionReady = true;
+		for (const command of pendingCommands) handleCommand(command);
+		pendingCommands.length = 0;
+	}
+}
+
+void initializeSession();

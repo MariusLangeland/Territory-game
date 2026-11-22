@@ -175,6 +175,17 @@ export interface EvolutionReport {
 	archive: GenomePerformance[];
 }
 
+/** Serializable checkpoint restored by the Evolution Lab worker. */
+export interface EvolutionSessionSnapshot {
+	version: 1;
+	config: EvolutionConfig;
+	population: BotGenome[];
+	reports: GenerationResult[];
+	archive: GenomePerformance[];
+	generation: number;
+	phase: 'generation-complete' | 'finished';
+}
+
 interface Evaluation {
 	genome: BotGenome;
 	matches: number;
@@ -810,6 +821,77 @@ export class EvolutionSandbox {
 			final: this.reports[this.reports.length - 1],
 			archive: Array.from(this.archive.values()).sort((left, right) => right.fitness - left.fitness)
 		};
+	}
+
+	/**
+	 * Capture a reload-safe checkpoint at a generation boundary. The worker
+	 * persists this in IndexedDB; restoring it leaves the run paused so the
+	 * user can continue from the last completed generation.
+	 */
+	captureSession(): EvolutionSessionSnapshot | null {
+		if (
+			(this.phase !== 'generation-complete' && this.phase !== 'finished') ||
+			this.reports.length === 0
+		) {
+			return null;
+		}
+		return {
+			version: 1,
+			config: {
+				...this.config,
+				fitnessWeights: { ...this.config.fitnessWeights }
+			},
+			population: this.population.map(cloneGenome),
+			reports: structuredClone(this.reports),
+			archive: Array.from(this.archive.values()).map((row) => ({
+				...row,
+				genome: cloneGenome(row.genome)
+			})),
+			generation: this.generation,
+			phase: this.phase
+		};
+	}
+
+	restoreSession(snapshot: EvolutionSessionSnapshot): boolean {
+		if (
+			snapshot.version !== 1 ||
+			(snapshot.phase !== 'generation-complete' && snapshot.phase !== 'finished') ||
+			snapshot.population.length < this.config.playerCount ||
+			snapshot.reports.length === 0
+		) {
+			return false;
+		}
+		this.population = snapshot.population.map(cloneGenome);
+		this.reports = structuredClone(snapshot.reports);
+		this.archive.clear();
+		for (const row of snapshot.archive) {
+			this.archive.set(row.descriptor, { ...row, genome: cloneGenome(row.genome) });
+		}
+		this.generation = snapshot.generation;
+		this.phase = snapshot.phase;
+		this.currentSimulation = null;
+		this.currentSeats = [];
+		this.currentMatchIndex = 0;
+		this.schedule = [];
+		this.scheduleSeeds = [];
+		this.evaluations = new Map();
+		this.genomeBank.clear();
+		this.registerGenomes(this.population);
+		for (const report of this.reports) {
+			for (const row of report.rows) this.registerGenomes([row.genome]);
+			for (const row of report.archive) this.registerGenomes([row.genome]);
+		}
+		for (const row of this.archive.values()) this.registerGenomes([row.genome]);
+		this.pendingPopulation =
+			snapshot.phase === 'generation-complete'
+				? nextPopulation(
+						this.reports[this.reports.length - 1].rows,
+						this.config,
+						this.generation + 1,
+						this.archive
+					)
+				: [];
+		return true;
 	}
 }
 
