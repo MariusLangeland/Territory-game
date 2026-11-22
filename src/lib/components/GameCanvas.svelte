@@ -127,7 +127,6 @@
 		let frameId = 0;
 		let lastTime = performance.now();
 		let accumulator = 0;
-		let lastSyncedTick = -1;
 		let lastViewReport = 0;
 		let lastPerfReport = 0;
 		let lastHoverKey = '';
@@ -683,64 +682,40 @@
 			// ticks and let the renderer upload it in chunks.
 			if (!simulate) {
 				accumulator = 0;
+			} else if (paused || simulation.ended) {
+				accumulator = 0;
 			} else {
-				const renderStride = speedMultiplier >= 1000 ? 1000 : 1;
+				accumulator += delta * speedMultiplier;
+				let steps = 0;
+				let latestSnapshot: GameSnapshot | null = null;
+				const pendingEvents: SimEvent[] = [];
 
-				// Leaving 1000× can leave the renderer up to 1000 ticks behind. Resync
-				// once before resuming per-tick deltas so the shadow cannot stay stale.
-				if (renderStride === 1 && simulation.tick !== lastSyncedTick) {
-					renderer.syncFromSimulation();
-					lastSyncedTick = simulation.tick;
+				while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
+					const result = simulation.step();
+					renderer.applyChanges(
+						result.changes,
+						result.changeCount,
+						result.changesOverflow,
+						result.districtsChanged,
+						result.districtTiles
+					);
+					latestSnapshot = result.snapshot;
+					pendingEvents.push(...result.events);
+					accumulator -= TICK_MS;
+					steps++;
 				}
+				if (steps >= maxStepsPerFrame) accumulator = 0;
 
-				if (paused || simulation.ended) {
-					accumulator = 0;
-					if (simulation.tick !== lastSyncedTick) {
-						renderer.syncFromSimulation();
-						lastSyncedTick = simulation.tick;
-					}
-				} else {
-					accumulator += delta * speedMultiplier;
-					let steps = 0;
-					let latestSnapshot: GameSnapshot | null = null;
-					const pendingEvents: SimEvent[] = [];
-
-					while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
-						const result = simulation.step();
-						if (renderStride === 1) {
-							renderer.applyChanges(
-								result.changes,
-								result.changeCount,
-								result.changesOverflow,
-								result.districtsChanged,
-								result.districtTiles
-							);
-						}
-						latestSnapshot = result.snapshot;
-						pendingEvents.push(...result.events);
-						accumulator -= TICK_MS;
-						steps++;
-					}
-					if (steps >= maxStepsPerFrame) accumulator = 0;
-
-					if (renderStride === 1) {
-						lastSyncedTick = simulation.tick;
-					} else if (simulation.tick - lastSyncedTick >= renderStride) {
-						renderer.syncFromSimulation();
-						lastSyncedTick = simulation.tick;
-					}
-
-					// Territory rendering updates every tick, but rebuilding 51 HUD
-					// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
-					// to Svelte at 5 Hz, or immediately on elimination/victory events.
-					if (
-						latestSnapshot &&
-						(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
-					) {
-						lastUiUpdate = now;
-						lastSnapshot = latestSnapshot;
-						onTick?.(latestSnapshot, pendingEvents);
-					}
+				// Territory rendering updates every tick, but rebuilding 51 HUD
+				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go
+				// to Svelte at 5 Hz, or immediately on elimination/victory events.
+				if (
+					latestSnapshot &&
+					(now - lastUiUpdate >= 200 || pendingEvents.length > 0 || latestSnapshot.ended)
+				) {
+					lastUiUpdate = now;
+					lastSnapshot = latestSnapshot;
+					onTick?.(latestSnapshot, pendingEvents);
 				}
 			}
 

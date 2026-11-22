@@ -27,7 +27,6 @@ let accumulator = 0;
 let nextMatchAt = 0;
 let activeSimulation: TerritorySimulation | null = null;
 let matchId = 0;
-let lastVisualTick = -1;
 let lastVisualAt = 0;
 
 let pendingChanges: Uint32Array[] = [];
@@ -93,7 +92,6 @@ function postMatchInit(simulation: TerritorySimulation): void {
 		snapshot
 	};
 	scope.postMessage({ type: 'match', matchId, init });
-	lastVisualTick = simulation.tick;
 	lastVisualAt = performance.now();
 }
 
@@ -198,13 +196,11 @@ function flushVisual(): void {
 		if (visual.districtTileColors) transfer.push(visual.districtTileColors.buffer);
 	}
 	resetPending();
-	lastVisualTick = simulation.tick;
 	lastVisualAt = performance.now();
 	scope.postMessage({ type: 'visual', visual }, transfer);
 }
 
-function shouldFlush(tick: number, now: number): boolean {
-	if (speed >= 1000) return tick - lastVisualTick >= 1000;
+function shouldFlush(now: number): boolean {
 	return now - lastVisualAt >= VISUAL_INTERVAL_MS;
 }
 
@@ -244,18 +240,14 @@ function loop(): void {
 				nextMatchAt = performance.now() + matchDelay();
 				break;
 			}
-			if (shouldFlush(simulation.tick, performance.now())) flushVisual();
+			if (shouldFlush(performance.now())) flushVisual();
 		}
-		if (sandbox.currentSimulation && shouldFlush(simulationEndTick(), performance.now())) {
+		if (sandbox.currentSimulation && shouldFlush(performance.now())) {
 			flushVisual();
 		}
 	}
 
 	if (running || nextMatchAt > 0) queueLoop();
-}
-
-function simulationEndTick(): number {
-	return sandbox?.currentSimulation?.tick ?? lastVisualTick;
 }
 
 function begin(config: EvolutionConfig): void {

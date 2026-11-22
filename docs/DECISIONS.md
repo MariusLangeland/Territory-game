@@ -2327,3 +2327,36 @@ defense gradients instead of growing around the clicked area.
   it; that is intentional locality.
 - Behavior is deterministic and uses no new RNG. The new constant is part of
   simulation behavior and should be included in future balance reviews.
+
+---
+
+## ADR-073 — Remove the 1000× render decimation rule
+
+**Status:** accepted and implemented in 0.66.1  
+**Date:** 2026-11-22
+
+### Context
+
+ADR-069/0.62.1 throttled local fast-forward rendering to one control-texture
+resync per 1000 simulation ticks at `1000×`, because applying every tick's
+renderer delta blocked the main thread. The Evolution Lab later moved its
+simulation loop to a worker, so that local path is no longer the lab's
+bottleneck. The worker still carried an analogous visual cadence that only
+posted once per 1000 ticks at `1000×`, making the map visibly choppy.
+
+### Decision
+
+- Remove the `renderStride` / `lastSyncedTick` special case from
+  `GameCanvas`; local simulation applies every tick's renderer delta again.
+- Remove the worker's `1000×` visual stride. The worker posts visual updates
+  at the normal ~60 Hz cadence at every speed.
+- Keep the renderer's `syncFromSimulation()` full-resync path for overflow
+  recovery and remote initialisation.
+
+### Consequences
+
+- Duel Lab and any other local fast-forward path render every simulation tick
+  again; this is the pre-0.62.1 behavior.
+- The Evolution Lab continues to benefit from worker separation and 60 Hz
+  visual updates at 1000×; worker transfer volume rises, which is acceptable
+  for the lab.
