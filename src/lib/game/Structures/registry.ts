@@ -1,11 +1,19 @@
 import { effectsForType } from './definitions';
 import type { Structure, StructureType } from './types';
 
+const SPATIAL_BUCKET_SIZE = 32;
+
+function bucketKey(bucketX: number, bucketY: number): number {
+	return bucketX * 65_536 + bucketY;
+}
+
 export class StructureRegistry {
 	private readonly items: Structure[] = [];
 	private readonly byIndex = new Map<number, Structure>();
 	private readonly byStructureId = new Map<number, Structure>();
 	private readonly byOwner = new Map<number, Structure[]>();
+	/** Coarse spatial buckets for structure-spacing queries. */
+	private readonly byBucket = new Map<number, Structure[]>();
 	private nextId = 1;
 	/** Increments on every create/reinforce/destroy so derived caches can refresh lazily. */
 	private mutationVersion = 0;
@@ -29,6 +37,7 @@ export class StructureRegistry {
 		this.items.push(structure);
 		this.byIndex.set(index, structure);
 		this.byStructureId.set(structure.id, structure);
+		this.addToBucket(structure);
 
 		let ownerStructures = this.byOwner.get(ownerId);
 		if (!ownerStructures) {
@@ -50,10 +59,20 @@ export class StructureRegistry {
 	/** True when a structure centre lies inside the forbidden build radius. */
 	hasWithinRadius(x: number, y: number, radius: number): boolean {
 		const radiusSq = radius * radius;
-		for (const structure of this.items) {
-			const dx = structure.x - x;
-			const dy = structure.y - y;
-			if (dx * dx + dy * dy < radiusSq) return true;
+		const minBucketX = Math.floor((x - radius) / SPATIAL_BUCKET_SIZE);
+		const maxBucketX = Math.floor((x + radius) / SPATIAL_BUCKET_SIZE);
+		const minBucketY = Math.floor((y - radius) / SPATIAL_BUCKET_SIZE);
+		const maxBucketY = Math.floor((y + radius) / SPATIAL_BUCKET_SIZE);
+		for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX++) {
+			for (let bucketY = minBucketY; bucketY <= maxBucketY; bucketY++) {
+				const bucket = this.byBucket.get(bucketKey(bucketX, bucketY));
+				if (!bucket) continue;
+				for (const structure of bucket) {
+					const dx = structure.x - x;
+					const dy = structure.y - y;
+					if (dx * dx + dy * dy < radiusSq) return true;
+				}
+			}
 		}
 		return false;
 	}
@@ -88,6 +107,7 @@ export class StructureRegistry {
 		this.items.splice(position, 1);
 		this.byIndex.delete(structure.index);
 		this.byStructureId.delete(structure.id);
+		this.removeFromBucket(structure);
 
 		const ownerStructures = this.byOwner.get(structure.ownerId);
 		if (ownerStructures) {
@@ -103,6 +123,31 @@ export class StructureRegistry {
 		if (!structure) return undefined;
 		this.destroy(structure);
 		return structure;
+	}
+
+	private addToBucket(structure: Structure): void {
+		const key = bucketKey(
+			Math.floor(structure.x / SPATIAL_BUCKET_SIZE),
+			Math.floor(structure.y / SPATIAL_BUCKET_SIZE)
+		);
+		let bucket = this.byBucket.get(key);
+		if (!bucket) {
+			bucket = [];
+			this.byBucket.set(key, bucket);
+		}
+		bucket.push(structure);
+	}
+
+	private removeFromBucket(structure: Structure): void {
+		const key = bucketKey(
+			Math.floor(structure.x / SPATIAL_BUCKET_SIZE),
+			Math.floor(structure.y / SPATIAL_BUCKET_SIZE)
+		);
+		const bucket = this.byBucket.get(key);
+		if (!bucket) return;
+		const position = bucket.indexOf(structure);
+		if (position >= 0) bucket.splice(position, 1);
+		if (bucket.length === 0) this.byBucket.delete(key);
 	}
 
 	get all(): readonly Structure[] {

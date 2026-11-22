@@ -117,16 +117,36 @@ only ~2,400 ticks/s before worker scheduling and message overhead, so the
 and max 7.1 ms; the worker separation is working. The remaining ceiling is
 simulation work, not WebGPU rendering or Svelte.
 
-Highest-value follow-ups:
+Optimizations applied in 0.65.0:
 
-- Cache "has any legal build site" per player/tick; stop re-running the
-  80 px ring scan for every missing structure type.
-- Add a spatial index or occupied-radius grid for structure spacing instead of
-  scanning all structures per candidate.
-- Skip the full integrity scan when no ownership changed since the last scan;
-  consider an incremental component update if scans remain necessary.
-- Cache or pre-generate Evolution maps when match seeds repeat, or accept the
-  setup cost as part of generation timing.
+- `findBotBuildCell` results are cached per player/type for each tick and
+  structure layout, and `botNeedsExpansion` is cached per player/tick.
+- The structure registry indexes spacing queries in 32 px buckets instead of
+  scanning every structure for every candidate.
+- Annex component scans run only when ownership changed since the previous
+  scan or a State/Port was destroyed.
+- Full-map pocket cleanup runs only when ownership changed since the previous
+  cleanup pass.
+
+A/B measurements on the same machine and seeds, with behavior unchanged
+(identical structure/attack/owner counts):
+
+| Scenario                                         |   Before |    After | Change |
+| ------------------------------------------------ | -------: | -------: | -----: |
+| 51 states, 500 ticks                             | 7,209 ms | 6,308 ms | −12.5% |
+| 8-player evolution, 1,000 ticks                  |   708 ms |   618 ms | −12.7% |
+| Idle/no-ownership-change simulation, 1,000 ticks |   605 ms |    52 ms |   −91% |
+
+Active matches still pay the integrity scan when territory changes, so the
+largest improvement is in stable late-game or paused-ownership periods.
+`computeBotBuildCell`, `labelComponents`, and pocket cleanup remain the top
+profile entries; the first two are candidates for further structural work, and
+map generation is still a fixed 130–155 ms per match setup.
+
+Remaining follow-ups:
+
+- Cache or pre-generate Evolution maps when match seeds repeat.
+- Consider an incremental component update for integrity during active wars.
 - Report effective ticks/s in the lab instead of implying `1000×` is always
   achieved.
 

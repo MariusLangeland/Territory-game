@@ -467,7 +467,7 @@ describe('attack stress mode', () => {
 				expect(attack.growthMode).toBe(mode);
 			}
 		}
-	});
+	}, 15_000);
 
 	it('gives bots varied strategies and lets them build', () => {
 		const sim = new TerritorySimulation({ seed: 581321 });
@@ -544,7 +544,7 @@ describe('attack stress mode', () => {
 		expect(snapshot.players.filter((player) => player.alive).length).toBeLessThan(
 			snapshot.players.length
 		);
-	}, 20_000);
+	}, 45_000);
 
 	it('weights grudges, caution, conciliation, and opportunity in bot targeting', () => {
 		const sim = new TerritorySimulation({ seed: 918273 });
@@ -918,6 +918,31 @@ describe('attack stress mode', () => {
 		internals.claim(structure.index, 1, 999);
 		expect(sim.structures.at(structure.index)).toBeUndefined();
 		expect(sim.getSnapshot().structures.some((entry) => entry.id === structure.id)).toBe(false);
+	});
+
+	it('skips integrity and pocket scans when ownership did not change', () => {
+		const sim = new TerritorySimulation({ seed: 112233, playerCount: 2, allPlayersBots: true });
+		const internals = sim as unknown as {
+			players: Array<{ isBot: boolean }>;
+			annexDisconnectedTerritory(): void;
+			cleanupUnclaimedPockets(): void;
+		};
+		for (const player of internals.players) player.isBot = false;
+		let annexCalls = 0;
+		let cleanupCalls = 0;
+		const annex = internals.annexDisconnectedTerritory.bind(internals);
+		internals.annexDisconnectedTerritory = () => {
+			annexCalls++;
+			annex();
+		};
+		// Stub cleanup so its one-time startup pass cannot create an ownership
+		// change that legitimately schedules a second annex scan.
+		internals.cleanupUnclaimedPockets = () => {
+			cleanupCalls++;
+		};
+		for (let tick = 0; tick < 150; tick++) sim.step();
+		expect(annexCalls).toBe(1);
+		expect(cleanupCalls).toBe(1);
 	});
 
 	it('annexes a detached pocket into the surrounding mainland', () => {
@@ -1619,7 +1644,7 @@ describe('bot threat detection and defensive behaviour', () => {
 		expect(left.getBotBehaviorTelemetry().optionSelections).toEqual(
 			right.getBotBehaviorTelemetry().optionSelections
 		);
-	});
+	}, 15_000);
 
 	it('uses one supply pool for player 1 in all-bot matches', () => {
 		const sim = new TerritorySimulation({

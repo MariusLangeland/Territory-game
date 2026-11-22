@@ -607,6 +607,14 @@ export class TerritorySimulation {
 	private lastSnapshot: GameSnapshot | null = null;
 	private annexRequested = false;
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
+	private ownershipChangedSinceAnnex = true;
+	private ownershipChangedSinceCleanup = true;
+	/** Per-player/type build-site lookups valid for one tick and structure layout. */
+	private buildSiteCache = new Int32Array(0);
+	private needsExpansionCache = new Int8Array(0);
+	private buildSiteCacheTick = -1;
+	private buildSiteCacheVersion = -1;
+	private buildSiteCacheLayoutVersion = -1;
 	private readonly integrity: TerritoryIntegrity;
 	readonly structures: StructureRegistry;
 	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
@@ -679,6 +687,10 @@ export class TerritorySimulation {
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
 		this.botGold = new Array<number>(this.playerCount).fill(0);
+		this.buildSiteCache = new Int32Array(this.playerCount * BUILDABLE_STRUCTURE_TYPES.length).fill(
+			-2
+		);
+		this.needsExpansionCache = new Int8Array(this.playerCount).fill(-1);
 		this.botGoldAccrual = new Uint16Array(this.playerCount);
 		this.botGrievance = new Uint16Array(this.playerCount * this.playerCount);
 		this.botPressure = new Uint16Array(this.playerCount);
@@ -1380,7 +1392,7 @@ export class TerritorySimulation {
 		this.refreshDistrictsAround(structure);
 		this.rebuildAuraDefense();
 		this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
-		if (structure.type === 'state') this.annexRequested = true;
+		if (structure.type === 'state' || structure.type === 'port') this.annexRequested = true;
 		this.pushEvent(
 			'structure',
 			structure.type === 'state'
@@ -1766,13 +1778,15 @@ export class TerritorySimulation {
 			const annexDue =
 				this.tick % ANNEX_INTERVAL_TICKS === 0 ||
 				(this.annexRequested && this.tick - this.lastAnnexTick >= ANNEX_INTERVAL_TICKS);
-			if (annexDue) {
+			if (annexDue && (this.ownershipChangedSinceAnnex || this.annexRequested)) {
+				this.annexDisconnectedTerritory();
 				this.annexRequested = false;
 				this.lastAnnexTick = this.tick;
-				this.annexDisconnectedTerritory();
+				this.ownershipChangedSinceAnnex = false;
 			}
-			if (this.tick % UNCLAIMED_CLEANUP_INTERVAL_TICKS === 0) {
+			if (this.tick % UNCLAIMED_CLEANUP_INTERVAL_TICKS === 0 && this.ownershipChangedSinceCleanup) {
 				this.cleanupUnclaimedPockets();
+				this.ownershipChangedSinceCleanup = false;
 			}
 			this.updateEliminations();
 			this.checkVictory();
@@ -1880,6 +1894,8 @@ export class TerritorySimulation {
 		mix(this.pendingGrowthMode ? growthModeCode(this.pendingGrowthMode) : 0);
 		mix(this.annexRequested ? 1 : 0);
 		mix(this.lastAnnexTick);
+		mix(this.ownershipChangedSinceAnnex ? 1 : 0);
+		mix(this.ownershipChangedSinceCleanup ? 1 : 0);
 		mix(this.gold);
 		mix(this.goldAccrual);
 		for (const botGold of this.botGold) mix(botGold);
@@ -2991,6 +3007,8 @@ export class TerritorySimulation {
 	}
 
 	private recordChange(index: number, owner: number): void {
+		this.ownershipChangedSinceAnnex = true;
+		this.ownershipChangedSinceCleanup = true;
 		if (this.changeCount >= CHANGE_BUFFER_SIZE) {
 			this.changesOverflow = true;
 			return;
@@ -3152,6 +3170,16 @@ export class TerritorySimulation {
 
 	/** A missing type with no legal build cell means expansion is the priority. */
 	private botNeedsExpansion(player: PlayerState): boolean {
+		this.ensureBuildSiteCache();
+		const cacheIndex = player.id - 1;
+		const cached = this.needsExpansionCache[cacheIndex];
+		if (cached >= 0) return cached === 1;
+		const result = this.computeBotNeedsExpansion(player);
+		this.needsExpansionCache[cacheIndex] = result ? 1 : 0;
+		return result;
+	}
+
+	private computeBotNeedsExpansion(player: PlayerState): boolean {
 		const built = new Set(
 			this.structures
 				.forOwner(player.id)
@@ -3805,7 +3833,35 @@ export class TerritorySimulation {
 		if (!neighbours.includes(owner)) neighbours.push(owner);
 	}
 
+	private ensureBuildSiteCache(): void {
+		const version = this.structures.version;
+		const layoutVersion = this.structures.layoutVersion;
+		if (
+			this.buildSiteCacheTick === this.tick &&
+			this.buildSiteCacheVersion === version &&
+			this.buildSiteCacheLayoutVersion === layoutVersion
+		) {
+			return;
+		}
+		this.buildSiteCacheTick = this.tick;
+		this.buildSiteCacheVersion = version;
+		this.buildSiteCacheLayoutVersion = layoutVersion;
+		this.buildSiteCache.fill(-2);
+		this.needsExpansionCache.fill(-1);
+	}
+
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
+		this.ensureBuildSiteCache();
+		const typeIndex = BUILDABLE_STRUCTURE_TYPES.indexOf(type);
+		const cacheIndex = (player.id - 1) * BUILDABLE_STRUCTURE_TYPES.length + typeIndex;
+		const cached = this.buildSiteCache[cacheIndex];
+		if (cached !== -2) return cached;
+		const result = this.computeBotBuildCell(player, type);
+		this.buildSiteCache[cacheIndex] = result;
+		return result;
+	}
+
+	private computeBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
 		if (type === 'port') {
 			for (const index of player.border) {
 				if (!isShoreIndex(this.land, this.width, this.height, index)) continue;

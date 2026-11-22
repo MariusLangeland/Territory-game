@@ -2250,3 +2250,45 @@ The Evolution Lab drove `EvolutionSandbox` and `TerritorySimulation` directly fr
 - Determinism is preserved because the same simulation code runs with the same seeds and ordered worker messages; wall-clock timing only controls how many steps happen per turn, not their sequence.
 - The main thread no longer has direct access to the live simulation; any new renderer-visible state must be added to the worker payload/mirror.
 - Worker startup and message ordering become part of the lab boundary and must be verified in a browser.
+
+---
+
+## ADR-071 — Cached build sites, spatial structure queries, ownership-gated integrity
+
+**Status:** accepted and implemented in 0.65.0  
+**Date:** 2026-11-22
+
+### Context
+
+CPU profiles of the Evolution Lab worker showed `findBotBuildCell`,
+`TerritoryIntegrity.labelComponents`, and `cleanupUnclaimedPockets` dominating
+simulation time. Build-site availability was recomputed repeatedly within one
+tick, structure-spacing checks scanned every structure per candidate, and both
+full-map integrity passes ran on fixed timers even when ownership had not
+changed.
+
+### Decision
+
+- Cache build-site results per player/type for the current tick. Invalidate the
+  cache whenever the structure registry version or layout version changes.
+- Cache `botNeedsExpansion` per player for the same validity window.
+- Index structure spacing queries in 32 px buckets inside `StructureRegistry`.
+  `hasWithinRadius` examines only overlapping buckets, preserving the exact
+  distance predicate.
+- Run annex component labeling only when ownership changed since the previous
+  scan or a State/Port destruction requested it.
+- Run full-map pocket cleanup only when ownership changed since the previous
+  cleanup.
+- Keep initial one-shot scans so startup behavior is preserved.
+
+### Consequences
+
+- Active-match profile time improved by roughly 12–13% in A/B runs with
+  identical behavior.
+- Idle/no-ownership-change tick time dropped by roughly 91% because the
+  full-map scans are skipped.
+- The build-site cache and spatial index are derived state; they are excluded
+  from checksums. Ownership-change flags are deterministic and included in the
+  checksum.
+- Future changes to structure placement or protected-anchor rules must remember
+  to invalidate or schedule these caches/scans.
