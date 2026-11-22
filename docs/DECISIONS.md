@@ -2292,3 +2292,38 @@ changed.
   checksum.
 - Future changes to structure placement or protected-anchor rules must remember
   to invalidate or schedule these caches/scans.
+
+---
+
+## ADR-072 — Locality-banded least-resistance selection
+
+**Status:** accepted and implemented in 0.66.0  
+**Date:** 2026-11-22
+
+### Context
+
+The least-resistance sampler compared the cheapest defense among the ten
+highest-priority frontier cells. With organic and large frontiers, that could
+pull a front sideways onto a weak pixel far from the attack's original contact
+area. The result was structurally aggressive, snake-like fronts that chased
+defense gradients instead of growing around the clicked area.
+
+### Decision
+
+- Keep sampling the fixed top ten frontier candidates in growth order.
+- For each valid sample, compute Manhattan distance from the attack's border
+  anchor.
+- Only candidates within `LEAST_RESISTANCE_LOCALITY_BAND` (8 px) of the
+  nearest sampled cell remain eligible.
+- Within that band, choose the cheapest integer effective defense; ties keep
+  sample order.
+- Requeue semantics and affordability checks are unchanged.
+
+### Consequences
+
+- Defense still chooses the cheaper lane around nearby strongpoints.
+- Distant weak pixels no longer divert a front away from its start area.
+- A front can stall against a large strongpoint rather than flowing far around
+  it; that is intentional locality.
+- Behavior is deterministic and uses no new RNG. The new constant is part of
+  simulation behavior and should be included in future balance reviews.

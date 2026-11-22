@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createGrowthLayer, GROWTH_MODES } from './growth';
 import { generateMap } from './map';
-import { TerritorySimulation, type AttackState, type PlayerState } from './simulation';
+import {
+	selectLeastResistancePosition,
+	TerritorySimulation,
+	type AttackState,
+	type PlayerState
+} from './simulation';
 import type { BuildableStructureType } from './Structures';
 import {
 	ATTACK_IDLE_TICKS,
@@ -703,6 +708,12 @@ describe('attack stress mode', () => {
 		expect(sim.getDefense(start.x, start.y)).toBe(
 			sim.getBaseDefense(start.x, start.y) + 1 + sim.getAuraDefense(start.x, start.y)
 		);
+	});
+
+	it('keeps least-resistance selection inside the local front', () => {
+		expect(selectLeastResistancePosition([2, 1], [0, 20], 8)).toBe(0);
+		expect(selectLeastResistancePosition([3, 1], [0, 5], 8)).toBe(1);
+		expect(selectLeastResistancePosition([1, 1, 1], [1, 0, 2], 0)).toBe(1);
 	});
 
 	it('routes attacks toward a cheaper frontier cell', () => {

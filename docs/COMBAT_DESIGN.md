@@ -202,7 +202,9 @@ while budget > 0 and strength > 0:
     if no valid candidate:
         if frontier empty -> remove front
         else break (all sampled cells were stale/disconnected)
-    choose the cheapest valid sampled cell; ties keep sample order
+    keep only sampled cells within the 8-pixel locality band around the nearest
+    sampled cell to the attack anchor; choose the cheapest of those; ties keep
+    sample order
     requeue every unchosen sampled cell in reverse sample order
     if chosen cost > remaining budget:
         requeue the chosen cell too and break the tick   (fixes the current code bug, Appendix B item 4)

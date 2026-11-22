@@ -295,7 +295,7 @@ Every attack captures a `growthMode` at creation time and keeps it for its lifet
 | `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                 | Irregular organic lobes, fully replayable                        |
 
 - The growth anchor is the rounded centroid of the initial border-contact seeds. The click is not the origin. This prevents a distance-based layer from sending a narrow tendril toward a click deep inside hostile territory before blooming.
-- Defense only chooses among the candidates the growth layer already prioritizes; it does not scan the whole frontier. The front therefore keeps its overall shape while preferring cheaper local lanes.
+- Defense only chooses among the candidates the growth layer already prioritizes; it does not scan the whole frontier. Among those candidates, it considers only cells within `LEAST_RESISTANCE_LOCALITY_BAND` (8 Manhattan pixels) of the nearest sampled cell to the attack anchor. The front therefore keeps its overall shape and start area while preferring cheaper local lanes.
 - The shape is still clipped by coastlines, other states, and the attacker's own border.
 - The **smooth** layer groups candidates into integer squared-distance bands around the anchor. It always serves the nearest non-empty band before farther bands, then uses attacker-neighbour count and distance/index tie-breaks inside the band. This radial bound is what prevents tangent wings along the initial border.
 - The **organic** layer seeds its PRNG from the world seed, attack id, attacker id, and defender id.
