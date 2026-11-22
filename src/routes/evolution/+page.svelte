@@ -85,7 +85,7 @@
 	let lastReport = $state<EvolutionReport | null>(null);
 	const emptySeats = $derived(Math.max(0, GAUNTLET_SEATS - population.length));
 	let remoteView = $state<RemoteEvolutionSimulation | null>(null);
-	let remoteVisual = $state<RemoteVisual | null>(null);
+	let remoteVisualQueue = $state<RemoteVisual[]>([]);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let cameraBridge = new GameCameraBridge();
 	let running = $state(false);
@@ -132,6 +132,11 @@
 
 	function send(command: EvolutionWorkerCommand): void {
 		worker?.postMessage(command);
+	}
+
+	function acknowledgeVisuals(revision: number): void {
+		remoteVisualQueue = remoteVisualQueue.filter((visual) => visual.revision > revision);
+		send({ type: 'visual-ack', matchId: activeMatchId });
 	}
 
 	function resetThroughput(): void {
@@ -206,7 +211,7 @@
 				activeMatchId = message.matchId;
 				remoteView = new RemoteEvolutionSimulation(message.init);
 				snapshot = message.init.snapshot;
-				remoteVisual = null;
+				remoteVisualQueue = [];
 				resetThroughput();
 				matchKey++;
 				break;
@@ -217,21 +222,24 @@
 				snapshot = visual.snapshot;
 				markovStates = visual.markovStates;
 				sampleThroughput(visual.tick);
-				remoteVisual = {
-					revision: ++visualRevision,
-					tick: visual.tick,
-					snapshot: visual.snapshot,
-					changes: visual.changes,
-					changeCount: visual.changeCount,
-					overflow: visual.overflow,
-					districtTiles: visual.districtTiles
-				};
+				remoteVisualQueue = [
+					...remoteVisualQueue,
+					{
+						revision: ++visualRevision,
+						tick: visual.tick,
+						snapshot: visual.snapshot,
+						changes: visual.changes,
+						changeCount: visual.changeCount,
+						overflow: visual.overflow,
+						districtTiles: visual.districtTiles
+					}
+				];
 				break;
 			}
 			case 'idle':
 				activeMatchId = -1;
 				remoteView = null;
-				remoteVisual = null;
+				remoteVisualQueue = [];
 				snapshot = null;
 				started = false;
 				restoredSession = false;
@@ -324,7 +332,7 @@
 		population = [];
 		currentSeats = [];
 		remoteView = null;
-		remoteVisual = null;
+		remoteVisualQueue = [];
 		started = true;
 		running = true;
 		send({ type: 'speed', speed });
@@ -415,7 +423,7 @@
 		rows = [];
 		archiveRows = [];
 		remoteView = null;
-		remoteVisual = null;
+		remoteVisualQueue = [];
 		started = true;
 		running = true;
 		send({ type: 'speed', speed });
@@ -443,7 +451,7 @@
 		rows = [];
 		archiveRows = [];
 		remoteView = null;
-		remoteVisual = null;
+		remoteVisualQueue = [];
 		started = true;
 		running = true;
 		send({ type: 'speed', speed });
@@ -499,7 +507,8 @@
 						simulation={remoteView as unknown as TerritorySimulation}
 						paused={!running}
 						simulate={false}
-						{remoteVisual}
+						remoteVisuals={remoteVisualQueue}
+						onRemoteVisualsApplied={acknowledgeVisuals}
 						{cameraBridge}
 						cameraFocus="map"
 						{selectedOwnerId}

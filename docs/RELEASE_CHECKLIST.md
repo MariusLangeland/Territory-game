@@ -44,6 +44,7 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] Open `/evolution`; no `/duel` link or route (direct `/duel` returns 404).
 - [ ] Start a short run at `1000×`; canvas fills the left area and RATE shows a plausible ticks/s value.
 - [ ] Pan/zoom and toggle panels while the worker runs; UI remains responsive.
+- [ ] Run `1000×` for several seconds, switch to `1×`, and confirm RATE returns to roughly 10 ticks/s and the canvas continues updating immediately.
 - [ ] Finish a generation; spreadsheet, Markov graph, and fitness history update.
 - [ ] Reload; the generation-boundary session restores paused with RESTORED visible.
 - [ ] Continue starts the next generation.

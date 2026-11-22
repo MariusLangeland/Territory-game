@@ -31,6 +31,8 @@ let nextMatchAt = 0;
 let activeSimulation: TerritorySimulation | null = null;
 let matchId = 0;
 let lastVisualAt = 0;
+/** Only one visual is in flight; the main thread requests the next after applying it. */
+let visualInFlight = false;
 
 let pendingChanges: Uint32Array[] = [];
 let pendingChangeCount = 0;
@@ -176,6 +178,7 @@ function startMatch(): void {
 	if (!simulation) return;
 	activeSimulation = simulation;
 	matchId++;
+	visualInFlight = false;
 	resetPending();
 	postMatchInit(simulation);
 	postState();
@@ -229,7 +232,7 @@ function districtTileColors(simulation: TerritorySimulation, tiles: readonly num
 
 function flushVisual(): void {
 	const simulation = sandbox?.currentSimulation;
-	if (!simulation) return;
+	if (!simulation || visualInFlight) return;
 	const snapshot = simulation.getSnapshot();
 	const visual: WorkerVisual = {
 		matchId,
@@ -273,6 +276,7 @@ function flushVisual(): void {
 	}
 	resetPending();
 	lastVisualAt = performance.now();
+	visualInFlight = true;
 	scope.postMessage({ type: 'visual', visual }, transfer);
 }
 
@@ -414,6 +418,20 @@ function handleCommand(command: EvolutionWorkerCommand): void {
 				break;
 			case 'speed':
 				speed = Math.max(1, Math.min(1000, Math.round(command.speed)));
+				// Discard ticks accumulated under the old speed so slowing down
+				// takes effect immediately instead of replaying a fast-forward backlog.
+				accumulator = 0;
+				lastTime = performance.now();
+				break;
+			case 'visual-ack':
+				if (command.matchId !== matchId) break;
+				visualInFlight = false;
+				if (
+					sandbox?.currentSimulation &&
+					(pendingOverflow || pendingChangeCount > 0 || pendingDistrictTiles.size > 0)
+				) {
+					flushVisual();
+				}
 				break;
 			case 'fill-seats':
 				if (!sandbox) return;

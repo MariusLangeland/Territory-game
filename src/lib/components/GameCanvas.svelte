@@ -43,7 +43,8 @@
 		paused: boolean;
 		/** When false, the simulation is advanced by a worker instead of this frame loop. */
 		simulate?: boolean;
-		remoteVisual?: RemoteVisual | null;
+		remoteVisuals?: RemoteVisual[];
+		onRemoteVisualsApplied?: (revision: number) => void;
 		targeting?: boolean;
 		mergeDistricts?: boolean;
 		highlightType?: StructureType | null;
@@ -68,7 +69,8 @@
 		simulation,
 		paused,
 		simulate = true,
-		remoteVisual = null,
+		remoteVisuals = [],
+		onRemoteVisualsApplied,
 		targeting = false,
 		mergeDistricts = true,
 		highlightType = null,
@@ -106,7 +108,7 @@
 	let lastRemoteRevision = -1;
 
 	function applyRemoteVisual(visual: RemoteVisual): void {
-		if (!renderer || visual.revision === lastRemoteRevision) return;
+		if (!renderer || visual.revision <= lastRemoteRevision) return;
 		lastRemoteRevision = visual.revision;
 		if (visual.overflow) {
 			renderer.syncFromSimulation();
@@ -120,6 +122,17 @@
 			);
 		}
 		lastSnapshot = visual.snapshot;
+	}
+
+	function applyRemoteVisualQueue(): void {
+		if (simulate || !renderer || remoteVisuals.length === 0) return;
+		let applied = false;
+		for (const visual of remoteVisuals) {
+			if (visual.revision <= lastRemoteRevision) continue;
+			applyRemoteVisual(visual);
+			applied = true;
+		}
+		if (applied) onRemoteVisualsApplied?.(lastRemoteRevision);
 	}
 
 	onMount(() => {
@@ -668,11 +681,10 @@
 
 		function frame(now: number): void {
 			if (disposed || !renderer) return;
-			// Poll the latest worker visual every frame. This deliberately does not
-			// rely on prop-effect timing: the visual can arrive before the renderer
-			// finishes initializing, and the animation loop is the one consumer that
-			// must observe the newest revision.
-			if (!simulate && remoteVisual) applyRemoteVisual(remoteVisual);
+			// Apply every queued worker delta in order. The worker only sends one
+			// visual at a time and waits for the acknowledgement below, so a frame
+			// cannot silently skip a delta and leave the control texture stale.
+			applyRemoteVisualQueue();
 			const delta = Math.min(250, Math.max(0, now - lastTime));
 			lastTime = now;
 
@@ -748,7 +760,7 @@
 					return;
 				}
 
-				if (!simulate && remoteVisual) applyRemoteVisual(remoteVisual);
+				applyRemoteVisualQueue();
 
 				const camera = renderer.camera;
 				const humanStart = simulation.map.starts[HUMAN_PLAYER_ID - 1];

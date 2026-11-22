@@ -2583,3 +2583,36 @@ seats.
   the only stops.
 - New genomes enter with full lives and are distinguishable by their new ids.
 - Refilling is only valid between runs; an active simulation is not mutated.
+
+---
+
+## ADR-081 — Acknowledged, ordered worker visuals
+
+**Status:** accepted and implemented in 0.69.2  
+**Date:** 2026-11-22
+
+### Context
+
+At fast-forward the worker could produce multiple visual deltas between animation
+frames. The renderer only consumed the newest visual, skipping intermediate
+deltas and permanently desynchronising the control texture. Speed changes also
+left accumulated step credit in the worker, so returning to `1×` replayed a
+fast-forward backlog.
+
+### Decision
+
+- Allow only one visual in flight. The worker sends a visual, then waits for a
+  `visual-ack` from the renderer before sending the next.
+- Queue and apply every delta in order in the renderer; acknowledge only after
+  the whole batch is applied.
+- If the UI falls behind, the worker keeps accumulating changes and falls back to
+  a full owner snapshot when the delta buffer overflows.
+- Reset the worker accumulator and time base whenever the speed changes.
+
+### Consequences
+
+- Fast-forward cannot silently skip deltas; the viewport converges to current
+  simulation state.
+- Visual frequency is bounded by renderer throughput rather than postMessage
+  queue growth.
+- Returning to `1×` is immediate and does not replay a backlog.
