@@ -94,6 +94,7 @@
 		let frameId = 0;
 		let lastTime = performance.now();
 		let accumulator = 0;
+		let lastSyncedTick = -1;
 		let lastViewReport = 0;
 		let lastPerfReport = 0;
 		let lastHoverKey = '';
@@ -638,8 +639,25 @@
 			const delta = Math.min(250, Math.max(0, now - lastTime));
 			lastTime = now;
 
+			// At 1000× the fast-forward loop can execute a thousand ticks between
+			// useful visual updates. Applying every tick's renderer delta dominates
+			// the frame; instead resync the whole control texture once per 1000
+			// ticks and let the renderer upload it in chunks.
+			const renderStride = speedMultiplier >= 1000 ? 1000 : 1;
+
+			// Leaving 1000× can leave the renderer up to 1000 ticks behind. Resync
+			// once before resuming per-tick deltas so the shadow cannot stay stale.
+			if (renderStride === 1 && simulation.tick !== lastSyncedTick) {
+				renderer.syncFromSimulation();
+				lastSyncedTick = simulation.tick;
+			}
+
 			if (paused || simulation.ended) {
 				accumulator = 0;
+				if (simulation.tick !== lastSyncedTick) {
+					renderer.syncFromSimulation();
+					lastSyncedTick = simulation.tick;
+				}
 			} else {
 				accumulator += delta * speedMultiplier;
 				let steps = 0;
@@ -648,19 +666,28 @@
 
 				while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
 					const result = simulation.step();
-					renderer.applyChanges(
-						result.changes,
-						result.changeCount,
-						result.changesOverflow,
-						result.districtsChanged,
-						result.districtTiles
-					);
+					if (renderStride === 1) {
+						renderer.applyChanges(
+							result.changes,
+							result.changeCount,
+							result.changesOverflow,
+							result.districtsChanged,
+							result.districtTiles
+						);
+					}
 					latestSnapshot = result.snapshot;
 					pendingEvents.push(...result.events);
 					accumulator -= TICK_MS;
 					steps++;
 				}
 				if (steps >= maxStepsPerFrame) accumulator = 0;
+
+				if (renderStride === 1) {
+					lastSyncedTick = simulation.tick;
+				} else if (simulation.tick - lastSyncedTick >= renderStride) {
+					renderer.syncFromSimulation();
+					lastSyncedTick = simulation.tick;
+				}
 
 				// Territory rendering updates every tick, but rebuilding 51 HUD
 				// rows at 10 Hz creates avoidable main-thread spikes. Snapshots go

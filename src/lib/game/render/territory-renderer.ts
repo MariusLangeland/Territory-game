@@ -269,8 +269,7 @@ export class TerritoryRenderer {
 		districtTiles: readonly number[] = []
 	): void {
 		if (overflow || (districtsChanged && districtTiles.length === 0)) {
-			this.rebuildFromSimulation();
-			this.queueFullUpload();
+			this.syncFromSimulation();
 			return;
 		}
 
@@ -332,7 +331,16 @@ export class TerritoryRenderer {
 		}
 	}
 
-	/** Full resync, for reconnects, GPU reset, or a dropped change batch. */
+	/**
+	 * Full resync, for reconnects, GPU reset, or a dropped change batch.
+	 * This rebuilds the CPU shadow and queues a chunked full upload.
+	 */
+	syncFromSimulation(): void {
+		this.rebuildFromSimulation();
+		this.queueFullUpload();
+	}
+
+	/** Rebuild the CPU shadow from simulation state without uploading. */
 	rebuildFromSimulation(): void {
 		const { owners, terrain, terrainShade, terrainElevation, districtColorCodes } = this.simulation;
 		for (let i = 0; i < owners.length; i++) {
