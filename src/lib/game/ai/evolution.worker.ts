@@ -303,7 +303,7 @@ function loop(): void {
 			accumulator -= TICK_MS;
 			const simulation = sandbox.currentSimulation;
 			if (!simulation) break;
-			if (simulation.ended || simulation.tick >= sandbox.config.ticks) {
+			if (simulation.ended || simulation.tick >= sandbox.config.ticks || sandbox.shouldEndMatch()) {
 				flushVisual();
 				sandbox.finishMatch();
 				postState();

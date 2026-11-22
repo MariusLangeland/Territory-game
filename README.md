@@ -40,7 +40,7 @@
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                             |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                       |
 | Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                               |
-| AI Evolution    | Worker-driven evolution sandbox, qualitative semi-Markov genomes, QD archive, fitness history, IndexedDB session restore, linked genome-map selection, CSV     |
+| AI Evolution    | Worker-driven evolution sandbox, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, history, IndexedDB restore, CSV                              |
 | AI strategy     | Committed strategic options/blackboard, neighbour pressure, deterrence, supply opportunities, bot naval campaigns, coordinated teams, behavior telemetry       |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                          |
 | Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                   |

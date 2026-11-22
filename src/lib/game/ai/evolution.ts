@@ -102,7 +102,10 @@ export function normalizeFitnessWeights(
 	return normalized;
 }
 
+export type EvolutionMode = 'evolution' | 'gauntlet';
+
 export interface EvolutionConfig {
+	mode: EvolutionMode;
 	seed: number;
 	populationSize: number;
 	generations: number;
@@ -119,9 +122,18 @@ export interface EvolutionConfig {
 	 */
 	lineageDuels: boolean;
 	fitnessWeights: FitnessWeights;
+	/** Gauntlet: lives per genome across runs. */
+	gauntletLives: number;
+	/** Gauntlet: top fitness survivors that recover one life per run. */
+	gauntletRecoveryCount: number;
+	/** Gauntlet: finish once at most this many genomes remain. */
+	gauntletRemainingTarget: number;
+	/** Safety cap; normal runs stop on the remaining-bot target. */
+	gauntletMaxRuns: number;
 }
 
 export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
+	mode: 'evolution',
 	seed: 1234,
 	populationSize: 16,
 	generations: 4,
@@ -132,7 +144,11 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
 	height: 720,
 	teamCount: 1,
 	lineageDuels: true,
-	fitnessWeights: DEFAULT_FITNESS_WEIGHTS
+	fitnessWeights: DEFAULT_FITNESS_WEIGHTS,
+	gauntletLives: 3,
+	gauntletRecoveryCount: 16,
+	gauntletRemainingTarget: 16,
+	gauntletMaxRuns: 50
 };
 
 export interface GenomePerformance {
@@ -159,6 +175,11 @@ export interface GenomePerformance {
 	lineageWins: number;
 	lineageLosses: number;
 	lineageDelta: number;
+	/** Gauntlet state after the run, when this row came from a gauntlet. */
+	gauntletLives?: number;
+	gauntletLostLife?: boolean;
+	gauntletRecovered?: boolean;
+	gauntletRemoved?: boolean;
 }
 
 export interface GenerationResult {
@@ -184,6 +205,8 @@ export interface EvolutionSessionSnapshot {
 	archive: GenomePerformance[];
 	generation: number;
 	phase: 'generation-complete' | 'finished';
+	/** Gauntlet lives by genome id; omitted for ordinary evolution. */
+	gauntletLives?: Record<string, number>;
 }
 
 interface Evaluation {
@@ -210,19 +233,39 @@ interface Evaluation {
 
 export function normalizeEvolutionConfig(config: Partial<EvolutionConfig> = {}): EvolutionConfig {
 	const merged = { ...DEFAULT_EVOLUTION_CONFIG, ...config };
-	const playerCount = Math.max(2, Math.min(51, Math.trunc(merged.playerCount)));
+	const mode: EvolutionMode = merged.mode === 'gauntlet' ? 'gauntlet' : 'evolution';
+	const requestedPopulation =
+		mode === 'gauntlet' && config.populationSize === undefined
+			? 64
+			: Math.trunc(merged.populationSize);
+	const populationSize = Math.max(2, Math.min(64, requestedPopulation));
+	const playerCount =
+		mode === 'gauntlet'
+			? populationSize
+			: Math.max(2, Math.min(51, Math.trunc(merged.playerCount)));
 	return {
+		mode,
 		seed: merged.seed >>> 0,
-		populationSize: Math.max(playerCount, Math.min(64, Math.trunc(merged.populationSize))),
+		populationSize: Math.max(playerCount, populationSize),
 		generations: Math.max(1, Math.min(50, Math.trunc(merged.generations))),
 		playerCount,
 		matchesPerRound: Math.max(1, Math.min(8, Math.trunc(merged.matchesPerRound))),
 		ticks: Math.max(200, Math.min(30_000, Math.trunc(merged.ticks))),
-		width: Math.max(512, Math.trunc(merged.width)),
-		height: Math.max(256, Math.trunc(merged.height)),
+		width:
+			mode === 'gauntlet'
+				? Math.max(512, config.width === undefined ? 2048 : Math.trunc(merged.width))
+				: Math.max(512, Math.trunc(merged.width)),
+		height:
+			mode === 'gauntlet'
+				? Math.max(256, config.height === undefined ? 1024 : Math.trunc(merged.height))
+				: Math.max(256, Math.trunc(merged.height)),
 		teamCount: Math.max(1, Math.min(playerCount, Math.trunc(merged.teamCount))),
-		lineageDuels: merged.lineageDuels !== false,
-		fitnessWeights: normalizeFitnessWeights(merged.fitnessWeights)
+		lineageDuels: mode === 'evolution' && merged.lineageDuels !== false,
+		fitnessWeights: normalizeFitnessWeights(merged.fitnessWeights),
+		gauntletLives: Math.max(1, Math.min(9, Math.trunc(merged.gauntletLives))),
+		gauntletRecoveryCount: Math.max(1, Math.min(64, Math.trunc(merged.gauntletRecoveryCount))),
+		gauntletRemainingTarget: Math.max(1, Math.min(64, Math.trunc(merged.gauntletRemainingTarget))),
+		gauntletMaxRuns: Math.max(1, Math.min(200, Math.trunc(merged.gauntletMaxRuns)))
 	};
 }
 
@@ -425,6 +468,50 @@ function aggregateEvaluations(
 	return rows;
 }
 
+/**
+ * Apply one gauntlet run to the global lives pool. Every seat that died loses a
+ * life; genomes at zero are removed. The highest-fitness survivors (still above
+ * zero lives) recover one life, capped at the configured maximum.
+ */
+export function applyGauntletOutcome(
+	rows: GenomePerformance[],
+	lives: ReadonlyMap<string, number>,
+	eliminatedIds: ReadonlySet<string>,
+	recoveryCount: number,
+	maxLives: number
+): { lives: Map<string, number>; remaining: number } {
+	const nextLives = new Map(lives);
+	for (const row of rows) {
+		const before = nextLives.get(row.genome.id) ?? maxLives;
+		const lostLife = eliminatedIds.has(row.genome.id) && before > 0;
+		const after = Math.max(0, before - (lostLife ? 1 : 0));
+		nextLives.set(row.genome.id, after);
+		row.gauntletLives = after;
+		row.gauntletLostLife = lostLife;
+		row.gauntletRemoved = after <= 0;
+		row.gauntletRecovered = false;
+	}
+
+	const eligible = rows
+		.filter((row) => !eliminatedIds.has(row.genome.id) && (nextLives.get(row.genome.id) ?? 0) > 0)
+		.sort(
+			(left, right) => right.fitness - left.fitness || left.genome.id.localeCompare(right.genome.id)
+		);
+	for (let index = 0; index < eligible.length && index < recoveryCount; index++) {
+		const row = eligible[index];
+		const current = nextLives.get(row.genome.id) ?? 0;
+		if (current >= maxLives) continue;
+		nextLives.set(row.genome.id, current + 1);
+		row.gauntletLives = current + 1;
+		row.gauntletRecovered = true;
+	}
+
+	return {
+		lives: nextLives,
+		remaining: rows.filter((row) => (nextLives.get(row.genome.id) ?? 0) > 0).length
+	};
+}
+
 export function bucketRows(rows: GenomePerformance[]): Record<BotBucket, string[]> {
 	const topCount = Math.max(1, Math.ceil(rows.length * 0.2));
 	const goodCount = Math.max(1, Math.ceil(rows.length * 0.3));
@@ -501,6 +588,8 @@ export class EvolutionSandbox {
 	/** Keeps ancestors available as opponents after they leave the live population. */
 	private readonly genomeBank = new Map<string, BotGenome>();
 	private pendingPopulation: BotGenome[] = [];
+	/** Gauntlet lives by genome id, global across every run. */
+	private gauntletLives = new Map<string, number>();
 
 	constructor(config: Partial<EvolutionConfig> = {}) {
 		this.config = normalizeEvolutionConfig(config);
@@ -528,6 +617,14 @@ export class EvolutionSandbox {
 	begin(): void {
 		if (this.phase !== 'idle') return;
 		this.generation = 0;
+		if (this.config.mode === 'gauntlet') {
+			this.reports = [];
+			this.archive.clear();
+			this.gauntletLives.clear();
+			for (const genome of this.population) {
+				this.gauntletLives.set(genome.id, this.config.gauntletLives);
+			}
+		}
 		this.startGeneration();
 	}
 
@@ -546,6 +643,12 @@ export class EvolutionSandbox {
 		this.generation = 0;
 		this.currentSimulation = null;
 		this.phase = 'idle';
+		if (this.config.mode === 'gauntlet') {
+			this.gauntletLives.clear();
+			for (const genome of this.population) {
+				this.gauntletLives.set(genome.id, this.config.gauntletLives);
+			}
+		}
 		if (restart) this.startGeneration();
 		return true;
 	}
@@ -563,11 +666,11 @@ export class EvolutionSandbox {
 			seed,
 			width: this.config.width,
 			height: this.config.height,
-			playerCount: this.config.playerCount,
+			playerCount: seats.length,
 			allPlayersBots: true,
 			botGenomes: seats,
 			teamIds:
-				this.config.teamCount > 1
+				this.config.mode === 'evolution' && this.config.teamCount > 1
 					? seats.map((_, index) => (index % this.config.teamCount) + 1)
 					: undefined,
 			matchDurationTicks: this.config.ticks
@@ -589,6 +692,23 @@ export class EvolutionSandbox {
 		return simulation.step();
 	}
 
+	/** End a gauntlet run early once only the survivor target remains alive. */
+	shouldEndMatch(): boolean {
+		const simulation = this.currentSimulation;
+		if (
+			this.config.mode !== 'gauntlet' ||
+			!simulation ||
+			this.config.gauntletRemainingTarget >= this.currentSeats.length
+		) {
+			return false;
+		}
+		let alive = 0;
+		for (const player of simulation.players) {
+			if (player.alive) alive++;
+		}
+		return alive <= this.config.gauntletRemainingTarget;
+	}
+
 	/** Advance the current match. Returns true when the match is complete. */
 	step(ticks = 1): boolean {
 		if (!this.currentSimulation && !this.startNextMatch()) return true;
@@ -596,9 +716,9 @@ export class EvolutionSandbox {
 		if (!simulation) return true;
 		for (let index = 0; index < ticks && !simulation.ended; index++) {
 			simulation.step();
-			if (simulation.tick >= this.config.ticks) break;
+			if (simulation.tick >= this.config.ticks || this.shouldEndMatch()) break;
 		}
-		return simulation.ended || simulation.tick >= this.config.ticks;
+		return simulation.ended || simulation.tick >= this.config.ticks || this.shouldEndMatch();
 	}
 
 	finishMatch(): void {
@@ -606,6 +726,10 @@ export class EvolutionSandbox {
 		if (!simulation) return;
 		const snapshot = simulation.getSnapshot();
 		const scored = scoreMatch(simulation, snapshot, this.currentSeats, this.config.fitnessWeights);
+		if (this.config.mode === 'gauntlet') {
+			this.finishGauntletRun(snapshot, scored);
+			return;
+		}
 		for (const [id, value] of scored) {
 			const existing = this.evaluations.get(id);
 			if (!existing) {
@@ -635,8 +759,58 @@ export class EvolutionSandbox {
 		if (this.currentMatchIndex >= this.schedule.length) this.completeGeneration();
 	}
 
+	private finishGauntletRun(snapshot: GameSnapshot, scored: Map<string, Evaluation>): void {
+		const seatIds = new Set(this.currentSeats.map((genome) => genome.id));
+		const rows = aggregateEvaluations(scored, seatIds);
+		const eliminatedIds = new Set<string>();
+		for (let seat = 0; seat < this.currentSeats.length; seat++) {
+			const player = snapshot.players.find((entry) => entry.id === seat + 1);
+			if (!player || !player.alive) eliminatedIds.add(this.currentSeats[seat].id);
+		}
+		const outcome = applyGauntletOutcome(
+			rows,
+			this.gauntletLives,
+			eliminatedIds,
+			this.config.gauntletRecoveryCount,
+			this.config.gauntletLives
+		);
+		this.gauntletLives = outcome.lives;
+		const buckets = bucketRows(rows);
+		this.reports.push({
+			generation: this.generation,
+			rows,
+			buckets,
+			archive: []
+		});
+		this.currentSimulation = null;
+		this.currentSeats = [];
+		this.currentMatchIndex++;
+		this.population = this.population.filter(
+			(genome) => (this.gauntletLives.get(genome.id) ?? 0) > 0
+		);
+		this.generation++;
+		if (
+			this.population.length <= this.config.gauntletRemainingTarget ||
+			this.population.length < 2 ||
+			this.generation >= this.config.gauntletMaxRuns
+		) {
+			this.phase = 'finished';
+			this.pendingPopulation = [];
+			return;
+		}
+		this.phase = 'generation-complete';
+	}
+
 	nextMatch(): boolean {
 		if (this.currentSimulation) return false;
+		if (this.config.mode === 'gauntlet' && this.phase === 'generation-complete') {
+			this.phase = 'match';
+			this.currentMatchIndex = 0;
+			this.currentSimulation = null;
+			this.schedule = [this.population];
+			this.startNextMatch();
+			return this.currentSimulation !== null;
+		}
 		if (this.phase === 'generation-complete') {
 			this.nextGeneration();
 			return this.currentSimulation !== null;
@@ -652,6 +826,12 @@ export class EvolutionSandbox {
 		this.currentSeats = [];
 		this.evaluations = new Map();
 		this.registerGenomes(this.population);
+		if (this.config.mode === 'gauntlet') {
+			this.schedule = [this.population];
+			this.scheduleSeeds = [hash32(this.config.seed, this.generation, 0x51ed270b)];
+			this.startNextMatch();
+			return;
+		}
 		this.schedule = this.buildSchedule();
 		for (const genome of this.population) {
 			this.evaluations.set(genome.id, {
@@ -788,6 +968,14 @@ export class EvolutionSandbox {
 	 * the final population once more from the existing survivors and archive.
 	 */
 	continueEvolution(extraGenerations = 1): boolean {
+		if (this.config.mode === 'gauntlet') {
+			if (this.phase !== 'generation-complete' || this.population.length < 2) return false;
+			this.phase = 'match';
+			this.currentSimulation = null;
+			this.schedule = [this.population];
+			this.startNextMatch();
+			return this.currentSimulation !== null;
+		}
 		if (this.phase !== 'finished' || this.reports.length === 0) return false;
 		if (this.config.generations >= 50) return false;
 		const latest = this.reports[this.reports.length - 1];
@@ -848,7 +1036,11 @@ export class EvolutionSandbox {
 				genome: cloneGenome(row.genome)
 			})),
 			generation: this.generation,
-			phase: this.phase
+			phase: this.phase,
+			gauntletLives:
+				this.config.mode === 'gauntlet'
+					? Object.fromEntries(this.gauntletLives.entries())
+					: undefined
 		};
 	}
 
@@ -856,7 +1048,8 @@ export class EvolutionSandbox {
 		if (
 			snapshot.version !== 1 ||
 			(snapshot.phase !== 'generation-complete' && snapshot.phase !== 'finished') ||
-			snapshot.population.length < this.config.playerCount ||
+			snapshot.population.length <
+				(this.config.mode === 'gauntlet' ? 2 : this.config.playerCount) ||
 			snapshot.reports.length === 0
 		) {
 			return false;
@@ -876,6 +1069,15 @@ export class EvolutionSandbox {
 		this.scheduleSeeds = [];
 		this.evaluations = new Map();
 		this.genomeBank.clear();
+		this.gauntletLives.clear();
+		if (this.config.mode === 'gauntlet' && snapshot.gauntletLives) {
+			for (const genome of this.population) {
+				this.gauntletLives.set(
+					genome.id,
+					snapshot.gauntletLives[genome.id] ?? this.config.gauntletLives
+				);
+			}
+		}
 		this.registerGenomes(this.population);
 		for (const report of this.reports) {
 			for (const row of report.rows) this.registerGenomes([row.genome]);

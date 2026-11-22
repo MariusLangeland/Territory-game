@@ -2515,3 +2515,41 @@ for lineage match pairs that share a seed.
 - Measured 51-state, 500-tick improvement: 1,276 ms to 1,251 ms (−2.0%).
   Active 8-player timing was unchanged because the cache is invalidated every
   capture.
+
+---
+
+## ADR-079 — Gauntlet survival mode
+
+**Status:** accepted and implemented in 0.69.0  
+**Date:** 2026-11-22
+
+### Context
+
+Evolution Lab needed a second natural-selection format that keeps one persistent
+population and removes genomes through repeated free-for-all runs rather than
+generational breeding.
+
+### Decision
+
+- Add a `gauntlet` Evolution mode with up to 64 genomes in one free-for-all.
+- Each genome starts with three global lives; a state that dies in a run loses
+  one life and is removed permanently at zero.
+- After each run, the top 16 genomes by deterministic fitness that survived the
+  run recover one life, capped at the starting maximum. A genome eliminated in
+  the run cannot recover that same run.
+- Continue runs automatically until the remaining-bot target, a safety run cap,
+  or fewer than two genomes remain. A run itself ends on the normal win
+  condition or tick target.
+- Do not mutate or cross genomes in gauntlet mode.
+- Persist lives in the same generation/run-boundary IndexedDB checkpoint.
+- Increase the simulation player ceiling to 64 while keeping the default game at
+  51 states.
+
+### Consequences
+
+- Gauntlet is exploitation/pressure testing of a fixed genome pool, not a
+  mutation search.
+- Life recovery can offset one elimination for top performers, so elimination
+  pressure is strongest on low-fitness genomes.
+- Large 64-seat maps cost more setup and per-tick work; the lab reports measured
+  ticks/s.

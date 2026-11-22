@@ -3,14 +3,66 @@ import { TerritorySimulation, type PublicPlayer } from '../simulation';
 import {
 	DEFAULT_FITNESS_WEIGHTS,
 	EvolutionSandbox,
+	applyGauntletOutcome,
 	genomeFitness,
+	normalizeEvolutionConfig,
 	normalizeFitnessWeights,
-	runEvolution
+	runEvolution,
+	type GenomePerformance
 } from './evolution';
 import { parseEvolutionCsv, serializeEvolutionCsv } from './evolution-csv';
 import { BOT_MODULE_IDS, createRandomGenome, crossoverGenomes, mutateGenome } from './genome';
 
 describe('evolutionary AI sandbox', () => {
+	it('normalizes a 64-seat gauntlet config', () => {
+		const config = normalizeEvolutionConfig({ mode: 'gauntlet' });
+		expect(config.mode).toBe('gauntlet');
+		expect(config.populationSize).toBe(64);
+		expect(config.playerCount).toBe(64);
+		expect(config.gauntletLives).toBe(3);
+		expect(config.gauntletRecoveryCount).toBe(16);
+		expect(config.width).toBeGreaterThanOrEqual(2048);
+	});
+
+	it('applies gauntlet life loss, removal, and top-16 recovery', () => {
+		const rows: GenomePerformance[] = Array.from({ length: 20 }, (_, index) => {
+			const genome = createRandomGenome(100 + index);
+			return {
+				genome,
+				bucket: 'poor',
+				matches: 1,
+				wins: 0,
+				landShare: 0,
+				income: 0,
+				attackStrength: 0,
+				fitness: 1_000 - index,
+				descriptor: 'E0-D0-N0-A0',
+				economy: 0,
+				defense: 0,
+				naval: 0,
+				aggression: 0,
+				cooperation: 0,
+				eliminations: 0,
+				weakAttacks: 0,
+				defenseStops: 0,
+				defenseDamage: 0,
+				lineageWins: 0,
+				lineageLosses: 0,
+				lineageDelta: 0
+			};
+		});
+		const lives = new Map(
+			rows.map((row) => [row.genome.id, row.genome.id === rows[0].genome.id ? 1 : 3])
+		);
+		const eliminated = new Set([rows[0].genome.id]);
+		const outcome = applyGauntletOutcome(rows, lives, eliminated, 16, 3);
+		expect(outcome.remaining).toBe(19);
+		expect(rows[0].gauntletLives).toBe(0);
+		expect(rows[0].gauntletRemoved).toBe(true);
+		expect(rows[1].gauntletLives).toBe(3);
+		expect(outcome.lives.get(rows[1].genome.id)).toBe(3);
+	});
+
 	it('generates deterministic genomes and mutates them within bounds', () => {
 		const first = createRandomGenome(1234);
 		const second = createRandomGenome(1234);
@@ -99,6 +151,40 @@ describe('evolutionary AI sandbox', () => {
 		expect(sandbox.config.generations).toBe(2);
 		expect(sandbox.nextMatch()).toBe(true);
 		expect(sandbox.generation).toBe(1);
+	});
+
+	it('runs a gauntlet round with global lives', () => {
+		const sandbox = new EvolutionSandbox({
+			mode: 'gauntlet',
+			seed: 91,
+			populationSize: 6,
+			ticks: 200,
+			width: 640,
+			height: 360,
+			gauntletRemainingTarget: 2
+		});
+		sandbox.begin();
+		expect(sandbox.phase).toBe('match');
+		expect(sandbox.currentSeats).toHaveLength(6);
+		let guard = 0;
+		while (
+			sandbox.currentSimulation &&
+			!sandbox.currentSimulation.ended &&
+			sandbox.currentSimulation.tick < 200 &&
+			guard++ < 400
+		) {
+			sandbox.stepOnce();
+		}
+		sandbox.finishMatch();
+		expect(sandbox.reports).toHaveLength(1);
+		expect(sandbox.reports[0].rows).toHaveLength(6);
+		expect(sandbox.reports[0].rows.every((row) => typeof row.gauntletLives === 'number')).toBe(
+			true
+		);
+		if (sandbox.phase === 'generation-complete') {
+			expect(sandbox.nextMatch()).toBe(true);
+			expect(sandbox.currentSeats.length).toBe(sandbox.population.length);
+		}
 	});
 
 	it('captures and restores a generation-boundary session', () => {

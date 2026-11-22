@@ -50,6 +50,9 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] DISCARD clears the checkpoint and returns to the idle state.
 - [ ] NEW EVOLUTION replaces any saved checkpoint.
 - [ ] CSV export/import and saved-bucket loading still work.
+- [ ] Switch to GAUNTLET; a 64-bot run seats 64 states and advances runs.
+- [ ] GAUNTLET LIFE column, life loss, zero-life removal, and top-16 recovery work.
+- [ ] Reload between gauntlet runs and CONTINUE resumes the survivor pool.
 
 ## 4. Persistence and failure behavior
 

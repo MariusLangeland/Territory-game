@@ -86,6 +86,7 @@ import {
 	BOT_OPTION_MIN_TICKS,
 	BOT_OPTION_SWITCH_MARGIN,
 	OCCUPIED_DEFENSE_BONUS,
+	MAX_PLAYER_COUNT,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
 	RENDER_TILE_SIZE,
@@ -635,8 +636,8 @@ export class TerritorySimulation {
 		this.seed = options.seed >>> 0;
 		this.allPlayersBots = options.allPlayersBots === true;
 		const playerCount = Math.trunc(options.playerCount ?? PLAYER_COUNT);
-		if (playerCount < 2 || playerCount > PLAYER_COUNT) {
-			throw new Error(`playerCount must be between 2 and ${PLAYER_COUNT}.`);
+		if (playerCount < 2 || playerCount > MAX_PLAYER_COUNT) {
+			throw new Error(`playerCount must be between 2 and ${MAX_PLAYER_COUNT}.`);
 		}
 		this.playerCount = playerCount;
 		this.botDifficulty = options.botDifficulty ?? 'standard';

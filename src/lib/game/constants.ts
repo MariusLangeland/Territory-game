@@ -21,6 +21,8 @@ export const RENDER_TILE_SIZE = 32;
 
 /** One human + 50 AI states for the attack stress test. */
 export const PLAYER_COUNT = 51;
+/** Gauntlet mode seats up to 64 genomes in one free-for-all. */
+export const MAX_PLAYER_COUNT = 64;
 export const HUMAN_PLAYER_ID = 1;
 
 /** Fraction of map pixels that should become land, targeting a 62/38 ocean/land split. */
@@ -263,7 +265,7 @@ const AI_SUFFIXES = [
 export const PLAYER_NAMES: readonly string[] = [
 	...CORE_PLAYER_NAMES,
 	...Array.from(
-		{ length: PLAYER_COUNT - CORE_PLAYER_NAMES.length },
+		{ length: MAX_PLAYER_COUNT - CORE_PLAYER_NAMES.length },
 		(_, index) =>
 			`${AI_PREFIXES[index % AI_PREFIXES.length]}-${AI_SUFFIXES[Math.floor(index / AI_PREFIXES.length)]}`
 	)
@@ -321,7 +323,7 @@ const BASE_PALETTE: readonly PlayerColor[] = [
 
 function buildPalette(): PlayerColor[] {
 	const palette: PlayerColor[] = [...BASE_PALETTE];
-	for (let id = BASE_PALETTE.length; id <= PLAYER_COUNT; id++) {
+	for (let id = BASE_PALETTE.length; id <= MAX_PLAYER_COUNT; id++) {
 		const hue = (id * 137.508 + 19) % 360;
 		const saturation = 0.58 + (id % 4) * 0.07;
 		const lightness = 0.47 + (id % 3) * 0.075;

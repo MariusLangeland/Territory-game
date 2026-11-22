@@ -30,6 +30,7 @@ export {
 	runEvolution,
 	type BotBucket,
 	type EvolutionConfig,
+	type EvolutionMode,
 	type EvolutionReport,
 	type FitnessWeights,
 	type GenerationResult,

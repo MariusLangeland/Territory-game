@@ -15,6 +15,7 @@ import {
 	LAND_FRACTION,
 	MAP_HEIGHT,
 	MAP_WIDTH,
+	MAX_PLAYER_COUNT,
 	PALETTE,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
@@ -199,9 +200,9 @@ describe('map generation', () => {
 
 			const sim = new TerritorySimulation({ seed });
 			expect(sim.players).toHaveLength(PLAYER_COUNT);
-			expect(PLAYER_NAMES).toHaveLength(PLAYER_COUNT);
-			expect(new Set(PLAYER_NAMES).size).toBe(PLAYER_COUNT);
-			expect(PALETTE).toHaveLength(PLAYER_COUNT + 1);
+			expect(PLAYER_NAMES).toHaveLength(MAX_PLAYER_COUNT);
+			expect(new Set(PLAYER_NAMES).size).toBe(MAX_PLAYER_COUNT);
+			expect(PALETTE).toHaveLength(MAX_PLAYER_COUNT + 1);
 			for (const player of sim.players) {
 				expect(player.alive).toBe(true);
 				expect(player.territory).toBeGreaterThan(100);

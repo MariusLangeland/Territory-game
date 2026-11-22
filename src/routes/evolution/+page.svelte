@@ -26,6 +26,7 @@
 		type BotGenome,
 		type EvolutionBuckets,
 		type EvolutionConfig,
+		type EvolutionMode,
 		type EvolutionReport,
 		type GenomePerformance
 	} from '#lib/game/ai';
@@ -53,6 +54,7 @@
 	}
 
 	let config = $state<EvolutionConfig>({
+		mode: 'evolution',
 		seed: 1234,
 		populationSize: 16,
 		generations: 4,
@@ -63,7 +65,11 @@
 		height: 720,
 		teamCount: 1,
 		lineageDuels: true,
-		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS }
+		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS },
+		gauntletLives: 3,
+		gauntletRecoveryCount: 16,
+		gauntletRemainingTarget: 16,
+		gauntletMaxRuns: 50
 	});
 	let worker: Worker | null = null;
 	let started = $state(false);
@@ -173,11 +179,20 @@
 		if (!selectedGenomeId && currentSeats.length > 0) selectedGenomeId = currentSeats[0].id;
 		if (phase === 'finished') {
 			running = false;
-			status = 'Evolution complete. Buckets saved locally.';
+			status =
+				config.mode === 'gauntlet'
+					? `Gauntlet complete — ${population.length} bots remain.`
+					: 'Evolution complete. Buckets saved locally.';
 		} else if (phase === 'generation-complete') {
-			status = `Generation ${generation + 1} complete — preparing next generation…`;
+			status =
+				config.mode === 'gauntlet'
+					? `Run ${generation} complete — preparing next run…`
+					: `Generation ${generation + 1} complete — preparing next generation…`;
 		} else if (phase === 'match') {
-			status = `Generation ${generation + 1} · match ${progress.match}/${progress.matches || '?'}`;
+			status =
+				config.mode === 'gauntlet'
+					? `Run ${generation + 1} · ${population.length || currentSeats.length} bots`
+					: `Generation ${generation + 1} · match ${progress.match}/${progress.matches || '?'}`;
 		}
 	}
 
@@ -255,6 +270,31 @@
 		return instance;
 	}
 
+	function setMode(mode: EvolutionMode): void {
+		config.mode = mode;
+		if (mode === 'gauntlet') {
+			config.populationSize = 64;
+			config.playerCount = 64;
+			config.generations = 1;
+			config.matchesPerRound = 1;
+			config.teamCount = 1;
+			config.lineageDuels = false;
+			config.ticks = Math.max(config.ticks, 3000);
+			config.width = 2048;
+			config.height = 1024;
+		} else {
+			config.populationSize = Math.min(16, config.populationSize);
+			config.playerCount = Math.min(8, config.populationSize);
+			config.generations = 4;
+			config.matchesPerRound = 2;
+			config.teamCount = 1;
+			config.lineageDuels = true;
+			config.ticks = 1600;
+			config.width = 1280;
+			config.height = 720;
+		}
+	}
+
 	function discardSession(): void {
 		if (!started) {
 			notice = 'There is no saved Evolution Lab session to discard.';
@@ -283,6 +323,10 @@
 	}
 
 	function continueEvolution(): void {
+		if (config.mode === 'gauntlet' && phase === 'finished') {
+			notice = 'Gauntlets end when the remaining-bot target is reached.';
+			return;
+		}
 		if (!started) {
 			notice = 'No previous evolution to continue. Start a new evolution first.';
 			return;
@@ -460,7 +504,9 @@
 			{/if}
 			<div class="spectator-hud">
 				<div class="stat">
-					<span>GEN</span><strong>{progress.generation || '—'}</strong>
+					<span>{config.mode === 'gauntlet' ? 'RUN' : 'GEN'}</span><strong>
+						{progress.generation || '—'}
+					</strong>
 				</div>
 				<div class="stat">
 					<span>MATCH</span><strong>{progress.match || '—'}/{progress.matches || '—'}</strong>
@@ -490,9 +536,16 @@
 
 		<aside class="context">
 			<div class="context-actions">
-				<button class="primary" type="button" onclick={start}>NEW EVOLUTION</button>
-				<button class="continue" type="button" onclick={continueEvolution} disabled={!started}>
-					CONTINUE EVOLUTION
+				<button class="primary" type="button" onclick={start}>
+					{config.mode === 'gauntlet' ? 'NEW GAUNTLET' : 'NEW EVOLUTION'}
+				</button>
+				<button
+					class="continue"
+					type="button"
+					onclick={continueEvolution}
+					disabled={!started || (config.mode === 'gauntlet' && phase === 'finished')}
+				>
+					CONTINUE
 				</button>
 				<button class="discard" type="button" onclick={discardSession} disabled={!started}>
 					DISCARD
@@ -504,64 +557,125 @@
 					<summary>RUN SETUP</summary>
 					<div class="panel-body">
 						<div class="fields">
+							<label class="mode-field">
+								<span>MODE</span>
+								<select
+									value={config.mode}
+									onchange={(event) =>
+										setMode((event.currentTarget as HTMLSelectElement).value as EvolutionMode)}
+								>
+									<option value="evolution">EVOLUTION</option>
+									<option value="gauntlet">GAUNTLET · 64 FFA</option>
+								</select>
+							</label>
 							<label><span>SEED</span><input type="number" bind:value={config.seed} /></label>
-							<label>
-								<span>POPULATION</span><input
-									type="number"
-									min="4"
-									max="64"
-									bind:value={config.populationSize}
-								/>
-							</label>
-							<label>
-								<span>GENERATIONS</span><input
-									type="number"
-									min="1"
-									max="50"
-									bind:value={config.generations}
-								/>
-							</label>
-							<label>
-								<span>PLAYERS</span><input
-									type="number"
-									min="2"
-									max="51"
-									bind:value={config.playerCount}
-								/>
-							</label>
-							<label>
-								<span>MATCHES / ROUND</span><input
-									type="number"
-									min="1"
-									max="8"
-									bind:value={config.matchesPerRound}
-								/>
-							</label>
-							<label>
-								<span>TICKS / MATCH</span><input
-									type="number"
-									min="200"
-									max="30000"
-									step="100"
-									bind:value={config.ticks}
-								/>
-							</label>
-							<label>
-								<span>TEAM AI</span><input
-									type="number"
-									min="1"
-									max="8"
-									bind:value={config.teamCount}
-								/>
-							</label>
-							<label class="toggle">
-								<input type="checkbox" bind:checked={config.lineageDuels} />
-								<span>LINEAGE DUELS (1v1)</span>
-							</label>
+							{#if config.mode === 'gauntlet'}
+								<label>
+									<span>LIVES</span><input
+										type="number"
+										min="1"
+										max="9"
+										bind:value={config.gauntletLives}
+									/>
+								</label>
+								<label>
+									<span>TOP RECOVERY</span><input
+										type="number"
+										min="1"
+										max="64"
+										bind:value={config.gauntletRecoveryCount}
+									/>
+								</label>
+								<label>
+									<span>REMAIN TARGET</span><input
+										type="number"
+										min="1"
+										max="64"
+										bind:value={config.gauntletRemainingTarget}
+									/>
+								</label>
+								<label>
+									<span>MAX RUNS</span><input
+										type="number"
+										min="1"
+										max="200"
+										bind:value={config.gauntletMaxRuns}
+									/>
+								</label>
+								<label>
+									<span>TICKS / RUN</span><input
+										type="number"
+										min="200"
+										max="30000"
+										step="100"
+										bind:value={config.ticks}
+									/>
+								</label>
+							{:else}
+								<label>
+									<span>POPULATION</span><input
+										type="number"
+										min="4"
+										max="64"
+										bind:value={config.populationSize}
+									/>
+								</label>
+								<label>
+									<span>GENERATIONS</span><input
+										type="number"
+										min="1"
+										max="50"
+										bind:value={config.generations}
+									/>
+								</label>
+								<label>
+									<span>PLAYERS</span><input
+										type="number"
+										min="2"
+										max="51"
+										bind:value={config.playerCount}
+									/>
+								</label>
+								<label>
+									<span>MATCHES / ROUND</span><input
+										type="number"
+										min="1"
+										max="8"
+										bind:value={config.matchesPerRound}
+									/>
+								</label>
+								<label>
+									<span>TICKS / MATCH</span><input
+										type="number"
+										min="200"
+										max="30000"
+										step="100"
+										bind:value={config.ticks}
+									/>
+								</label>
+								<label>
+									<span>TEAM AI</span><input
+										type="number"
+										min="1"
+										max="8"
+										bind:value={config.teamCount}
+									/>
+								</label>
+								<label class="toggle">
+									<input type="checkbox" bind:checked={config.lineageDuels} />
+									<span>LINEAGE DUELS (1v1)</span>
+								</label>
+							{/if}
 						</div>
 						<p class="hint">
-							TEAM AI 1 = free-for-all. Lineage duels test each descendant against a parent; a
-							losing record is culled.
+							{#if config.mode === 'gauntlet'}
+								Every run seats all remaining genomes in one 64-bot FFA. Eliminated bots lose a
+								life; the top {config.gauntletRecoveryCount} surviving fitness bots recover one (max
+								{config.gauntletLives}).
+							{:else}
+								TEAM AI 1 = free-for-all. Lineage duels test each descendant against a parent; a
+								losing record is culled.
+							{/if}
 						</p>
 					</div>
 				</details>
@@ -579,10 +693,14 @@
 				<details class="panel" open>
 					<summary>SPREADSHEET ({rows.length})</summary>
 					<div class="panel-body">
-						<div class="button-row">
-							<button type="button" onclick={downloadCsv} disabled={!lastReport}>EXPORT CSV</button>
-							<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
-						</div>
+						{#if config.mode === 'evolution'}
+							<div class="button-row">
+								<button type="button" onclick={downloadCsv} disabled={!lastReport}>
+									EXPORT CSV
+								</button>
+								<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
+							</div>
+						{/if}
 						<input
 							bind:this={fileInput}
 							class="hidden-file"
@@ -592,11 +710,11 @@
 						/>
 						{#if notice}<p class="notice">{notice}</p>{/if}
 
-						<div class="spreadsheet">
+						<div class="spreadsheet" class:gauntlet={config.mode === 'gauntlet'}>
 							<div class="sheet-head">
 								<span>#</span><span>GENOME</span><span>FIT</span><span>BUCKET</span><span>
 									MARKOV
-								</span>
+								</span>{#if config.mode === 'gauntlet'}<span>LIFE</span>{/if}
 							</div>
 							<div class="sheet-body">
 								{#each rows as row, index (row.genome.id)}
@@ -611,6 +729,11 @@
 										<span>{row.fitness.toFixed(0)}</span>
 										<span class={`pill ${row.bucket}`}>{row.bucket}</span>
 										<span>{row.genome.markov ? `${row.genome.markov.states.length}s` : '—'}</span>
+										{#if config.mode === 'gauntlet'}
+											<span class:removed={row.gauntletRemoved}>
+												{row.gauntletLives ?? '—'}{row.gauntletRecovered ? '+' : ''}
+											</span>
+										{/if}
 									</button>
 								{/each}
 								{#if rows.length === 0}
@@ -913,7 +1036,8 @@
 		font-size: 9px;
 		color: rgba(247, 238, 208, 0.55);
 	}
-	.fields input {
+	.fields input,
+	.fields select {
 		background: #03080a;
 		border: 1px solid rgba(247, 238, 208, 0.18);
 		color: #f7eed0;
@@ -921,6 +1045,9 @@
 		font-size: 11px;
 		padding: 5px 6px;
 		min-width: 0;
+	}
+	.fields .mode-field {
+		grid-column: 1 / -1;
 	}
 	.fields .toggle {
 		display: flex;
@@ -969,6 +1096,10 @@
 		align-items: center;
 		gap: 4px;
 	}
+	.spreadsheet.gauntlet .sheet-head,
+	.spreadsheet.gauntlet .genome-row {
+		grid-template-columns: 24px minmax(0, 1fr) 52px 44px 40px 26px;
+	}
 	.sheet-head {
 		padding: 5px 6px;
 		font-size: 8px;
@@ -997,6 +1128,9 @@
 	.genome-row.selected {
 		background: rgba(243, 183, 77, 0.14);
 		color: #f3b74d;
+	}
+	.genome-row .removed {
+		color: #ff625f;
 	}
 	.genome-row .mono {
 		overflow: hidden;
