@@ -79,7 +79,58 @@ The upload strategy intentionally trades bandwidth for input smoothness under ex
 
 The leaderboard virtualization is just as important: updating 51 Svelte rows at 5 Hz produced ~14 ms tick-boundary frames; mounting only the visible slice removed those. The HUD clock/values update at 5 Hz while map rendering remains per-tick.
 
-### 2.3 What these numbers do not cover
+### 2.3 Evolution Lab worker investigation (November 2026)
+
+Measured with `pnpm bench`, the local Node build, and a CPU profile of
+`EvolutionSandbox.stepOnce()`. The Evolution Lab worker is **simulation CPU
+bound**, not render bound.
+
+| Match size | Steady tick cost | Single-core ceiling |
+| ---------- | ---------------: | ------------------: |
+| 2 players  |     0.42 ms/tick |      ~2,400 ticks/s |
+| 4 players  |     0.45 ms/tick |      ~2,200 ticks/s |
+| 8 players  |     0.56 ms/tick |      ~1,800 ticks/s |
+| 16 players |     0.94 ms/tick |      ~1,070 ticks/s |
+| 51 players |     2.43 ms/tick |        ~410 ticks/s |
+
+The 51-state `pnpm bench` run measured **4.08 ms/tick sustained**,
+**226 ms** for map generation + 51 starts, and **16.4 ms** per on-demand
+checksum. Match setup for a 1280 × 720 Evolution Lab map costs **130–155 ms**,
+which is significant for short 400–1600 tick matches.
+
+CPU profile hot spots, largest first:
+
+1. `findBotBuildCell` / `botNeedsExpansion`: scans rings up to 80 px around the
+   State and validates every candidate against every structure
+   (`structures.hasWithinRadius`). It accounts for roughly **20–45%** of worker
+   samples depending on player count.
+2. `TerritoryIntegrity.labelComponents`: full-map component labeling every
+   annex interval (1 s). Roughly **25–40%** of worker samples.
+3. `cleanupUnclaimedPockets`: full-map scan every 10 s, roughly **5–10%**.
+4. Attack processing, map generation, and structure work are secondary at
+   normal match sizes.
+
+At `1000×`, the requested rate is 10,000 ticks/s. Even the 2-player case is
+only ~2,400 ticks/s before worker scheduling and message overhead, so the
+`1000×` label is a request, not a guaranteed rate. On the main thread, a
+2-player `1000×` run held **360 frames over 2.5 s** with p50 6.9 ms, p99 7.1 ms,
+and max 7.1 ms; the worker separation is working. The remaining ceiling is
+simulation work, not WebGPU rendering or Svelte.
+
+Highest-value follow-ups:
+
+- Cache "has any legal build site" per player/tick; stop re-running the
+  80 px ring scan for every missing structure type.
+- Add a spatial index or occupied-radius grid for structure spacing instead of
+  scanning all structures per candidate.
+- Skip the full integrity scan when no ownership changed since the last scan;
+  consider an incremental component update if scans remain necessary.
+- Cache or pre-generate Evolution maps when match seeds repeat, or accept the
+  setup cost as part of generation timing.
+- Report effective ticks/s in the lab instead of implying `1000×` is always
+  achieved.
+
+### 2.4 What these numbers do not cover
 
 - The final target match size or economy-throttled combat load.
 - A 4K display with DPR 2 (the renderer caps DPR at 2).
