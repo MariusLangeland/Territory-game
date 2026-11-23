@@ -68,7 +68,7 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 | Elimination and last-state-standing victory               | ✅                       |
 | Pause, camera pan/zoom/fit/focus                          | ✅                       |
 | WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
-| Circular / smooth / organic selectable growth layers      | ✅                       |
+| Organic growth locked for player matches                  | ✅                       |
 | State structures anchoring territory and projecting auras | ✅                       |
 | Supply income, drag-and-drop build cards, 70% victory     | ✅                       |
 | Minimap, virtualized state-count-aware leaderboard, perf  | ✅                       |
@@ -276,7 +276,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 
 - Every launch costs supply; there is no refund unless the player cancels the front.
 - Supply has no global maximum. Territory and War Academies raise the cap without an upper bound; gains clamp to the current cap.
-- A front flood-fills connected target-owned land; the growth layer selects circular, smoothed, or organic shape.
+- A front flood-fills connected target-owned land using the locked organic growth layer.
 - A front ends at zero strength or after 20 captureless ticks. There is no fixed lifetime.
 - Mutual fronts trade strength; the survivor pauses on the contact line.
 - Cancellation refunds a proportional strength share immediately and is not tick-queued in this build.
@@ -286,27 +286,19 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 
 ### 4.11 Combat randomness
 
-Combat has no combat-roll randomness, crits, spread, or morale. The organic growth layer uses a deterministic per-attack PRNG solely to choose frontier candidates; the sequence is reproducible. The least-resistance sampler is deterministic: it samples a fixed number of candidates in growth order, compares integer effective costs, and breaks ties by sample order. Given the same state, growth mode, and accepted commands, every pixel outcome is deterministic.
+Combat has no combat-roll randomness, crits, spread, or morale. Player matches always use organic growth. The organic layer uses a deterministic per-attack PRNG solely to choose frontier candidates; the sequence is reproducible. The least-resistance sampler is deterministic: it samples a fixed number of candidates in growth order, compares integer effective costs, and breaks ties by sample order. Given the same state and accepted commands, every pixel outcome is deterministic.
 
-### 4.12 Growth layers
+### 4.12 Growth model
 
-Every attack captures a `growthMode` at creation time and keeps it for its lifetime. The selected mode applies to all **new** fronts (human and bots); existing fronts are unchanged.
+**Organic growth is locked for player matches.** Every new front uses organic frontier selection; there is no player-facing growth selector. `circular` and `smooth` remain internal implementations for tests and benchmark comparisons only.
 
-| Mode       | Frontier selection                                                                                              | Result                                                           |
-| ---------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `circular` | Min-heap keyed by squared Euclidean distance from the attack anchor; ties by pixel index                        | Approximates a digital disc instead of a Manhattan diamond       |
-| `smooth`   | Nearest radial band first; within the band prefer more attacker-owned neighbours, then nearer/lower-index cells | Fills concavities, suppresses thin spikes and long tangent wings |
-| `organic`  | Uniform random pick from a frontier array using a per-attack deterministic PRNG                                 | Irregular organic lobes, fully replayable                        |
+Organic frontier selection uses a uniform random pick from the attack's frontier array with a per-attack deterministic PRNG. The PRNG is seeded from the world seed, attack id, attacker id, and defender id. Candidates are validated for land, ownership, border connectivity, and budget before capture.
 
-- The growth anchor is the rounded centroid of the initial border-contact seeds. The click is not the origin. This prevents a distance-based layer from sending a narrow tendril toward a click deep inside hostile territory before blooming.
-- Defense only chooses among the candidates the growth layer already prioritizes; it does not scan the whole frontier. The front therefore keeps its overall shape while preferring cheaper local lanes.
+- The growth anchor is the rounded centroid of the initial border-contact seeds. The click is not the origin.
+- Defense only chooses among the candidates the growth layer already prioritizes; it does not scan the whole frontier.
 - The shape is still clipped by coastlines, other states, and the attacker's own border.
-- The **smooth** layer groups candidates into integer squared-distance bands around the anchor. It always serves the nearest non-empty band before farther bands, then uses attacker-neighbour count and distance/index tie-breaks inside the band. This radial bound is what prevents tangent wings along the initial border.
-- The **organic** layer seeds its PRNG from the world seed, attack id, attacker id, and defender id.
-- A growth-mode switch is applied at the next tick, before commands and bot decisions. It is currently a local test control; an online server must make it authoritative match configuration or a tick-stamped command.
 - Candidate queues and per-attack PRNG state are part of checksums.
-
-The HUD growth switcher selects the layer for new orders. It has no effect on orders already in flight.
+- Changing the locked growth model requires a protocol/determinism review and an explicit version decision.
 
 ### 4.13 Conflicting fronts
 
@@ -470,7 +462,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 5.1 Screen flow
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
-2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), growth layer, optional 10/20/30-minute timer, optional **500-stack bot Command Post surge**, victory summary, saved defaults, rebuild, deploy. Simulation paused.
+2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), optional 10/20/30-minute timer, optional **500-stack bot Command Post surge**, victory summary, saved defaults, rebuild, deploy. Simulation paused.
 3. **Live match:** state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
@@ -494,7 +486,6 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Pointer drag pans and the wheel zooms. Touch supports one-finger pan/tap and two-finger pinch zoom anchored at the gesture midpoint; a pinch suppresses the follow-up tap.
 - Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates and makes Enter queue a five-level upgrade, Enter attacks or upgrades the cursor cell, and Escape clears it. A visually hidden live region announces owner, defense, and available action.
-- Growth-layer switcher for circular / smooth / organic, affecting new orders only.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center.
 - A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
@@ -524,7 +515,6 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 | Minimap click            | Center camera                                      |
 | Right-click structure    | Open structure actions; demolish (no refund)       |
 | Right-click rival region | Open rival actions; request alliance (placeholder) |
-| Growth switcher          | Choose the frontier layer for new orders           |
 
 ### 5.4 Camera
 
@@ -677,8 +667,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Fronts resolve without corrupting frontier sets.
 - [x] Change buffer does not overflow in stress runs.
 - [x] Clicking a valid frontier creates a free attack with no economy check.
-- [x] Circular, smooth, and organic growth layers are selectable and deterministic.
-- [x] A growth-layer switch applies to new orders at the next tick; in-flight orders retain their layer.
+- [x] Organic growth is locked for player matches and deterministic; circular/smooth remain internal benchmark modes.
 - [x] Distance-based growth is anchored at the border contact, never at a deep click.
 - [x] Mutual fronts trade durable strength simultaneously; a front at zero dies and the survivor pauses.
 - [x] Detached pockets are annexed by the adjacent protected mainland with the largest shared border.
@@ -712,7 +701,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 3. **Match size:** 51 is a stress mode. What is the shipping player/state count?
 4. **Match duration/pacing:** unthrottled attacks saturate the map in ~10 seconds.
 5. **Leaderboard scale:** scroll, pagination, or top-N with pinned player?
-6. **Growth layer:** should shipping play use circular, smooth, organic, or a blend? Keep the test switch?
+6. **Growth model:** resolved — organic is locked for player matches; circular/smooth remain test/benchmark internals.
 7. **Queue bounds:** apart from its embedded-order lifetime, should a front have a lower candidate/capture bound?
 8. **Server tick buffer:** how much latency to absorb in online play?
 9. **Map format:** procedural generation vs baked assets for cross-engine certainty?

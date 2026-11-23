@@ -357,14 +357,20 @@ function renderMatch(): string {
 	}
 	const defaultTimer = DEFAULT_MATCH_SETTINGS.timerMinutes;
 	lines.push('', `Default: \`${defaultTimer}\` (${timerLabel(defaultTimer)}).`);
-	lines.push('', '### Growth layer', '');
+	lines.push('', '### Growth model', '');
+	lines.push(
+		`Player matches are locked to \`${DEFAULT_GROWTH_MODE}\` growth (${GROWTH_LABELS[DEFAULT_GROWTH_MODE]}: ${GROWTH_DESCRIPTIONS[DEFAULT_GROWTH_MODE]}).`
+	);
+	lines.push('');
 	for (const mode of GROWTH_MODES) {
-		lines.push(`- \`${mode}\` — ${GROWTH_LABELS[mode]}: ${GROWTH_DESCRIPTIONS[mode]}`);
+		if (mode === DEFAULT_GROWTH_MODE) continue;
+		lines.push(
+			`- \`${mode}\` — ${GROWTH_LABELS[mode]}: retained for internal tests and benchmarks only.`
+		);
 	}
-	lines.push('', `Default: \`${DEFAULT_GROWTH_MODE}\`.`);
 	lines.push('', '### Default match settings', '');
 	lines.push(
-		`\`states\` = \`${DEFAULT_MATCH_SETTINGS.states}\`, \`mapPreset\` = \`${DEFAULT_MATCH_SETTINGS.mapPreset}\`, \`difficulty\` = \`${DEFAULT_MATCH_SETTINGS.difficulty}\`, \`growthMode\` = \`${DEFAULT_MATCH_SETTINGS.growthMode}\`, \`timerMinutes\` = \`${DEFAULT_MATCH_SETTINGS.timerMinutes}\`.`
+		`\`states\` = \`${DEFAULT_MATCH_SETTINGS.states}\`, \`mapPreset\` = \`${DEFAULT_MATCH_SETTINGS.mapPreset}\`, \`difficulty\` = \`${DEFAULT_MATCH_SETTINGS.difficulty}\`, \`timerMinutes\` = \`${DEFAULT_MATCH_SETTINGS.timerMinutes}\`, \`botCommandPostStacks\` = \`${DEFAULT_MATCH_SETTINGS.botCommandPostStacks}\`.`
 	);
 	return lines.join('\n');
 }

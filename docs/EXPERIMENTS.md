@@ -60,7 +60,10 @@ Each launch consumes one inventory order. The attack also embeds `1 + min(5, cei
 
 ### Growth layers and territorial cleanup
 
-Three modular frontier selectors are implemented and switchable from the HUD for **new orders**:
+**Outcome:** organic is now the locked growth model for player matches. The HUD
+selector has been removed; circular and smooth remain internal test/benchmark
+implementations only. The table below records the experiment that led to this
+choice.
 
 | Mode     | Expansion shape | Selection                                        |
 | -------- | --------------- | ------------------------------------------------ |
@@ -68,7 +71,7 @@ Three modular frontier selectors are implemented and switchable from the HUD for
 | Smooth   | rounded front   | nearest radial band + attacker-neighbour scoring |
 | Organic  | irregular lobes | deterministic random frontier pick               |
 
-Existing orders retain their original layer; bots and the human pick up the currently selected mode for newly created attacks on the next tick. Growth mode and per-frontier state are included in checksums. Distance-based layers grow from the centroid of the initial border contact; the click is only a target/search selector, so growth always emanates from the border.
+During the experiment, existing orders retained their original layer and bots/humans picked up the selected mode for newly created attacks. The player switch is now retired: all player matches use organic. Growth mode and per-frontier state remain in checksums. Distance-based layers grew from the centroid of the initial border contact; the click was only a target/search selector, so growth always emanated from the border.
 
 Two cleanup rules plus the first structure are always active:
 

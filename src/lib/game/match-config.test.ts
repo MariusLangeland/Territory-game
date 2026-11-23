@@ -20,7 +20,6 @@ describe('match settings', () => {
 			states: 9999,
 			mapPreset: 'moon' as never,
 			difficulty: 'impossible' as never,
-			growthMode: 'noise' as never,
 			timerMinutes: 11
 		});
 		expect(normalized).toEqual(DEFAULT_MATCH_SETTINGS);
@@ -30,6 +29,12 @@ describe('match settings', () => {
 		const changed = { ...DEFAULT_MATCH_SETTINGS, states: 8, timerMinutes: 10 };
 		expect(matchSettingsEqual(DEFAULT_MATCH_SETTINGS, changed)).toBe(false);
 		expect(matchSettingsEqual(DEFAULT_MATCH_SETTINGS, { ...DEFAULT_MATCH_SETTINGS })).toBe(true);
+	});
+
+	it('ignores legacy growth-mode settings after locking the match to organic', () => {
+		const normalized = normalizeMatchSettings({ growthMode: 'circular' } as never);
+		expect(normalized).toEqual(DEFAULT_MATCH_SETTINGS);
+		expect('growthMode' in normalized).toBe(false);
 	});
 
 	it('normalizes and compares the bot command-post modifier', () => {

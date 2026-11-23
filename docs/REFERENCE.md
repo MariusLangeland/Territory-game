@@ -195,16 +195,15 @@ Allowed: `8`, `16`, `24`, `32`, `51`. Default: `51`.
 
 Default: `0` (no timer).
 
-### Growth layer
+### Growth model
 
-- `circular` — CIRCULAR: Euclidean-priority frontier; grows as a digital disc.
-- `smooth` — SMOOTH: Radial-band frontier that fills concavities and suppresses spikes.
-- `organic` — ORGANIC: Deterministic random frontier selection; irregular, organic lobes.
+Player matches are locked to `organic` growth (ORGANIC: Deterministic random frontier selection; irregular, organic lobes.).
 
-Default: `organic`.
+- `circular` — CIRCULAR: retained for internal tests and benchmarks only.
+- `smooth` — SMOOTH: retained for internal tests and benchmarks only.
 
 ### Default match settings
 
-`states` = `51`, `mapPreset` = `standard`, `difficulty` = `standard`, `growthMode` = `organic`, `timerMinutes` = `0`.
+`states` = `51`, `mapPreset` = `standard`, `difficulty` = `standard`, `timerMinutes` = `0`, `botCommandPostStacks` = `0`.
 
 <!-- AUTOGEN:match END -->

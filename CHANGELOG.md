@@ -4,6 +4,9 @@
 
 ### Gameplay
 
+- **Organic growth is locked for player matches.** The intro and HUD growth
+  selectors are removed; circular and smooth remain internal test/benchmark
+  implementations only.
 - New match modifier: **500-STACK SURGE** gives every AI commander a starting
   500-stack Command Post for high-economy stress matches. It is saved with match
   defaults and leaves the human commander unchanged in standard matches.

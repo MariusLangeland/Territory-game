@@ -206,7 +206,9 @@ Attack frontier processing also enforces border connectivity at capture time: th
 
 ### Growth layers
 
-Each `AttackState` owns a `GrowthLayer` selected from `growthMode` at creation:
+Player matches are locked to organic growth; circular and smooth exist only for
+internal tests/benchmarks. Internally, each `AttackState` still owns a
+`GrowthLayer` created from its growth mode:
 
 - **Circular** — integer min-heap keyed by squared distance from the border-contact anchor; approximates a disc.
 - **Smooth** — squared-distance bands served nearest-first, preferring candidates with more attacker-owned neighbours inside the active band. This prevents a straight frontier's tangent direction from growing far ahead of the radial front.

@@ -13,13 +13,7 @@
 		TICK_RATE,
 		colorForPlayer
 	} from '#lib/game/constants';
-	import {
-		DEFAULT_GROWTH_MODE,
-		GROWTH_DESCRIPTIONS,
-		GROWTH_LABELS,
-		GROWTH_MODES,
-		type GrowthMode
-	} from '#lib/game/growth';
+	import { DEFAULT_GROWTH_MODE } from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
 	import {
 		BOT_COMMAND_POST_STACK_OPTIONS,
@@ -109,7 +103,6 @@
 	let rankViewportHeight = $state(360);
 	let handRaised = $state(true);
 	let handShellEl = $state<HTMLDivElement | null>(null);
-	let growthMode = $state<GrowthMode>(DEFAULT_GROWTH_MODE);
 	let matchSettings = $state<MatchSettings>({ ...DEFAULT_MATCH_SETTINGS });
 	let appliedMatchSettings = $state<MatchSettings | null>(null);
 	let settingsDirty = $derived(
@@ -525,7 +518,6 @@
 		cameraView = null;
 		rankScrollTop = 0;
 		handRaised = true;
-		growthMode = normalized.growthMode;
 		clearDragState();
 		eventFeed = [];
 		currentSeed = seed >>> 0;
@@ -548,7 +540,7 @@
 					playerCount: normalized.states,
 					width: preset.width,
 					height: preset.height,
-					growthMode: normalized.growthMode,
+					growthMode: DEFAULT_GROWTH_MODE,
 					botDifficulty: normalized.difficulty,
 					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
 					botGenomes,
@@ -623,7 +615,6 @@
 
 	function handleTick(next: GameSnapshot, events: SimEvent[]): void {
 		snapshot = next;
-		growthMode = next.growthMode;
 
 		const important = events.filter((event) => event.kind !== 'system');
 		if (important.length > 0) {
@@ -747,13 +738,6 @@
 
 	function handleRankScroll(event: Event): void {
 		rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
-	}
-
-	function selectGrowthMode(mode: GrowthMode): void {
-		if (!sim) return;
-		growthMode = mode;
-		sim.setGrowthMode(mode);
-		showToast(`${GROWTH_LABELS[mode]} growth selected for new fronts.`, 'success');
 	}
 
 	function cardDefinition(card: PublicCard) {
@@ -1731,23 +1715,6 @@
 			</div>
 		</div>
 
-		<div class="growth-switcher hud" aria-label="Growth layer for new fronts">
-			<span class="growth-label">GROWTH / NEW FRONTS</span>
-			<div class="growth-options">
-				{#each GROWTH_MODES as mode (mode)}
-					<button
-						type="button"
-						class:active={growthMode === mode}
-						onclick={() => selectGrowthMode(mode)}
-						title={GROWTH_DESCRIPTIONS[mode]}
-						aria-pressed={growthMode === mode}
-					>
-						{GROWTH_LABELS[mode]}
-					</button>
-				{/each}
-			</div>
-		</div>
-
 		<div
 			class="supply-dock hud"
 			class:previewing={!!supplyPreview}
@@ -2067,14 +2034,6 @@
 							<select bind:value={matchSettings.difficulty} onchange={persistMatchSettings}>
 								{#each BOT_DIFFICULTY_OPTIONS as option (option.id)}
 									<option value={option.id}>{option.label}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>GROWTH LAYER</span>
-							<select bind:value={matchSettings.growthMode} onchange={persistMatchSettings}>
-								{#each GROWTH_MODES as mode (mode)}
-									<option value={mode}>{GROWTH_LABELS[mode]}</option>
 								{/each}
 							</select>
 						</label>
@@ -3624,61 +3583,6 @@
 		fill: #93e08d;
 	}
 
-	.growth-switcher {
-		left: 22px;
-		bottom: 300px;
-		transform: none;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		height: 32px;
-		padding: 0 7px 0 12px;
-		border: 1px solid var(--line-strong);
-		background: rgba(5, 13, 18, 0.82);
-		backdrop-filter: blur(14px);
-		box-shadow: 0 10px 32px rgba(0, 0, 0, 0.24);
-		animation: hud-in 600ms 240ms ease-out both;
-	}
-
-	.growth-label {
-		font-family: var(--font-mono);
-		font-size: 7px;
-		letter-spacing: 0.12em;
-		color: var(--ink-faint);
-	}
-
-	.growth-options {
-		display: flex;
-		gap: 3px;
-	}
-
-	.growth-options button {
-		height: 22px;
-		padding: 0 8px;
-		border: 1px solid transparent;
-		background: transparent;
-		font-family: var(--font-mono);
-		font-size: 7px;
-		letter-spacing: 0.06em;
-		color: var(--ink-dim);
-		cursor: pointer;
-		transition:
-			color 140ms ease,
-			background 140ms ease,
-			border-color 140ms ease;
-	}
-
-	.growth-options button:hover {
-		color: var(--ink);
-		border-color: var(--line-strong);
-	}
-
-	.growth-options button.active {
-		border-color: var(--signal);
-		background: var(--signal);
-		color: #0a1310;
-	}
-
 	kbd {
 		display: inline-block;
 		padding: 2px 4px;
@@ -4914,7 +4818,6 @@
 		}
 
 		.right-rail,
-		.growth-switcher,
 		.clock-block {
 			display: none;
 		}

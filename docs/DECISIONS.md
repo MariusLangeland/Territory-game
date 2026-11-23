@@ -3043,3 +3043,36 @@ modifier so players can deliberately create the same high-economy stress match.
 - The modifier does not change normal defaults or match outcomes unless selected.
 - As with any starting structure, captured/razed Command Posts stop providing
   income; the modifier is not a permanent income buff.
+
+---
+
+## ADR-095 — Lock organic growth for player matches
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Circular, smooth, and organic growth layers were introduced as an experiment and
+remained selectable from the intro and HUD long after organic became the default.
+The selector added a match-setting dimension, an in-match test control, and
+documentation complexity for a choice that no longer served shipping play.
+
+### Decision
+
+- Lock **organic** growth for all player matches.
+- Remove the growth-layer selector from the intro match setup and the in-game
+  HUD.
+- Remove growthMode from saved match settings; legacy saved values are ignored.
+- Keep circular and smooth implementations in src/lib/game/growth/ for internal
+  tests and benchmark comparisons only.
+- Keep growthMode on the simulation API and per-attack state for deterministic
+  tests and replay data, but the main game always passes organic.
+
+### Consequences
+
+- Players get one consistent irregular front model.
+- Saved settings no longer carry a growth choice; old values normalize away.
+- The benchmark can still compare all three layers without exposing them as
+  product options.
+- Future growth-model changes require a deliberate determinism/protocol ADR.

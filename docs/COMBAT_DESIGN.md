@@ -548,7 +548,7 @@ The user approved these on 2026-11-20. This table records the shipped choices; e
 | 7   | Reinforcement            | **No reinforcement** in v1.                                                                                                                 |
 | 8   | Fortification stacking   | Unbounded stacks (as before).                                                                                                               |
 | 9   | Capital capture          | Keep ADR-012: capture destroys State; territory remains but unanchored.                                                                     |
-| 10  | Growth layer             | In-match switch remains available for testing.                                                                                              |
+| 10  | Growth layer             | Organic locked for player matches; circular/smooth remain test/benchmark internals.                                                         |
 | 11  | Front cap                | No explicit cap; supply and idle expiry bound fronts.                                                                                       |
 | 12  | Attrition constants      | `100 + 50 × opponent steps` per pair per tick.                                                                                              |
 | 13  | Unaffordable requeue fix | Landed: cheapest candidate requeues instead of killing the front.                                                                           |

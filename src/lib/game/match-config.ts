@@ -1,4 +1,3 @@
-import { DEFAULT_GROWTH_MODE, isGrowthMode, type GrowthMode } from './growth';
 import type { BotDifficulty } from './simulation';
 
 export type MapPresetId = 'standard' | 'compact' | 'clash';
@@ -37,7 +36,6 @@ export interface MatchSettings {
 	states: number;
 	mapPreset: MapPresetId;
 	difficulty: BotDifficulty;
-	growthMode: GrowthMode;
 	timerMinutes: number;
 	botCommandPostStacks: number;
 }
@@ -46,7 +44,6 @@ export const DEFAULT_MATCH_SETTINGS: MatchSettings = {
 	states: 51,
 	mapPreset: 'standard',
 	difficulty: 'standard',
-	growthMode: DEFAULT_GROWTH_MODE,
 	timerMinutes: 0,
 	botCommandPostStacks: 0
 };
@@ -67,10 +64,6 @@ export function normalizeMatchSettings(value: Partial<MatchSettings> | null): Ma
 	const difficulty = BOT_DIFFICULTY_OPTIONS.some((option) => option.id === value?.difficulty)
 		? (value?.difficulty ?? DEFAULT_MATCH_SETTINGS.difficulty)
 		: DEFAULT_MATCH_SETTINGS.difficulty;
-	const growthMode =
-		value?.growthMode && isGrowthMode(value.growthMode)
-			? value.growthMode
-			: DEFAULT_MATCH_SETTINGS.growthMode;
 	const timerMinutes = TIMER_OPTIONS.includes(value?.timerMinutes as (typeof TIMER_OPTIONS)[number])
 		? (value?.timerMinutes ?? DEFAULT_MATCH_SETTINGS.timerMinutes)
 		: DEFAULT_MATCH_SETTINGS.timerMinutes;
@@ -83,7 +76,6 @@ export function normalizeMatchSettings(value: Partial<MatchSettings> | null): Ma
 		states,
 		mapPreset: mapPresetId,
 		difficulty,
-		growthMode,
 		timerMinutes,
 		botCommandPostStacks
 	};
@@ -111,7 +103,6 @@ export function matchSettingsEqual(left: MatchSettings, right: MatchSettings): b
 		left.states === right.states &&
 		left.mapPreset === right.mapPreset &&
 		left.difficulty === right.difficulty &&
-		left.growthMode === right.growthMode &&
 		left.timerMinutes === right.timerMinutes &&
 		left.botCommandPostStacks === right.botCommandPostStacks
 	);

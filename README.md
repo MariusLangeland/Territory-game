@@ -17,7 +17,7 @@
 >
 > **AI commanders:** main-game bots are seeded from **21 gauntlet survivors** (seed 1236, run 24), followed by any locally saved Evolution Lab buckets. Genomes carry deterministic personality traits, per-type structure affinities, and optional semi-Markov strategic controllers. Every bot opens with a shared supply ramp, scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, and converts strategic modes into build/attack priorities. Attack frequency is target-utility driven rather than a flat aggression roll; high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply.
 >
-> The main game runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, three growth layers, optional match timers, and three bot difficulties. The **Evolution Lab** runs worker-driven population evolution and a **64-bot, 3-life gauntlet** with top-16 life recovery, JSON state export/import, and IndexedDB session restore. Online multiplayer remains specified but **not wired up**.
+> The main game runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, locked organic growth, optional match timers, and three bot difficulties. The **Evolution Lab** runs worker-driven population evolution and a **64-bot, 3-life gauntlet** with top-16 life recovery, JSON state export/import, and IndexedDB session restore. Online multiplayer remains specified but **not wired up**.
 >
 > **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md); headless evolution findings live in [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md).
 
@@ -41,7 +41,7 @@
 | AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                              |
 | AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                      |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                          |
-| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, 500-stack bot Command Post surge, saved defaults                                                                 |
+| Match setup     | State count, three map presets, bot difficulty, optional timer, 500-stack bot Command Post surge, saved defaults                                                                               |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                       |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                    |
@@ -108,8 +108,8 @@ pnpm format     # Prettier write
 | `F` / `C`                   | Fit atlas / return to beachhead                                 |
 | `H`                         | Open the field manual                                           |
 | Minimap click               | Jump the camera                                                 |
-| Growth switcher             | Select circular / smooth / organic for **new** fronts           |
-| Drag a build card           | Drop on controlled land to buy/build that structure             |
+
+| Drag a build card | Drop on controlled land to buy/build that structure |
 
 A click must be on land near a shared border. The simulation reports ocean, own territory, no-shared-border, and insufficient-supply failures.
 
@@ -154,17 +154,11 @@ The map has six discrete elevation tiers: **lowland, plains, hills, highlands, m
 
 Hovering a land cell updates the compact defense readout beside the card hand; its tooltip shows elevation, base defense, and aura details. Grid reference and target-description panels were removed to keep vertical space clear.
 
-### Growth layers
+### Growth model
 
-The HUD selector switches the frontier-selection strategy used by attacks created from the next tick onward. Existing fronts keep the layer they started with, so you can compare layers in the same match.
+Player matches use **locked organic growth**: new fronts select uniformly from a per-attack deterministic frontier array, producing irregular lobes that are fully replayable. There is no player-facing growth selector.
 
-| Layer        | Behavior                                                                              |
-| ------------ | ------------------------------------------------------------------------------------- |
-| **Circular** | Euclidean-priority frontier; expands as a digital disc instead of a Manhattan diamond |
-| **Smooth**   | Radial bands with concavity filling; suppresses tangent wings and thin spikes         |
-| **Organic**  | Deterministic random frontier selection; irregular, organic lobes                     |
-
-Circular and smooth both grow radially from the border and can look similar by design; smooth trades exact circularity for banded concavity filling. Organic is the visually distinct mode.
+Circular and smooth frontier implementations remain in the codebase for internal tests and benchmark comparisons only.
 
 ### Structures
 

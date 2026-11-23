@@ -44,23 +44,23 @@ Design consequence: a slow frame can cause two simulation steps in one frame, bu
 
 All authoritative quantities are integers:
 
-| Quantity                   | Representation                                 |
-| -------------------------- | ---------------------------------------------- |
-| Territory count            | JS number, integer                             |
-| Owner id                   | uint16 (`1..51` in the stress build)           |
-| Tick                       | integer                                        |
-| PRNG state                 | uint32                                         |
-| Growth layer               | one of `circular`, `smooth`, `organic`         |
-| Frontier candidate storage | layer-specific deterministic structure         |
-| Attack claim provenance    | attack id (uint32) per cell                    |
-| Structure identity         | integer id, type enum, owner, map cell, stacks |
-| District                   | per-cell structure type code (0 = none)        |
-| Attack seed distance       | squared integer distance                       |
-| Effective levels           | `max(0, attacker Barracks − defender Jammers)` |
-| Power                      | `30 + 15 × logTier` per tick                   |
-| Defense                    | `1 + elevation + occupied + aura`              |
-| State aura                 | 16 px radius, +20, max once, friendly          |
-| Elevation tier             | uint8, 0–5                                     |
+| Quantity                   | Representation                                   |
+| -------------------------- | ------------------------------------------------ |
+| Territory count            | JS number, integer                               |
+| Owner id                   | uint16 (`1..51` in the stress build)             |
+| Tick                       | integer                                          |
+| PRNG state                 | uint32                                           |
+| Growth layer               | player matches always `organic`; others internal |
+| Frontier candidate storage | layer-specific deterministic structure           |
+| Attack claim provenance    | attack id (uint32) per cell                      |
+| Structure identity         | integer id, type enum, owner, map cell, stacks   |
+| District                   | per-cell structure type code (0 = none)          |
+| Attack seed distance       | squared integer distance                         |
+| Effective levels           | `max(0, attacker Barracks − defender Jammers)`   |
+| Power                      | `30 + 15 × logTier` per tick                     |
+| Defense                    | `1 + elevation + occupied + aura`                |
+| State aura                 | 16 px radius, +20, max once, friendly            |
+| Elevation tier             | uint8, 0–5                                       |
 
 No floating-point resources, morale, speed, or distance influences outcomes. The only floats in the whole map pipeline are inside map generation, which is versioned and completed before any match commands are applied.
 
