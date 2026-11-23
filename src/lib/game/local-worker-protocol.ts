@@ -92,5 +92,13 @@ export interface LocalWorkerTelemetry {
 	behavior: ReturnType<import('./simulation').TerritorySimulation['getBotBehaviorTelemetry']>;
 }
 
+export interface LocalWorkerPaused {
+	type: 'paused';
+}
+
 export type LocalWorkerOutbound =
-	LocalWorkerInit | LocalWorkerVisual | LocalWorkerCommandResult | LocalWorkerTelemetry;
+	| LocalWorkerInit
+	| LocalWorkerVisual
+	| LocalWorkerCommandResult
+	| LocalWorkerTelemetry
+	| LocalWorkerPaused;

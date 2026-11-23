@@ -59,6 +59,7 @@ export class LocalWorkerClient {
 			this.handlers.onTelemetry?.(message);
 			return;
 		}
+		if (message.type === 'paused') return;
 		if (message.type === 'command-result') {
 			const pending = this.pending.get(message.id);
 			if (!pending) return;

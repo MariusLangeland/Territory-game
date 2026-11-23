@@ -291,7 +291,8 @@ Diplomacy is player-only: the human commander can request one alliance at a time
 
 Local matches run the authoritative tick loop in a Web Worker. The main thread
 owns the read-only render/query mirror, applies worker owner/district deltas, and
-forwards commands asynchronously. Pausing pauses the worker; rebuilding a world
+forwards commands asynchronously. Pausing pauses the worker and returns a pause
+acknowledgment so tests can prove the tick stream stopped; rebuilding a world
 disposes the old worker before creating the next one. HUD snapshots remain
 throttled to 5 Hz while visual deltas arrive at 10 Hz.
 

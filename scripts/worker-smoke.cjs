@@ -5,7 +5,10 @@
  * The worker bundle is a browser IIFE; this harness runs it in a Node worker
  * with a minimal `self` shim. It verifies structured-clone init transfer, owner
  * delta transfer, command round-trips, merged-district payloads, and that pause
- * actually stops the tick stream.
+ * actually stops the tick stream after its pause acknowledgment.
+ *
+ * Optional atlas override:
+ *   WORKER_SMOKE_WIDTH=4096 WORKER_SMOKE_HEIGHT=2048 WORKER_SMOKE_PLAYERS=51 pnpm test:worker
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,16 +39,21 @@ if (!workerFile) {
 	process.exit(1);
 }
 
+const width = Number(process.env.WORKER_SMOKE_WIDTH ?? 512);
+const height = Number(process.env.WORKER_SMOKE_HEIGHT ?? 256);
+const playerCount = Number(process.env.WORKER_SMOKE_PLAYERS ?? 8);
+const seed = Number(process.env.WORKER_SMOKE_SEED ?? 1234);
+const startedAt = Date.now();
 const worker = new Worker(__filename, {
 	workerData: { workerPath: path.join(WORKER_DIR, workerFile) }
 });
 worker.postMessage({
 	type: 'init',
 	config: {
-		seed: 1234,
-		width: 512,
-		height: 256,
-		playerCount: 8,
+		seed,
+		width,
+		height,
+		playerCount,
 		growthMode: 'organic',
 		botDifficulty: 'standard',
 		matchDurationTicks: 0,
@@ -54,6 +62,7 @@ worker.postMessage({
 });
 
 let init = null;
+let initMs = 0;
 let ticks = 0;
 let ticksAtPause = 0;
 let commandResult = null;
@@ -74,9 +83,10 @@ worker.on('error', (error) => {
 worker.on('message', (message) => {
 	if (message.type === 'init') {
 		init = message;
-		if (init.width !== 512 || init.height !== 256) failures.push('dimensions');
-		if (init.starts.length !== 8) failures.push('starts');
-		if (init.owners.length !== 512 * 256) failures.push('owners');
+		initMs = Date.now() - startedAt;
+		if (init.width !== width || init.height !== height) failures.push('dimensions');
+		if (init.starts.length !== playerCount) failures.push('starts');
+		if (init.owners.length !== width * height) failures.push('owners');
 		if (!Array.isArray(init.mergedDistricts)) failures.push('merged init');
 		phase = 'running';
 		worker.postMessage({
@@ -93,9 +103,15 @@ worker.on('message', (message) => {
 		if (!message.snapshot || message.snapshot.tick !== message.tick) failures.push('tick mismatch');
 		if (!Array.isArray(message.mergedDistricts)) failures.push('merged visual');
 		if (ticks >= 5 && phase === 'running') {
+			phase = 'pausing';
+			worker.postMessage({ type: 'pause' });
+		}
+		return;
+	}
+	if (message.type === 'paused') {
+		if (phase === 'pausing') {
 			phase = 'paused';
 			ticksAtPause = ticks;
-			worker.postMessage({ type: 'pause' });
 			setTimeout(finish, 400);
 		}
 		return;
@@ -113,7 +129,12 @@ function finish() {
 	console.log(
 		JSON.stringify({
 			workerFile,
+			width,
+			height,
+			playerCount,
 			init: Boolean(init),
+			initMs,
+			elapsedMs: Date.now() - startedAt,
 			ticks,
 			commandResult,
 			failures

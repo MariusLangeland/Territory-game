@@ -75,6 +75,7 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 			timer = null;
 		}
 		accumulator = 0;
+		scope.postMessage({ type: 'paused' });
 		return;
 	}
 	if (message.type === 'resume') {

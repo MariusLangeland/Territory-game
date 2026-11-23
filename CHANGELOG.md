@@ -16,6 +16,8 @@
 - Added worker host tests covering init, stepping, pause/resume, commands, and
   deterministic checksums, plus `pnpm test:worker`, which boots the built worker
   bundle and verifies init transfer, visual deltas, commands, and paused ticks.
+  The same smoke runs at 4096×2048 with 51 states via `WORKER_SMOKE_WIDTH` /
+  `WORKER_SMOKE_HEIGHT` / `WORKER_SMOKE_PLAYERS`.
 
 Known parity notes for UI verification: hover/upgrade previews use mirror
 approximations, and the browser worker path has not been exercised by automated
