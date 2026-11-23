@@ -60,6 +60,15 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 
 At 10 Hz, 2.1–2.6 ms per tick is roughly **2.1–2.6% of a 100 ms tick budget** on the default 4096 × 2048 atlas. Benchmark RSS is ~1.2 GiB with all simulations resident, and the full-state checksum is ~64 ms so it stays an on-demand operation.
 
+### 4096 × 4096 scaling
+
+One 4096² atlas (16,777,216 cells, 51 states) measured separately after 500 warm-up
+ticks: map generation **1,994 ms**, average tick **4.236 ms**, p95 **7.820 ms**,
+p99 **54.601 ms**, max **101.9 ms**, checksum **127.2 ms**, RSS **689 MiB**.
+A collision-heavy run measured **3.475 ms** average, **5.435 ms** p95, **52.173
+ms** p99. The p99 tail is GC-driven; average load remains inside the 100 ms tick
+budget. Browser/GPU memory was not measured.
+
 ### 2.2 Browser baseline
 
 Measured in headless Chrome with hardware acceleration, 1600 × 1000, devicePixelRatio 1, seed `1234`:
