@@ -315,6 +315,47 @@ describe('deterministic simulation', () => {
 	});
 });
 
+describe('structure demolition', () => {
+	it('demolishes only owned buildable structures', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const state = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
+		expect(state).toBeDefined();
+		let humanCell = -1;
+		for (let index = 0; index < sim.owners.length; index++) {
+			if (sim.owners[index] !== HUMAN_PLAYER_ID || sim.structures.at(index)) continue;
+			humanCell = index;
+			break;
+		}
+		expect(humanCell).toBeGreaterThanOrEqual(0);
+		const x = humanCell % sim.width;
+		const y = Math.floor(humanCell / sim.width);
+		const structure = sim.structures.create('command-post', HUMAN_PLAYER_ID, x, y, sim.width);
+
+		expect(sim.demolishStructure(HUMAN_PLAYER_ID, state!.id).ok).toBe(false);
+		const result = sim.demolishStructure(HUMAN_PLAYER_ID, structure.id);
+		expect(result.ok).toBe(true);
+		expect(sim.structures.byId(structure.id)).toBeDefined();
+		sim.step();
+		expect(sim.structures.byId(structure.id)).toBeUndefined();
+
+		let rivalCell = -1;
+		for (let index = 0; index < sim.owners.length; index++) {
+			if (sim.owners[index] !== 2 || sim.structures.at(index)) continue;
+			rivalCell = index;
+			break;
+		}
+		expect(rivalCell).toBeGreaterThanOrEqual(0);
+		const rivalStructure = sim.structures.create(
+			'command-post',
+			2,
+			rivalCell % sim.width,
+			Math.floor(rivalCell / sim.width),
+			sim.width
+		);
+		expect(sim.demolishStructure(HUMAN_PLAYER_ID, rivalStructure.id).ok).toBe(false);
+	});
+});
+
 describe('frontier bookkeeping', () => {
 	it('matches a brute-force border scan after simulation', () => {
 		const sim = new TerritorySimulation({ seed: 76543 });

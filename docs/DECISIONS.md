@@ -2808,3 +2808,38 @@ before spending supply.
 - A long naval landing request dropped from roughly 150 ms to under 10 ms.
 - Routes may be marginally longer than the previous exhaustive shortest-path
   selection but stay deterministic and sea-connected.
+
+---
+
+## ADR-088 — Structure context menu and demolition
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Once a structure was built there was no way to remove it. Players could not
+recover a crowded district, replace a structure, or undo an accidental placement.
+The shell already suppresses the native browser context menu for card placement,
+so it had no structure-level actions.
+
+### Decision
+
+- Right-clicking an on-screen structure opens a structure context menu.
+- The first item is **DEMOLISH STRUCTURE**, followed by Cancel.
+- Demolition is queued as a command and applied on the next simulation tick.
+- The whole structure is removed; its district/aura effects, artillery cooldown,
+  supply-cap contribution, and Port annexation anchor are cleaned up.
+- Demolition pays no supply refund.
+- Only the player's own non-State structures can be demolished. Rival and State
+  structures show the action disabled, so the capital cannot be removed
+  accidentally.
+- The menu is anchored at the pointer, clamped inside the viewport, and closes on
+  outside pointer-down, Escape, or a new world.
+
+### Consequences
+
+- Players can clear structure space without waiting for capture or artillery.
+- Mistakes are recoverable, at the cost of the original purchase.
+- State protection remains stable by construction.
+- Demolition is command-driven and deterministic, not a direct UI mutation.

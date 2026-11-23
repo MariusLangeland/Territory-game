@@ -494,7 +494,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center.
 - A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
-- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Escape and selecting another number also cancel/replace placement.
+- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Right-clicking a structure opens a structure context menu whose first item is **DEMOLISH STRUCTURE**. Demolition is immediate on the next tick, removes the whole structure, and pays no supply refund; only the player's own non-State structures can be demolished. Rival and State structures show the action disabled. Escape and selecting another number also cancel/replace placement.
 - First-match onboarding shows three contextual hints: launch a front, drag a card into territory (or press its number then click), then click a district to upgrade. Hints advance on success, can be skipped, and completion is stored locally.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
 - The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.
@@ -507,18 +507,19 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.3 Controls
 
-| Input           | Action                                   |
-| --------------- | ---------------------------------------- |
-| Left click/tap  | Issue a free attack if valid             |
-| Left drag       | Pan; a drag does not fire an attack      |
-| Wheel           | Zoom at pointer                          |
-| Space           | Pause/resume                             |
-| `F`             | Fit map                                  |
-| `C`             | Focus human beachhead                    |
-| `+` / `−`       | Zoom                                     |
-| `H`             | Field manual                             |
-| Minimap click   | Center camera                            |
-| Growth switcher | Choose the frontier layer for new orders |
+| Input                 | Action                                       |
+| --------------------- | -------------------------------------------- |
+| Left click/tap        | Issue a free attack if valid                 |
+| Left drag             | Pan; a drag does not fire an attack          |
+| Wheel                 | Zoom at pointer                              |
+| Space                 | Pause/resume                                 |
+| `F`                   | Fit map                                      |
+| `C`                   | Focus human beachhead                        |
+| `+` / `−`             | Zoom                                         |
+| `H`                   | Field manual                                 |
+| Minimap click         | Center camera                                |
+| Right-click structure | Open structure actions; demolish (no refund) |
+| Growth switcher       | Choose the frontier layer for new orders     |
 
 ### 5.4 Camera
 

@@ -95,6 +95,7 @@ pnpm format     # Prettier write
 | Click / tap your district   | Upgrade that district's structure with supply                   |
 | Shift + click your district | Queue 5 upgrades at once                                        |
 | Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
+| Right-click a structure     | Open structure actions; first item demolishes it (no refund)    |
 | `1`–`7`                     | Start placing that card; left-click builds, right-click cancels |
 | Drag                        | Pan the map                                                     |
 | Scroll                      | Zoom at the pointer                                             |

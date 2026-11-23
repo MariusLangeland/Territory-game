@@ -412,8 +412,20 @@ export interface UpgradeCommand {
 	sequence: number;
 }
 
+export interface DemolishCommand {
+	type: 'demolish';
+	playerId: number;
+	structureId: number;
+	sequence: number;
+}
+
 export type GameCommand =
-	AttackCommand | ArtilleryFireCommand | NavalCommand | BuildCommand | UpgradeCommand;
+	| AttackCommand
+	| ArtilleryFireCommand
+	| NavalCommand
+	| BuildCommand
+	| UpgradeCommand
+	| DemolishCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -1023,6 +1035,35 @@ export class TerritorySimulation {
 		return { ok: true, message: `Front cancelled. ${refund} supply refunded.` };
 	}
 
+	/** Queue demolition of one owned, non-State structure. */
+	demolishStructure(playerId: number, structureId: number): BuildOrderResult {
+		const fail = (reason: BuildFailure, message: string): BuildOrderResult => ({
+			ok: false,
+			reason,
+			message
+		});
+		if (this.ended) return fail('ended', 'The conflict is over.');
+		const player = this.players[playerId - 1];
+		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
+		const structure = this.structures.byId(structureId);
+		if (!structure || this.owners[structure.index] !== playerId) {
+			return fail('invalid', 'That structure is no longer here.');
+		}
+		if (structure.ownerId !== playerId) {
+			return fail('not-owned', 'You can only demolish your own structures.');
+		}
+		if (structure.type === 'state') {
+			return fail('invalid', 'The State structure cannot be demolished.');
+		}
+		this.pendingCommands.push({
+			type: 'demolish',
+			playerId,
+			structureId,
+			sequence: this.nextCommandSequence++
+		});
+		return { ok: true, message: 'Demolition ordered.' };
+	}
+
 	/** Cancel the most recently launched active front for a player. */
 	cancelLatestAttack(playerId: number): AttackOrderResult {
 		let latest: AttackState | null = null;
@@ -1412,6 +1453,27 @@ export class TerritorySimulation {
 			}
 		}
 		if (target) this.damageStructureWithArtillery(target);
+	}
+
+	private demolishStructureNow(playerId: number, structureId: number): void {
+		const structure = this.structures.byId(structureId);
+		if (!structure || structure.ownerId !== playerId) return;
+		if (this.owners[structure.index] !== playerId) return;
+		if (structure.type === 'state') return;
+
+		this.structures.destroy(structure);
+		this.artilleryCooldownUntil.delete(structure.id);
+		this.refreshDistrictsAround(structure);
+		this.rebuildAuraDefense();
+		this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
+		if (structure.type === 'port') this.annexRequested = true;
+		const owner = this.players[structure.ownerId - 1];
+		const label = STRUCTURE_DEFINITIONS[structure.type].label;
+		this.pushEvent(
+			'structure',
+			`${owner?.name ?? 'A state'} demolished a ${label}${structure.stacks > 1 ? ` (Lv.${structure.stacks})` : ''}.`,
+			structure.ownerId
+		);
 	}
 
 	private damageStructureWithArtillery(structure: Structure): void {
@@ -2165,6 +2227,11 @@ export class TerritorySimulation {
 					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
 					command.playerId
 				);
+				continue;
+			}
+
+			if (command.type === 'demolish') {
+				this.demolishStructureNow(command.playerId, command.structureId);
 				continue;
 			}
 

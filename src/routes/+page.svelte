@@ -56,6 +56,17 @@
 		defense: number;
 	}
 
+	interface StructureContextMenu {
+		x: number;
+		y: number;
+		structureId: number;
+		ownerId: number;
+		typeLabel: string;
+		stacks: number;
+		isOwn: boolean;
+		isState: boolean;
+	}
+
 	let sim = $state<TerritorySimulation | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let phase = $state<'loading' | 'ready' | 'error'>('loading');
@@ -71,6 +82,7 @@
 	let defeatOpen = $state(false);
 	let defeatHandled = $state(false);
 	let hover = $state<HoverState | null>(null);
+	let structureMenu = $state<StructureContextMenu | null>(null);
 	let pointerScreen = $state<{ x: number; y: number } | null>(null);
 	let shiftHeld = $state(false);
 	let ctrlHeld = $state(false);
@@ -493,6 +505,7 @@
 		defeatHandled = false;
 		paused = true;
 		hover = null;
+		structureMenu = null;
 		cameraView = null;
 		rankScrollTop = 0;
 		handRaised = true;
@@ -817,9 +830,81 @@
 		}
 	}
 
+	function structureAtScreen(clientX: number, clientY: number) {
+		if (!snapshot || !cameraView) return null;
+		let best: GameSnapshot['structures'][number] | null = null;
+		let bestDistance = 16 * 16;
+		for (const structure of snapshot.structures) {
+			const screenX =
+				cameraView.viewportWidth / 2 + (structure.x + 0.5 - cameraView.centerX) * cameraView.scale;
+			const screenY =
+				cameraView.viewportHeight / 2 + (structure.y + 0.5 - cameraView.centerY) * cameraView.scale;
+			const dx = clientX - screenX;
+			const dy = clientY - screenY;
+			const distance = dx * dx + dy * dy;
+			if (distance > bestDistance) continue;
+			best = structure;
+			bestDistance = distance;
+		}
+		return best;
+	}
+
 	function handleContextMenu(event: MouseEvent): void {
 		event.preventDefault();
+		const target = event.target as HTMLElement;
+		if (target.closest('.context-menu')) return;
 		cancelKeyboardPlacement();
+		structureMenu = null;
+		if (target.closest('.hud, .card-tray, button')) return;
+		if (
+			!sim ||
+			!snapshot ||
+			!cameraView ||
+			showIntro ||
+			!gameStarted ||
+			showResult ||
+			defeatOpen ||
+			showHelp
+		) {
+			return;
+		}
+		const structure = structureAtScreen(event.clientX, event.clientY);
+		if (!structure) return;
+		const isOwn = structure.ownerId === snapshot.humanId;
+		const menuWidth = 264;
+		const menuHeight = 122;
+		structureMenu = {
+			x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+			y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+			structureId: structure.id,
+			ownerId: structure.ownerId,
+			typeLabel: STRUCTURE_DEFINITIONS[structure.type].label,
+			stacks: structure.stacks,
+			isOwn,
+			isState: structure.type === 'state'
+		};
+	}
+
+	function closeStructureMenu(): void {
+		structureMenu = null;
+	}
+
+	function handleWindowPointerDown(event: PointerEvent): void {
+		if (!structureMenu) return;
+		if ((event.target as HTMLElement).closest('.context-menu')) return;
+		structureMenu = null;
+	}
+
+	function demolishStructure(): void {
+		const menu = structureMenu;
+		structureMenu = null;
+		if (!menu || !sim || !menu.isOwn || menu.isState) return;
+		if (paused) {
+			showToast('Resume the simulation before demolishing.', 'warn');
+			return;
+		}
+		const result = sim.demolishStructure(HUMAN_PLAYER_ID, menu.structureId);
+		showToast(result.message, result.ok ? 'success' : 'error');
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -999,7 +1084,8 @@
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
 		if (event.key === 'Escape') {
-			if (keyboardPlacement) cancelKeyboardPlacement();
+			if (structureMenu) structureMenu = null;
+			else if (keyboardPlacement) cancelKeyboardPlacement();
 			else if (artilleryTargeting) artilleryTargeting = false;
 			else if (keyboardCursor) keyboardCursor = null;
 			else if (showHelp) showHelp = false;
@@ -1086,6 +1172,7 @@
 		window.addEventListener('keydown', handleKeydown);
 		window.addEventListener('keyup', handleKeyup);
 		window.addEventListener('pointermove', handleWindowPointerMove);
+		window.addEventListener('pointerdown', handleWindowPointerDown);
 		try {
 			onboardingDone = window.localStorage.getItem(ONBOARDING_KEY) === 'done';
 		} catch {
@@ -1098,6 +1185,7 @@
 			window.removeEventListener('keydown', handleKeydown);
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('pointermove', handleWindowPointerMove);
+			window.removeEventListener('pointerdown', handleWindowPointerDown);
 			clearTimeout(worldTimer);
 			cameraBridge.onView = undefined;
 		};
@@ -1132,6 +1220,46 @@
 				{/if}
 			</i>
 			{#if !upgradeTooltip.ok}<em>INSUFFICIENT SUPPLY</em>{/if}
+		</div>
+	{/if}
+	{#if structureMenu}
+		<div
+			class="context-menu"
+			role="menu"
+			tabindex="-1"
+			aria-label="Structure actions"
+			style={`left:${structureMenu.x}px;top:${structureMenu.y}px`}
+			oncontextmenu={(event) => event.preventDefault()}
+			onpointerdown={(event) => event.stopPropagation()}
+		>
+			<button
+				type="button"
+				class="context-item context-demolish"
+				role="menuitem"
+				disabled={!structureMenu.isOwn || structureMenu.isState || paused}
+				title={!structureMenu.isOwn
+					? 'You can only demolish your own structures.'
+					: structureMenu.isState
+						? 'The State structure cannot be demolished.'
+						: paused
+							? 'Resume the simulation first.'
+							: 'Remove this structure. No supply refund.'}
+				onclick={demolishStructure}
+			>
+				<span>DEMOLISH STRUCTURE</span>
+				<small>
+					{structureMenu.typeLabel} · LV.{structureMenu.stacks}
+					{structureMenu.isState
+						? ' · CAPITAL'
+						: !structureMenu.isOwn
+							? ' · RIVAL'
+							: ' · NO REFUND'}
+				</small>
+			</button>
+			<div class="context-divider"></div>
+			<button type="button" class="context-item" role="menuitem" onclick={closeStructureMenu}>
+				<span>CANCEL</span>
+			</button>
 		</div>
 	{/if}
 	{#if sim}
@@ -4207,6 +4335,74 @@
 
 	.manual-footer span:last-child {
 		margin-left: auto;
+	}
+
+	.context-menu {
+		position: fixed;
+		z-index: 140;
+		width: 264px;
+		padding: 6px;
+		border: 1px solid var(--line-strong);
+		background: rgba(4, 12, 16, 0.97);
+		box-shadow:
+			0 18px 42px rgba(0, 0, 0, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		font-family: var(--font-mono);
+		backdrop-filter: blur(12px);
+	}
+
+	.context-item {
+		display: grid;
+		gap: 3px;
+		width: 100%;
+		padding: 9px 10px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--ink-dim);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-align: left;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.context-item:hover:not(:disabled),
+	.context-item:focus-visible:not(:disabled) {
+		border-color: rgba(220, 233, 149, 0.35);
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--ink);
+		outline: none;
+	}
+
+	.context-item:disabled {
+		cursor: not-allowed;
+		opacity: 0.42;
+	}
+
+	.context-item small {
+		font-size: 7px;
+		font-weight: 500;
+		letter-spacing: 0.05em;
+		color: var(--ink-faint);
+	}
+
+	.context-demolish:not(:disabled) {
+		color: #ffb09f;
+	}
+
+	.context-demolish:hover:not(:disabled),
+	.context-demolish:focus-visible:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.45);
+		background: rgba(255, 120, 103, 0.11);
+		color: #ffd0c7;
+	}
+
+	.context-divider {
+		height: 1px;
+		margin: 5px 4px;
+		background: var(--line-soft);
 	}
 
 	.upgrade-tooltip {
