@@ -9,6 +9,8 @@
 	import DiplomacyToast from '#lib/components/DiplomacyToast.svelte';
 	import StructureMenu from '#lib/components/StructureMenu.svelte';
 	import SupplyPanel from '#lib/components/SupplyPanel.svelte';
+	import MapTools from '#lib/components/MapTools.svelte';
+	import DragOverlay from '#lib/components/DragOverlay.svelte';
 	import UpgradeTooltip from '#lib/components/UpgradeTooltip.svelte';
 	import { formatClock, formatCompact, formatShare, formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
@@ -1381,35 +1383,13 @@
 			</div>
 		</div>
 
-		<div class="map-tools hud" aria-label="Map controls">
-			<div class="tool-stack">
-				<button type="button" onclick={() => cameraBridge.zoomIn()} aria-label="Zoom in">+</button>
-				<button type="button" onclick={() => cameraBridge.zoomOut()} aria-label="Zoom out">
-					−
-				</button>
-			</div>
-			<button
-				class="tool-wide"
-				type="button"
-				onclick={() => cameraBridge.fitMap()}
-				aria-label="Fit entire map"
-			>
-				FIT
-			</button>
-			<button
-				class="tool-wide"
-				type="button"
-				onclick={() => cameraBridge.focusHuman()}
-				aria-label="Center on your territory"
-			>
-				FOCUS
-			</button>
-			<div class="perf-readout">
-				<span>{perf.fps} FPS</span>
-				<span>{formatCompact(perf.uploadedPixels)} PX/S</span>
-				<span>{perf.uploadCalls} CALLS/S</span>
-			</div>
-		</div>
+		<MapTools
+			{perf}
+			onZoomIn={() => cameraBridge.zoomIn()}
+			onZoomOut={() => cameraBridge.zoomOut()}
+			onFit={() => cameraBridge.fitMap()}
+			onFocus={() => cameraBridge.focusHuman()}
+		/>
 
 		<SupplyPanel
 			{snapshot}
@@ -1435,36 +1415,13 @@
 			onRaise={() => (handRaised = true)}
 		/>
 		{#if draggingCardId !== null && dragOrigin && dragPointer && dragArrow}
-			<svg class="drag-overlay" aria-hidden="true">
-				{#if dragLanding}
-					<g class:blocked={!dragLanding.ok} class:valid={dragLanding.ok}>
-						<circle
-							cx={dragLanding.x}
-							cy={dragLanding.y}
-							r={dragLanding.radius}
-							class="drag-landing-field"
-						/>
-						<circle
-							cx={dragLanding.x}
-							cy={dragLanding.y}
-							r={dragLanding.radius}
-							class="drag-landing-ring"
-						/>
-						<circle cx={dragLanding.x} cy={dragLanding.y} r="3.5" class="drag-landing-dot" />
-					</g>
-				{/if}
-				<path d={dragArrow.path} class="drag-arrow-path" style={`--drag-accent:${dragAccent}`} />
-				<path d={dragArrow.head} class="drag-arrow-head" style={`--drag-accent:${dragAccent}`} />
-				<circle
-					cx={dragOrigin.x}
-					cy={dragOrigin.y}
-					r="4"
-					class="drag-arrow-origin"
-					style={`--drag-accent:${dragAccent}`}
-				/>
-			</svg>
+			<DragOverlay
+				origin={dragOrigin}
+				landing={dragLanding}
+				arrow={dragArrow}
+				accent={dragAccent}
+			/>
 		{/if}
-
 		{#if paused && !showResult}
 			<div class="paused-flag hud">SIMULATION PAUSED <span>SPACE TO RESUME</span></div>
 		{/if}

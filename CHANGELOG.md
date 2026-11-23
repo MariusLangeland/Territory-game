@@ -30,7 +30,9 @@
   (leaderboard/war feed) components.
 - Extracted `SupplyPanel` (supply bar/actions) and `CardTray` (card hand and
   drag-source cards) components.
-- `+page.svelte` is now ~1,820 lines, down from 5,773 before the restructure.
+- Extracted `MapTools` (camera controls/perf) and `DragOverlay` (card landing
+  preview/arrow) components.
+- `+page.svelte` is now ~1,780 lines, down from 5,773 before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23

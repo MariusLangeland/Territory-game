@@ -309,6 +309,8 @@ src/
       WorldRail.svelte           leaderboard + war feed
       SupplyPanel.svelte         supply bar, cancel/fire actions
       CardTray.svelte            card hand and drag-source cards
+      MapTools.svelte            camera controls and frame stats
+      DragOverlay.svelte         card landing preview and drag arrow
       StructureMenu.svelte       structure/diplomacy context menu
       DiplomacyToast.svelte      diplomacy status toast
       UpgradeTooltip.svelte      upgrade cost/supply tooltip

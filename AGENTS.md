@@ -118,6 +118,8 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/WorldRail.svelte` — virtualized leaderboard and war feed.
 - `src/lib/components/SupplyPanel.svelte` — supply bar and cancel/fire actions.
 - `src/lib/components/CardTray.svelte` — permanent hand and drag-source cards.
+- `src/lib/components/MapTools.svelte` — camera controls and renderer stats.
+- `src/lib/components/DragOverlay.svelte` — card landing preview and drag arrow.
 - `src/lib/components/StructureMenu.svelte` — structure/diplomacy context menu presentation.
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
