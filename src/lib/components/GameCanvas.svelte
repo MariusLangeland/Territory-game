@@ -436,21 +436,31 @@
 				const sizeRatio = Math.sqrt(player.territory / maxTerritory);
 				let scale = 0.75 + sizeRatio;
 				const supplyText = formatSupply(player.supply);
+				const attackText = `${player.attacksAffordable} ATK`;
 				const nameText = player.name;
 				const accent = colorForPlayer(player.id).hex;
 				const measure = (fontScale: number) => {
 					const supplySize = Math.max(1, Math.round(17 * fontScale));
+					const attackSize = Math.max(1, Math.round(9 * fontScale));
 					const nameSize = Math.max(1, Math.round(8 * fontScale));
 					const padding = 6 * fontScale;
+					const gap = 4 * fontScale;
 					context.font = `800 ${supplySize}px ui-monospace, monospace`;
 					const supplyWidth = context.measureText(supplyText).width;
+					context.font = `800 ${attackSize}px ui-monospace, monospace`;
+					const attackWidth = context.measureText(attackText).width;
 					context.font = `700 ${nameSize}px ui-monospace, monospace`;
 					const nameWidth = context.measureText(nameText).width;
+					const lineWidth = supplyWidth + gap + attackWidth;
 					return {
 						supplySize,
+						attackSize,
 						nameSize,
 						padding,
-						width: Math.ceil(Math.max(supplyWidth, nameWidth) + padding * 2),
+						gap,
+						supplyWidth,
+						lineWidth,
+						width: Math.ceil(Math.max(lineWidth, nameWidth) + padding * 2),
 						height: Math.ceil(nameSize + supplySize + padding * 2)
 					};
 				};
@@ -494,13 +504,15 @@
 				context.fillText(nameText, bannerX + metrics.width / 2, bannerY + metrics.padding * 0.5);
 
 				context.textBaseline = 'middle';
+				context.textAlign = 'left';
+				const lineY = bannerY + metrics.height - metrics.padding - metrics.supplySize / 2;
+				const lineX = bannerX + (metrics.width - metrics.lineWidth) / 2;
 				context.font = `800 ${metrics.supplySize}px ui-monospace, monospace`;
 				context.fillStyle = '#fff7df';
-				context.fillText(
-					supplyText,
-					bannerX + metrics.width / 2,
-					bannerY + metrics.height - metrics.padding - metrics.supplySize / 2
-				);
+				context.fillText(supplyText, lineX, lineY);
+				context.font = `800 ${metrics.attackSize}px ui-monospace, monospace`;
+				context.fillStyle = accent;
+				context.fillText(attackText, lineX + metrics.supplyWidth + metrics.gap, lineY);
 				context.restore();
 			}
 		}

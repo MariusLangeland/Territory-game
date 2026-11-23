@@ -218,6 +218,8 @@ export interface PublicPlayer {
 	territory: number;
 	landShare: number;
 	supply: number;
+	/** Fronts this player could launch right now at their current attack cost. */
+	attacksAffordable: number;
 }
 
 interface BotProfile {
@@ -945,6 +947,12 @@ export class TerritorySimulation {
 
 	private attackSupplyCost(attackerId: number, defenderId: number): number {
 		return this.getAttackStats(attackerId, defenderId).cost;
+	}
+
+	private affordableAttackCount(attackerId: number, defenderId: number): number {
+		const cost = this.attackSupplyCost(attackerId, defenderId);
+		if (cost <= 0) return 0;
+		return Math.floor(this.supplyOf(attackerId) / cost);
 	}
 
 	/**
@@ -4974,7 +4982,11 @@ export class TerritorySimulation {
 				alive: player.alive,
 				territory: player.territory,
 				landShare: this.landCount === 0 ? 0 : player.territory / this.landCount,
-				supply: this.supplyOf(player.id)
+				supply: this.supplyOf(player.id),
+				attacksAffordable: this.affordableAttackCount(
+					player.id,
+					this.allPlayersBots ? 0 : HUMAN_PLAYER_ID
+				)
 			};
 		});
 

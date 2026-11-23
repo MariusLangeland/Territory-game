@@ -33,7 +33,7 @@
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                   |
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                     |
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism |
-| Rival banners   | Transparent name/supply text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                       |
+| Rival banners   | Transparent name/supply/affordable-front text at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit      |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                              |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                   |
 | Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                             |
@@ -174,7 +174,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 ### Build cards
 
-Each rival state has a **map-anchored supply banner** at its capital showing its name and current supply. Banners scale with territory but are capped by the state's on-screen footprint, so zooming out shrinks or hides them instead of covering the map. They use transparent backgrounds with no border or plaque; larger states still get larger text. The human state is intentionally excluded because its supply is shown in the hand bar.
+Each rival state has a **map-anchored supply banner** at its capital showing its name, current supply, and how many fronts (`N ATK`) that supply could currently launch against you. Banners scale with territory but are capped by the state's on-screen footprint, so zooming out shrinks or hides them instead of covering the map. They use transparent backgrounds with no border or plaque; larger states still get larger text. The human state is intentionally excluded because its supply is shown in the hand bar.
 
 The human commander starts with **90 supply** and **all seven build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures` per second with **no income cap** (+1/s per 3,000 owned pixels); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`7` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
 

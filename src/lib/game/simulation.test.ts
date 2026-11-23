@@ -248,8 +248,14 @@ describe('deterministic simulation', () => {
 		for (const player of snapshot.players) {
 			expect(Number.isInteger(player.supply)).toBe(true);
 			expect(player.supply).toBeGreaterThanOrEqual(0);
+			expect(Number.isInteger(player.attacksAffordable)).toBe(true);
+			expect(player.attacksAffordable).toBeGreaterThanOrEqual(0);
 		}
 		expect(snapshot.players[1].supply).toBe(internals.botGold[1]);
+		const launchCost = sim.getAttackStats(2, HUMAN_PLAYER_ID).cost;
+		expect(snapshot.players[1].attacksAffordable).toBe(
+			Math.floor(snapshot.players[1].supply / launchCost)
+		);
 	});
 
 	it('produces identical checksums for identical seeds and commands', () => {
