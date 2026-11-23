@@ -84,6 +84,7 @@
 	>([]);
 	let workerVisualRevision = 0;
 	let lastWorkerUiTick = -100;
+	let workerTelemetryVersion = $state(0);
 	let worldGeneration = 0;
 	let phase = $state<'loading' | 'ready' | 'error'>('loading');
 	let errorMessage = $state('');
@@ -396,6 +397,7 @@
 	let showResult = $derived(Boolean(gameStarted && snapshot?.ended));
 	let aiPostMatch = $derived.by(() => {
 		void snapshot;
+		void workerTelemetryVersion;
 		return sim?.getBotBehaviorTelemetry() ?? null;
 	});
 	let aiOptionSummary = $derived.by(() => {
@@ -643,6 +645,9 @@
 						onVisual: (visual) => {
 							if (generation !== worldGeneration) return;
 							handleWorkerVisual(visual);
+						},
+						onTelemetry: () => {
+							if (generation === worldGeneration) workerTelemetryVersion++;
 						},
 						onError: (error) => {
 							if (generation === worldGeneration) handleError(error);

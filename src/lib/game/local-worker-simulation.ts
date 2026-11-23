@@ -65,8 +65,14 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 			resolveInit = resolve;
 			rejectInit = reject;
 		});
+		const initTimeout = setTimeout(() => {
+			rejectInit(new Error('Simulation worker did not initialize within 30 seconds.'));
+		}, 30_000);
 		const client = new LocalWorkerClient(config, {
-			onInit: (init) => resolveInit(init),
+			onInit: (init) => {
+				clearTimeout(initTimeout);
+				resolveInit(init);
+			},
 			onVisual: (visual) => {
 				instance?.applyWorkerVisual(visual);
 				handlers.onVisual?.(visual);
@@ -76,6 +82,7 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 				handlers.onTelemetry?.(telemetry);
 			},
 			onError: (error) => {
+				clearTimeout(initTimeout);
 				if (!instance) rejectInit(error);
 				handlers.onError?.(error);
 			}
