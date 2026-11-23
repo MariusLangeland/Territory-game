@@ -595,6 +595,10 @@ export class TerritorySimulation {
 	/** Reuse only a positive expansion result; a negative one can block attacks. */
 	private readonly botExpansionCached: Uint8Array;
 	private readonly botExpansionTick: Uint32Array;
+	/** Per-bot decision cadence and stable attack-roll epoch. */
+	private readonly botDecisionEpoch: Uint32Array;
+	private readonly botStrengthCache: Uint32Array;
+	private botStrengthCacheReady = false;
 	/** Scratch cache for per-defender target utility within one decision. */
 	private readonly botTargetScoreStamp: Uint32Array;
 	private readonly botTargetScore: Int32Array;
@@ -746,6 +750,8 @@ export class TerritorySimulation {
 		this.botMarkovBias = new Uint8Array(this.playerCount * 5);
 		this.botExpansionCached = new Uint8Array(this.playerCount);
 		this.botExpansionTick = new Uint32Array(this.playerCount);
+		this.botDecisionEpoch = new Uint32Array(this.playerCount);
+		this.botStrengthCache = new Uint32Array(this.playerCount);
 		this.botTargetScoreStamp = new Uint32Array(this.playerCount + 1);
 		this.botTargetScore = new Int32Array(this.playerCount + 1);
 		this.botTargetOpportunity = new Uint8Array(this.playerCount + 1);
@@ -2071,6 +2077,7 @@ export class TerritorySimulation {
 		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
 		for (const grievance of this.botGrievance) mix(grievance);
 		for (const stacks of this.eliminationIncomeStacks) mix(stacks);
+		for (const epoch of this.botDecisionEpoch) mix(epoch);
 		for (const threat of this.botThreat) mix(threat);
 		for (const defensive of this.botDefensive) mix(defensive);
 		for (const reserve of this.botReserve) mix(reserve);
@@ -3916,6 +3923,10 @@ export class TerritorySimulation {
 	 * delta). Posture uses hysteresis so a bot does not flip between saving and
 	 * spending every second; the reserve is freed as soon as threat is safe.
 	 */
+	private botDecisionDue(playerId: number): boolean {
+		return (this.tick + playerId - 1) % BOT_DECISION_INTERVAL === 0;
+	}
+
 	private updateBotThreat(): void {
 		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 
@@ -4514,9 +4525,9 @@ export class TerritorySimulation {
 	}
 
 	private runBotNaval(): void {
-		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
+			if (!this.botDecisionDue(player.id)) continue;
 			if (this.structures.forOwnerType(player.id, 'port') === undefined) continue;
 			if (this.navalLandings.some((landing) => landing.ownerId === player.id)) continue;
 			const target = this.chooseBotNavalTarget(player);
@@ -4555,17 +4566,21 @@ export class TerritorySimulation {
 	}
 
 	private runBotDecisions(): void {
-		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
-
 		// botPressure and botAttackers are refreshed by updateBotThreat() at the
 		// same interval, just before the economy pass.
-		const strengths = new Uint32Array(this.playerCount);
-		for (const player of this.players) {
-			if (player.alive) strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
+		const strengths = this.botStrengthCache;
+		if (!this.botStrengthCacheReady) {
+			this.botStrengthCacheReady = true;
+			for (const player of this.players) {
+				if (player.alive) strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
+			}
 		}
 
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
+			if (!this.botDecisionDue(player.id)) continue;
+			const decisionEpoch = this.botDecisionEpoch[player.id - 1]++;
+			strengths[player.id - 1] = this.estimatePlayerStrength(player.id);
 			if (this.supplyOf(player.id) < this.attackSupplyCost(player.id, 0)) continue;
 			if (player.border.size === 0) continue;
 			const profile = this.botProfiles[player.id - 1];
@@ -4651,7 +4666,7 @@ export class TerritorySimulation {
 					)
 				)
 			);
-			const attackRoll = hash32(this.tick, player.id, this.seed ^ 0x27d4eb2d) % 100;
+			const attackRoll = hash32(decisionEpoch, player.id, this.seed ^ 0x27d4eb2d) % 100;
 			if (attackRoll >= chance) continue;
 			if (choice.opportunity) this.botTelemetry.opportunityAttacks++;
 			const metrics = this.botPlayerMetrics[player.id - 1];
@@ -4672,9 +4687,9 @@ export class TerritorySimulation {
 	}
 
 	private runBotArtillery(): void {
-		if (this.tick % BOT_DECISION_INTERVAL !== 0) return;
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
+			if (!this.botDecisionDue(player.id)) continue;
 			const ready = this.structures
 				.forOwner(player.id)
 				.filter(

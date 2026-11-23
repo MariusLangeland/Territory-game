@@ -2875,3 +2875,64 @@ structures, and the final capture of a weak state had little immediate payoff.
 - The reward cannot be lost and remains after the eliminated state is gone.
 - A player behind on land can catch up through targeted eliminations, while an
   already-large leader gains the same reward.
+
+---
+
+## ADR-090 — Stagger bot attack decisions across the decision interval
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+All bots resolved attack, naval, and artillery decisions on the same decision
+tick. With 50 bots this created a repeatable 10–15 ms simulation spike every
+second. A naive full stagger previously changed outcomes because threat,
+options, strengths, and attack rolls all moved together.
+
+### Decision
+
+- Schedule attack, naval, and artillery decisions by player id across
+  BOT_DECISION_INTERVAL, so roughly five bots decide per tick.
+- Keep threat/posture and strategic options on the global decision tick so the
+  shared strategic layer still refreshes coherently.
+- Cache per-player strength estimates; each due player refreshes its own value
+  and comparisons may use values up to one interval old.
+- Replace the global-tick attack roll with a checksummed per-bot decision epoch,
+  keeping each bot's roll sequence stable even though its decision tick moves.
+- Leave build ticks on their existing player-id stagger.
+
+### Consequences
+
+- The periodic all-bot decision spike is removed; late-match ticks stay under
+  the frame budget except for the separate annex scan.
+- Bot decisions observe slightly different states within the one-second window.
+- Attack pacing changes and requires balance/telemetry validation.
+- The behavior suite passes unchanged after the epoch and strength-cache design.
+
+---
+
+## ADR-091 — Alliance requests remain a UI placeholder
+
+**Status:** accepted; mechanic deferred  
+**Date:** 2026-11-23
+
+### Context
+
+The right-click menu can show a REQUEST ALLIANCE action for rival territory, but
+there is no alliance model (request lifecycle, acceptance, shared enemies,
+betrayal, AI policy, checksums, or protocol). Shipping an incomplete mechanic
+would create ambiguous gameplay and protocol commitments.
+
+### Decision
+
+- Keep **REQUEST ALLIANCE** as a labelled menu placeholder with no simulation
+  command or state change.
+- Do not add alliance state, bot acceptance logic, or a protocol shape yet.
+- Define the lifecycle and AI policy before implementing the mechanic.
+
+### Consequences
+
+- The UI direction is visible for future work without changing gameplay.
+- Players must not expect alliances to have an effect.
+- Implementing alliances later will be a deliberate feature with its own ADR.

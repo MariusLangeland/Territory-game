@@ -137,7 +137,8 @@ describe('ports and naval landings', () => {
 		expect(
 			sim.validateNavalAttack(2, target.index % sim.width, Math.floor(target.index / sim.width)).ok
 		).toBe(true);
-		for (let tick = 10; tick <= 200; tick += 10) {
+		// Player 2's staggered decision phase lands on ticks 9, 19, 29, ...
+		for (let tick = 9; tick <= 1000; tick += 10) {
 			internals.tick = tick;
 			internals.botGold[1] = 1000;
 			internals.runBotNaval();

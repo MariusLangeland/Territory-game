@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
@@ -67,6 +67,7 @@
 		isState: boolean;
 		allianceOwnerId: number | null;
 		allianceName: string;
+		confirmingDemolish: boolean;
 	}
 
 	let sim = $state<TerritorySimulation | null>(null);
@@ -85,10 +86,14 @@
 	let defeatHandled = $state(false);
 	let hover = $state<HoverState | null>(null);
 	let structureMenu = $state<StructureContextMenu | null>(null);
+	let contextMenuEl = $state<HTMLDivElement | null>(null);
 	let pointerScreen = $state<{ x: number; y: number } | null>(null);
 	let shiftHeld = $state(false);
 	let ctrlHeld = $state(false);
 	let cameraView = $state<CameraView | null>(null);
+	// Non-reactive anchor: the camera view captured when the popup opens, so the
+	// renderer's periodic view reports do not dismiss a freshly positioned menu.
+	let structureMenuCameraView: CameraView | null = null;
 	let perf = $state<RendererFrameStats>({
 		fps: 0,
 		uploadedPixels: 0,
@@ -157,6 +162,14 @@
 	const cameraBridge = new GameCameraBridge();
 	cameraBridge.onView = (view) => {
 		cameraView = view;
+		if (!structureMenu) return;
+		// Reports arrive on an interval even when nothing moved, so only a real
+		// camera change (pan/zoom/fit/keyboard recentre) dismisses the menu.
+		if (!structureMenuCameraView) {
+			structureMenuCameraView = view;
+			return;
+		}
+		if (!cameraViewsEqual(structureMenuCameraView, view)) closeStructureMenu();
 	};
 
 	let humanFronts = $derived(
@@ -507,7 +520,7 @@
 		defeatHandled = false;
 		paused = true;
 		hover = null;
-		structureMenu = null;
+		closeStructureMenu();
 		cameraView = null;
 		rankScrollTop = 0;
 		handRaised = true;
@@ -862,12 +875,110 @@
 		return sim.getOwner(Math.floor(mapX), Math.floor(mapY));
 	}
 
+	function cameraViewsEqual(a: CameraView, b: CameraView): boolean {
+		return (
+			a.centerX === b.centerX &&
+			a.centerY === b.centerY &&
+			a.zoom === b.zoom &&
+			a.scale === b.scale &&
+			a.viewportWidth === b.viewportWidth &&
+			a.viewportHeight === b.viewportHeight
+		);
+	}
+
+	function menuItemButtons(): HTMLButtonElement[] {
+		if (!contextMenuEl) return [];
+		return Array.from(
+			contextMenuEl.querySelectorAll<HTMLButtonElement>('.context-item:not(:disabled)')
+		);
+	}
+
+	function focusMenuItem(index = 0): void {
+		const items = menuItemButtons();
+		if (items.length === 0) return;
+		items[Math.max(0, Math.min(index, items.length - 1))]?.focus();
+	}
+
+	function moveMenuFocus(delta: 1 | -1): void {
+		const items = menuItemButtons();
+		if (items.length === 0) return;
+		const current = items.findIndex((item) => item === document.activeElement);
+		const next =
+			current === -1
+				? delta > 0
+					? 0
+					: items.length - 1
+				: (current + delta + items.length) % items.length;
+		items[next]?.focus();
+	}
+
+	function handleStructureMenuKey(event: KeyboardEvent): void {
+		switch (event.key) {
+			case 'ArrowDown':
+				event.preventDefault();
+				moveMenuFocus(1);
+				return;
+			case 'ArrowUp':
+				event.preventDefault();
+				moveMenuFocus(-1);
+				return;
+			case 'Home':
+				event.preventDefault();
+				focusMenuItem(0);
+				return;
+			case 'End':
+				event.preventDefault();
+				focusMenuItem(menuItemButtons().length - 1);
+				return;
+			case 'Tab':
+				// Wrap inside the popup rather than tabbing into the HUD behind it.
+				event.preventDefault();
+				moveMenuFocus(event.shiftKey ? -1 : 1);
+				return;
+			case 'Enter':
+			case ' ':
+			case 'Spacebar': {
+				event.preventDefault();
+				const active = document.activeElement;
+				if (active instanceof HTMLButtonElement && active.closest('.context-menu')) {
+					active.click();
+				} else {
+					focusMenuItem(0);
+				}
+				return;
+			}
+			case 'Escape':
+				event.preventDefault();
+				closeStructureMenu();
+				return;
+		}
+	}
+
+	function clampStructureMenuToViewport(): void {
+		const menu = structureMenu;
+		const element = contextMenuEl;
+		if (!menu || !element) return;
+		const width = element.offsetWidth || 264;
+		const height = element.offsetHeight || 160;
+		const x = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
+		const y = Math.max(8, Math.min(menu.y, window.innerHeight - height - 8));
+		if (x !== menu.x || y !== menu.y) structureMenu = { ...menu, x, y };
+	}
+
+	function focusMenuAfterRender(index = 0): void {
+		void tick().then(() => {
+			if (!structureMenu) return;
+			clampStructureMenuToViewport();
+			focusMenuItem(index);
+		});
+	}
+
 	function handleContextMenu(event: MouseEvent): void {
 		event.preventDefault();
 		const target = event.target as HTMLElement;
 		if (target.closest('.context-menu')) return;
 		cancelKeyboardPlacement();
-		structureMenu = null;
+		closeStructureMenu();
 		if (target.closest('.hud, .card-tray, button')) return;
 		if (
 			!sim ||
@@ -887,7 +998,7 @@
 		if (!structure && !isOpponent) return;
 		const isOwn = ownerId === snapshot.humanId;
 		const menuWidth = 264;
-		const menuHeight = structure ? 186 : 104;
+		const menuHeight = structure ? 236 : 168;
 		structureMenu = {
 			x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
 			y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
@@ -898,24 +1009,47 @@
 			isOwn,
 			isState: structure?.type === 'state',
 			allianceOwnerId: isOpponent ? ownerId : null,
-			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : ''
+			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : '',
+			confirmingDemolish: false
 		};
+		structureMenuCameraView = cameraView;
+		focusMenuAfterRender(0);
 	}
 
 	function closeStructureMenu(): void {
 		structureMenu = null;
+		structureMenuCameraView = null;
 	}
 
 	function handleWindowPointerDown(event: PointerEvent): void {
 		if (!structureMenu) return;
 		if ((event.target as HTMLElement).closest('.context-menu')) return;
-		structureMenu = null;
+		closeStructureMenu();
+	}
+
+	function requestDemolish(): void {
+		const menu = structureMenu;
+		if (!menu || menu.structureId === null || !menu.isOwn || menu.isState) return;
+		if (paused) {
+			showToast('Resume the simulation before demolishing.', 'warn');
+			return;
+		}
+		structureMenu = { ...menu, confirmingDemolish: true };
+		focusMenuAfterRender(0);
+	}
+
+	function cancelDemolishConfirm(): void {
+		const menu = structureMenu;
+		if (!menu) return;
+		structureMenu = { ...menu, confirmingDemolish: false };
+		focusMenuAfterRender(0);
 	}
 
 	function demolishStructure(): void {
 		const menu = structureMenu;
-		structureMenu = null;
-		if (!menu || !sim || menu.structureId === null || !menu.isOwn || menu.isState) return;
+		if (!menu || !menu.confirmingDemolish) return;
+		closeStructureMenu();
+		if (!sim || menu.structureId === null || !menu.isOwn || menu.isState) return;
 		if (paused) {
 			showToast('Resume the simulation before demolishing.', 'warn');
 			return;
@@ -926,7 +1060,7 @@
 
 	function requestAlliance(): void {
 		// Placeholder: alliance mechanics are not implemented yet.
-		structureMenu = null;
+		closeStructureMenu();
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -1105,9 +1239,13 @@
 		const target = event.target as HTMLElement | null;
 		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
+		if (structureMenu) {
+			handleStructureMenuKey(event);
+			return;
+		}
+
 		if (event.key === 'Escape') {
-			if (structureMenu) structureMenu = null;
-			else if (keyboardPlacement) cancelKeyboardPlacement();
+			if (keyboardPlacement) cancelKeyboardPlacement();
 			else if (artilleryTargeting) artilleryTargeting = false;
 			else if (keyboardCursor) keyboardCursor = null;
 			else if (showHelp) showHelp = false;
@@ -1247,55 +1385,107 @@
 	{#if structureMenu}
 		<div
 			class="context-menu"
+			bind:this={contextMenuEl}
 			role="menu"
 			tabindex="-1"
-			aria-label="Map actions"
+			aria-label={structureMenu.structureId !== null
+				? `${structureMenu.typeLabel} actions`
+				: 'Rival territory actions'}
 			style={`left:${structureMenu.x}px;top:${structureMenu.y}px`}
 			oncontextmenu={(event) => event.preventDefault()}
 			onpointerdown={(event) => event.stopPropagation()}
 		>
-			{#if structureMenu.structureId !== null}
+			{#if structureMenu.confirmingDemolish}
+				<div class="context-info context-info-warning">
+					<span>CONFIRM DEMOLITION</span>
+					<small>{structureMenu.typeLabel} · LV.{structureMenu.stacks} · NO REFUND</small>
+				</div>
 				<button
 					type="button"
-					class="context-item context-demolish"
+					class="context-item context-demolish context-confirm"
 					role="menuitem"
-					disabled={!structureMenu.isOwn || structureMenu.isState || paused}
-					title={!structureMenu.isOwn
-						? 'You can only demolish your own structures.'
-						: structureMenu.isState
-							? 'The State structure cannot be demolished.'
-							: paused
-								? 'Resume the simulation first.'
-								: 'Remove this structure. No supply refund.'}
+					aria-label={`Confirm demolition of ${structureMenu.typeLabel} level ${structureMenu.stacks}. No refund.`}
 					onclick={demolishStructure}
 				>
-					<span>DEMOLISH STRUCTURE</span>
-					<small>
-						{structureMenu.typeLabel} · LV.{structureMenu.stacks}
-						{structureMenu.isState
-							? ' · CAPITAL'
-							: !structureMenu.isOwn
-								? ' · RIVAL'
-								: ' · NO REFUND'}
-					</small>
+					<span>CONFIRM / DEMOLISH</span>
+					<small>NO REFUND · PERMANENT</small>
 				</button>
-			{/if}
-			{#if structureMenu.allianceOwnerId !== null}
 				<button
 					type="button"
-					class="context-item context-alliance"
+					class="context-item"
 					role="menuitem"
-					title="Alliance mechanics are not implemented yet."
-					onclick={requestAlliance}
+					aria-label="Back to structure actions"
+					onclick={cancelDemolishConfirm}
 				>
-					<span>REQUEST ALLIANCE</span>
-					<small>{structureMenu.allianceName} · NOT IMPLEMENTED YET</small>
+					<span>BACK</span>
+					<small>RETURN TO ACTIONS</small>
+				</button>
+			{:else}
+				{#if structureMenu.structureId !== null}
+					<div class="context-info">
+						<span>{structureMenu.typeLabel} · LV.{structureMenu.stacks}</span>
+						{#if structureMenu.allianceOwnerId !== null}
+							<small>{structureMenu.allianceName} · RIVAL STRUCTURE</small>
+						{:else}
+							<small>YOUR STRUCTURE</small>
+						{/if}
+						{#if structureMenu.isState}<small>CAPITAL · CANNOT BE DEMOLISHED</small>{/if}
+					</div>
+					<button
+						type="button"
+						class="context-item context-demolish"
+						role="menuitem"
+						disabled={!structureMenu.isOwn || structureMenu.isState || paused}
+						aria-label={`Demolish ${structureMenu.typeLabel} level ${structureMenu.stacks}`}
+						title={!structureMenu.isOwn
+							? 'You can only demolish your own structures.'
+							: structureMenu.isState
+								? 'The State structure cannot be demolished.'
+								: paused
+									? 'Resume the simulation first.'
+									: 'Remove this structure. No supply refund.'}
+						onclick={requestDemolish}
+					>
+						<span>DEMOLISH STRUCTURE</span>
+						<small>
+							{structureMenu.typeLabel} · LV.{structureMenu.stacks}
+							{structureMenu.isState
+								? ' · CAPITAL'
+								: !structureMenu.isOwn
+									? ' · RIVAL'
+									: ' · NO REFUND'}
+						</small>
+					</button>
+				{:else if structureMenu.allianceOwnerId !== null}
+					<div class="context-info">
+						<span>RIVAL TERRITORY</span>
+						<small>{structureMenu.allianceName}</small>
+					</div>
+				{/if}
+				{#if structureMenu.allianceOwnerId !== null}
+					<button
+						type="button"
+						class="context-item context-alliance"
+						role="menuitem"
+						aria-label={`Request alliance with ${structureMenu.allianceName}. Not implemented yet.`}
+						title="Alliance mechanics are not implemented yet."
+						onclick={requestAlliance}
+					>
+						<span>REQUEST ALLIANCE</span>
+						<small>{structureMenu.allianceName} · NOT IMPLEMENTED YET</small>
+					</button>
+				{/if}
+				<div class="context-divider"></div>
+				<button
+					type="button"
+					class="context-item"
+					role="menuitem"
+					aria-label="Close menu"
+					onclick={closeStructureMenu}
+				>
+					<span>CANCEL</span>
 				</button>
 			{/if}
-			<div class="context-divider"></div>
-			<button type="button" class="context-item" role="menuitem" onclick={closeStructureMenu}>
-				<span>CANCEL</span>
-			</button>
 		</div>
 	{/if}
 	{#if sim}
@@ -4377,6 +4567,8 @@
 		position: fixed;
 		z-index: 140;
 		width: 264px;
+		max-height: calc(100vh - 16px);
+		overflow-y: auto;
 		padding: 6px;
 		border: 1px solid var(--line-strong);
 		background: rgba(4, 12, 16, 0.97);
@@ -4405,7 +4597,8 @@
 	}
 
 	.context-item:hover:not(:disabled),
-	.context-item:focus-visible:not(:disabled) {
+	.context-item:focus-visible:not(:disabled),
+	.context-item:focus:not(:disabled) {
 		border-color: rgba(220, 233, 149, 0.35);
 		background: rgba(255, 255, 255, 0.05);
 		color: var(--ink);
@@ -4424,19 +4617,60 @@
 		color: var(--ink-faint);
 	}
 
+	.context-info {
+		display: grid;
+		gap: 2px;
+		padding: 8px 10px 9px;
+		margin-bottom: 2px;
+		border-bottom: 1px solid var(--line-soft);
+		pointer-events: none;
+	}
+
+	.context-info span {
+		font-size: 8.5px;
+		font-weight: 700;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+
+	.context-info small {
+		font-size: 7px;
+		font-weight: 500;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.context-info-warning span {
+		color: #ffb09f;
+	}
+
+	.context-info-warning small {
+		color: rgba(255, 176, 159, 0.72);
+	}
+
+	.context-confirm:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.42);
+		background: rgba(255, 120, 103, 0.14);
+		color: #ffd0c7;
+	}
+
 	.context-demolish:not(:disabled) {
 		color: #ffb09f;
 	}
 
 	.context-demolish:hover:not(:disabled),
-	.context-demolish:focus-visible:not(:disabled) {
+	.context-demolish:focus-visible:not(:disabled),
+	.context-demolish:focus:not(:disabled) {
 		border-color: rgba(255, 120, 103, 0.45);
 		background: rgba(255, 120, 103, 0.11);
 		color: #ffd0c7;
 	}
 
 	.context-alliance:hover,
-	.context-alliance:focus-visible {
+	.context-alliance:focus-visible,
+	.context-alliance:focus {
 		border-color: rgba(124, 224, 190, 0.42);
 		background: rgba(124, 224, 190, 0.1);
 		color: #c6ffe9;

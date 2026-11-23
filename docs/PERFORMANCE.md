@@ -130,6 +130,11 @@ Optimizations applied in 0.65.0:
 - Naval route searches use weighted A* with a route cache and stop at the first
   nearest-Port sea path; a long landing request dropped from ~150 ms to under
   10 ms.
+- Attack, naval, and artillery decisions are staggered across the decision
+  interval by player id (~5 bots/tick). Per-bot strength snapshots and a
+  decision epoch keep behavior deterministic; threat/options remain global.
+- Elimination reward income is cached per player alongside the existing income
+  formula, adding no per-tick work.
 - Full-map pocket cleanup runs only when ownership changed since the previous
   cleanup pass.
 
