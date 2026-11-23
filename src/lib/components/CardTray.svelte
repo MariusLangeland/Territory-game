@@ -149,13 +149,13 @@
 			height: 198px;
 		}
 		.card-title {
-			font-size: 15px;
+			font-size: var(--text-15);
 		}
 		.card-art {
 			height: 64px;
 		}
 		.card-rules {
-			font-size: 8px;
+			font-size: var(--text-8);
 		}
 	}
 	@media (max-width: 900px) {
@@ -190,7 +190,7 @@
 			padding: 8px;
 		}
 		.card-title {
-			font-size: 14px;
+			font-size: var(--text-14);
 		}
 		.card-art {
 			height: 56px;
@@ -200,7 +200,7 @@
 			height: 40px;
 		}
 		.card-rules {
-			font-size: 7.5px;
+			font-size: var(--text-8);
 		}
 	}
 	@media (max-width: 620px) {
@@ -225,7 +225,7 @@
 		}
 		.card-banner {
 			min-height: 22px;
-			font-size: 5px;
+			font-size: var(--text-5);
 		}
 		.card-cost {
 			width: 25px;
@@ -235,11 +235,11 @@
 			padding-top: 2px;
 		}
 		.card-cost b {
-			font-size: 12px;
+			font-size: var(--text-12);
 		}
 		.card-title {
 			margin-bottom: 3px;
-			font-size: 12px;
+			font-size: var(--text-12);
 		}
 		.card-art {
 			height: 44px;
@@ -256,10 +256,10 @@
 		.card-type {
 			margin-bottom: 2px;
 			padding-bottom: 2px;
-			font-size: 4.8px;
+			font-size: var(--text-5);
 		}
 		.card-rules {
-			font-size: 6.5px;
+			font-size: var(--text-2xs);
 			line-height: 1.22;
 		}
 		.card-footer {
@@ -282,7 +282,7 @@
 		}
 		.card-banner {
 			min-height: 19px;
-			font-size: 4.4px;
+			font-size: var(--text-4);
 		}
 		.card-cost {
 			width: 22px;
@@ -291,10 +291,10 @@
 			margin-right: -3px;
 		}
 		.card-cost b {
-			font-size: 10px;
+			font-size: var(--text-10);
 		}
 		.card-title {
-			font-size: 10px;
+			font-size: var(--text-10);
 			margin-bottom: 2px;
 		}
 		.card-art {
@@ -310,12 +310,12 @@
 			height: 24px;
 		}
 		.card-type {
-			font-size: 4.1px;
+			font-size: var(--text-4);
 			margin-bottom: 1px;
 			padding-bottom: 1px;
 		}
 		.card-rules {
-			font-size: 5.8px;
+			font-size: var(--text-6);
 			line-height: 1.18;
 		}
 	}
@@ -390,13 +390,13 @@
 			transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1),
 			filter 200ms ease,
 			opacity 160ms ease;
-		filter: drop-shadow(0 18px 20px rgba(0, 0, 0, 0.42));
+		filter: drop-shadow(0 18px 20px var(--alpha-black-42));
 		pointer-events: auto;
 	}
 	.build-card:hover {
 		z-index: 6;
 		transform: translateY(-18px) rotate(0deg) scale(1.035);
-		filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55));
+		filter: drop-shadow(0 26px 30px var(--alpha-black-55));
 	}
 	.card-hotkey {
 		display: inline-flex;
@@ -408,7 +408,7 @@
 		border: 1px solid rgba(255, 248, 220, 0.35);
 		border-radius: 2px;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		font-weight: 500;
 		line-height: 1;
 		color: var(--ink-dim);
@@ -434,7 +434,7 @@
 		height: 100%;
 		padding: 9px;
 		overflow: hidden;
-		border: 1px solid color-mix(in srgb, var(--card-accent) 58%, #d8cfae 42%);
+		border: 1px solid color-mix(in srgb, var(--card-accent) 58%, var(--ink-dim) 42%);
 		background:
 			radial-gradient(
 				circle at 50% 8%,
@@ -442,10 +442,15 @@
 				transparent 48%
 			),
 			linear-gradient(150deg, rgba(255, 255, 255, 0.055), transparent 34%),
-			linear-gradient(165deg, #15252c 0%, #0a151b 55%, #071116 100%);
+			linear-gradient(
+				165deg,
+				var(--bg-online-raised) 0%,
+				var(--bg-online-panel) 55%,
+				var(--bg-raised) 100%
+			);
 		box-shadow:
 			inset 0 0 0 1px rgba(255, 248, 220, 0.08),
-			inset 0 0 32px rgba(0, 0, 0, 0.45);
+			inset 0 0 32px var(--alpha-black-45);
 		clip-path: polygon(
 			11px 0,
 			calc(100% - 11px) 0,
@@ -472,7 +477,7 @@
 		background: linear-gradient(
 			115deg,
 			transparent 35%,
-			rgba(255, 255, 255, 0.08) 48%,
+			var(--alpha-white-08) 48%,
 			transparent 58%
 		);
 		opacity: 0;
@@ -490,9 +495,9 @@
 		justify-content: space-between;
 		min-height: 28px;
 		font-family: var(--font-mono);
-		font-size: 5.8px;
+		font-size: var(--text-6);
 		letter-spacing: 0.16em;
-		color: color-mix(in srgb, var(--card-accent) 72%, #f7eed0 28%);
+		color: color-mix(in srgb, var(--card-accent) 72%, var(--accent-bone) 28%);
 	}
 	.card-cost {
 		display: flex;
@@ -506,23 +511,23 @@
 		padding-top: 4px;
 		background: radial-gradient(
 			circle at 34% 28%,
-			#fff6cd 0%,
-			#e7c477 34%,
-			#a66b28 72%,
-			#634017 100%
+			var(--gold-bright) 0%,
+			var(--gold) 34%,
+			var(--gold-dark) 72%,
+			var(--gold-deep) 100%
 		);
 		clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-		color: #211508;
+		color: var(--gold-shadow);
 		box-shadow: 0 0 16px color-mix(in srgb, var(--card-accent) 38%, transparent);
 	}
 	.card-cost b {
 		font-family: var(--font-display);
-		font-size: 15px;
+		font-size: var(--text-15);
 		line-height: 1;
 	}
 	.card-cost small {
 		font-family: var(--font-mono);
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0;
 	}
 	.card-title {
@@ -530,12 +535,12 @@
 		z-index: 1;
 		margin: 1px 0 5px;
 		font-family: var(--font-display);
-		font-size: 17px;
+		font-size: var(--text-17);
 		font-weight: 500;
 		line-height: 0.95;
 		letter-spacing: 0.02em;
-		color: #fff7df;
-		text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
+		color: var(--ink-strong);
+		text-shadow: 0 1px 12px var(--alpha-black-60);
 	}
 	.card-art {
 		position: relative;
@@ -554,7 +559,7 @@
 				color-mix(in srgb, var(--card-accent) 30%, transparent),
 				transparent 65%
 			),
-			linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.18));
+			linear-gradient(180deg, var(--alpha-white-035), rgba(0, 0, 0, 0.18));
 	}
 	.card-art::before {
 		content: '';
@@ -591,18 +596,18 @@
 		padding-bottom: 4px;
 		border-bottom: 1px solid rgba(255, 248, 220, 0.11);
 		font-family: var(--font-mono);
-		font-size: 5.8px;
+		font-size: var(--text-6);
 		letter-spacing: 0.1em;
-		color: color-mix(in srgb, var(--card-accent) 68%, #f7eed0 32%);
+		color: color-mix(in srgb, var(--card-accent) 68%, var(--accent-bone) 32%);
 	}
 	.card-rules {
 		position: relative;
 		z-index: 1;
 		flex: 1;
 		margin: 0;
-		font-size: 9px;
+		font-size: var(--text-9);
 		line-height: 1.32;
-		color: #c9d4cc;
+		color: var(--ink-dim);
 	}
 	.card-footer {
 		position: relative;
@@ -615,7 +620,7 @@
 		padding-top: 4px;
 		border-top: 1px solid rgba(255, 248, 220, 0.1);
 		font-family: var(--font-mono);
-		font-size: 5.2px;
+		font-size: var(--text-5);
 		letter-spacing: 0.12em;
 		color: var(--ink-faint);
 	}

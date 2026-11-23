@@ -69,13 +69,13 @@
 	}
 	.drag-landing-ring {
 		fill: none;
-		stroke: #ff5f57;
+		stroke: var(--danger);
 		stroke-width: 2.8;
 		stroke-dasharray: 6 5;
 		filter: drop-shadow(0 0 9px rgba(255, 95, 87, 0.65));
 	}
 	.drag-landing-dot {
-		fill: #ff7069;
+		fill: var(--danger);
 		stroke: rgba(6, 14, 18, 0.9);
 		stroke-width: 1.4;
 	}
@@ -83,10 +83,10 @@
 		fill: rgba(131, 226, 124, 0.15);
 	}
 	.drag-overlay .valid .drag-landing-ring {
-		stroke: #83e27c;
+		stroke: var(--success);
 		filter: drop-shadow(0 0 9px rgba(131, 226, 124, 0.65));
 	}
 	.drag-overlay .valid .drag-landing-dot {
-		fill: #93e08d;
+		fill: var(--success);
 	}
 </style>

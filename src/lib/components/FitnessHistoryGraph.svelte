@@ -129,15 +129,15 @@
 	svg {
 		width: 100%;
 		height: auto;
-		background: #050b0e;
-		border: 1px solid #1b2b33;
+		background: var(--bg-deep);
+		border: 1px solid var(--line-online-soft);
 	}
 	.grid {
 		stroke: rgba(247, 238, 208, 0.08);
 		stroke-width: 1;
 	}
 	.axis {
-		fill: rgba(247, 238, 208, 0.4);
+		fill: var(--bone-40);
 		font:
 			7px 'IBM Plex Mono',
 			monospace;
@@ -150,16 +150,16 @@
 	}
 	.line.best,
 	.best-dot {
-		stroke: #f3b74d;
-		fill: #f3b74d;
+		stroke: var(--accent-gold);
+		fill: var(--accent-gold);
 	}
 	.line.average {
-		stroke: #58c7e8;
+		stroke: var(--accent-cyan);
 	}
 	.line.selected,
 	.selected-dot {
-		stroke: #73c88f;
-		fill: #73c88f;
+		stroke: var(--accent-mint);
+		fill: var(--accent-mint);
 	}
 	.best-dot,
 	.selected-dot {
@@ -168,8 +168,8 @@
 	.history-legend {
 		display: flex;
 		gap: 10px;
-		font-size: 8px;
-		color: rgba(247, 238, 208, 0.55);
+		font-size: var(--text-8);
+		color: var(--bone-55);
 	}
 	.history-legend span {
 		display: flex;
@@ -182,17 +182,17 @@
 		display: inline-block;
 	}
 	.history-legend i.best {
-		background: #f3b74d;
+		background: var(--accent-gold);
 	}
 	.history-legend i.average {
-		background: #58c7e8;
+		background: var(--accent-cyan);
 	}
 	.history-legend i.selected {
-		background: #73c88f;
+		background: var(--accent-mint);
 	}
 	.empty {
 		margin: 0;
-		color: #566a72;
-		font-size: 9px;
+		color: var(--ink-faint);
+		font-size: var(--text-9);
 	}
 </style>

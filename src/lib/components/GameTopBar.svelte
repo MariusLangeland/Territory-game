@@ -130,7 +130,7 @@
 			padding: 0 10px;
 		}
 		.readout-stat > span {
-			font-size: 6px;
+			font-size: var(--text-6);
 		}
 		.action-button span {
 			display: none;
@@ -176,7 +176,7 @@
 			height: 42px;
 		}
 		.readout-stat strong {
-			font-size: 12px;
+			font-size: var(--text-12);
 		}
 	}
 	.topbar {
@@ -242,7 +242,7 @@
 	.brand-type h1 {
 		margin: 1px 0 0;
 		font-family: var(--font-display);
-		font-size: 30px;
+		font-size: var(--text-30);
 		font-weight: 700;
 		line-height: 0.9;
 		letter-spacing: 0.035em;
@@ -295,28 +295,28 @@
 	}
 	.commander-name strong {
 		font-family: var(--font-display);
-		font-size: 17px;
+		font-size: var(--text-17);
 		letter-spacing: 0.08em;
 		line-height: 1;
 	}
 	.commander-name small.lost {
-		color: #ffab98;
+		color: var(--danger-strong);
 	}
 	.commander-name small {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.16em;
 		color: var(--ink-faint);
 	}
 	.readout-stat > span {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.16em;
 		color: var(--ink-faint);
 	}
 	.clock-block > span {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.16em;
 		color: var(--ink-faint);
 	}
@@ -331,7 +331,7 @@
 	}
 	.readout-stat strong {
 		font-family: var(--font-mono);
-		font-size: 14px;
+		font-size: var(--text-14);
 		font-weight: 500;
 		letter-spacing: -0.03em;
 		line-height: 1;
@@ -340,7 +340,7 @@
 	.readout-stat em {
 		margin-left: 1px;
 		font-style: normal;
-		font-size: 9px;
+		font-size: var(--text-9);
 		color: var(--ink-faint);
 	}
 	.top-actions {
@@ -360,7 +360,7 @@
 	}
 	.clock-block strong {
 		font-family: var(--font-mono);
-		font-size: 17px;
+		font-size: var(--text-17);
 		font-weight: 500;
 		line-height: 1;
 		letter-spacing: 0.03em;
@@ -370,7 +370,7 @@
 		border: 1px solid var(--line-strong);
 		background: rgba(5, 13, 18, 0.76);
 		font-family: var(--font-mono);
-		font-size: 9px;
+		font-size: var(--text-9);
 		letter-spacing: 0.1em;
 		color: var(--ink-dim);
 		backdrop-filter: blur(14px);
@@ -385,7 +385,7 @@
 		border: 1px solid var(--line-strong);
 		background: rgba(5, 13, 18, 0.76);
 		font-family: var(--font-mono);
-		font-size: 9px;
+		font-size: var(--text-9);
 		letter-spacing: 0.1em;
 		color: var(--ink-dim);
 		backdrop-filter: blur(14px);
@@ -408,12 +408,12 @@
 	}
 	.action-button:hover {
 		color: var(--ink);
-		border-color: rgba(220, 233, 149, 0.55);
+		border-color: var(--signal-55);
 		background: rgba(14, 26, 30, 0.9);
 	}
 	.square-button:hover {
 		color: var(--ink);
-		border-color: rgba(220, 233, 149, 0.55);
+		border-color: var(--signal-55);
 		background: rgba(14, 26, 30, 0.9);
 	}
 	.action-button:disabled {
@@ -425,15 +425,15 @@
 		place-items: center;
 		width: 36px;
 		padding: 0;
-		font-size: 14px;
+		font-size: var(--text-14);
 	}
 	.new-world-button {
 		color: var(--signal);
 	}
 	.clock-block small {
 		font-family: var(--font-mono);
-		font-size: 6px;
+		font-size: var(--text-6);
 		letter-spacing: 0.05em;
-		color: #ffd166;
+		color: var(--warning-strong);
 	}
 </style>

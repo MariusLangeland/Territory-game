@@ -149,12 +149,12 @@
 		width: min(92vw, 670px);
 	}
 	.result-modal h2 {
-		font-size: clamp(56px, 7vw, 94px);
+		font-size: var(--display-md);
 	}
 	.result-lede {
 		max-width: 490px;
 		margin: 0 0 24px;
-		font-size: 13px;
+		font-size: var(--text-13);
 		line-height: 1.6;
 		color: var(--ink-dim);
 	}
@@ -177,13 +177,13 @@
 	}
 	.result-stats span {
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.result-stats strong {
 		font-family: var(--font-mono);
-		font-size: 16px;
+		font-size: var(--text-16);
 		font-weight: 500;
 		color: var(--ink);
 	}
@@ -206,15 +206,15 @@
 	}
 	.result-ai span {
 		font-family: var(--font-mono);
-		font-size: 6px;
+		font-size: var(--text-6);
 		letter-spacing: 0.08em;
 		color: var(--ink-faint);
 	}
 	.result-ai strong {
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-10);
 		font-weight: 500;
-		color: #8fd4e8;
+		color: var(--accent-cyan);
 	}
 	.result-standings {
 		margin: 0 0 10px;
@@ -235,13 +235,13 @@
 	}
 	.result-standings span {
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		font-style: normal;
 		color: var(--ink-faint);
 	}
 	.result-standings em {
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		font-style: normal;
 		color: var(--ink-faint);
 	}
@@ -252,7 +252,7 @@
 	}
 	.result-standings b {
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-10);
 		font-weight: 500;
 		letter-spacing: 0.04em;
 	}

@@ -10,6 +10,91 @@
 	--signal: #dce995;
 	--signal-strong: #f2f7c6;
 	--danger: #ff7867;
+
+	/* Extended semantic palette */
+	--ink-strong: #fff7df;
+	--accent-gold: #f3b74d;
+	--accent-cyan: #58c7e8;
+	--accent-mint: #73c88f;
+	--accent-teal: #3ddbd9;
+	--accent-bone: #f7eed0;
+	--warning: #ffd690;
+	--warning-strong: #ffd166;
+	--danger-soft: #ffd0c7;
+	--danger-strong: #ffab98;
+	--danger-bright: #ff8f7d;
+	--success: #b7e0c6;
+	--gold-bright: #fff6cd;
+	--gold: #e7c477;
+	--gold-dark: #a66b28;
+	--gold-deep: #634017;
+	--gold-shadow: #211508;
+
+	/* Reusable alpha surfaces */
+	--alpha-white-035: var(--alpha-white-035);
+	--alpha-white-05: var(--alpha-white-05);
+	--alpha-white-08: var(--alpha-white-08);
+	--alpha-black-42: var(--alpha-black-42);
+	--alpha-black-45: var(--alpha-black-45);
+	--alpha-black-55: var(--alpha-black-55);
+	--alpha-black-60: var(--alpha-black-60);
+	--bone-10: var(--bone-10);
+	--bone-12: var(--bone-12);
+	--bone-40: var(--bone-40);
+	--bone-50: var(--bone-50);
+	--bone-55: var(--bone-55);
+	--danger-11: var(--danger-11);
+	--danger-45: var(--danger-45);
+	--danger-50: var(--danger-50);
+	--signal-35: var(--signal-35);
+	--signal-55: var(--signal-55);
+	--success-10: var(--success-10);
+	--success-42: var(--success-42);
+	--online-line: var(--online-line);
+
+	/* Deep surfaces used by HUD/modal layers */
+	--bg-deep: #050b0e;
+	--bg-raised: #071015;
+	--bg-raised-alt: #071216;
+	--bg-online: #060c10;
+	--bg-online-panel: #0a151b;
+	--bg-online-raised: #15252c;
+	--line-online: #29404a;
+	--line-online-soft: #1b2b33;
+
+	/* Type scale for HUD and overlays */
+	--text-4: 4px;
+	--text-5: 5px;
+	--text-6: 6px;
+	--text-7: 7px;
+	--text-8: 8px;
+	--text-9: 9px;
+	--text-10: 10px;
+	--text-11: 11px;
+	--text-12: 12px;
+	--text-13: 13px;
+	--text-14: 14px;
+	--text-15: 15px;
+	--text-16: 16px;
+	--text-17: 17px;
+	--text-18: 18px;
+	--text-20: 20px;
+	--text-22: 22px;
+	--text-25: 25px;
+	--text-26: 26px;
+	--text-27: 27px;
+	--text-28: 28px;
+	--text-30: 30px;
+
+	/* Responsive display type */
+	--display-2xs: var(--display-2xs);
+	--display-xs: var(--display-xs);
+	--display-sm: var(--display-sm);
+	--display-md: var(--display-md);
+	--display-lg: var(--display-lg);
+	--display-xl: var(--display-xl);
+	--display-2xl: var(--display-2xl);
+
 	--font-display:
 		'Bahnschrift Condensed', 'Arial Narrow', 'Franklin Gothic Medium', 'Segoe UI', sans-serif;
 	--font-ui: 'Aptos', 'Segoe UI', 'Helvetica Neue', sans-serif;
@@ -56,7 +141,7 @@ input:focus-visible {
 }
 
 ::selection {
-	color: #07110d;
+	color: var(--bg-raised);
 	background: var(--signal);
 }
 

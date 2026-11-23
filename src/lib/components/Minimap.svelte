@@ -166,12 +166,12 @@
 		padding: 0;
 		border: 1px solid rgba(186, 211, 193, 0.24);
 		border-radius: 3px;
-		background: #040b12;
+		background: var(--bg-deep);
 		overflow: hidden;
 		cursor: crosshair;
 		box-shadow:
-			0 18px 48px rgba(0, 0, 0, 0.42),
-			inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+			0 18px 48px var(--alpha-black-42),
+			inset 0 0 0 1px var(--alpha-white-035);
 	}
 
 	.minimap-frame:hover,
@@ -196,7 +196,7 @@
 		justify-content: space-between;
 		padding: 6px 8px;
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		letter-spacing: 0.16em;
 		color: rgba(224, 236, 219, 0.66);
 		pointer-events: none;

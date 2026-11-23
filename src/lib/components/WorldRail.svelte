@@ -164,14 +164,14 @@
 		padding: 12px 14px 10px;
 		border-bottom: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		font-weight: 600;
 		letter-spacing: 0.14em;
 		color: var(--ink-dim);
 	}
 	.panel-meta {
 		color: var(--ink-faint);
-		font-size: 7px;
+		font-size: var(--text-7);
 	}
 	.world-meter {
 		padding: 12px 14px 11px;
@@ -189,19 +189,19 @@
 	}
 	.world-meter-copy span {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.world-meter-foot {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.world-meter-copy strong {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: var(--text-13);
 		font-weight: 500;
 		color: var(--signal);
 	}
@@ -209,13 +209,13 @@
 		position: relative;
 		height: 3px;
 		margin: 9px 0 6px;
-		background: rgba(255, 255, 255, 0.08);
+		background: var(--alpha-white-08);
 		overflow: hidden;
 	}
 	.meter-track span {
 		display: block;
 		height: 100%;
-		background: linear-gradient(90deg, #8ead71, var(--signal));
+		background: linear-gradient(90deg, var(--success), var(--signal));
 		box-shadow: 0 0 12px rgba(220, 233, 149, 0.4);
 		transition: width 450ms ease;
 	}
@@ -239,7 +239,7 @@
 		height: 28px;
 		padding: 0 13px;
 		overflow: hidden;
-		font-size: 11px;
+		font-size: var(--text-11);
 		transition: background 150ms ease;
 	}
 	.rank-list li:hover {
@@ -272,7 +272,7 @@
 	}
 	.rank-index {
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		color: var(--ink-faint);
 	}
 	.rank-swatch {
@@ -286,7 +286,7 @@
 		gap: 6px;
 		min-width: 0;
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-10);
 		letter-spacing: 0.04em;
 		color: var(--ink);
 		white-space: nowrap;
@@ -298,7 +298,7 @@
 		padding: 1px 3px;
 		border: 1px solid color-mix(in srgb, var(--player-color) 40%, transparent);
 		font-family: var(--font-mono);
-		font-size: 6px;
+		font-size: var(--text-6);
 		font-style: normal;
 		letter-spacing: 0.08em;
 		color: var(--player-color);
@@ -309,7 +309,7 @@
 	}
 	.rank-land {
 		font-family: var(--font-mono);
-		font-size: 9px;
+		font-size: var(--text-9);
 		text-align: right;
 		color: var(--ink-dim);
 	}
@@ -320,7 +320,7 @@
 		padding: 9px 13px;
 		border-top: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		letter-spacing: 0.08em;
 		color: var(--ink-faint);
 	}
@@ -347,23 +347,23 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 6px 13px;
-		font-size: 10px;
+		font-size: var(--text-10);
 		line-height: 1.45;
 		color: var(--ink-dim);
 	}
 	.feed li.elimination span {
-		color: #ffab98;
+		color: var(--danger-strong);
 	}
 	.feed li.structure span {
-		color: #ffd690;
+		color: var(--warning);
 	}
 	.feed li.build span {
-		color: #b7e0c6;
+		color: var(--success);
 	}
 	.feed time {
 		flex: none;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		color: var(--ink-faint);
 	}
 </style>

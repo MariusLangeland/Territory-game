@@ -42,6 +42,9 @@
 - Distributed component-specific styles from the 2,676-line shared stylesheet
   into each extracted component; the remaining global page CSS is ~318 lines
   (page shell, shared overlays/buttons, keyframes).
+- Added centralized design tokens in `src/app.css` for semantic colors, alpha
+  surfaces, responsive display type, and the HUD type scale; replaced repeated
+  hard-coded CSS colors and font sizes with variables.
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

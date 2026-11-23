@@ -99,31 +99,31 @@
 	svg {
 		width: 100%;
 		height: auto;
-		background: #050b0e;
-		border: 1px solid #1b2b33;
+		background: var(--bg-deep);
+		border: 1px solid var(--line-online-soft);
 	}
 
 	circle {
-		fill: #071015;
-		stroke: #58c7e8;
+		fill: var(--bg-raised);
+		stroke: var(--accent-cyan);
 		stroke-width: 1.5;
 	}
 
 	.current circle {
 		fill: rgba(243, 183, 77, 0.16);
-		stroke: #f3b74d;
+		stroke: var(--accent-gold);
 		stroke-width: 2.5;
 	}
 
 	.state-index {
-		fill: #f3b74d;
+		fill: var(--accent-gold);
 		font:
 			10px 'IBM Plex Mono',
 			monospace;
 	}
 
 	.state-option {
-		fill: #9bb3bd;
+		fill: var(--ink-dim);
 		font:
 			7px 'IBM Plex Mono',
 			monospace;
@@ -133,21 +133,21 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 3px 8px;
-		color: #6c838c;
-		font-size: 8px;
+		color: var(--ink-faint);
+		font-size: var(--text-8);
 		line-height: 1.4;
 		max-height: 74px;
 		overflow-y: auto;
 	}
 
 	.legend strong {
-		color: #9bb3bd;
+		color: var(--ink-dim);
 		font-weight: 400;
 	}
 
 	.empty {
 		margin: 0;
-		color: #566a72;
-		font-size: 9px;
+		color: var(--ink-faint);
+		font-size: var(--text-9);
 	}
 </style>

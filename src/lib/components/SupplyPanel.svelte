@@ -137,7 +137,7 @@
 			min-width: 52px;
 		}
 		.supply-edge strong {
-			font-size: 18px;
+			font-size: var(--text-18);
 		}
 		.supply-meta em {
 			display: none;
@@ -152,10 +152,10 @@
 			min-width: 44px;
 		}
 		.supply-edge span {
-			font-size: 5px;
+			font-size: var(--text-5);
 		}
 		.supply-edge strong {
-			font-size: 17px;
+			font-size: var(--text-17);
 		}
 		.supply-cost {
 			padding: 2px 5px;
@@ -164,10 +164,10 @@
 			display: none;
 		}
 		.supply-cost strong {
-			font-size: 9px;
+			font-size: var(--text-9);
 		}
 		.supply-actions button {
-			font-size: 5px;
+			font-size: var(--text-5);
 			padding: 3px 4px;
 		}
 	}
@@ -187,7 +187,7 @@
 			linear-gradient(150deg, rgba(255, 214, 144, 0.08), transparent 58%), rgba(6, 15, 20, 0.88);
 		box-shadow:
 			0 14px 34px rgba(0, 0, 0, 0.38),
-			inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+			inset 0 0 0 1px var(--alpha-white-035);
 		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 		backdrop-filter: blur(14px);
 		pointer-events: auto;
@@ -207,15 +207,15 @@
 	}
 	.supply-edge span {
 		font-family: var(--font-mono);
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.13em;
 		color: var(--ink-faint);
 	}
 	.supply-edge strong {
 		font-family: var(--font-display);
-		font-size: 22px;
+		font-size: var(--text-22);
 		line-height: 0.95;
-		color: #ffd690;
+		color: var(--warning);
 		text-shadow: 0 0 18px rgba(255, 214, 144, 0.26);
 	}
 	.supply-max {
@@ -236,7 +236,7 @@
 	.supply-meta em {
 		font-family: var(--font-mono);
 		font-style: normal;
-		font-size: 11px;
+		font-size: var(--text-11);
 		font-weight: 600;
 		line-height: 1;
 		letter-spacing: 0.04em;
@@ -262,23 +262,23 @@
 		animation: supply-cost-in 160ms ease-out both;
 	}
 	.supply-cost span {
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.supply-cost strong {
-		font-size: 10px;
+		font-size: var(--text-10);
 		font-weight: 500;
-		color: #ffd690;
+		color: var(--warning);
 	}
 	.supply-cost i {
 		font-style: normal;
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		color: var(--danger);
 	}
 	.supply-cost.short {
-		border-color: rgba(255, 120, 103, 0.5);
+		border-color: var(--danger-50);
 		background: rgba(28, 10, 12, 0.97);
 		box-shadow: 0 0 0 3px rgba(28, 10, 12, 0.9);
 	}
@@ -306,12 +306,12 @@
 		border: 1px solid rgba(255, 214, 144, 0.25);
 		background:
 			repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 9px),
-			rgba(0, 0, 0, 0.42);
+			var(--alpha-black-42);
 	}
 	.supply-fill {
 		position: absolute;
 		inset: 0 auto 0 0;
-		background: linear-gradient(90deg, rgba(255, 214, 144, 0.72), #ffd690);
+		background: linear-gradient(90deg, rgba(255, 214, 144, 0.72), var(--warning));
 		box-shadow: 0 0 14px rgba(255, 214, 144, 0.34);
 		transition: width 120ms linear;
 	}
@@ -348,11 +348,11 @@
 	.cancel-front {
 		margin-top: 4px;
 		padding: 4px 5px;
-		border: 1px solid rgba(255, 120, 103, 0.45);
+		border: 1px solid var(--danger-45);
 		background: rgba(255, 120, 103, 0.08);
 		color: var(--danger);
 		font-family: var(--font-mono);
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		cursor: pointer;
 	}
@@ -364,9 +364,9 @@
 		padding: 4px 5px;
 		border: 1px solid rgba(255, 155, 90, 0.45);
 		background: rgba(255, 155, 90, 0.08);
-		color: #ffc48a;
+		color: var(--warning);
 		font-family: var(--font-mono);
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		cursor: pointer;
 	}

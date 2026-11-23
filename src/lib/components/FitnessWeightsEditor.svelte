@@ -71,20 +71,20 @@
 
 	label span {
 		display: block;
-		color: #6c838c;
-		font-size: 8px;
+		color: var(--ink-faint);
+		font-size: var(--text-8);
 		letter-spacing: 0.08em;
 		margin-bottom: 3px;
 	}
 
 	input {
 		width: 100%;
-		border: 1px solid #29404a;
-		background: #050b0e;
-		color: #d8e7ec;
+		border: 1px solid var(--line-online);
+		background: var(--bg-deep);
+		color: var(--ink);
 		padding: 5px;
 		font: inherit;
-		font-size: 10px;
+		font-size: var(--text-10);
 	}
 
 	.weight-actions {
@@ -93,25 +93,25 @@
 	}
 
 	button {
-		border: 1px solid #29404a;
-		background: #071015;
-		color: #9bb3bd;
+		border: 1px solid var(--line-online);
+		background: var(--bg-raised);
+		color: var(--ink-dim);
 		padding: 4px 7px;
 		font: inherit;
-		font-size: 8px;
+		font-size: var(--text-8);
 		letter-spacing: 0.08em;
 		cursor: pointer;
 	}
 
 	button:hover {
-		border-color: #f3b74d;
-		color: #f3b74d;
+		border-color: var(--accent-gold);
+		color: var(--accent-gold);
 	}
 
 	.hint {
 		margin: 0;
-		color: #566a72;
-		font-size: 8px;
+		color: var(--ink-faint);
+		font-size: var(--text-8);
 		line-height: 1.45;
 	}
 
@@ -120,11 +120,11 @@
 	}
 
 	.compact label span {
-		font-size: 7px;
+		font-size: var(--text-7);
 	}
 
 	.compact input {
 		padding: 3px 4px;
-		font-size: 9px;
+		font-size: var(--text-9);
 	}
 </style>

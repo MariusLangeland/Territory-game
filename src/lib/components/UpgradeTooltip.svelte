@@ -48,9 +48,9 @@
 		padding: 7px 10px 8px;
 		border: 1px solid rgba(255, 214, 144, 0.4);
 		background: rgba(5, 14, 18, 0.94);
-		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+		box-shadow: 0 12px 30px var(--alpha-black-45);
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		letter-spacing: 0.08em;
 		color: var(--ink-faint);
 		pointer-events: none;
@@ -61,30 +61,30 @@
 	}
 	.upgrade-tooltip strong {
 		font-family: var(--font-display);
-		font-size: 18px;
+		font-size: var(--text-18);
 		line-height: 1;
 		letter-spacing: 0.02em;
-		color: #ffd690;
+		color: var(--warning);
 	}
 	.upgrade-tooltip strong small {
 		margin-left: 3px;
 		font-family: var(--font-mono);
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.upgrade-tooltip i {
 		font-style: normal;
-		font-size: 6px;
+		font-size: var(--text-6);
 		color: var(--ink-dim);
 	}
 	.upgrade-tooltip em {
 		font-style: normal;
-		font-size: 5.5px;
+		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		color: var(--danger);
 	}
 	.upgrade-tooltip.insufficient {
-		border-color: rgba(255, 120, 103, 0.5);
+		border-color: var(--danger-50);
 	}
 </style>

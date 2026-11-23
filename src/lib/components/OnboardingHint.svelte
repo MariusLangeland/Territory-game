@@ -27,10 +27,10 @@
 			padding: 11px 13px 12px;
 		}
 		.onboarding-hint h2 {
-			font-size: 15px;
+			font-size: var(--text-15);
 		}
 		.onboarding-hint p {
-			font-size: 9px;
+			font-size: var(--text-9);
 		}
 	}
 	.onboarding-hint {
@@ -43,7 +43,7 @@
 		transform: translateX(-50%);
 		background: rgba(9, 19, 23, 0.95);
 		border: 1px solid rgba(220, 233, 149, 0.42);
-		box-shadow: 0 16px 44px rgba(0, 0, 0, 0.42);
+		box-shadow: 0 16px 44px var(--alpha-black-42);
 		backdrop-filter: blur(16px);
 		animation: hint-in 220ms ease-out both;
 	}
@@ -53,7 +53,7 @@
 		justify-content: space-between;
 		gap: 12px;
 		color: var(--ink-faint);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.16em;
 	}
 	.onboarding-meta button {
@@ -71,14 +71,14 @@
 	.onboarding-hint h2 {
 		margin: 7px 0 5px;
 		color: var(--ink);
-		font-size: 17px;
+		font-size: var(--text-17);
 		font-weight: 600;
 		letter-spacing: 0.06em;
 	}
 	.onboarding-hint p {
 		margin: 0;
 		color: var(--ink-dim);
-		font-size: 10px;
+		font-size: var(--text-10);
 		line-height: 1.45;
 	}
 </style>

@@ -134,11 +134,11 @@
 	}
 	.help-head h2 {
 		margin-bottom: 0;
-		font-size: clamp(44px, 5vw, 66px);
+		font-size: var(--display-xs);
 	}
 	.close-manual {
 		flex: none;
-		font-size: 20px;
+		font-size: var(--text-20);
 		line-height: 1;
 	}
 	.manual-grid {
@@ -160,21 +160,21 @@
 	}
 	.manual-index {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.13em;
 		color: var(--signal);
 	}
 	.manual-grid h3 {
 		margin: 8px 0 8px;
 		font-family: var(--font-display);
-		font-size: 25px;
+		font-size: var(--text-25);
 		font-weight: 600;
 		line-height: 1;
 		letter-spacing: 0.02em;
 	}
 	.manual-grid p {
 		margin: 0;
-		font-size: 11.5px;
+		font-size: var(--text-12);
 		line-height: 1.65;
 		color: var(--ink-dim);
 	}
@@ -186,7 +186,7 @@
 		padding-top: 14px;
 		border-top: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.07em;
 		color: var(--ink-faint);
 	}

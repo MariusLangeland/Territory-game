@@ -21,7 +21,7 @@
 	.loading-overlay {
 		z-index: 90;
 		align-content: center;
-		background: #040b0f;
+		background: var(--bg-deep);
 		text-align: center;
 	}
 	.loader-mark {
@@ -62,7 +62,7 @@
 	.loading-overlay h2 {
 		margin: 9px 0 10px;
 		font-family: var(--font-display);
-		font-size: clamp(38px, 5vw, 64px);
+		font-size: var(--display-2xs);
 		font-weight: 700;
 		line-height: 0.84;
 		letter-spacing: 0.02em;
@@ -70,7 +70,7 @@
 	.loading-copy {
 		margin: 0;
 		font-family: var(--font-mono);
-		font-size: 9px;
+		font-size: var(--text-9);
 		letter-spacing: 0.04em;
 		color: var(--ink-faint);
 	}

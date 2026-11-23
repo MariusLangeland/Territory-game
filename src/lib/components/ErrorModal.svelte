@@ -61,12 +61,12 @@
 		background: rgba(255, 120, 103, 0.055);
 		white-space: pre-wrap;
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-10);
 		line-height: 1.5;
-		color: #ffb3a5;
+		color: var(--danger-strong);
 	}
 	.error-hint {
-		font-size: 11px !important;
+		font-size: var(--text-11) !important;
 		color: var(--ink-faint) !important;
 	}
 	.error-hint a {

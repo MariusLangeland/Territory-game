@@ -244,7 +244,7 @@
 			gap: 40px;
 		}
 		.intro-copy h2 {
-			font-size: clamp(64px, 9.4vw, 120px);
+			font-size: var(--display-xl);
 		}
 	}
 	@media (max-width: 900px) {
@@ -261,7 +261,7 @@
 			padding: 40px 0 20px;
 		}
 		.intro-copy h2 {
-			font-size: clamp(58px, 14vw, 100px);
+			font-size: var(--display-lg);
 		}
 		.intro-brief {
 			max-width: 520px;
@@ -273,7 +273,7 @@
 			display: none;
 		}
 		.intro-lede {
-			font-size: 13px;
+			font-size: var(--text-13);
 		}
 	}
 	@media (max-width: 620px) {
@@ -284,7 +284,7 @@
 			padding-left: 0;
 		}
 		.spec-strip strong {
-			font-size: 14px;
+			font-size: var(--text-14);
 		}
 		.intro-actions {
 			align-items: stretch;
@@ -323,7 +323,7 @@
 		display: flex;
 		gap: 22px;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.15em;
 		color: var(--ink-faint);
 	}
@@ -354,7 +354,7 @@
 	.intro-copy h2 {
 		margin: 15px 0 19px;
 		font-family: var(--font-display);
-		font-size: clamp(66px, 9.6vw, 148px);
+		font-size: var(--display-2xl);
 		font-weight: 700;
 		line-height: 0.79;
 		letter-spacing: -0.015em;
@@ -368,7 +368,7 @@
 	.intro-lede {
 		max-width: 515px;
 		margin: 0 0 27px;
-		font-size: 14px;
+		font-size: var(--text-14);
 		font-weight: 350;
 		line-height: 1.65;
 		color: var(--ink-dim);
@@ -397,14 +397,14 @@
 	}
 	.spec-strip strong {
 		font-family: var(--font-display);
-		font-size: 17px;
+		font-size: var(--text-17);
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		color: var(--ink);
 	}
 	.spec-strip span {
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
@@ -421,7 +421,7 @@
 	}
 	.seed-loader label {
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.12em;
 		color: var(--ink-faint);
 	}
@@ -437,7 +437,7 @@
 		border-radius: 0;
 		background: rgba(3, 9, 12, 0.65);
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-10);
 		letter-spacing: 0.12em;
 		color: var(--ink);
 	}
@@ -446,7 +446,7 @@
 		border: 1px solid var(--line-strong);
 		background: transparent;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.08em;
 		color: var(--ink-dim);
 		cursor: pointer;
@@ -462,7 +462,7 @@
 	.intro-footnote {
 		margin: 18px 0 0;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		line-height: 1.6;
 		letter-spacing: 0.03em;
 		color: var(--ink-faint);
@@ -490,7 +490,7 @@
 		padding-bottom: 11px;
 		border-bottom: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.12em;
 		color: var(--ink-faint);
 	}
@@ -510,7 +510,7 @@
 	.intro-brief h3 {
 		margin: 18px 0 16px;
 		font-family: var(--font-display);
-		font-size: 27px;
+		font-size: var(--text-27);
 		font-weight: 600;
 		line-height: 0.94;
 		letter-spacing: 0.035em;
@@ -529,12 +529,12 @@
 	.intro-brief li > span {
 		flex: none;
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		color: var(--signal);
 	}
 	.intro-brief li p {
 		margin: 0;
-		font-size: 10px;
+		font-size: var(--text-10);
 		line-height: 1.5;
 		color: var(--ink-dim);
 	}
@@ -550,7 +550,7 @@
 		display: flex;
 		justify-content: space-between;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.08em;
 		color: var(--ink-dim);
 	}
@@ -558,7 +558,7 @@
 		color: var(--signal);
 	}
 	.setup-head .dirty {
-		color: #ffd166;
+		color: var(--warning-strong);
 	}
 	.match-setup label {
 		display: grid;
@@ -566,7 +566,7 @@
 		align-items: center;
 		gap: 8px;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.05em;
 		color: var(--ink-dim);
 	}
@@ -578,7 +578,7 @@
 		background: rgba(5, 14, 18, 0.9);
 		color: var(--ink);
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		letter-spacing: 0.03em;
 	}
 	.seed-presets {
@@ -587,7 +587,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.05em;
 		color: var(--ink-dim);
 	}
@@ -601,7 +601,7 @@
 		background: transparent;
 		color: var(--ink-dim);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		cursor: pointer;
 	}
 	.seed-presets button:hover {
@@ -611,7 +611,7 @@
 	.setup-victory {
 		margin: 2px 0;
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		line-height: 1.5;
 		letter-spacing: 0.04em;
 		color: var(--ink-dim);
@@ -622,7 +622,7 @@
 		background: rgba(220, 233, 149, 0.08);
 		color: var(--signal);
 		font-family: var(--font-mono);
-		font-size: 8px;
+		font-size: var(--text-8);
 		letter-spacing: 0.06em;
 		cursor: pointer;
 	}
@@ -639,12 +639,12 @@
 		padding: 10px 16px;
 		border-top: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
 	.brief-footer strong {
-		font-size: 10px;
+		font-size: var(--text-10);
 		font-weight: 500;
 		color: var(--ink);
 	}
@@ -655,7 +655,7 @@
 		padding-top: 14px;
 		border-top: 1px solid var(--line-soft);
 		font-family: var(--font-mono);
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}

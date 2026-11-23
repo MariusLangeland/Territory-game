@@ -82,6 +82,6 @@
 		position: absolute;
 		inset: 13px;
 		border-radius: 50%;
-		background: #d9ffff;
+		background: var(--accent-cyan);
 	}
 </style>

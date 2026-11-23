@@ -68,7 +68,7 @@
 		border: 1px solid var(--line-strong);
 		background: rgba(5, 13, 18, 0.82);
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: var(--text-13);
 		color: var(--ink-dim);
 		backdrop-filter: blur(12px);
 		cursor: pointer;
@@ -78,12 +78,12 @@
 	}
 	.map-tools button:hover {
 		color: var(--signal);
-		border-color: rgba(220, 233, 149, 0.55);
+		border-color: var(--signal-55);
 	}
 	.map-tools .tool-wide {
 		width: 77px;
 		height: 26px;
-		font-size: 7px;
+		font-size: var(--text-7);
 		letter-spacing: 0.12em;
 	}
 	.perf-readout {
@@ -91,7 +91,7 @@
 		gap: 9px;
 		margin-top: 3px;
 		font-family: var(--font-mono);
-		font-size: 6.5px;
+		font-size: var(--text-2xs);
 		letter-spacing: 0.05em;
 		color: var(--ink-faint);
 	}
