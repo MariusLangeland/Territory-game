@@ -191,3 +191,145 @@ describe('territory integrity', () => {
 		expect(changed.get(4 * WIDTH + 4)).toBe(2);
 	});
 });
+
+describe('dirty-region pocket cleanup', () => {
+	const GRID_WIDTH = 26;
+	const GRID_HEIGHT = 22;
+	const MAX_AREA = 12;
+
+	/** Small deterministic LCG for repeatable random maps and mutations. */
+	function makeRandom(seed: number): () => number {
+		let state = seed >>> 0;
+		return () => {
+			state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+			return state / 0x1_0000_0000;
+		};
+	}
+
+	function makeWorld(
+		random: () => number,
+		landPercent: number,
+		ownerPercent: number
+	): { owners: Uint16Array; land: Uint8Array } {
+		const owners = new Uint16Array(GRID_WIDTH * GRID_HEIGHT);
+		const land = new Uint8Array(GRID_WIDTH * GRID_HEIGHT);
+		for (let index = 0; index < land.length; index++) {
+			if (random() < landPercent) land[index] = 1;
+			if (random() < ownerPercent) owners[index] = 1 + Math.floor(random() * 4);
+			if (!land[index]) owners[index] = 0;
+		}
+		return { owners, land };
+	}
+
+	function cleanFull(
+		integrity: TerritoryIntegrity,
+		owners: Uint16Array,
+		land: Uint8Array
+	): Uint16Array {
+		const cleaned = Uint16Array.from(owners);
+		integrity.cleanupUnclaimedPockets(cleaned, land, MAX_AREA, (index, owner) => {
+			cleaned[index] = owner;
+		});
+		return cleaned;
+	}
+
+	function runFull(land: Uint8Array, owners: Uint16Array): Uint16Array {
+		const full = new TerritoryIntegrity(GRID_WIDTH, GRID_HEIGHT, 4);
+		const result = Uint16Array.from(owners);
+		full.cleanupUnclaimedPockets(result, land, MAX_AREA, (index, owner) => {
+			result[index] = owner;
+		});
+		return result;
+	}
+
+	function runRegion(
+		land: Uint8Array,
+		owners: Uint16Array,
+		changes: readonly number[]
+	): Uint16Array {
+		const region = new TerritoryIntegrity(GRID_WIDTH, GRID_HEIGHT, 4);
+		const result = Uint16Array.from(owners);
+		region.cleanupUnclaimedPocketsNearChanges(
+			result,
+			land,
+			MAX_AREA,
+			Uint32Array.from(changes),
+			changes.length,
+			(index, owner) => {
+				result[index] = owner;
+			}
+		);
+		return result;
+	}
+
+	it('fills the same pockets as a full pass after local ownership changes', () => {
+		const random = makeRandom(0x51230abc);
+		for (let round = 0; round < 40; round++) {
+			const { owners, land } = makeWorld(
+				random,
+				0.45 + (round % 5) * 0.11,
+				0.1 + (round % 7) * 0.12
+			);
+			const cleaner = new TerritoryIntegrity(GRID_WIDTH, GRID_HEIGHT, 4);
+			// Start fully cleaned so the only eligible pockets are the ones the
+			// mutations create or resize.
+			const base = cleanFull(cleaner, owners, land);
+			const mutated = Uint16Array.from(base);
+			const changes: number[] = [];
+			const mutationCount = 12 + (round % 9) * 5;
+			for (let step = 0; step < mutationCount; step++) {
+				const index = Math.floor(random() * mutated.length);
+				mutated[index] = Math.floor(random() * 5);
+				changes.push(index);
+			}
+			expect(runRegion(land, mutated, changes)).toEqual(runFull(land, mutated));
+		}
+	});
+
+	it('skips oversized neutral regions exactly like the full pass', () => {
+		const random = makeRandom(0x51230def);
+		for (let round = 0; round < 12; round++) {
+			const { owners, land } = makeWorld(random, 0.95, 0.08);
+			const cleaner = new TerritoryIntegrity(GRID_WIDTH, GRID_HEIGHT, 4);
+			const base = cleanFull(cleaner, owners, land);
+			// Carve a neutral lake well above MAX_AREA, then mutate its border.
+			const lakeX = 4 + (round % 8);
+			const lakeY = 3 + (round % 6);
+			for (let y = lakeY; y < lakeY + 8; y++) {
+				for (let x = lakeX; x < lakeX + 8; x++) base[y * GRID_WIDTH + x] = 0;
+			}
+			const mutated = Uint16Array.from(base);
+			const changes: number[] = [];
+			for (let step = 0; step < 24; step++) {
+				const index = lakeY * GRID_WIDTH + lakeX - 1 + step;
+				mutated[index] = step % 3 === 0 ? 0 : 1 + (step % 4);
+				changes.push(index);
+			}
+			expect(runRegion(land, mutated, changes)).toEqual(runFull(land, mutated));
+		}
+	});
+
+	it('fills a pocket bisected by a claim and keeps lower-id tie-breaks', () => {
+		const land = new Uint8Array(GRID_WIDTH * GRID_HEIGHT).fill(1);
+		const owners = new Uint16Array(GRID_WIDTH * GRID_HEIGHT).fill(2);
+		// 2x2 neutral pocket: owners 1 and 3 each own two sides (4 contacts).
+		for (let y = 5; y <= 6; y++) {
+			for (let x = 5; x <= 6; x++) owners[y * GRID_WIDTH + x] = 0;
+		}
+		owners[5 * GRID_WIDTH + 4] = 1;
+		owners[6 * GRID_WIDTH + 4] = 1;
+		owners[4 * GRID_WIDTH + 5] = 1;
+		owners[4 * GRID_WIDTH + 6] = 1;
+		owners[5 * GRID_WIDTH + 7] = 3;
+		owners[6 * GRID_WIDTH + 7] = 3;
+		owners[7 * GRID_WIDTH + 5] = 3;
+		owners[7 * GRID_WIDTH + 6] = 3;
+
+		const first = runRegion(land, owners, [5 * GRID_WIDTH + 5]);
+		const second = runRegion(land, owners, [5 * GRID_WIDTH + 5]);
+		expect(first).toEqual(second);
+		// Equal border contact: lower owner id wins.
+		expect(first[5 * GRID_WIDTH + 5]).toBe(1);
+		expect(first[6 * GRID_WIDTH + 6]).toBe(1);
+	});
+});

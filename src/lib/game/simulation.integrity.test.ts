@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { IntegrityAnchor } from './integrity';
+import { UNCLAIMED_POCKET_MAX_AREA } from './constants';
+import { TerritoryIntegrity, type IntegrityAnchor } from './integrity';
 import { TerritorySimulation } from './simulation';
 
 describe('territory integrity', () => {
@@ -196,5 +197,179 @@ describe('territory integrity', () => {
 		sim.owners[island] = 1;
 		internals.annexDisconnectedTerritory();
 		expect(sim.owners[island]).toBe(0);
+	});
+});
+
+interface OptimizationInternals {
+	auraDefense: Uint16Array;
+	rebuildAuraDefense(): void;
+	claim(index: number, newOwner: number, attackId?: number): void;
+	cleanupUnclaimedPockets(): void;
+	cleanupDirtyCount: number;
+	cleanupDirtyIndices: Uint32Array;
+	cleanupNeedsFullScan: boolean;
+	cleanupDirtyOverflow: boolean;
+	land: Uint8Array;
+	portComponentOf: Uint32Array | null;
+	portComponentQueue: Uint32Array | null;
+	protectedPortAnchors(): IntegrityAnchor[];
+	computeStableBotBuildCell(player: { id: number }, type: string): number;
+	findBotBuildCell(player: { id: number }, type: string): number;
+	structures: {
+		create(
+			type: string,
+			ownerId: number,
+			x: number,
+			y: number,
+			width: number
+		): { id: number; index: number };
+		destroy(structure: { id: number }): boolean;
+		reinforce(structure: { stacks: number }): number;
+		forOwner(ownerId: number): Array<{ id: number; type: string; stacks: number }>;
+		forOwnerType(ownerId: number, type: string): { id: number; stacks: number } | undefined;
+	};
+}
+
+describe('simulation optimizations', () => {
+	it('keeps localized aura defense identical to a full rebuild', () => {
+		const sim = new TerritorySimulation({
+			seed: 24601,
+			width: 768,
+			height: 512,
+			playerCount: 8,
+			allPlayersBots: true
+		});
+		const internals = sim as unknown as OptimizationInternals;
+		const expectAuraMatchesFullRebuild = () => {
+			const maintained = Uint16Array.from(internals.auraDefense);
+			internals.rebuildAuraDefense();
+			expect(Array.from(internals.auraDefense)).toEqual(Array.from(maintained));
+		};
+
+		for (let tick = 0; tick < 150; tick++) sim.step();
+		expectAuraMatchesFullRebuild();
+
+		// Capturing a structure cell razes it: that path must refresh aura for the
+		// whole former district, not just the captured cell.
+		const capturable = sim.structures.all.find((structure) => structure.type !== 'state');
+		if (capturable) {
+			internals.claim(capturable.index, 0);
+			expectAuraMatchesFullRebuild();
+		}
+
+		for (let tick = 0; tick < 150; tick++) {
+			sim.step();
+			if (tick % 50 === 0) expectAuraMatchesFullRebuild();
+		}
+	});
+
+	it('creates the same owner map as a full pocket pass at every dirty-region pass', () => {
+		const sim = new TerritorySimulation({
+			seed: 13579,
+			width: 768,
+			height: 512,
+			playerCount: 8,
+			allPlayersBots: true
+		});
+		const internals = sim as unknown as OptimizationInternals;
+		const reference = new TerritoryIntegrity(768, 512, 8);
+		const original = internals.cleanupUnclaimedPockets.bind(internals);
+		let comparedPasses = 0;
+		internals.cleanupUnclaimedPockets = () => {
+			const regionPass =
+				!internals.cleanupNeedsFullScan &&
+				!internals.cleanupDirtyOverflow &&
+				internals.cleanupDirtyCount > 0;
+			if (regionPass) {
+				const expected = Uint16Array.from(sim.owners);
+				reference.cleanupUnclaimedPockets(
+					expected,
+					internals.land,
+					UNCLAIMED_POCKET_MAX_AREA,
+					(index, owner) => {
+						expected[index] = owner;
+					}
+				);
+				original();
+				expect(Array.from(sim.owners)).toEqual(Array.from(expected));
+				comparedPasses++;
+				return;
+			}
+			original();
+		};
+		for (let tick = 0; tick < 400; tick++) sim.step();
+		expect(comparedPasses).toBeGreaterThan(0);
+	});
+
+	it('allocates Port protection scratch only while a Port exists', () => {
+		const sim = new TerritorySimulation({ seed: 2468, width: 512, height: 256, playerCount: 4 });
+		const internals = sim as unknown as OptimizationInternals;
+		expect(internals.portComponentOf).toBeNull();
+		expect(internals.portComponentQueue).toBeNull();
+		internals.protectedPortAnchors();
+		expect(internals.portComponentOf).toBeNull();
+
+		let site = -1;
+		for (let index = 0; index < sim.owners.length && site < 0; index++) {
+			if (sim.owners[index] !== 1) continue;
+			site = index;
+			break;
+		}
+		expect(site).toBeGreaterThan(-1);
+		if (site < 0) return;
+		const x = site % sim.width;
+		const y = Math.floor(site / sim.width);
+		const port = internals.structures.create('port', 1, x, y, sim.width);
+		internals.protectedPortAnchors();
+		expect(internals.portComponentOf).not.toBeNull();
+		expect(internals.portComponentQueue).not.toBeNull();
+
+		internals.structures.destroy(port);
+		internals.protectedPortAnchors();
+		expect(internals.portComponentOf).toBeNull();
+		expect(internals.portComponentQueue).toBeNull();
+	});
+
+	it('re-validates cached bot build sites without rescanning on stack upgrades', () => {
+		const sim = new TerritorySimulation({
+			seed: 97531,
+			width: 1024,
+			height: 512,
+			playerCount: 4,
+			allPlayersBots: true
+		});
+		const internals = sim as unknown as OptimizationInternals;
+		const player = sim.players[1];
+		expect(player).toBeDefined();
+		if (!player) return;
+		let scans = 0;
+		const original = internals.computeStableBotBuildCell.bind(internals);
+		internals.computeStableBotBuildCell = (target, type) => {
+			scans++;
+			return (original as (player: { id: number }, kind: string) => number)(target, type);
+		};
+
+		const first = internals.findBotBuildCell(player, 'command-post');
+		expect(first).toBeGreaterThanOrEqual(0);
+		const scansAfterFirst = scans;
+		expect(internals.findBotBuildCell(player, 'command-post')).toBe(first);
+		expect(scans).toBe(scansAfterFirst);
+
+		// A stack change mutates the registry but cannot change site validity.
+		const state = internals.structures.forOwnerType(player.id, 'state');
+		if (state) internals.structures.reinforce(state);
+		expect(internals.findBotBuildCell(player, 'command-post')).toBe(first);
+		expect(scans).toBe(scansAfterFirst);
+
+		// Occupying the cached cell invalidates it on read; the next query finds
+		// another legal site instead of trusting the cache.
+		internals.structures.create(
+			'barracks',
+			player.id,
+			first % sim.width,
+			Math.floor(first / sim.width),
+			sim.width
+		);
+		expect(internals.findBotBuildCell(player, 'command-post')).not.toBe(first);
 	});
 });

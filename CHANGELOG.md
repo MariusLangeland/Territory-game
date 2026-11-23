@@ -58,6 +58,14 @@
   and split main-page selectors into `game-page-state/selectors/`.
 - Normalized `structures/` casing, added Vitest fast/stress projects, and added a
   CI import-boundary check (`pnpm check:boundaries`).
+- Profiled and optimized the simulation hot paths: annexation scan ~36 → ~10 ms,
+  neutral cleanup ~38 → ~1.5 ms on the dirty-region path (26×), localized aura
+  rebuilds (101 → 1 full rebuild per 1,000 ticks), reduced bot build-site scans,
+  and lazy Port scratch buffers. Typed-array footprint 392 → 321 MiB; steady
+  51-player tick ~3.0 → ~1.3 ms. Behavior/checksums verified bit-identical.
+- Fixed the benchmark's map-generation measurement to use cold unique seeds
+  (~0.9–1.0 s instead of the cached ~0.001 ms) and added annex/cleanup/checksum/
+  memory sections plus a Chrome main-thread/renderer profile.
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

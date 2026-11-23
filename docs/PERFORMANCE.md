@@ -26,7 +26,7 @@ All numbers are from the development machine unless stated otherwise. They are d
 
 The Evolution Lab runs its entire sandbox and match loop in a Web Worker. The worker steps under an 8 ms frame budget and posts visual updates at up to roughly 60 Hz; the main thread only applies those deltas, renders, and handles camera/input. At most one visual is in flight: the worker waits for the renderer to apply it and acknowledge before sending the next, coalescing changes (or falling back to a full owner snapshot) while the UI is behind. The renderer applies queued deltas in order, so a slow frame cannot silently skip one. Changing speed resets the worker accumulator so returning to `1×` takes effect immediately instead of replaying a fast-forward backlog. Panning, zooming, speed changes, setup edits, and selection therefore do not wait behind simulation steps. Pausing flushes a final visual and state. The worker saves a generation-boundary session checkpoint to IndexedDB, making reload-and-continue possible without replaying completed generations.
 
-Bot construction refreshes districts only within the new structure's radius and batches auras once per 3-second decision tick; a full-map district rebuild under 50 simultaneous bot builds cost ~200 ms and is no longer used for construction. District palette changes are reported as 32 × 32 tiles, so the renderer rewrites alpha for a few tiles instead of rebuilding the 2.1M-pixel control texture. Bot build ticks are staggered across the 3-second interval; in a 300-tick sample the worst district batch was 32 tiles (previously up to 549 when all 50 bots built together). The 10 Hz simulation has a 100 ms budget per tick. It uses ~2.6–3.3% under stress depending on growth layer; rendering and GPU uploads are the limiting factors. The integrity scan costs ~8.5 ms but is limited to once per second. The merged-district union scan costs ~2.7 ms over the 2.1M-cell map and is throttled to at most once per 5 ticks (twice per second) from render/UI reads; it is never part of the 10 Hz simulation tick or checksums.
+Bot construction refreshes districts only within the new structure's radius and batches auras once per 3-second decision tick; a full-map district rebuild under 50 simultaneous bot builds cost ~200 ms and is no longer used for construction. District palette changes are reported as 32 × 32 tiles, so the renderer rewrites alpha for a few tiles instead of rebuilding the full control texture. Bot build ticks are staggered across the 3-second interval; in a 300-tick sample the worst district batch was 32 tiles (previously up to 549 when all 50 bots built together). The 10 Hz simulation has a 100 ms budget per tick. It uses ~0.9–1.4% under stress depending on world heat and growth layer; rendering and GPU uploads are the limiting factors. The annexation scan costs ~6 ms on the default 8.4M-cell atlas when it runs (see §2.1); production neutral-pocket cleanup probes only dirty regions (~1.4 ms/call) and falls back to a full-map scan (~53 ms, the number the benchmark records) on the first pass or dirty-list overflow. Annexation is gated to every 30 ticks, cleanup to every 100, and both are skipped when ownership has not changed. The merged-district union scan costs ~2.7 ms over the 2.1M-cell map and is throttled to at most once per 5 ticks (twice per second) from render/UI reads; it is never part of the 10 Hz simulation tick or checksums.
 
 ### Long-run soak
 
@@ -44,21 +44,45 @@ Run:
 pnpm bench
 ```
 
-Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xbeefcafe` (map), `0x12345678` (sustained all-bot run), `0x87654321` (collision-heavy run), `0x13572468` (growth-layer comparison). Five map generations, 1,000 sustained stress ticks, 500 collision-heavy ticks, 300 ticks per growth layer, five checksums.
+Environment: Windows, Node.js 24.21, Intel Core i7-14700F (28 logical cores), development hardware. Numbers are single-process Node wall time and are directional; compare repeated runs on the same machine. The table shows the final post-optimization run (November 2026). Timing drifts by roughly 10–20% between runs with GC and background load. The script uses fixed seeds and iteration counts: cold map generation over unique seeds from `0xbeefcafe` (one warmup generation discarded), `0x12345678` for the sustained all-bot run, `0x87654321` for the collision-heavy run, `0x13572468` for the growth-layer comparison; 1,000 sustained ticks, 500 collision-heavy ticks, 300 ticks per growth layer, 20 hot-phase integrity scans after warmup, and five checksums.
 
-| Operation                                               | Result          |
-| ------------------------------------------------------- | --------------- |
-| Generate 4096 × 2048 map + 51 starts                    | **~879 ms/op**  |
-| Sustained all-bot attack tick                           | **~2.6 ms/op**  |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~2.1 ms/op**  |
-| Circular layer comparison tick                          | **~2.0 ms/op**  |
-| Smooth layer comparison tick                            | **~2.3 ms/op**  |
-| Organic layer comparison tick                           | **~1.9 ms/op**  |
-| Full-state checksum                                     | **~64.3 ms/op** |
-| Active attacks after sustained run                      | ~10–24 fronts   |
-| Node RSS (all benchmark simulations)                    | ~296 MiB        |
+| Operation                                                           | Result                              |
+| ------------------------------------------------------------------- | ----------------------------------- |
+| Generate 4096 × 2048 map + 51 starts, cold (unique seeds)           | **~976 ms/op**                      |
+| Sustained 51-player attack tick                                     | **~1.31 ms/op** (p95 ~3.5)          |
+| Collision-heavy 51-player tick (100 ticks warmed)                   | **~0.91 ms/op**                     |
+| Circular layer comparison tick                                      | **~1.0 ms/op**                      |
+| Smooth layer comparison tick                                        | **~1.4 ms/op**                      |
+| Organic layer comparison tick                                       | **~1.1 ms/op**                      |
+| Annexation scan (full-map component labels + borders)               | **~6.1 ms/op**                      |
+| Neutral-pocket cleanup, benchmark direct call (full-map worst case) | **~53.4 ms/op**                     |
+| Neutral-pocket cleanup, production dirty-region path                | **~1.4 ms/call** (separate measure) |
+| Full-state checksum                                                 | **~69.1 ms/op**                     |
+| Typed-array buffers, one 51-player simulation                       | **~321 MiB / 62 buffers**           |
+| Node RSS (all benchmark worlds)                                     | **~1266 MiB (~1.24 GiB)**           |
+| Active fronts after runs                                            | ~10 sustained / ~10 busy            |
 
-At 10 Hz, 2.1–2.6 ms per tick is roughly **2.1–2.6% of a 100 ms tick budget** on the default 4096 × 2048 atlas. Benchmark RSS is ~1.2 GiB with all simulations resident, and the full-state checksum is ~64 ms so it stays an on-demand operation.
+The cleanup row is a deliberate worst case: the benchmark calls the private cleanup entry point on a static world, which has no dirty cells, so each call takes the full-map fallback. Live matches normally probe only dirty regions after captures (~1.4 ms/call) and fall back to the full-map scan on the first pass or on dirty-list overflow.
+
+At 10 Hz, ~0.9–1.4 ms per tick is roughly **0.9–1.4% of a 100 ms tick budget** on the default 4096 × 2048 atlas (8,388,608 cells), depending on growth layer and world heat; the post-optimization 51-state stress tick clears the §1 `< 5 ms p95` target (final run p95 3.51 ms). The full-state checksum is ~69 ms, so it stays an on-demand operation. Benchmark RSS is ~1.24 GiB (1266 MiB) because the process keeps five 51-player worlds plus the six-entry map cache alive; a single 51-player simulation owns **~321 MiB of typed-array buffers**. These are Node-side figures; V8 object/`Map`/`Set` overhead, the browser heap, and GPU resources are additional.
+
+Cold generation of the full atlas measures ~976 ms on the final run (repeated runs measured ~0.98–1.09 s), above the §1 `< 500 ms` target and close to the `> 1 s` hard-fail line on this machine. It runs once per unique seed behind the loading screen. Likewise the ~69 ms checksum is above the older `< 25 ms` target; that target predates the current `4096 × 2048` default atlas.
+
+**Methodology**
+
+- The map-generation row discards one warmup generation and then generates a map for a **unique seed every iteration**. `generateMap` keeps an LRU of the last six maps keyed by seed, so a fixed-seed loop measures a cache hit (~0.001 ms/op, the previous benchmark bug). A guard fails the benchmark if the cold mean drops below 10 ms/op, which would signal a cache hit.
+- Tick rows warm up for five iterations (plus the 100-tick collision-heavy warmup) before recording 1,000/500 iterations; growth rows warm up 100 ticks and record 300.
+- The integrity rows invoke the private `annexDisconnectedTerritory()` and `cleanupUnclaimedPockets()` through a typed probe on the heated collision-heavy world. The annexation row measures a full component-label pass. The cleanup row deliberately measures the **worst-case full-map scan**: the benchmark calls the private entry point on a static world, so no changed cells are tracked and every timed call takes the full-scan fallback. Live matches call the same entry point after captures and probe only dirty regions (typically ~1.4 ms/call), falling back to the full-map scan on the first pass or when the dirty-index list overflows. Annexation runs every 30 ticks (3 s) and cleanup every 100 ticks (10 s), and both are skipped when ownership has not changed since the previous pass. The benchmark amortisation is ~0.74 ms/tick worst case (6.1 / 30 + 53.4 / 100); the live dirty-region path adds roughly 0.2 ms/tick.
+- The checksum row records five calls after warmup.
+- The memory row walks the typed-array buffers reachable from one steady simulation (one entry per `ArrayBuffer`, so aliased views are counted once); `process.memoryUsage()` supplies RSS, heap, and ArrayBuffer totals.
+
+**Caveats**
+
+- **Node headless only.** The benchmark does not measure WebGPU rendering, texture uploads, main-thread frame cost, the Web Worker simulation loop, scheduler latency, or snapshot/serialization overhead. See §2.2 for browser frame results.
+- **Renderer/WebGPU are not measured here.** Do not read these numbers as frame rate, GPU time, or upload bandwidth.
+- **Map cache caveat.** Same-seed map generation is a cache hit (~0.001 ms) and unique-seed generation is cold (~976 ms). Production first load pays the cold cost; the Evolution Lab reuses lineage maps from its small LRU. Any map-generation claim must state which path it measured.
+- **Integrity scans are worst-case.** They are measured directly, bypassing the ownership-change gate, and the cleanup row uses the full-map fallback rather than the dirty-region path live matches normally take. Do not add the benchmark annex + cleanup numbers to the steady per-tick estimate.
+- **One machine, one Node version.** Absolute values move with CPU, Node version, GC timing, and background load. Use repeated runs on the same machine for regressions; this is not a cross-machine comparison.
 
 ### 4096 × 4096 scaling
 
@@ -132,7 +156,7 @@ bound**, not render bound.
 
 The 51-state `pnpm bench` run measured **4.08 ms/tick sustained**,
 **226 ms** for map generation + 51 starts, and **16.4 ms** per on-demand
-checksum. Match setup for a 1280 × 720 Evolution Lab map costs **130–155 ms**,
+checksum. Those figures predate the later simulation restructure; current figures are in §2.1. Match setup for a 1280 × 720 Evolution Lab map costs **130–155 ms**,
 which is significant for short 400–1600 tick matches.
 
 CPU profile hot spots, largest first:
@@ -226,12 +250,12 @@ Add measurements before claiming these are solved.
 
 ## 3. Where the time goes
 
-### Map generation (one-time, ~300 ms)
+### Map generation (one-time, ~1 s)
 
-- 2.1M elevation computations with five noise octaves.
+- 8.4M elevation computations with five noise octaves.
 - Land histogram threshold plus a second land-height histogram for six elevation quantiles.
-- 2.1M land/shade/elevation writes.
-- Sampling ~6,900 candidate starts, farthest-point selection for 51 starts, initial paint, and full border rebuild.
+- 8.4M land/shade/elevation writes.
+- Sampling up to 3,264 accepted candidate starts (from up to 400K seeded attempts), farthest-point selection for 51 starts, initial paint, and full border rebuild.
 
 It runs once on world creation and is hidden by the loading screen. Do not run it during a live tick.
 
@@ -241,7 +265,7 @@ Potential optimizations if needed:
 - pre-bake maps/assets;
 - move generation to a worker.
 
-### Simulation tick (~2.6–3.3 ms)
+### Simulation tick (~0.9–1.4 ms)
 
 - Bots: up to 50 decisions every 10 ticks; frontier sampling.
 - Attacks: ~10–24 active fronts × embedded-order point budgets, least-resistance sampling, and stale-cell skipping.
@@ -253,11 +277,11 @@ Potential optimizations if needed:
 - Per-capture defense lookup from elevation + occupancy + aura, plus attacker Barracks strength.
 - Least-resistance sampling: up to 10 frontier pops, cost comparisons, and push-backs per capture. This is bounded and adds no allocation beyond the small sampled array.
 - Aura overlay (friendly-owned State/Defense Post fields) built at start, rebuilt on structure changes, and locally recomputed for captured cells.
-- District Voronoi pass over owner-local structure ranges; local neighbourhood recompute on structure creation/destruction, single-cell update on ordinary captures, and dirty-tile alpha uploads. Each comparison adds a few integer hash samples for coherent edge noise. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 8 MiB and palette codes add 2 MiB per simulation.
+- District Voronoi pass over owner-local structure ranges; local neighbourhood recompute on structure creation/destruction, single-cell update on ordinary captures, and dirty-tile alpha uploads. Each comparison adds a few integer hash samples for coherent edge noise. A 5-bit district palette is packed into the control alpha channel, so no extra texture upload. Per-cell district ids add 32 MiB and palette codes add 8 MiB per simulation.
 - Base attack-order grants and cap scans; per-tick Command Post order-rate accrual.
 - Per-tick continuous resource accrual: human income lookup and Command Post order-rate scan. Build/upgrade command validation; the card hand is static, with no draw or reroll RNG.
 - Structure lookup on claims and structure metadata in checksums.
-- Integrity scan once per second: component labeling plus detached-component border counts.
+- Integrity scan every 3 s and neutral-pocket cleanup every 10 s: component labeling, detached-component border counts, and pocket detection. Pocket cleanup probes only land whose ownership changed since the previous pass; the first pass and dirty-list overflow fall back to the full-map scan.
 - Structure overlay: 15/11 px State capitals, 10 px type-specific buildable icons, and stack-count badges per rendered frame on a 2D canvas. Aura circles were removed. Icon radii are camera-independent screen pixels. District tint/boundaries are decoded from the packed control alpha in the territory shader.
 - Card hand: five permanent DOM cards, gold/income readout; raise/sink, hover, and drag use compositor-friendly transform transitions. Drag/drop conversion is input-only.
 
@@ -298,21 +322,26 @@ Replacing per-attack Set bookkeeping with flat frontier structures also cut memo
 
 ## 4. Memory
 
-| Item                                    | Approx.                             |
-| --------------------------------------- | ----------------------------------- |
-| Owner grid                              | 4 MiB                               |
-| Land mask                               | 2 MiB                               |
-| Terrain shade                           | 2 MiB                               |
-| Elevation scratch during map generation | 4 MiB (transient)                   |
-| CPU control shadow                      | 8 MiB                               |
-| GPU map texture                         | 8 MiB                               |
-| Canvas backing buffer                   | width × height × 4, capped by DPR 2 |
-| Frontier sets (51 states)               | map-dependent                       |
-| Growth frontier candidates              | layer-dependent, lifetime-bounded   |
-| Svelte DOM/HUD                          | ~19 virtualized leaderboard rows    |
-| Node benchmark RSS (five worlds)        | ~296 MiB                            |
+Static typed-array allocations at the default 4096 × 2048 atlas (8,388,608 cells), unless stated otherwise:
 
-Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially; the current benchmark runs five worlds and measures ~296 MiB depending on GC timing. Integrity preallocates two 2M-entry typed arrays (~16 MiB), the aura overlay adds 4 MiB, and the district type/id/palette arrays add 14 MiB per simulation. Browser memory should be measured separately before shipping.
+| Item                                     | Approx.                             |
+| ---------------------------------------- | ----------------------------------- |
+| Owner grid (51 players, `Uint16Array`)   | 16 MiB                              |
+| Land mask                                | 8 MiB                               |
+| Terrain shade                            | 8 MiB                               |
+| Generated map arrays (land/shade/elev.)  | 24 MiB retained                     |
+| Elevation scratch during map generation  | 16 MiB (transient)                  |
+| CPU control shadow (RGBA)                | 32 MiB                              |
+| GPU map texture (RGBA8)                  | 32 MiB                              |
+| Canvas backing buffer                    | width × height × 4, capped by DPR 2 |
+| Frontier sets (51 states)                | map-dependent                       |
+| Growth frontier candidates               | layer-dependent, lifetime-bounded   |
+| Svelte DOM/HUD                           | ~19 virtualized leaderboard rows    |
+| Typed-array buffers (one 51-player sim)  | ~321 MiB                            |
+| Port component scratch (lazy)            | 64 MiB (only when a Port needs it)  |
+| Node benchmark RSS (five worlds + cache) | ~1266 MiB (~1.24 GiB)               |
+
+Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the same benchmark. Packed/array frontiers and ownership-based duplicate handling brought that down substantially, and the current 4096 × 2048 default atlas keeps one 51-player simulation at ~321 MiB of typed-array buffers: 112 MiB of ownership/control grids, 80 MiB of integrity scratch, 72 MiB of sea-routing scratch, 32 MiB of sea components, 24 MiB of map arrays, and ~1 MiB of dirty-cleanup and small AI scratch. Port component scratch (two 32 MiB arrays) is allocated lazily only once a Port needs protection, so a Port-less benchmark world stays at ~321 MiB while a match with protected Ports adds 64 MiB. The benchmark keeps five worlds plus the six-entry map cache alive at ~1.24 GiB RSS. Object/`Map`/`Set` overhead, the JS heap, and browser memory should be measured separately before shipping.
 
 ---
 
@@ -348,7 +377,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 ## 6. Guardrails for contributors
 
 1. **Do not add per-cell object allocation.** Use typed arrays/flat numeric arrays.
-2. **Do not iterate the full 2M-cell map per tick.**
+2. **Do not iterate the full map every tick.**
 3. **Do not create a new GPU texture per update.**
 4. **Do not synchronously upload the full map on the input path.** If dense changes need a resync, chunk it across frames.
 5. **Do not add per-attack Sets if flat frontier storage can avoid them.**
@@ -380,7 +409,7 @@ Earlier per-attack `Set<number>` + JS array queues produced ~529 MiB for the sam
 
 ### Larger maps
 
-- Owner/control textures scale linearly; 4096 × 4096 would be 32 MiB CPU + 32 MiB GPU control plus owner arrays.
+- Owner/control textures scale linearly; 4096 × 4096 would be 64 MiB CPU control + 64 MiB GPU control plus 32 MiB of owner arrays.
 - Texture limits and map generation cost become constraints.
 - Tiling/chunking may be required.
 

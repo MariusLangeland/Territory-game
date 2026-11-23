@@ -247,6 +247,16 @@ interface BotEconomicAction {
 const CHANGE_BUFFER_SIZE = 16_384;
 /** Keep the full annex scan off the bot decision tick. */
 const ANNEX_PHASE_OFFSET_TICKS = 5;
+/**
+ * Above this many queued cells a localized aura recompute costs more than the
+ * whole-map fill + structure stamp, so fall back to a full rebuild.
+ */
+const AURA_LOCAL_REBUILD_MAX_CELLS = 24_576;
+/**
+ * Ownership changes tracked between neutral-pocket passes. Above this count the
+ * pass falls back to a full-map scan instead of probing dirty regions.
+ */
+const CLEANUP_DIRTY_CAPACITY = 262_144;
 
 /** Diplomacy timing is tick-based; no wall clock enters the simulation. */
 const ALLIANCE_PROPOSAL_TICKS = TICK_RATE * 30;
@@ -272,6 +282,13 @@ export class TerritorySimulation {
 	readonly claimedBy: Uint32Array;
 	/** Structure aura defense bonus per cell. Derived from live structures. */
 	private readonly auraDefense: Uint16Array;
+	/**
+	 * Pending aura-recompute rectangles as flat `minX, minY, maxX, maxY`
+	 * quadruples. Layout/stack changes only alter aura inside their own
+	 * footprint, so recomputing those cells is equivalent to a full rebuild at a
+	 * fraction of the cost. Flushed before phases that read defense.
+	 */
+	private readonly auraDirtyRegions: number[] = [];
 	/** Structure type code of the district covering each cell, or 0. */
 	readonly districtTypes: Uint8Array;
 	/** Structure id owning each district cell, or 0. */
@@ -389,9 +406,14 @@ export class TerritorySimulation {
 	private readonly seaComponents: Uint32Array;
 	private readonly seaRouter: SeaRouter;
 	private readonly shoreIndices: number[] = [];
-	/** Scratch land-component labels used for Port annexation protection. */
-	private readonly portComponentOf: Uint32Array;
-	private readonly portComponentQueue: Uint32Array;
+	/**
+	 * Scratch land-component labels used for Port annexation protection. These
+	 * are 32 MiB each on a large map and most matches never build a Port, so
+	 * they are allocated on the first scan that actually sees a Port and freed
+	 * again once no Port remains.
+	 */
+	private portComponentOf: Uint32Array | null = null;
+	private portComponentQueue: Uint32Array | null = null;
 	private portVisitToken = 0;
 	/** Reuse one land-component walk for multiple Ports in this scan. */
 	private readonly portComponentMeta = new Map<
@@ -421,6 +443,11 @@ export class TerritorySimulation {
 	private ownershipChangedSinceAnnex = true;
 	private ownershipChangedSinceCleanup = true;
 	private ownershipVersion = 0;
+	/** Changed cells since the last pocket pass, used for dirty-region cleanup. */
+	private readonly cleanupDirtyIndices = new Uint32Array(CLEANUP_DIRTY_CAPACITY);
+	private cleanupDirtyCount = 0;
+	private cleanupDirtyOverflow = false;
+	private cleanupNeedsFullScan = true;
 	/** Per-player/type build-site lookups valid for one tick and structure layout. */
 	private buildSiteCache = new Int32Array(0);
 	private needsExpansionCache = new Int8Array(0);
@@ -428,13 +455,17 @@ export class TerritorySimulation {
 	private needsExpansionCacheStructureVersion = -1;
 	private needsExpansionCacheLayoutVersion = -1;
 	private buildSiteCacheTick = -1;
-	private buildSiteCacheVersion = -1;
 	private buildSiteCacheLayoutVersion = -1;
 	/** Port/core sites are tick-independent and can survive across ticks. */
 	private stableBuildSiteCache = new Int32Array(0);
 	private stableBuildSiteTick = new Uint32Array(0);
-	private stableBuildSiteCacheVersion = -1;
-	private stableBuildSiteCacheLayoutVersion = -1;
+	private stableBuildSiteLayoutVersion = -1;
+	/**
+	 * Only a structure *removal* can open a previously-invalid stable build
+	 * site; a create/reinforce can only invalidate positive entries, which are
+	 * re-validated on read. Avoid resetting every negative site on each build.
+	 */
+	private stableBuildSitesNeedReset = false;
 	private readonly integrity: TerritoryIntegrity;
 	readonly structures: StructureRegistry;
 	/** Derived stack totals per owner/type code; refreshed only when the registry mutates. */
@@ -498,8 +529,7 @@ export class TerritorySimulation {
 				this.shoreIndices.push(index);
 			}
 		}
-		this.portComponentOf = new Uint32Array(this.width * this.height);
-		this.portComponentQueue = new Uint32Array(this.width * this.height);
+		this.portVisitToken = 0;
 		this.owners = new Uint16Array(this.width * this.height);
 		this.claimedBy = new Uint32Array(this.width * this.height);
 		this.auraDefense = new Uint16Array(this.width * this.height);
@@ -1235,7 +1265,8 @@ export class TerritorySimulation {
 			`${owner.name}'s landing captures a beachhead and builds a Port.`,
 			landing.ownerId
 		);
-		this.rebuildAuraDefense();
+		// A Port is a district-less point anchor with no aura effect, so the
+		// beachhead claim above is the only aura change.
 
 		let beachTarget = -1;
 		let bestDefense = Number.POSITIVE_INFINITY;
@@ -1319,9 +1350,11 @@ export class TerritorySimulation {
 		if (structure.type === 'state') return;
 
 		this.structures.destroy(structure);
+		this.stableBuildSitesNeedReset = true;
 		this.artilleryCooldownUntil.delete(structure.id);
 		this.refreshDistrictsAround(structure);
-		this.rebuildAuraDefense();
+		this.markAuraStructureRegion(structure);
+		this.flushAuraDirty();
 		this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
 		if (structure.type === 'port') this.annexRequested = true;
 		const owner = this.players[structure.ownerId - 1];
@@ -1338,7 +1371,10 @@ export class TerritorySimulation {
 		const label = STRUCTURE_DEFINITIONS[structure.type].label;
 		if (structure.stacks > 1) {
 			structure.stacks--;
-			this.rebuildAuraDefense();
+			if (this.hasDefenseAura(structure)) {
+				this.markAuraStructureRegion(structure);
+				this.flushAuraDirty();
+			}
 			this.pushEvent(
 				'artillery',
 				`${owner?.name ?? 'A state'}'s ${label} hit; now Lv.${structure.stacks}.`,
@@ -1348,9 +1384,11 @@ export class TerritorySimulation {
 		}
 
 		this.structures.destroy(structure);
+		this.stableBuildSitesNeedReset = true;
 		this.artilleryCooldownUntil.delete(structure.id);
 		this.refreshDistrictsAround(structure);
-		this.rebuildAuraDefense();
+		this.markAuraStructureRegion(structure);
+		this.flushAuraDirty();
 		this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
 		if (structure.type === 'state' || structure.type === 'port') this.annexRequested = true;
 		this.pushEvent(
@@ -2025,7 +2063,10 @@ export class TerritorySimulation {
 					const cost = baseCost + districtStructure.stacks * UPGRADE_LEVEL_COST_STEP;
 					if (!this.spendSupply(command.playerId, cost)) continue;
 					const stacks = this.structures.reinforce(districtStructure);
-					this.rebuildAuraDefense();
+					if (this.hasDefenseAura(districtStructure)) {
+						this.markAuraStructureRegion(districtStructure);
+						this.flushAuraDirty();
+					}
 					this.pushEvent(
 						'build',
 						`${STRUCTURE_DEFINITIONS[card.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
@@ -2042,7 +2083,8 @@ export class TerritorySimulation {
 					this.width
 				);
 				this.refreshDistrictsAround(structure);
-				this.rebuildAuraDefense();
+				this.markAuraStructureRegion(structure);
+				this.flushAuraDirty();
 				this.pushEvent(
 					'build',
 					`${STRUCTURE_DEFINITIONS[structure.type].label} built for ${baseCost} supply.`,
@@ -2065,7 +2107,10 @@ export class TerritorySimulation {
 				const cost = command.cost;
 				if (!this.spendSupply(command.playerId, cost)) continue;
 				const stacks = this.structures.reinforce(target.structure);
-				this.rebuildAuraDefense();
+				if (this.hasDefenseAura(target.structure)) {
+					this.markAuraStructureRegion(target.structure);
+					this.flushAuraDirty();
+				}
 				this.pushEvent(
 					'build',
 					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
@@ -2481,6 +2526,152 @@ export class TerritorySimulation {
 		stamp('add');
 	}
 
+	/** True when a structure type contributes a defense aura (stack changes matter). */
+	private hasDefenseAura(structure: Structure): boolean {
+		for (const effect of structure.effects) {
+			if (effect.kind === 'defense-aura') return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Queue the aura cells a structure layout/stack change can affect.
+	 *
+	 * A district structure can shift nearest-district ownership inside its
+	 * `districtRange` (plus the noise margin) and its aura only exists inside
+	 * its own district, so that box bounds every changed cell. Radius auras
+	 * (State) change only within their radius. Ports and other district-less,
+	 * aura-less structures cannot change aura at all.
+	 */
+	private markAuraStructureRegion(structure: Structure): void {
+		const definition = STRUCTURE_DEFINITIONS[structure.type];
+		let radius =
+			definition.districtRange > 0 ? definition.districtRange + DISTRICT_NOISE_MARGIN : 0;
+		for (const effect of structure.effects) {
+			if (effect.kind === 'defense-aura') radius = Math.max(radius, effect.radius);
+		}
+		if (radius <= 0) return;
+		this.auraDirtyRegions.push(
+			structure.x - radius,
+			structure.y - radius,
+			structure.x + radius,
+			structure.y + radius
+		);
+	}
+
+	/**
+	 * Apply queued aura regions. Recomputes exactly the cells a full rebuild
+	 * would change, so defense reads stay identical to the old whole-map pass.
+	 * Falls back to a full rebuild when the queued area grows too large to beat
+	 * the vectorised fill/stamp loop.
+	 */
+	private flushAuraDirty(): void {
+		const regions = this.auraDirtyRegions;
+		if (regions.length === 0) return;
+		const pixelCount = this.owners.length;
+		let totalCells = 0;
+		for (let i = 0; i < regions.length; i += 4) {
+			const width =
+				Math.min(this.width - 1, regions[i + 2] as number) - Math.max(0, regions[i] as number) + 1;
+			const height =
+				Math.min(this.height - 1, regions[i + 3] as number) -
+				Math.max(0, regions[i + 1] as number) +
+				1;
+			totalCells += Math.max(0, width) * Math.max(0, height);
+		}
+		if (totalCells > AURA_LOCAL_REBUILD_MAX_CELLS || totalCells > pixelCount >>> 3) {
+			regions.length = 0;
+			this.rebuildAuraDefense();
+			return;
+		}
+		// Radius-aura sources are only State-like structures (no district); gather
+		// them once per owner instead of scanning the registry for every cell.
+		const radiusAurasByOwner = new Map<number, Structure[]>();
+		for (const structure of this.structures.all) {
+			if (structure.effects.length === 0) continue;
+			if (STRUCTURE_DEFINITIONS[structure.type].districtRange > 0) continue;
+			if (!this.hasDefenseAura(structure)) continue;
+			let list = radiusAurasByOwner.get(structure.ownerId);
+			if (!list) {
+				list = [];
+				radiusAurasByOwner.set(structure.ownerId, list);
+			}
+			list.push(structure);
+		}
+		for (let i = 0; i < regions.length; i += 4) {
+			this.recomputeAuraRegion(
+				regions[i] as number,
+				regions[i + 1] as number,
+				regions[i + 2] as number,
+				regions[i + 3] as number,
+				radiusAurasByOwner
+			);
+		}
+		regions.length = 0;
+	}
+
+	/**
+	 * Recompute aura for one rectangle using the same max/add semantics as
+	 * `rebuildAuraDefense`: district auras come from the cell's current district
+	 * structure, radius auras from same-owner structures without a district.
+	 */
+	private recomputeAuraRegion(
+		rawMinX: number,
+		rawMinY: number,
+		rawMaxX: number,
+		rawMaxY: number,
+		radiusAurasByOwner: Map<number, Structure[]>
+	): void {
+		const minX = Math.max(0, rawMinX);
+		const minY = Math.max(0, rawMinY);
+		const maxX = Math.min(this.width - 1, rawMaxX);
+		const maxY = Math.min(this.height - 1, rawMaxY);
+		const width = this.width;
+		const owners = this.owners;
+		const auraDefense = this.auraDefense;
+		const districtStructureIds = this.districtStructureIds;
+		for (let y = minY; y <= maxY; y++) {
+			const row = y * width;
+			for (let x = minX; x <= maxX; x++) {
+				const index = row + x;
+				const owner = owners[index];
+				if (owner === 0) {
+					auraDefense[index] = 0;
+					continue;
+				}
+				let max = 0;
+				let add = 0;
+				const districtId = districtStructureIds[index];
+				if (districtId !== 0) {
+					const district = this.structures.byId(districtId);
+					if (district && district.ownerId === owner) {
+						for (const effect of district.effects) {
+							if (effect.kind !== 'defense-aura') continue;
+							const defense = effect.defense * district.stacks;
+							if (effect.stacking === 'max') max = Math.max(max, defense);
+							else add += defense;
+						}
+					}
+				}
+				const radiusAuras = radiusAurasByOwner.get(owner);
+				if (radiusAuras) {
+					for (const structure of radiusAuras) {
+						for (const effect of structure.effects) {
+							if (effect.kind !== 'defense-aura') continue;
+							const dx = structure.x - x;
+							const dy = structure.y - y;
+							if (dx * dx + dy * dy > effect.radius * effect.radius) continue;
+							const defense = effect.defense * structure.stacks;
+							if (effect.stacking === 'max') max = Math.max(max, defense);
+							else add += defense;
+						}
+					}
+				}
+				auraDefense[index] = Math.min(65_535, max + add);
+			}
+		}
+	}
+
 	/**
 	 * Recompute one cell after an ownership change. Defensive auras only
 	 * protect land owned by the structure's owner, so a captured cell must
@@ -2869,9 +3060,26 @@ export class TerritorySimulation {
 	 * reaches the State. Sea connections are transitive: A-B-C carries
 	 * protection from A to C even when A and C do not share a sea component.
 	 */
+	private ensurePortComponentBuffers(): void {
+		if (this.portComponentOf !== null && this.portComponentQueue !== null) return;
+		const pixelCount = this.owners.length;
+		this.portComponentOf = new Uint32Array(pixelCount);
+		this.portComponentQueue = new Uint32Array(pixelCount);
+	}
+
 	private protectedPortAnchors(): IntegrityAnchor[] {
 		const ports = this.structures.all.filter((structure) => structure.type === 'port');
-		if (ports.length === 0) return [];
+		if (ports.length === 0) {
+			// No Port has ever needed protection this scan: drop the 64 MiB of
+			// scratch buffers so a Port-less match never pays for them.
+			this.portComponentOf = null;
+			this.portComponentQueue = null;
+			this.portComponentMeta.clear();
+			return [];
+		}
+		this.ensurePortComponentBuffers();
+		const portComponentOf = this.portComponentOf as Uint32Array;
+		const portComponentQueue = this.portComponentQueue as Uint32Array;
 		const portById = new Map<number, (typeof ports)[number]>();
 		const seaById = new Map<number, Set<number>>();
 		const portsBySea = new Map<number, number[]>();
@@ -2880,7 +3088,7 @@ export class TerritorySimulation {
 
 		for (const port of ports) {
 			portById.set(port.id, port);
-			let token = this.portComponentOf[port.index] ?? 0;
+			let token = portComponentOf[port.index] ?? 0;
 			let reachesState = false;
 			const cached = token > 0 ? this.portComponentMeta.get(token) : undefined;
 			if (cached && cached.ownerId === port.ownerId) {
@@ -2889,10 +3097,10 @@ export class TerritorySimulation {
 				token = ++this.portVisitToken;
 				let head = 0;
 				let tail = 0;
-				this.portComponentOf[port.index] = token;
-				this.portComponentQueue[tail++] = port.index;
+				portComponentOf[port.index] = token;
+				portComponentQueue[tail++] = port.index;
 				while (head < tail) {
-					const index = this.portComponentQueue[head++] ?? 0;
+					const index = portComponentQueue[head++] ?? 0;
 					const structure = this.structures.at(index);
 					if (structure?.type === 'state' && structure.ownerId === port.ownerId) {
 						reachesState = true;
@@ -2904,10 +3112,10 @@ export class TerritorySimulation {
 						if (
 							this.land[next] &&
 							this.owners[next] === port.ownerId &&
-							this.portComponentOf[next] !== token
+							portComponentOf[next] !== token
 						) {
-							this.portComponentOf[next] = token;
-							this.portComponentQueue[tail++] = next;
+							portComponentOf[next] = token;
+							portComponentQueue[tail++] = next;
 						}
 					}
 					if (x + 1 < this.width) {
@@ -2915,10 +3123,10 @@ export class TerritorySimulation {
 						if (
 							this.land[next] &&
 							this.owners[next] === port.ownerId &&
-							this.portComponentOf[next] !== token
+							portComponentOf[next] !== token
 						) {
-							this.portComponentOf[next] = token;
-							this.portComponentQueue[tail++] = next;
+							portComponentOf[next] = token;
+							portComponentQueue[tail++] = next;
 						}
 					}
 					if (y > 0) {
@@ -2926,10 +3134,10 @@ export class TerritorySimulation {
 						if (
 							this.land[next] &&
 							this.owners[next] === port.ownerId &&
-							this.portComponentOf[next] !== token
+							portComponentOf[next] !== token
 						) {
-							this.portComponentOf[next] = token;
-							this.portComponentQueue[tail++] = next;
+							portComponentOf[next] = token;
+							portComponentQueue[tail++] = next;
 						}
 					}
 					if (y + 1 < this.height) {
@@ -2937,10 +3145,10 @@ export class TerritorySimulation {
 						if (
 							this.land[next] &&
 							this.owners[next] === port.ownerId &&
-							this.portComponentOf[next] !== token
+							portComponentOf[next] !== token
 						) {
-							this.portComponentOf[next] = token;
-							this.portComponentQueue[tail++] = next;
+							portComponentOf[next] = token;
+							portComponentQueue[tail++] = next;
 						}
 					}
 				}
@@ -2982,15 +3190,39 @@ export class TerritorySimulation {
 			.map((port) => ({ index: port.index, ownerId: port.ownerId }));
 	}
 
+	/**
+	 * Fill small neutral pockets. Only land whose ownership changed since the
+	 * previous pass can form or resize a pocket, so the normal path probes those
+	 * dirty regions; the first pass and pathological overflow fall back to the
+	 * full-map scan.
+	 */
 	private cleanupUnclaimedPockets(): void {
-		this.integrity.cleanupUnclaimedPockets(
-			this.owners,
-			this.land,
-			UNCLAIMED_POCKET_MAX_AREA,
-			(index, newOwner) => {
-				this.claim(index, newOwner, 0);
-			}
-		);
+		if (this.cleanupNeedsFullScan || this.cleanupDirtyOverflow || this.cleanupDirtyCount === 0) {
+			this.integrity.cleanupUnclaimedPockets(
+				this.owners,
+				this.land,
+				UNCLAIMED_POCKET_MAX_AREA,
+				(index, newOwner) => {
+					this.claim(index, newOwner, 0);
+				}
+			);
+			this.cleanupNeedsFullScan = false;
+		} else {
+			this.integrity.cleanupUnclaimedPocketsNearChanges(
+				this.owners,
+				this.land,
+				UNCLAIMED_POCKET_MAX_AREA,
+				this.cleanupDirtyIndices,
+				this.cleanupDirtyCount,
+				(index, newOwner) => {
+					this.claim(index, newOwner, 0);
+				}
+			);
+		}
+		// Filled pockets cannot make another pocket eligible (adjacent neutral
+		// cells would be the same component), so the pass can consume the list.
+		this.cleanupDirtyCount = 0;
+		this.cleanupDirtyOverflow = false;
 	}
 
 	private claim(index: number, newOwner: number, sourceAttackId = 0): void {
@@ -3013,13 +3245,17 @@ export class TerritorySimulation {
 
 		this.invalidateStableSitesNear(index, previousOwner);
 		this.invalidateStableSitesNear(index, newOwner);
+		this.invalidatePortSite(index, previousOwner, true);
+		this.invalidatePortSite(index, newOwner, false);
 		this.owners[index] = newOwner;
 		this.claimedBy[index] = sourceAttackId;
 
 		const structure = this.structures.destroyAt(index);
 		if (structure) {
+			this.stableBuildSitesNeedReset = true;
 			this.refreshDistrictsAround(structure);
-			this.rebuildAuraDefense();
+			this.markAuraStructureRegion(structure);
+			this.flushAuraDirty();
 			this.setSupply(structure.ownerId, this.supplyOf(structure.ownerId));
 			const owner = this.players[structure.ownerId - 1];
 			const label = STRUCTURE_DEFINITIONS[structure.type].label;
@@ -3091,6 +3327,10 @@ export class TerritorySimulation {
 		const dx = state.x - x;
 		const dy = state.y - y;
 		if (dx * dx + dy * dy > 100 * 100) return;
+		this.invalidateStableSites(playerId);
+	}
+
+	private invalidateStableSites(playerId: number): void {
 		const base = (playerId - 1) * 4;
 		for (let i = 0; i < 4; i++) {
 			this.stableBuildSiteCache[base + i] = -2;
@@ -3098,10 +3338,70 @@ export class TerritorySimulation {
 		}
 	}
 
+	/**
+	 * A Port site can appear anywhere on the owner's coastline, so a coastal
+	 * ownership change must refresh the cached port negative even when it is far
+	 * from the capital. `lostCell` means `index` left this owner (its remaining
+	 * coastal neighbours can become frontier); otherwise `index` joined it.
+	 */
+	private invalidatePortSite(index: number, playerId: number, lostCell: boolean): void {
+		if (playerId <= 0) return;
+		const width = this.width;
+		const height = this.height;
+		const base = (playerId - 1) * 4;
+		if (lostCell) {
+			const x = index % width;
+			const y = (index - x) / width;
+			let becameFrontier = false;
+			if (x > 0 && this.owners[index - 1] === playerId && this.land[index - 1]) {
+				becameFrontier = isShoreIndex(this.land, width, height, index - 1);
+			}
+			if (
+				!becameFrontier &&
+				x + 1 < width &&
+				this.owners[index + 1] === playerId &&
+				this.land[index + 1]
+			) {
+				becameFrontier = isShoreIndex(this.land, width, height, index + 1);
+			}
+			if (
+				!becameFrontier &&
+				y > 0 &&
+				this.owners[index - width] === playerId &&
+				this.land[index - width]
+			) {
+				becameFrontier = isShoreIndex(this.land, width, height, index - width);
+			}
+			if (
+				!becameFrontier &&
+				y + 1 < height &&
+				this.owners[index + width] === playerId &&
+				this.land[index + width]
+			) {
+				becameFrontier = isShoreIndex(this.land, width, height, index + width);
+			}
+			if (!becameFrontier) return;
+		} else if (!this.land[index] || !isShoreIndex(this.land, width, height, index)) {
+			return;
+		}
+		// Known-good sites are validated on read; only a negative result can go
+		// stale, and discarding a positive one would let a newly available site
+		// silently change the bot's chosen build cell.
+		const cached = this.stableBuildSiteCache[base] as number;
+		if (cached >= 0) return;
+		this.stableBuildSiteCache[base] = -2;
+		this.stableBuildSiteTick[base] = 0;
+	}
+
 	private recordChange(index: number, owner: number): void {
 		this.ownershipChangedSinceAnnex = true;
 		this.ownershipChangedSinceCleanup = true;
 		this.ownershipVersion++;
+		if (this.cleanupDirtyCount < this.cleanupDirtyIndices.length) {
+			this.cleanupDirtyIndices[this.cleanupDirtyCount++] = index;
+		} else {
+			this.cleanupDirtyOverflow = true;
+		}
 		if (this.changeCount >= CHANGE_BUFFER_SIZE) {
 			this.changesOverflow = true;
 			return;
@@ -3564,7 +3864,6 @@ export class TerritorySimulation {
 	}
 
 	private runBotEconomy(): void {
-		let auraChanged = false;
 		for (const player of this.players) {
 			if (!player.alive || !player.isBot) continue;
 			// Stagger budgets across the interval. Every bot still evaluates once
@@ -3659,13 +3958,14 @@ export class TerritorySimulation {
 						this.width
 					);
 					this.refreshDistrictsAround(structure);
+					this.markAuraStructureRegion(structure);
 				} else {
 					const structure = choice.structure;
 					if (!structure) break;
 					this.botGold[goldIndex] -= choice.cost;
 					this.structures.reinforce(structure);
+					if (this.hasDefenseAura(structure)) this.markAuraStructureRegion(structure);
 				}
-				auraChanged = true;
 				if (
 					defensive &&
 					(choice.type === 'fortification' ||
@@ -3676,9 +3976,9 @@ export class TerritorySimulation {
 				}
 			}
 		}
-		// Aura rebuilds still batch once per decision tick; district refreshes
-		// are local to each new structure and already applied above.
-		if (auraChanged) this.rebuildAuraDefense();
+		// Aura recomputes are queued locally per changed structure and flushed
+		// once here, so all bots in this economy pass see the same defense state.
+		this.flushAuraDirty();
 	}
 
 	/**
@@ -3919,17 +4219,14 @@ export class TerritorySimulation {
 	}
 
 	private ensureBuildSiteCache(): void {
-		const version = this.structures.version;
 		const layoutVersion = this.structures.layoutVersion;
 		if (
 			this.buildSiteCacheTick === this.tick &&
-			this.buildSiteCacheVersion === version &&
 			this.buildSiteCacheLayoutVersion === layoutVersion
 		) {
 			return;
 		}
 		this.buildSiteCacheTick = this.tick;
-		this.buildSiteCacheVersion = version;
 		this.buildSiteCacheLayoutVersion = layoutVersion;
 		this.buildSiteCache.fill(-2);
 	}
@@ -3950,18 +4247,13 @@ export class TerritorySimulation {
 	}
 
 	private ensureStableBuildSiteCache(): void {
-		const version = this.structures.version;
 		const layoutVersion = this.structures.layoutVersion;
-		if (
-			this.stableBuildSiteCacheVersion === version &&
-			this.stableBuildSiteCacheLayoutVersion === layoutVersion
-		) {
-			return;
-		}
-		this.stableBuildSiteCacheVersion = version;
-		this.stableBuildSiteCacheLayoutVersion = layoutVersion;
+		if (this.stableBuildSiteLayoutVersion === layoutVersion) return;
+		this.stableBuildSiteLayoutVersion = layoutVersion;
+		if (!this.stableBuildSitesNeedReset) return;
+		this.stableBuildSitesNeedReset = false;
 		// Keep known-good sites: they are validated on read. Only unknown/negative
-		// results need a fresh ring scan after layout changes.
+		// results can go stale after a structure removal frees a build slot.
 		for (let i = 0; i < this.stableBuildSiteCache.length; i++) {
 			if (this.stableBuildSiteCache[i] < 0) {
 				this.stableBuildSiteCache[i] = -2;
