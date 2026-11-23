@@ -27,6 +27,7 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm test:fast
+pnpm test:worker
 pnpm test:stress
 pnpm bench
 pnpm bench:online

@@ -35,7 +35,7 @@
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions |
 | Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                             |
 | Online rooms    | `/online`: up to eight human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline, 200-player/25-room caps                                   |
-| Worker local    | Local sim stepping, bot decisions, and integrity scans run in a Web Worker; main thread renders mirror deltas and sends async commands                                                         |
+| Worker local    | Local sim stepping, bot decisions, and integrity scans run in a Web Worker; main thread renders mirror deltas and sends async commands. `pnpm build && pnpm test:worker` smokes the built worker |
 | Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                             |

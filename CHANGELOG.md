@@ -13,7 +13,9 @@
   and full worker disposal on world rebuild/unmount.
 - HUD updates remain throttled to 5 Hz while territory rendering continues at
   10 Hz.
-- Added worker host tests covering init, stepping, pause/resume, and commands.
+- Added worker host tests covering init, stepping, pause/resume, commands, and
+  deterministic checksums, plus `pnpm test:worker`, which boots the built worker
+  bundle and verifies init transfer, visual deltas, commands, and paused ticks.
 
 Known parity notes for UI verification: hover/upgrade previews use mirror
 approximations, and the browser worker path has not been exercised by automated
