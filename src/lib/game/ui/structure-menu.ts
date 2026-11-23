@@ -1,4 +1,4 @@
-import { STRUCTURE_DEFINITIONS, type PublicStructure } from '../Structures';
+import { STRUCTURE_DEFINITIONS, type PublicStructure } from '../structures';
 import type { GameSnapshot } from '../simulation';
 
 export interface StructureContextMenu {

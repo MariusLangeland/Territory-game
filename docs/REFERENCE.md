@@ -58,7 +58,7 @@ Supply is the only resource; cards, upgrades, and front launches all spend it.
 
 <!-- AUTOGEN:structures START -->
 
-Definitions come from `src/lib/game/Structures/`. A buildable defense aura covers its whole district; State auras use their radius.
+Definitions come from `src/lib/game/structures/`. A buildable defense aura covers its whole district; State auras use their radius.
 
 ### `state` — STATE
 

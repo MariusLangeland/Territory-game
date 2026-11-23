@@ -22,7 +22,7 @@ import {
 	STRUCTURE_TYPES,
 	type PublicStructure,
 	type StructureType
-} from '../src/lib/game/Structures';
+} from '../src/lib/game/structures';
 
 const DEFAULT_SEEDS = 8;
 const DEFAULT_START_SEED = 1234;

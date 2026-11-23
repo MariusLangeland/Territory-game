@@ -465,9 +465,9 @@ tunable, then update [SPEC.md](SPEC.md), [EXPERIMENTS.md](EXPERIMENTS.md) (archi
 invariants in [AGENTS.md](AGENTS.md). Retire the attack-stress UI copy; keep the stress mode as a
 benchmark switch.
 
-Files expected to change: `constants.ts`, `simulation.ts`, `Structures/{types,definitions,
+Files expected to change: `constants.ts`, `simulation.ts`, `structures/{types,definitions,
 command-post,war-academy}.ts`, `net/protocol.ts`, `+page.svelte`, `GameCanvas.svelte` if front markers
-change, `simulation.test.ts`, `economy.test.ts`, `scripts/benchmark.ts`, and the docs above. No map,
+change, `simulation.combat.test.ts`, `simulation.economy.test.ts`, `scripts/benchmark.ts`, and the docs above. No map,
 RNG, renderer, or integrity rewrite is required.
 
 ---

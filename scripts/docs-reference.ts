@@ -67,8 +67,8 @@ import {
 	STRUCTURE_TYPES,
 	type StructureEffect,
 	type StructureType
-} from '../src/lib/game/Structures';
-import { COMMAND_POST_SUPPLY_PER_SECOND } from '../src/lib/game/Structures/command-post';
+} from '../src/lib/game/structures';
+import { COMMAND_POST_SUPPLY_PER_SECOND } from '../src/lib/game/structures/command-post';
 
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = dirname(SCRIPT_DIRECTORY);
@@ -254,7 +254,7 @@ function describeEffect(effect: StructureEffect): string {
 
 function renderStructures(): string {
 	const lines: string[] = [
-		'Definitions come from `src/lib/game/Structures/`. A buildable defense aura covers its whole district; State auras use their radius.'
+		'Definitions come from `src/lib/game/structures/`. A buildable defense aura covers its whole district; State auras use their radius.'
 	];
 	for (const type of STRUCTURE_TYPES) {
 		const definition = STRUCTURE_DEFINITIONS[type];

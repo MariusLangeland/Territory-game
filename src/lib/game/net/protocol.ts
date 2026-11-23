@@ -15,7 +15,7 @@ import type {
 	PublicPlayer,
 	SimEventKind
 } from '../simulation';
-import type { PublicCard, PublicStructure } from '../Structures';
+import type { PublicCard, PublicStructure } from '../structures';
 
 export const NET_PROTOCOL_VERSION = 41;
 

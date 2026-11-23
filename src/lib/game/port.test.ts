@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HUMAN_PLAYER_ID } from './constants';
 import { TerritorySimulation, type AttackState } from './simulation';
-import { STRUCTURE_DEFINITIONS, type Structure } from './Structures';
+import { STRUCTURE_DEFINITIONS, type Structure } from './structures';
 
 function findShore(sim: TerritorySimulation, ownerId: number, maxDistance = 0) {
 	const state = sim.structures.forOwnerType(ownerId, 'state');

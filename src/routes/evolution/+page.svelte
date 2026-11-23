@@ -1,574 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
 	import FitnessHistoryGraph from '#lib/components/FitnessHistoryGraph.svelte';
 	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
-	import { buildFitnessHistory } from '#lib/game/ai/fitness-history';
-	import { RemoteSimulationView } from '#lib/game/worker/view';
-	import type {
-		EvolutionWorkerCommand,
-		EvolutionWorkerMessage,
-		WorkerEvolutionState,
-		WorkerVisual
-	} from '#lib/game/ai/evolution-worker-protocol';
-	import {
-		BOT_BUCKETS,
-		DEFAULT_FITNESS_WEIGHTS,
-		GAUNTLET_SEATS,
-		bucketCounts,
-		bucketsFromReport,
-		emptyBuckets,
-		loadEvolutionBuckets,
-		parseEvolutionCsv,
-		saveEvolutionBuckets,
-		serializeEvolutionCsv,
-		type BotBucket,
-		type BotGenome,
-		type EvolutionBuckets,
-		type EvolutionConfig,
-		type EvolutionMode,
-		type EvolutionReport,
-		type EvolutionSessionSnapshot,
-		type GenomePerformance
-	} from '#lib/game/ai';
-	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
-	import type { GameSnapshot } from '#lib/game/simulation';
+	import { createEvolutionPage } from '#lib/game/evolution/page/lab-page.svelte';
 
-	const SPEEDS = [
-		{ label: '1×', steps: 1 },
-		{ label: '4×', steps: 4 },
-		{ label: '16×', steps: 16 },
-		{ label: '48×', steps: 48 },
-		{ label: '120×', steps: 120 },
-		{ label: '480×', steps: 480 },
-		{ label: '1000×', steps: 1000 }
-	] as const;
-
-	interface RemoteVisual {
-		revision: number;
-		tick: number;
-		snapshot: GameSnapshot;
-		changes: Uint32Array;
-		changeCount: number;
-		overflow: boolean;
-		districtTiles: number[];
-	}
-
-	let config = $state<EvolutionConfig>({
-		mode: 'evolution',
-		seed: 1234,
-		populationSize: 16,
-		generations: 4,
-		playerCount: 8,
-		matchesPerRound: 2,
-		ticks: 1600,
-		width: 1280,
-		height: 720,
-		teamCount: 1,
-		lineageDuels: true,
-		fitnessWeights: { ...DEFAULT_FITNESS_WEIGHTS },
-		gauntletLives: 3,
-		gauntletRecoveryCount: 16,
-		gauntletRemainingTarget: 16
-	});
-	let worker: Worker | null = null;
-	let started = $state(false);
-	let restoredSession = $state(false);
-	let phase = $state<'idle' | 'match' | 'generation-complete' | 'finished'>('idle');
-	let generation = $state(0);
-	let progress = $state({ match: 0, matches: 0, generation: 0 });
-	let currentSeats = $state<BotGenome[]>([]);
-	let population = $state<BotGenome[]>([]);
-	let rows = $state<GenomePerformance[]>([]);
-	let archiveRows = $state<GenomePerformance[]>([]);
-	let markovStates = $state<(number | null)[]>([]);
-	let lastReport = $state<EvolutionReport | null>(null);
-	const emptySeats = $derived(Math.max(0, GAUNTLET_SEATS - population.length));
-	let remoteView = $state<RemoteSimulationView | null>(null);
-	let remoteVisualQueue = $state<RemoteVisual[]>([]);
-	let snapshot = $state<GameSnapshot | null>(null);
-	let cameraBridge = new GameCameraBridge();
-	let running = $state(false);
-	let speed = $state(4);
-	let effectiveTps = $state(0);
-	let effectiveTpsTick = 0;
-	let effectiveTpsAt = 0;
-	let matchKey = $state(0);
-	let activeMatchId = -1;
-	let visualRevision = 0;
-	let status = $state('Configure a population and start natural selection.');
-	let notice = $state('');
-	let fileInput = $state<HTMLInputElement | null>(null);
-	let stateFileInput = $state<HTMLInputElement | null>(null);
-	let buckets = $state<EvolutionBuckets>(emptyBuckets());
-	let selectedBuckets = $state<Record<BotBucket, boolean>>({
-		poor: false,
-		good: false,
-		top: true
-	});
-	let selectedGenomeId = $state<string | null>(null);
-	const simulationActive = $derived(started && phase === 'match');
-
-	let counts = $derived(bucketCounts(buckets));
-	let selectedOwnerId = $derived.by(() => {
-		if (!selectedGenomeId) return null;
-		const seat = currentSeats.findIndex((genome) => genome.id === selectedGenomeId);
-		return seat >= 0 ? seat + 1 : null;
-	});
-	let selectedGenome = $derived.by<BotGenome | null>(() => {
-		if (!selectedGenomeId) return null;
-		return (
-			population.find((genome) => genome.id === selectedGenomeId) ??
-			currentSeats.find((genome) => genome.id === selectedGenomeId) ??
-			rows.find((row) => row.genome.id === selectedGenomeId)?.genome ??
-			null
-		);
-	});
-	let selectedMarkovState = $derived.by(() => {
-		if (!selectedOwnerId) return null;
-		return markovStates[selectedOwnerId - 1] ?? null;
-	});
-	let historyPoints = $derived(
-		buildFitnessHistory(lastReport?.generations ?? [], selectedGenomeId)
-	);
-
-	function send(command: EvolutionWorkerCommand): void {
-		worker?.postMessage(command);
-	}
-
-	function acknowledgeVisuals(revision: number): void {
-		remoteVisualQueue = remoteVisualQueue.filter((visual) => visual.revision > revision);
-		send({ type: 'visual-ack', matchId: activeMatchId });
-	}
-
-	function resetThroughput(): void {
-		effectiveTps = 0;
-		effectiveTpsTick = 0;
-		effectiveTpsAt = 0;
-	}
-
-	function sampleThroughput(tick: number): void {
-		const now = performance.now();
-		if (effectiveTpsAt === 0 || tick < effectiveTpsTick) {
-			effectiveTpsTick = tick;
-			effectiveTpsAt = now;
-			return;
-		}
-		const elapsed = now - effectiveTpsAt;
-		if (elapsed < 250) return;
-		effectiveTps = Math.round(((tick - effectiveTpsTick) * 1000) / elapsed);
-		effectiveTpsTick = tick;
-		effectiveTpsAt = now;
-	}
-
-	function applyState(state: WorkerEvolutionState): void {
-		if (state.restoredConfig) {
-			config = {
-				...state.restoredConfig,
-				fitnessWeights: { ...state.restoredConfig.fitnessWeights }
-			};
-			restoredSession = true;
-			notice = 'Restored the last saved Evolution Lab session.';
-		}
-		phase = state.phase;
-		generation = state.generation;
-		progress = state.progress;
-		currentSeats = state.seats;
-		population = state.population;
-		rows = state.rows;
-		archiveRows = state.archiveRows;
-		markovStates = state.markovStates;
-		started = true;
-		if (state.report) {
-			lastReport = state.report;
-			buckets = bucketsFromReport(state.report);
-			saveEvolutionBuckets(buckets);
-		}
-		if (!selectedGenomeId && currentSeats.length > 0) selectedGenomeId = currentSeats[0].id;
-		if (phase === 'finished') {
-			running = false;
-			status =
-				config.mode === 'gauntlet'
-					? `Gauntlet complete — ${population.length} bots remain.`
-					: 'Evolution complete. Buckets saved locally.';
-		} else if (phase === 'generation-complete') {
-			status =
-				config.mode === 'gauntlet'
-					? `Run ${generation} complete — preparing next run…`
-					: `Generation ${generation + 1} complete — preparing next generation…`;
-		} else if (phase === 'match') {
-			status =
-				config.mode === 'gauntlet'
-					? `Run ${generation + 1} · ${population.length || currentSeats.length} bots`
-					: `Generation ${generation + 1} · match ${progress.match}/${progress.matches || '?'}`;
-		}
-	}
-
-	function handleMessage(message: EvolutionWorkerMessage): void {
-		switch (message.type) {
-			case 'state':
-				applyState(message.state);
-				break;
-			case 'match':
-				activeMatchId = message.matchId;
-				remoteView = new RemoteSimulationView(message.init);
-				snapshot = message.init.snapshot;
-				remoteVisualQueue = [];
-				resetThroughput();
-				matchKey++;
-				break;
-			case 'visual': {
-				if (!remoteView || message.visual.matchId !== activeMatchId) return;
-				const visual: WorkerVisual = message.visual;
-				remoteView.applyVisual(visual);
-				snapshot = visual.snapshot;
-				markovStates = visual.markovStates;
-				sampleThroughput(visual.tick);
-				remoteVisualQueue = [
-					...remoteVisualQueue,
-					{
-						revision: ++visualRevision,
-						tick: visual.tick,
-						snapshot: visual.snapshot,
-						changes: visual.changes,
-						changeCount: visual.changeCount,
-						overflow: visual.overflow,
-						districtTiles: visual.districtTiles
-					}
-				];
-				break;
-			}
-			case 'reset':
-				activeMatchId = -1;
-				remoteView = null;
-				remoteVisualQueue = [];
-				snapshot = null;
-				matchKey++;
-				running = false;
-				markovStates = [];
-				selectedGenomeId = null;
-				resetThroughput();
-				break;
-			case 'idle':
-				activeMatchId = -1;
-				remoteView = null;
-				remoteVisualQueue = [];
-				snapshot = null;
-				started = false;
-				restoredSession = false;
-				phase = 'idle';
-				generation = 0;
-				progress = { match: 0, matches: 0, generation: 0 };
-				currentSeats = [];
-				population = [];
-				rows = [];
-				archiveRows = [];
-				markovStates = [];
-				lastReport = null;
-				selectedGenomeId = null;
-				running = false;
-				resetThroughput();
-				status = 'Configure a population and start natural selection.';
-				notice = 'Saved session discarded.';
-				break;
-			case 'error':
-				notice = message.message;
-				running = false;
-				status = 'Evolution worker stopped.';
-				break;
-		}
-	}
-
-	function connectWorker(): Worker {
-		const instance = new Worker(new URL('../../lib/game/ai/evolution.worker.ts', import.meta.url), {
-			type: 'module'
-		});
-		instance.onmessage = (event: MessageEvent<EvolutionWorkerMessage>) => handleMessage(event.data);
-		instance.onerror = (event) => {
-			notice = event.message || 'Evolution worker failed to start.';
-			running = false;
-			status = 'Evolution worker error.';
-		};
-		return instance;
-	}
-
-	function setMode(mode: EvolutionMode): void {
-		config.mode = mode;
-		if (mode === 'gauntlet') {
-			config.populationSize = 64;
-			config.playerCount = 64;
-			config.generations = 1;
-			config.matchesPerRound = 1;
-			config.teamCount = 1;
-			config.lineageDuels = false;
-			config.ticks = Math.max(config.ticks, 3000);
-			config.width = 2048;
-			config.height = 1024;
-		} else {
-			config.populationSize = Math.min(16, config.populationSize);
-			config.playerCount = Math.min(8, config.populationSize);
-			config.generations = 4;
-			config.matchesPerRound = 2;
-			config.teamCount = 1;
-			config.lineageDuels = true;
-			config.ticks = 1600;
-			config.width = 1280;
-			config.height = 720;
-		}
-	}
-
-	function stopRun(): void {
-		send({ type: 'stop' });
-		notice = 'Finishing the current run, then stopping.';
-	}
-
-	function stopNow(): void {
-		send({ type: 'stop-now' });
-		notice = 'Simulation stopped immediately.';
-	}
-
-	function fillSeats(): void {
-		if (config.mode !== 'gauntlet' || emptySeats === 0 || phase === 'match') {
-			notice = 'Fill seats between gauntlet runs.';
-			return;
-		}
-		send({ type: 'fill-seats' });
-		notice = `Adding ${emptySeats} random genomes…`;
-	}
-
-	function discardSession(): void {
-		if (!started) {
-			notice = 'There is no saved Evolution Lab session to discard.';
-			return;
-		}
-		send({ type: 'discard-session' });
-	}
-
-	function start(): void {
-		selectedGenomeId = null;
-		restoredSession = false;
-		resetThroughput();
-		notice = '';
-		lastReport = null;
-		rows = [];
-		archiveRows = [];
-		population = [];
-		currentSeats = [];
-		remoteView = null;
-		remoteVisualQueue = [];
-		started = true;
-		running = true;
-		send({ type: 'speed', speed });
-		send({ type: 'start', config: { ...config, fitnessWeights: { ...config.fitnessWeights } } });
-		status = 'Starting a new evolution…';
-	}
-
-	function continueEvolution(): void {
-		if (!started) {
-			notice = 'No previous evolution to continue. Start a new evolution first.';
-			return;
-		}
-		send({
-			type: 'continue',
-			config: { ...config, fitnessWeights: { ...config.fitnessWeights } }
-		});
-		running = true;
-		status = 'Continuing the previous run…';
-	}
-
-	function toggleRunning(): void {
-		if (!started) {
-			start();
-			return;
-		}
-		running = !running;
-		send({ type: running ? 'resume' : 'pause' });
-		if (running) status = 'Resuming evolution…';
-	}
-
-	function setSpeed(value: number): void {
-		speed = value;
-		send({ type: 'speed', speed: value });
-	}
-
-	function selectGenome(id: string | null): void {
-		selectedGenomeId = id;
-	}
-
-	function selectOwner(ownerId: number | null): void {
-		if (!ownerId) {
-			selectedGenomeId = null;
-			notice = 'Canvas selection cleared.';
-			return;
-		}
-		const genome = currentSeats[ownerId - 1];
-		selectedGenomeId = genome?.id ?? null;
-		notice = genome ? `Selected ${genome.id} from the map.` : 'No genome is seated there.';
-	}
-
-	function downloadCsv(): void {
-		if (!lastReport) {
-			notice = 'Finish at least one generation before exporting.';
-			return;
-		}
-		const csv = serializeEvolutionCsv(lastReport);
-		const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `territory-evolution-${lastReport.config.seed}.csv`;
-		link.click();
-		URL.revokeObjectURL(url);
-		notice = 'Spreadsheet exported.';
-	}
-
-	function exportGauntletState(): void {
-		if (config.mode !== 'gauntlet' || !lastReport || simulationActive) {
-			notice = 'Finish or stop a gauntlet run before exporting its state.';
-			return;
-		}
-		const activeIds = new Set(population.map((genome) => genome.id));
-		const lives: Record<string, number> = {};
-		for (const row of rows) {
-			if (!activeIds.has(row.genome.id)) continue;
-			lives[row.genome.id] = row.gauntletLives ?? config.gauntletLives;
-		}
-		const snapshot: EvolutionSessionSnapshot = {
-			version: 1,
-			config: {
-				...config,
-				mode: 'gauntlet',
-				fitnessWeights: { ...config.fitnessWeights }
-			},
-			population,
-			reports: lastReport.generations,
-			archive: lastReport.archive,
-			generation,
-			phase: phase === 'finished' ? 'finished' : 'generation-complete',
-			gauntletLives: lives
-		};
-		const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
-			type: 'application/json;charset=utf-8'
-		});
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `territory-gauntlet-${config.seed}-run-${generation}.json`;
-		link.click();
-		URL.revokeObjectURL(url);
-		notice = 'Gauntlet state exported.';
-	}
-
-	async function importGauntletState(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		try {
-			const parsed = JSON.parse(await file.text()) as Partial<EvolutionSessionSnapshot>;
-			input.value = '';
-			if (
-				parsed.version !== 1 ||
-				parsed.config?.mode !== 'gauntlet' ||
-				!Array.isArray(parsed.population) ||
-				!Array.isArray(parsed.reports) ||
-				parsed.reports.length === 0 ||
-				!Array.isArray(parsed.archive) ||
-				typeof parsed.gauntletLives !== 'object' ||
-				parsed.gauntletLives === null ||
-				(parsed.phase !== 'finished' && parsed.phase !== 'generation-complete')
-			) {
-				notice = 'That file is not a valid gauntlet state export.';
-				return;
-			}
-			send({
-				type: 'import-state',
-				snapshot: parsed as EvolutionSessionSnapshot
-			});
-			notice = 'Importing gauntlet state…';
-		} catch {
-			input.value = '';
-			notice = 'Could not read that gauntlet state file.';
-		}
-	}
-
-	async function importCsv(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		const genomes = parseEvolutionCsv(await file.text());
-		input.value = '';
-		if (genomes.length < 2) {
-			notice = 'Could not find genomes in that CSV. Expected the exported header.';
-			return;
-		}
-		const playerCount = Math.max(2, Math.min(config.playerCount, genomes.length));
-		const nextConfig = {
-			...config,
-			playerCount,
-			populationSize: Math.max(playerCount, genomes.length)
-		};
-		selectedGenomeId = null;
-		restoredSession = false;
-		resetThroughput();
-		lastReport = null;
-		rows = [];
-		archiveRows = [];
-		remoteView = null;
-		remoteVisualQueue = [];
-		started = true;
-		running = true;
-		send({ type: 'speed', speed });
-		send({ type: 'set-population', config: nextConfig, genomes });
-		notice = `Imported ${genomes.length} genomes from spreadsheet.`;
-		status = 'Imported population — running.';
-	}
-
-	function useBuckets(): void {
-		const pool = BOT_BUCKETS.flatMap((bucket) => (selectedBuckets[bucket] ? buckets[bucket] : []));
-		if (pool.length < 2) {
-			notice = 'Select at least two bucket genomes (run an evolution first).';
-			return;
-		}
-		const playerCount = Math.max(2, Math.min(config.playerCount, pool.length));
-		const nextConfig = {
-			...config,
-			playerCount,
-			populationSize: Math.max(playerCount, pool.length)
-		};
-		selectedGenomeId = null;
-		restoredSession = false;
-		resetThroughput();
-		lastReport = null;
-		rows = [];
-		archiveRows = [];
-		remoteView = null;
-		remoteVisualQueue = [];
-		started = true;
-		running = true;
-		send({ type: 'speed', speed });
-		send({ type: 'set-population', config: nextConfig, genomes: pool });
-		notice = `Loaded ${pool.length} genomes from selected buckets.`;
-	}
-
-	function selectAll(bucket: BotBucket, enabled: boolean): void {
-		selectedBuckets = { ...selectedBuckets, [bucket]: enabled };
-	}
-
-	function navigateHome(): void {
-		window.location.href = '/?seed=1234';
-	}
-
-	onMount(() => {
-		buckets = loadEvolutionBuckets();
-		worker = connectWorker();
-		return () => {
-			send({ type: 'dispose' });
-			worker?.terminate();
-			worker = null;
-			cameraBridge.detach();
-		};
-	});
+	const lab = createEvolutionPage();
 </script>
 
 <svelte:head>
@@ -577,34 +14,34 @@
 
 <div class="lab">
 	<header class="lab-header">
-		<button class="back" type="button" onclick={navigateHome}>← FRONTIER</button>
+		<button class="back" type="button" onclick={lab.navigateHome}>← FRONTIER</button>
 		<div class="title-block">
 			<span class="eyebrow">NATURAL SELECTION SANDBOX</span>
 			<h1>EVOLUTION LAB</h1>
 			<p>Genomes are matched, scored, pruned, crossed, and mutated. Buckets feed difficulty.</p>
 		</div>
 		<div class="status-block">
-			<span class:live={running} class="live-dot"></span>
-			<span>{status}</span>
-			<span class="phase">{phase.toUpperCase()}</span>
-			{#if restoredSession}<span class="restored">RESTORED</span>{/if}
+			<span class:live={lab.running} class="live-dot"></span>
+			<span>{lab.status}</span>
+			<span class="phase">{lab.phase.toUpperCase()}</span>
+			{#if lab.restoredSession}<span class="restored">RESTORED</span>{/if}
 		</div>
 	</header>
 
 	<main class="lab-body">
 		<section class="viewport">
-			{#if remoteView}
-				{#key matchKey}
+			{#if lab.remoteView}
+				{#key lab.matchKey}
 					<GameCanvas
-						simulation={remoteView}
-						paused={!running}
+						simulation={lab.remoteView}
+						paused={!lab.running}
 						simulate={false}
-						remoteVisuals={remoteVisualQueue}
-						onRemoteVisualsApplied={acknowledgeVisuals}
-						{cameraBridge}
+						remoteVisuals={lab.remoteVisualQueue}
+						onRemoteVisualsApplied={lab.acknowledgeVisuals}
+						cameraBridge={lab.cameraBridge}
 						cameraFocus="map"
-						{selectedOwnerId}
-						onSelectOwner={selectOwner}
+						selectedOwnerId={lab.selectedOwnerId}
+						onSelectOwner={lab.selectOwner}
 					/>
 				{/key}
 			{:else}
@@ -615,31 +52,33 @@
 			{/if}
 			<div class="spectator-hud">
 				<div class="stat">
-					<span>{config.mode === 'gauntlet' ? 'RUN' : 'GEN'}</span><strong>
-						{progress.generation || '—'}
+					<span>{lab.config.mode === 'gauntlet' ? 'RUN' : 'GEN'}</span><strong>
+						{lab.progress.generation || '—'}
 					</strong>
 				</div>
 				<div class="stat">
-					<span>MATCH</span><strong>{progress.match || '—'}/{progress.matches || '—'}</strong>
+					<span>MATCH</span><strong>
+						{lab.progress.match || '—'}/{lab.progress.matches || '—'}
+					</strong>
 				</div>
 				<div class="stat">
-					<span>POP</span><strong>{population.length || config.populationSize}</strong>
+					<span>POP</span><strong>{lab.population.length || lab.config.populationSize}</strong>
 				</div>
 				<div class="stat">
-					<span>RATE</span><strong>{effectiveTps > 0 ? `${effectiveTps}/s` : '—'}</strong>
+					<span>RATE</span><strong>{lab.effectiveTps > 0 ? `${lab.effectiveTps}/s` : '—'}</strong>
 				</div>
 				<div class="speed-row">
-					{#each SPEEDS as option (option.steps)}
+					{#each lab.speeds as option (option.steps)}
 						<button
-							class:active={speed === option.steps}
+							class:active={lab.speed === option.steps}
 							type="button"
-							onclick={() => setSpeed(option.steps)}
+							onclick={() => lab.setSpeed(option.steps)}
 						>
 							{option.label}
 						</button>
 					{/each}
-					<button class="play" type="button" onclick={toggleRunning}>
-						{running ? 'PAUSE' : 'PLAY'}
+					<button class="play" type="button" onclick={lab.toggleRunning}>
+						{lab.running ? 'PAUSE' : 'PLAY'}
 					</button>
 				</div>
 			</div>
@@ -647,23 +86,23 @@
 
 		<aside class="context">
 			<div class="context-actions">
-				{#if simulationActive}
-					<button class="stop" type="button" onclick={stopRun}>STOP</button>
-					<button class="stop-now" type="button" onclick={stopNow}>STOP IMMEDIATE</button>
+				{#if lab.simulationActive}
+					<button class="stop" type="button" onclick={lab.stopRun}>STOP</button>
+					<button class="stop-now" type="button" onclick={lab.stopNow}>STOP IMMEDIATE</button>
 				{:else}
-					<button class="primary" type="button" onclick={start}>
-						{config.mode === 'gauntlet' ? 'NEW GAUNTLET' : 'NEW EVOLUTION'}
+					<button class="primary" type="button" onclick={lab.start}>
+						{lab.config.mode === 'gauntlet' ? 'NEW GAUNTLET' : 'NEW EVOLUTION'}
 					</button>
 				{/if}
 				<button
 					class="continue"
 					type="button"
-					onclick={continueEvolution}
-					disabled={!started || (config.mode === 'gauntlet' && population.length < 2)}
+					onclick={lab.continueEvolution}
+					disabled={!lab.started || (lab.config.mode === 'gauntlet' && lab.population.length < 2)}
 				>
 					CONTINUE
 				</button>
-				<button class="discard" type="button" onclick={discardSession} disabled={!started}>
+				<button class="discard" type="button" onclick={lab.discardSession} disabled={!lab.started}>
 					DISCARD
 				</button>
 			</div>
@@ -675,23 +114,19 @@
 						<div class="fields">
 							<label class="mode-field">
 								<span>MODE</span>
-								<select
-									value={config.mode}
-									onchange={(event) =>
-										setMode((event.currentTarget as HTMLSelectElement).value as EvolutionMode)}
-								>
+								<select value={lab.config.mode} onchange={lab.handleModeChange}>
 									<option value="evolution">EVOLUTION</option>
 									<option value="gauntlet">GAUNTLET · 64 FFA</option>
 								</select>
 							</label>
-							<label><span>SEED</span><input type="number" bind:value={config.seed} /></label>
-							{#if config.mode === 'gauntlet'}
+							<label><span>SEED</span><input type="number" bind:value={lab.config.seed} /></label>
+							{#if lab.config.mode === 'gauntlet'}
 								<label>
 									<span>LIVES</span><input
 										type="number"
 										min="1"
 										max="9"
-										bind:value={config.gauntletLives}
+										bind:value={lab.config.gauntletLives}
 									/>
 								</label>
 								<label>
@@ -699,7 +134,7 @@
 										type="number"
 										min="1"
 										max="64"
-										bind:value={config.gauntletRecoveryCount}
+										bind:value={lab.config.gauntletRecoveryCount}
 									/>
 								</label>
 								<label>
@@ -707,7 +142,7 @@
 										type="number"
 										min="1"
 										max="64"
-										bind:value={config.gauntletRemainingTarget}
+										bind:value={lab.config.gauntletRemainingTarget}
 									/>
 								</label>
 								<label>
@@ -716,7 +151,7 @@
 										min="200"
 										max="30000"
 										step="100"
-										bind:value={config.ticks}
+										bind:value={lab.config.ticks}
 									/>
 								</label>
 							{:else}
@@ -725,7 +160,7 @@
 										type="number"
 										min="4"
 										max="64"
-										bind:value={config.populationSize}
+										bind:value={lab.config.populationSize}
 									/>
 								</label>
 								<label>
@@ -733,7 +168,7 @@
 										type="number"
 										min="1"
 										max="50"
-										bind:value={config.generations}
+										bind:value={lab.config.generations}
 									/>
 								</label>
 								<label>
@@ -741,7 +176,7 @@
 										type="number"
 										min="2"
 										max="51"
-										bind:value={config.playerCount}
+										bind:value={lab.config.playerCount}
 									/>
 								</label>
 								<label>
@@ -749,7 +184,7 @@
 										type="number"
 										min="1"
 										max="8"
-										bind:value={config.matchesPerRound}
+										bind:value={lab.config.matchesPerRound}
 									/>
 								</label>
 								<label>
@@ -758,7 +193,7 @@
 										min="200"
 										max="30000"
 										step="100"
-										bind:value={config.ticks}
+										bind:value={lab.config.ticks}
 									/>
 								</label>
 								<label>
@@ -766,33 +201,33 @@
 										type="number"
 										min="1"
 										max="8"
-										bind:value={config.teamCount}
+										bind:value={lab.config.teamCount}
 									/>
 								</label>
 								<label class="toggle">
-									<input type="checkbox" bind:checked={config.lineageDuels} />
+									<input type="checkbox" bind:checked={lab.config.lineageDuels} />
 									<span>LINEAGE DUELS (1v1)</span>
 								</label>
 							{/if}
 						</div>
 						<p class="hint">
-							{#if config.mode === 'gauntlet'}
+							{#if lab.config.mode === 'gauntlet'}
 								Every run seats all remaining genomes in one 64-bot FFA. Eliminated bots lose a
-								life; the top {config.gauntletRecoveryCount} surviving fitness bots recover one (max
-								{config.gauntletLives}).
+								life; the top {lab.config.gauntletRecoveryCount} surviving fitness bots recover one (max
+								{lab.config.gauntletLives}).
 							{:else}
 								TEAM AI 1 = free-for-all. Lineage duels test each descendant against a parent; a
 								losing record is culled.
 							{/if}
 						</p>
-						{#if config.mode === 'gauntlet'}
+						{#if lab.config.mode === 'gauntlet'}
 							<button
 								class="fill-seats"
 								type="button"
-								onclick={fillSeats}
-								disabled={emptySeats === 0 || phase === 'match'}
+								onclick={lab.fillSeats}
+								disabled={lab.emptySeats === 0 || lab.phase === 'match'}
 							>
-								FILL {emptySeats} EMPTY SEAT{emptySeats === 1 ? '' : 'S'}
+								FILL {lab.emptySeats} EMPTY SEAT{lab.emptySeats === 1 ? '' : 'S'}
 							</button>
 						{/if}
 					</div>
@@ -802,99 +237,99 @@
 					<summary>FITNESS WEIGHTS</summary>
 					<div class="panel-body">
 						<FitnessWeightsEditor
-							weights={config.fitnessWeights}
-							onupdate={(weights) => (config.fitnessWeights = weights)}
+							weights={lab.config.fitnessWeights}
+							onupdate={lab.setFitnessWeights}
 						/>
 					</div>
 				</details>
 
 				<details class="panel" open>
-					<summary>SPREADSHEET ({rows.length})</summary>
+					<summary>SPREADSHEET ({lab.rows.length})</summary>
 					<div class="panel-body">
-						{#if config.mode === 'gauntlet'}
+						{#if lab.config.mode === 'gauntlet'}
 							<div class="button-row">
 								<button
 									type="button"
-									onclick={exportGauntletState}
-									disabled={!lastReport || simulationActive}
+									onclick={lab.exportGauntletState}
+									disabled={!lab.lastReport || lab.simulationActive}
 								>
 									EXPORT STATE
 								</button>
 								<button
 									type="button"
-									onclick={() => stateFileInput?.click()}
-									disabled={simulationActive}
+									onclick={() => lab.stateFileInput?.click()}
+									disabled={lab.simulationActive}
 								>
 									IMPORT STATE
 								</button>
 							</div>
 							<input
-								bind:this={stateFileInput}
+								bind:this={lab.stateFileInput}
 								class="hidden-file"
 								type="file"
 								accept=".json,application/json"
-								onchange={importGauntletState}
+								onchange={lab.importGauntletState}
 							/>
 						{:else}
 							<div class="button-row">
-								<button type="button" onclick={downloadCsv} disabled={!lastReport}>
+								<button type="button" onclick={lab.downloadCsv} disabled={!lab.lastReport}>
 									EXPORT CSV
 								</button>
-								<button type="button" onclick={() => fileInput?.click()}>IMPORT CSV</button>
+								<button type="button" onclick={() => lab.fileInput?.click()}>IMPORT CSV</button>
 							</div>
 							<input
-								bind:this={fileInput}
+								bind:this={lab.fileInput}
 								class="hidden-file"
 								type="file"
 								accept=".csv,text/csv"
-								onchange={importCsv}
+								onchange={lab.importCsv}
 							/>
 						{/if}
-						{#if notice}<p class="notice">{notice}</p>{/if}
+						{#if lab.notice}<p class="notice">{lab.notice}</p>{/if}
 
-						<div class="spreadsheet" class:gauntlet={config.mode === 'gauntlet'}>
+						<div class="spreadsheet" class:gauntlet={lab.config.mode === 'gauntlet'}>
 							<div class="sheet-head">
 								<span>#</span><span>GENOME</span><span>FIT</span><span>BUCKET</span><span>
 									MARKOV
-								</span>{#if config.mode === 'gauntlet'}<span>LIFE</span>{/if}
+								</span>{#if lab.config.mode === 'gauntlet'}<span>LIFE</span>{/if}
 							</div>
 							<div class="sheet-body">
-								{#each rows as row, index (row.genome.id)}
+								{#each lab.rows as row, index (row.genome.id)}
 									<button
 										class="genome-row"
-										class:selected={row.genome.id === selectedGenomeId}
+										class:selected={row.genome.id === lab.selectedGenomeId}
 										type="button"
-										onclick={() => selectGenome(row.genome.id)}
+										onclick={() => lab.selectGenome(row.genome.id)}
 									>
 										<span>{index + 1}</span>
 										<span class="mono">{row.genome.id}</span>
 										<span>{row.fitness.toFixed(0)}</span>
 										<span class={`pill ${row.bucket}`}>{row.bucket}</span>
 										<span>{row.genome.markov ? `${row.genome.markov.states.length}s` : '—'}</span>
-										{#if config.mode === 'gauntlet'}
+										{#if lab.config.mode === 'gauntlet'}
 											<span class:removed={row.gauntletRemoved}>
 												{row.gauntletLives ?? '—'}{row.gauntletRecovered ? '+' : ''}
 											</span>
 										{/if}
 									</button>
 								{/each}
-								{#if rows.length === 0}
+								{#if lab.rows.length === 0}
 									<p class="hint">No scores yet. Start or finish a match to populate the sheet.</p>
 								{/if}
 							</div>
 						</div>
 
 						<div class="selected-panel">
-							{#if selectedGenome}
+							{#if lab.selectedGenome}
 								<div class="selected-title">
 									<span>SELECTED</span>
-									<strong>{selectedGenome.id}</strong>
-									<span>GEN {selectedGenome.generation}</span>
-									<span>{selectedGenome.markov?.states.length ?? 0} states</span>
+									<strong>{lab.selectedGenome.id}</strong>
+									<span>GEN {lab.selectedGenome.generation}</span>
+									<span>{lab.selectedGenome.markov?.states.length ?? 0} states</span>
 								</div>
 								<MarkovGraph
-									controller={selectedGenome.markov}
-									currentState={selectedMarkovState}
+									controller={lab.selectedGenome.markov}
+									currentState={lab.selectedMarkovState}
 								/>
 							{:else}
 								<p class="hint">
@@ -909,7 +344,7 @@
 				<details class="panel" open>
 					<summary>FITNESS HISTORY</summary>
 					<div class="panel-body">
-						<FitnessHistoryGraph points={historyPoints} />
+						<FitnessHistoryGraph points={lab.historyPoints} />
 					</div>
 				</details>
 
@@ -917,31 +352,32 @@
 					<summary>PERFORMANCE BUCKETS</summary>
 					<div class="panel-body">
 						<div class="buckets">
-							{#each BOT_BUCKETS as bucket (bucket)}
+							{#each lab.botBuckets as bucket (bucket)}
 								<div class="bucket">
 									<label>
 										<input
 											type="checkbox"
-											checked={selectedBuckets[bucket]}
+											checked={lab.selectedBuckets[bucket]}
 											onchange={(event) =>
-												selectAll(bucket, (event.currentTarget as HTMLInputElement).checked)}
+												lab.selectAll(bucket, (event.currentTarget as HTMLInputElement).checked)}
 										/>
 										<span class={`bucket-name ${bucket}`}>{bucket.toUpperCase()}</span>
 									</label>
-									<strong>{counts[bucket]}</strong>
+									<strong>{lab.counts[bucket]}</strong>
 								</div>
 							{/each}
 						</div>
 						<button
 							type="button"
-							onclick={useBuckets}
-							disabled={counts.poor + counts.good + counts.top === 0}
+							onclick={lab.useBuckets}
+							disabled={lab.counts.poor + lab.counts.good + lab.counts.top === 0}
 						>
 							RUN WITH SELECTED BUCKETS
 						</button>
 						<p class="hint">
 							Relaxed difficulty uses poor, standard good, ruthless top. Finished buckets are saved
-							locally and used by the main match setup. QD archive: {archiveRows.length} strategy descriptors.
+							locally and used by the main match setup. QD archive: {lab.archiveRows.length} strategy
+							descriptors.
 						</p>
 					</div>
 				</details>

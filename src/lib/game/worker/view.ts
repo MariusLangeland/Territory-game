@@ -1,5 +1,5 @@
 import { CHANGE_INDEX_BITS, CHANGE_INDEX_MASK } from '../constants';
-import type { PublicStructure, StructureType } from '../Structures';
+import type { PublicStructure, StructureType } from '../structures';
 import type { GameSnapshot, MergedDistrictGroup } from '../simulation';
 import type { StartPoint } from '../map';
 import type { WorkerMatchInit, WorkerVisual } from './protocol';

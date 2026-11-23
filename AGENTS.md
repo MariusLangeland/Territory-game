@@ -29,6 +29,7 @@ pnpm test
 pnpm test:fast
 pnpm test:worker
 pnpm test:stress
+pnpm check:boundaries
 pnpm bench
 pnpm bench:online
 pnpm telemetry
@@ -113,7 +114,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 ## Where things live
 
 - `src/routes/+page.svelte` — screen flow and HUD. Large file by design; keep gameplay rules out.
-- `src/lib/components/GameCanvas.svelte` — canvas/fixed loop/pointer; do not add simulation logic here.
+- `src/lib/components/GameCanvas.svelte` — thin canvas host; frame loop, input, and overlay helpers live in `src/lib/game/canvas/`. Do not add simulation logic here.
 - `src/lib/components/GameTopBar.svelte` — commander readout, war clock, global actions.
 - `src/lib/components/WorldRail.svelte` — virtualized leaderboard and war feed.
 - `src/lib/components/SupplyPanel.svelte` — supply bar and cancel/fire actions.
@@ -129,16 +130,16 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.
-- `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.
+- `src/lib/game/simulation.ts` — authoritative simulation facade. Extracted helpers live in `src/lib/game/simulation/`; prefer focused edits and the split `simulation.*.test.ts` suites.
 - `src/lib/game/ai/` — evolvable bot genomes, deterministic selection/fitness/buckets, CSV round-trip, and localStorage bucket persistence.
 - `src/routes/evolution/+page.svelte` — WebGPU evolution spectator with fast-forward, CSV import/export, and bucket loading.
 - `scripts/evolution.ts` — headless natural-selection CLI that writes `reports/evolution.csv`.
 - `scripts/ai-balance.ts` — 8×6000 AI behavior/balance matrix; writes `reports/ai-balance*.json/.csv`.
 - `src/lib/game/naval.ts` — static sea components and deterministic naval A* routing.
-- `src/lib/game/Structures/port.ts` — shore Port definition.
+- `src/lib/game/structures/port.ts` — shore Port definition.
 - `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
 - `src/lib/game/growth/growth.test.ts` — layer selection invariants.
-- `src/lib/game/Structures/` — one definition file per structure type (`state.ts`, `artillery.ts`, `barracks.ts`, `fortification.ts`, `jammer.ts`, `command-post.ts`, `war-academy.ts`, `port.ts`), plus shared `types.ts`, `definitions.ts`, `registry.ts`, and `index.ts`.
+- `src/lib/game/structures/` — one definition file per structure type (`state.ts`, `artillery.ts`, `barracks.ts`, `fortification.ts`, `jammer.ts`, `command-post.ts`, `war-academy.ts`, `port.ts`), plus shared `types.ts`, `definitions.ts`, `registry.ts`, and `index.ts`.
 - `src/lib/game/economy.test.ts` — permanent hand, income, repeat-build/stack, and effect invariants.
 - `src/lib/game/integrity.ts` — connected-component planning, detached-territory annexation, and neutral-pocket cleanup.
 - `src/lib/game/integrity.test.ts` — anchored-mainland, island, and tie-break invariants.
@@ -165,6 +166,10 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/page/interaction-controller.svelte.ts` — hover, drag/drop, cards, context menu.
 - `src/lib/game/page/overlay-controller.svelte.ts` — onboarding, toasts, result/defeat transitions.
 - `src/lib/game/page/game-page.svelte.ts` — composition and `game.foo` proxy facade.
+- `src/lib/game/page/selectors/` — split HUD/match/ranking/interaction/overlay selectors.
+- `src/lib/game/evolution/page/` — AI Lab state, worker, actions, and facade.
+- `src/lib/game/online/page/` — online lobby/match state, transport, actions, and facade.
+- `src/lib/game/canvas/` — frame loop, input/camera, and structure overlay helpers.
 - `src/lib/server/online.ts` — in-memory room manager, 10 Hz ticker, SSE subscribers.
 - `src/routes/online/+page.svelte` — online lobby/live match client.
 - `src/routes/api/online/rooms/` — create/join/start/intent/events HTTP surface.

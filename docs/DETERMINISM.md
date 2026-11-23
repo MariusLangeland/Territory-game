@@ -297,7 +297,7 @@ These do not add non-determinism to gameplay; they shape the initial territory. 
 
 ## 11. Testing determinism
 
-`src/lib/game/simulation.test.ts` covers:
+The split `src/lib/game/simulation.*.test.ts` suites cover:
 
 1. Map generation is repeatable and lands near the target fraction.
 2. Each `PLAYER_COUNT` (51) start is unique and on land across multiple seeds.

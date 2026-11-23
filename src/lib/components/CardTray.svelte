@@ -6,7 +6,7 @@
 		STRUCTURE_DEFINITIONS,
 		type BuildableStructureType,
 		type PublicCard
-	} from '#lib/game/Structures';
+	} from '#lib/game/structures';
 	import type { GameSnapshot } from '#lib/game/simulation';
 	import { formatSupply } from '#lib/format';
 

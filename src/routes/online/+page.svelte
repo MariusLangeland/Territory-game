@@ -1,456 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
-	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
-	import { RemoteSimulationView } from '#lib/game/worker/view';
-	import type { WorkerMatchInit } from '#lib/game/worker/protocol';
-	import { generateMap } from '#lib/game/map';
-	import { TICK_RATE, colorForPlayer } from '#lib/game/constants';
-	import { STRUCTURE_DEFINITIONS, type BuildableStructureType } from '#lib/game/Structures';
-	import type { GameSnapshot } from '#lib/game/simulation';
-	import {
-		decodeByteRuns,
-		decodeOwnerRuns,
-		type OnlineBaseline,
-		type OnlineIntent,
-		type OnlineRoomListEntry,
-		type OnlineRoomView,
-		type OnlineTick
-	} from '#lib/game/net/online-protocol';
+	import { colorForPlayer } from '#lib/game/constants';
+	import { createOnlinePage } from '#lib/game/online/page/online-page.svelte';
 
-	interface Visual {
-		revision: number;
-		tick: number;
-		snapshot: GameSnapshot;
-		changes: Uint32Array;
-		changeCount: number;
-		overflow: boolean;
-		districtTiles: number[];
-	}
-
-	const DEFAULT_CONFIG = {
-		totalStates: 8,
-		maxHumans: 8,
-		seed: 0,
-		botDifficulty: 'standard' as const,
-		timerMinutes: 0,
-		botCommandPostStacks: 0
-	};
-
-	let displayName = $state('Commander');
-	let roomCodeInput = $state('');
-	let config = $state({ ...DEFAULT_CONFIG });
-	let room = $state<OnlineRoomView | null>(null);
-	let roomList = $state<OnlineRoomListEntry[]>([]);
-	let playerId = $state(0);
-	let token = $state('');
-	let status = $state('Create a room or join with a code.');
-	let busy = $state(false);
-	let connected = $state(false);
-	let subscribed = false;
-	let eventSource: EventSource | null = null;
-	let remoteView = $state<RemoteSimulationView | null>(null);
-	let snapshot = $state<GameSnapshot | null>(null);
-	let visuals = $state<Visual[]>([]);
-	let revision = 0;
-	let cameraBridge = new GameCameraBridge();
-	let selectedCardId = $state<number | null>(null);
-	let artilleryMode = $state(false);
-	let intentSequence = 0;
-	let shareUrl = $state('');
-
-	const currentPlayer = $derived(
-		room && playerId > 0 ? room.seats.find((seat) => seat.playerId === playerId) : undefined
-	);
-	const isHost = $derived(currentPlayer?.host === true);
-	const running = $derived(room?.phase === 'running');
-	const completed = $derived(room?.phase === 'completed');
-	const humanCards = $derived(snapshot?.hand ?? []);
-	const playableCards = $derived(
-		humanCards.map((card) => ({
-			...card,
-			definition: STRUCTURE_DEFINITIONS[card.type as BuildableStructureType],
-			cost: STRUCTURE_DEFINITIONS[card.type as BuildableStructureType].cost,
-			affordable: (snapshot?.supply ?? 0) >= STRUCTURE_DEFINITIONS[card.type].cost
-		}))
-	);
-	const alivePlayers = $derived(snapshot?.players.filter((player) => player.alive) ?? []);
-	const seatSlots = $derived(
-		room ? Array.from({ length: room.config.maxHumans }, (_, index) => index) : []
-	);
-	const supplyLabel = $derived(
-		snapshot ? `${Math.floor(snapshot.supply)} / ${Math.floor(snapshot.supplyCap)}` : '—'
-	);
-
-	function storageKey(roomId: string): string {
-		return `territory.online.${roomId}`;
-	}
-
-	function saveSession(roomId: string, nextPlayerId: number, nextToken: string): void {
-		try {
-			sessionStorage.setItem(
-				storageKey(roomId),
-				JSON.stringify({ playerId: nextPlayerId, token: nextToken, sequence: intentSequence })
-			);
-		} catch {
-			// Session storage may be unavailable in private mode.
-		}
-	}
-
-	function loadSession(
-		roomId: string
-	): { playerId: number; token: string; sequence: number } | null {
-		try {
-			const raw = sessionStorage.getItem(storageKey(roomId));
-			return raw ? JSON.parse(raw) : null;
-		} catch {
-			return null;
-		}
-	}
-
-	function persistSequence(): void {
-		if (room) saveSession(room.roomId, playerId, token);
-	}
-
-	async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-		const response = await fetch(path, {
-			...options,
-			headers: {
-				'content-type': 'application/json',
-				...(token ? { 'x-online-token': token } : {}),
-				...options.headers
-			}
-		});
-		const body = await response.json();
-		if (!response.ok) throw new Error(body?.error ?? 'Request failed.');
-		return body as T;
-	}
-
-	async function refreshRooms(): Promise<void> {
-		try {
-			const body = await api<{ rooms: OnlineRoomListEntry[] }>('/api/online/rooms');
-			roomList = body.rooms;
-		} catch {
-			roomList = [];
-		}
-	}
-
-	async function createRoom(): Promise<void> {
-		busy = true;
-		try {
-			const body = await api<{
-				roomId: string;
-				playerId: number;
-				token: string;
-				room: OnlineRoomView;
-			}>('/api/online/rooms', {
-				method: 'POST',
-				body: JSON.stringify({
-					displayName,
-					config: {
-						totalStates: config.totalStates,
-						maxHumans: config.maxHumans,
-						botDifficulty: config.botDifficulty,
-						timerMinutes: config.timerMinutes,
-						botCommandPostStacks: config.botCommandPostStacks
-					}
-				})
-			});
-			playerId = body.playerId;
-			token = body.token;
-			room = body.room;
-			intentSequence = 0;
-			saveSession(body.roomId, playerId, token);
-			setShareUrl(body.roomId);
-			subscribe();
-		} catch (error) {
-			status = error instanceof Error ? error.message : 'Could not create the room.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function joinRoomWithCode(code = roomCodeInput): Promise<void> {
-		const value = code.trim();
-		if (!value) return;
-		busy = true;
-		try {
-			const body = await api<{
-				roomId: string;
-				playerId: number;
-				token: string;
-				room: OnlineRoomView;
-			}>(`/api/online/rooms/${encodeURIComponent(value)}/join`, {
-				method: 'POST',
-				body: JSON.stringify({ displayName })
-			});
-			playerId = body.playerId;
-			token = body.token;
-			room = body.room;
-			intentSequence = 0;
-			saveSession(body.roomId, playerId, token);
-			setShareUrl(body.roomId);
-			subscribe();
-		} catch (error) {
-			status = error instanceof Error ? error.message : 'Could not join the room.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function startMatch(): Promise<void> {
-		if (!room || !isHost) return;
-		busy = true;
-		try {
-			const body = await api<{ room: OnlineRoomView }>(`/api/online/rooms/${room.roomId}/start`, {
-				method: 'POST'
-			});
-			room = body.room;
-		} catch (error) {
-			status = error instanceof Error ? error.message : 'Could not start the match.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	function setShareUrl(roomId: string): void {
-		if (typeof window === 'undefined') return;
-		const url = new URL(window.location.href);
-		url.searchParams.set('room', roomId);
-		shareUrl = url.toString();
-		history.replaceState(null, '', url);
-	}
-
-	function closeEvents(): void {
-		eventSource?.close();
-		eventSource = null;
-		connected = false;
-		subscribed = false;
-	}
-
-	function subscribe(): void {
-		if (!room || !token) return;
-		closeEvents();
-		const source = new EventSource(
-			`/api/online/rooms/${encodeURIComponent(room.roomId)}/events?token=${encodeURIComponent(token)}`
-		);
-		eventSource = source;
-		subscribed = true;
-		source.onopen = () => {
-			connected = true;
-			status = 'Connected to the match server.';
-		};
-		source.onerror = () => {
-			connected = false;
-			status = 'Connection interrupted. Reconnecting…';
-		};
-		source.onmessage = (message) => {
-			try {
-				handleServerEvent(JSON.parse(message.data));
-			} catch {
-				// Ignore malformed events rather than desynchronising silently.
-			}
-		};
-	}
-
-	function handleServerEvent(event: unknown): void {
-		if (!event || typeof event !== 'object') return;
-		const typed = event as {
-			type?: string;
-			room?: OnlineRoomView;
-			baseline?: OnlineBaseline;
-			tick?: OnlineTick;
-		};
-		if (typed.type === 'room' && typed.room) {
-			room = typed.room;
-			return;
-		}
-		if (typed.type === 'welcome' && typed.baseline) {
-			applyBaseline(typed.baseline);
-			return;
-		}
-		if (typed.type === 'tick' && typed.tick) {
-			applyTick(typed.tick);
-			return;
-		}
-		if (typed.type === 'complete' && typed.room) {
-			room = typed.room;
-			status = typed.room.winnerId ? 'Match complete.' : 'Match complete.';
-		}
-	}
-
-	function applyBaseline(baseline: OnlineBaseline): void {
-		playerId = baseline.playerId;
-		const map = generateMap(baseline.config.seed, {
-			playerCount: baseline.config.totalStates,
-			width: baseline.config.mapWidth ?? 1280,
-			height: baseline.config.mapHeight ?? 720
-		});
-		const owners = decodeOwnerRuns(baseline.ownerRuns, map.width * map.height);
-		const districtColorCodes = decodeByteRuns(baseline.districtColorRuns, map.width * map.height);
-		const init: WorkerMatchInit = {
-			width: map.width,
-			height: map.height,
-			starts: map.starts,
-			terrain: map.land,
-			terrainShade: map.shade,
-			terrainElevation: map.elevation,
-			owners,
-			districtColorCodes,
-			snapshot: baseline.snapshot
-		};
-		remoteView = new RemoteSimulationView(init);
-		snapshot = baseline.snapshot;
-		visuals = [];
-		revision = 0;
-		const stored = room ? loadSession(room.roomId) : null;
-		if (stored && stored.sequence > intentSequence) intentSequence = stored.sequence;
-	}
-
-	function applyTick(tick: OnlineTick): void {
-		if (!remoteView) {
-			subscribe();
-			return;
-		}
-		if (tick.changesOverflow) {
-			subscribe();
-			return;
-		}
-		const changes = Uint32Array.from(tick.changes);
-		const districtTiles = tick.districtTiles;
-		const districtTileColors =
-			tick.districtTileColors.length > 0 ? Uint8Array.from(tick.districtTileColors) : null;
-		remoteView.applyVisual({
-			matchId: 1,
-			tick: tick.tick,
-			snapshot: tick.snapshot,
-			changes,
-			changeCount: changes.length,
-			overflow: false,
-			owners: null,
-			districtColorCodes: null,
-			districtTiles,
-			districtTileColors,
-			markovStates: []
-		});
-		snapshot = tick.snapshot;
-		revision++;
-		visuals = [
-			...visuals,
-			{
-				revision,
-				tick: tick.tick,
-				snapshot: tick.snapshot,
-				changes,
-				changeCount: changes.length,
-				overflow: false,
-				districtTiles
-			}
-		].slice(-8);
-	}
-
-	function acknowledgeVisuals(lastRevision: number): void {
-		visuals = visuals.filter((visual) => visual.revision > lastRevision);
-	}
-
-	async function sendIntent(intent: OnlineIntent): Promise<void> {
-		if (!room) return;
-		intentSequence++;
-		persistSequence();
-		try {
-			const result = await api<{ ok: boolean; message: string }>(
-				`/api/online/rooms/${room.roomId}/intent`,
-				{
-					method: 'POST',
-					body: JSON.stringify({ sequence: intentSequence, intent })
-				}
-			);
-			if (!result.ok) status = result.message;
-		} catch (error) {
-			status = error instanceof Error ? error.message : 'Command failed.';
-		}
-	}
-
-	function handleCanvasClick(x: number, y: number): void {
-		if (!running) return;
-		if (selectedCardId !== null) {
-			void sendIntent({ type: 'build', cardId: selectedCardId, x, y });
-			selectedCardId = null;
-			return;
-		}
-		if (artilleryMode) {
-			void sendIntent({ type: 'artillery', x, y });
-			artilleryMode = false;
-			return;
-		}
-		const owner =
-			remoteView && x >= 0 && y >= 0 && x < remoteView.width && y < remoteView.height
-				? remoteView.getOwner(Math.floor(x), Math.floor(y))
-				: 0;
-		if (owner === playerId) {
-			void sendIntent({ type: 'upgrade', x, y, levels: 1, merged: true });
-			return;
-		}
-		void sendIntent({ type: 'attack', x, y });
-	}
-
-	function handleKeydown(event: KeyboardEvent): void {
-		if (!running) return;
-		if (event.key === 'Escape') {
-			selectedCardId = null;
-			artilleryMode = false;
-			return;
-		}
-		if (event.key >= '1' && event.key <= '7') {
-			const card = playableCards[Number(event.key) - 1];
-			if (card) {
-				selectedCardId = card.id;
-				artilleryMode = false;
-			}
-		}
-	}
-
-	onMount(() => {
-		window.addEventListener('keydown', handleKeydown);
-		const roomParam = new URLSearchParams(window.location.search).get('room');
-		if (roomParam) {
-			roomCodeInput = roomParam;
-			const stored = loadSession(roomParam);
-			if (stored) {
-				token = stored.token;
-				playerId = stored.playerId;
-				intentSequence = stored.sequence;
-				void api<{ room: OnlineRoomView }>(`/api/online/rooms/${roomParam}`)
-					.then((body) => {
-						room = body.room;
-						setShareUrl(roomParam);
-						subscribe();
-					})
-					.catch((error) => {
-						status = error instanceof Error ? error.message : 'Match not found.';
-					});
-			}
-		} else {
-			void refreshRooms();
-		}
-		return () => {
-			window.removeEventListener('keydown', handleKeydown);
-			closeEvents();
-		};
-	});
-
-	function leaveOnline(): void {
-		closeEvents();
-		room = null;
-		remoteView = null;
-		snapshot = null;
-		visuals = [];
-		playerId = 0;
-		token = '';
-		selectedCardId = null;
-		artilleryMode = false;
-		status = 'Left the room.';
-	}
+	const online = createOnlinePage();
 </script>
 
 <svelte:head>
@@ -461,29 +14,31 @@
 	<header class="online-header">
 		<div>
 			<p class="eyebrow">TERRITORY / AUTHORITATIVE ONLINE</p>
-			<h1>{room ? (room.phase === 'waiting' ? 'MUSTER' : 'LIVE MATCH') : 'ONLINE'}</h1>
+			<h1>
+				{online.room ? (online.room.phase === 'waiting' ? 'MUSTER' : 'LIVE MATCH') : 'ONLINE'}
+			</h1>
 		</div>
 		<div class="header-actions">
-			{#if room}
-				<span class="connection" class:live={connected}>
-					{connected ? 'SERVER LINK' : 'RECONNECTING'}
+			{#if online.room}
+				<span class="connection" class:live={online.connected}>
+					{online.connected ? 'SERVER LINK' : 'RECONNECTING'}
 				</span>
-				<button class="ghost" type="button" onclick={leaveOnline}>LEAVE</button>
+				<button class="ghost" type="button" onclick={online.leaveOnline}>LEAVE</button>
 			{:else}
 				<a class="ghost" href="/">LOCAL GAME</a>
 			{/if}
 		</div>
 	</header>
 
-	{#if !room}
+	{#if !online.room}
 		<section class="lobby">
 			<div class="panel">
 				<p class="label">COMMANDER NAME</p>
-				<input bind:value={displayName} maxlength="24" placeholder="Commander" />
+				<input bind:value={online.displayName} maxlength="24" placeholder="Commander" />
 				<div class="config-grid">
 					<label>
 						<span>STATES</span>
-						<select bind:value={config.totalStates}>
+						<select bind:value={online.config.totalStates}>
 							{#each [8, 12, 16, 24, 32] as count}
 								<option value={count}>{count}</option>
 							{/each}
@@ -491,7 +46,7 @@
 					</label>
 					<label>
 						<span>HUMAN SEATS</span>
-						<select bind:value={config.maxHumans}>
+						<select bind:value={online.config.maxHumans}>
 							{#each [2, 4, 6, 8] as count}
 								<option value={count}>{count}</option>
 							{/each}
@@ -499,7 +54,7 @@
 					</label>
 					<label>
 						<span>DIFFICULTY</span>
-						<select bind:value={config.botDifficulty}>
+						<select bind:value={online.config.botDifficulty}>
 							<option value="relaxed">RELAXED</option>
 							<option value="standard">STANDARD</option>
 							<option value="ruthless">RUTHLESS</option>
@@ -507,7 +62,7 @@
 					</label>
 					<label>
 						<span>TIMER</span>
-						<select bind:value={config.timerMinutes}>
+						<select bind:value={online.config.timerMinutes}>
 							<option value={0}>NONE</option>
 							<option value={10}>10 MIN</option>
 							<option value={20}>20 MIN</option>
@@ -515,21 +70,30 @@
 						</select>
 					</label>
 				</div>
-				<button class="primary" type="button" onclick={createRoom} disabled={busy}>
+				<button class="primary" type="button" onclick={online.createRoom} disabled={online.busy}>
 					CREATE ROOM
 				</button>
 			</div>
 
 			<div class="panel">
 				<p class="label">JOIN WITH CODE</p>
-				<input bind:value={roomCodeInput} placeholder="Room code" />
-				<button class="primary" type="button" onclick={() => joinRoomWithCode()} disabled={busy}>
+				<input bind:value={online.roomCodeInput} placeholder="Room code" />
+				<button
+					class="primary"
+					type="button"
+					onclick={() => online.joinRoomWithCode()}
+					disabled={online.busy}
+				>
 					JOIN ROOM
 				</button>
-				{#if roomList.length > 0}
+				{#if online.roomList.length > 0}
 					<p class="label room-list-label">OPEN ROOMS</p>
-					{#each roomList as entry (entry.roomId)}
-						<button class="room-row" type="button" onclick={() => joinRoomWithCode(entry.roomId)}>
+					{#each online.roomList as entry (entry.roomId)}
+						<button
+							class="room-row"
+							type="button"
+							onclick={() => online.joinRoomWithCode(entry.roomId)}
+						>
 							<strong>{entry.roomId}</strong>
 							<span>{entry.humanCount}/{entry.maxHumans} HUMANS · {entry.totalStates} STATES</span>
 						</button>
@@ -543,18 +107,18 @@
 					The server owns the simulation and advances it at 10 Hz. Your browser renders
 					authoritative snapshots and sends intents; bots fill every unfilled seat.
 				</p>
-				<p class="muted">{status}</p>
+				<p class="muted">{online.status}</p>
 			</div>
 		</section>
-	{:else if room.phase === 'waiting'}
+	{:else if online.room.phase === 'waiting'}
 		<section class="lobby">
 			<div class="panel">
 				<p class="label">ROOM CODE</p>
-				<div class="room-code">{room.roomId}</div>
-				<input readonly value={shareUrl} onfocus={(event) => event.currentTarget.select()} />
+				<div class="room-code">{online.room.roomId}</div>
+				<input readonly value={online.shareUrl} onfocus={(event) => event.currentTarget.select()} />
 				<div class="seat-list">
-					{#each seatSlots as index (index)}
-						{@const seat = room.seats[index]}
+					{#each online.seatSlots as index (index)}
+						{@const seat = online.room.seats[index]}
 						<div class="seat" class:empty={!seat}>
 							<span>{seat ? seat.name : 'OPEN SLOT'}</span>
 							<small>
@@ -563,8 +127,8 @@
 						</div>
 					{/each}
 				</div>
-				{#if isHost}
-					<button class="primary" type="button" onclick={startMatch} disabled={busy}>
+				{#if online.isHost}
+					<button class="primary" type="button" onclick={online.startMatch} disabled={online.busy}>
 						START MATCH
 					</button>
 				{:else}
@@ -575,71 +139,65 @@
 	{:else}
 		<div class="match-layout">
 			<div class="canvas-wrap">
-				{#if remoteView}
-					{#key remoteView}
+				{#if online.remoteView}
+					{#key online.remoteView}
 						<GameCanvas
-							simulation={remoteView}
-							paused={!running}
+							simulation={online.remoteView}
+							paused={!online.running}
 							simulate={false}
-							remoteVisuals={visuals}
-							onRemoteVisualsApplied={acknowledgeVisuals}
-							targeting={artilleryMode}
-							humanPlayerId={playerId}
-							{cameraBridge}
+							remoteVisuals={online.visuals}
+							onRemoteVisualsApplied={online.acknowledgeVisuals}
+							targeting={online.artilleryMode}
+							humanPlayerId={online.playerId}
+							cameraBridge={online.cameraBridge}
 							cameraFocus="map"
-							onAttack={handleCanvasClick}
+							onAttack={online.handleCanvasClick}
 						/>
 					{/key}
 				{/if}
-				{#if completed}
+				{#if online.completed}
 					<div class="result">
 						<p class="label">MATCH COMPLETE</p>
 						<h2>
-							{snapshot?.winnerId
-								? `${snapshot.players[snapshot.winnerId - 1]?.name ?? 'STATE'} WINS`
+							{online.snapshot?.winnerId
+								? `${online.snapshot.players[online.snapshot.winnerId - 1]?.name ?? 'STATE'} WINS`
 								: 'STALEMATE'}
 						</h2>
-						<button class="primary" type="button" onclick={leaveOnline}>BACK TO LOBBY</button>
+						<button class="primary" type="button" onclick={online.leaveOnline}>
+							BACK TO LOBBY
+						</button>
 					</div>
 				{/if}
 			</div>
 			<aside class="sidebar">
 				<div class="stat">
 					<span>SUPPLY</span>
-					<strong>{supplyLabel}</strong>
+					<strong>{online.supplyLabel}</strong>
 				</div>
 				<div class="stat">
 					<span>TICK</span>
-					<strong>{snapshot?.tick ?? room.tick}</strong>
+					<strong>{online.snapshot?.tick ?? online.room.tick}</strong>
 				</div>
 				<div class="actions">
 					<button
 						class="ghost"
-						class:active={artilleryMode}
+						class:active={online.artilleryMode}
 						type="button"
-						onclick={() => {
-							artilleryMode = !artilleryMode;
-							selectedCardId = null;
-						}}
+						onclick={online.toggleArtillery}
 					>
 						FIRE
 					</button>
-					<button class="ghost" type="button" onclick={() => sendIntent({ type: 'cancel-attack' })}>
-						CANCEL FRONT
-					</button>
+					<button class="ghost" type="button" onclick={online.cancelFront}>CANCEL FRONT</button>
 				</div>
 				<p class="label">BUILD CARDS</p>
 				<div class="cards">
-					{#each playableCards as card, index (card.id)}
+					{#each online.playableCards as card, index (card.id)}
 						<button
 							class="card"
-							class:selected={selectedCardId === card.id}
+							class:selected={online.selectedCardId === card.id}
 							class:unaffordable={!card.affordable}
 							type="button"
-							onclick={() => {
-								selectedCardId = card.id;
-								artilleryMode = false;
-							}}
+							onclick={() => online.selectCard(card.id)}
 						>
 							<span>{index + 1}</span>
 							<strong>{card.definition.label}</strong>
@@ -647,17 +205,17 @@
 						</button>
 					{/each}
 				</div>
-				<p class="label">STATES / {alivePlayers.length} ALIVE</p>
+				<p class="label">STATES / {online.alivePlayers.length} ALIVE</p>
 				<div class="players">
-					{#each alivePlayers as player (player.id)}
-						<div class="player" class:you={player.id === playerId}>
+					{#each online.alivePlayers as player (player.id)}
+						<div class="player" class:you={player.id === online.playerId}>
 							<span class="swatch" style={`background:${colorForPlayer(player.id).hex}`}></span>
 							<span>{player.name}</span>
 							<small>{Math.floor(player.territory).toLocaleString()}</small>
 						</div>
 					{/each}
 				</div>
-				<p class="muted">{status}</p>
+				<p class="muted">{online.status}</p>
 			</aside>
 		</div>
 	{/if}

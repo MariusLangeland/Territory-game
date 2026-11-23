@@ -1,13 +1,9 @@
 import {
 	ANNEX_INTERVAL_TICKS,
-	ARTILLERY_BLAST_RADIUS,
 	ARTILLERY_BUILD_CLEARANCE,
 	ARTILLERY_COOLDOWN_TICKS,
 	ARTILLERY_RANGE,
-	ARTILLERY_SHELL_SPREAD,
-	ARTILLERY_SHELL_TRAVEL_TICKS,
 	ARTILLERY_SUPPLY_COST_PER_LEVEL,
-	ARTILLERY_TARGET_SNAP_RADIUS,
 	ATTACK_ATTRITION_BASE,
 	ATTACK_ATTRITION_BONUS,
 	ATTACK_DAMAGE_PER_TICK,
@@ -78,7 +74,6 @@ import {
 	BOT_THREAT_UNRELATED_PENALTY,
 	BOT_TEAM_COORDINATION_BONUS,
 	CHANGE_INDEX_BITS,
-	DISTRICT_NOISE_CELL,
 	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
 	HUMAN_PLAYER_ID,
@@ -110,13 +105,7 @@ import {
 	UNCLAIMED_CLEANUP_INTERVAL_TICKS,
 	UNCLAIMED_POCKET_MAX_AREA
 } from './constants';
-import {
-	createGrowthLayer,
-	DEFAULT_GROWTH_MODE,
-	isGrowthMode,
-	type GrowthLayer,
-	type GrowthMode
-} from './growth';
+import { createGrowthLayer, DEFAULT_GROWTH_MODE, isGrowthMode, type GrowthMode } from './growth';
 import { TerritoryIntegrity, type IntegrityAnchor } from './integrity';
 import { generateMap, hash32, type GeneratedMap, type StartPoint } from './map';
 import { adjacentWater, computeSeaComponents, isShoreIndex, SeaRouter } from './naval';
@@ -129,152 +118,122 @@ import {
 	structureTypeFromCode,
 	type BuildableStructureType,
 	type Card,
-	type PublicCard,
-	type PublicStructure,
 	type Structure,
 	type StructureType
-} from './Structures';
+} from './structures';
 import { DeterministicRng } from './rng';
-import { BOT_MODULE_IDS, scaledBonus, type BotGenome, type BotModules } from './ai/genome';
+import { scaledBonus } from './ai/genome';
 import {
 	BOT_OPTION_CODES,
 	botOptionFromCode,
 	emptyOptionCounts,
 	type BotOptionId
 } from './ai/options';
-import type { MarkovCondition, MarkovController } from './ai/markov';
+import type { MarkovCondition } from './ai/markov';
+import {
+	artilleryReadyAt,
+	createArtilleryShells,
+	findArtilleryImpactTarget,
+	findArtillerySnapTarget,
+	partitionDueArtilleryShells,
+	readyArtilleryBatteries
+} from './simulation/artillery';
+import {
+	botDecisionDue,
+	createBotProfile,
+	createProfileFromGenome,
+	DEFAULT_BOT_MODULES,
+	type BotProfile
+} from './simulation/bots';
+import {
+	districtColorCode,
+	districtDistance,
+	growthModeCode,
+	indexToX,
+	indexToY
+} from './simulation/geometry';
+import {
+	createChecksumMixer,
+	mixAttackChecksum,
+	mixNavalLandingChecksum,
+	mixNumbers,
+	mixShellChecksum,
+	mixStructureChecksum
+} from './simulation/checksum';
+import {
+	toPublicAttack,
+	toPublicNavalLanding,
+	toPublicShell,
+	toPublicStructure
+} from './simulation/snapshot';
+import type {
+	ArtilleryShell,
+	AttackFailure,
+	AttackOrderResult,
+	AttackState,
+	BotBehaviorTelemetry,
+	BotDifficulty,
+	BotPlayerBehaviorMetrics,
+	BuildFailure,
+	BuildOrderResult,
+	GameCommand,
+	GameSnapshot,
+	MergedDistrictGroup,
+	NavalLanding,
+	PlayerState,
+	PublicAlliance,
+	PublicAllianceProposal,
+	PublicArtilleryShell,
+	PublicAttack,
+	PublicNavalLanding,
+	PublicPlayer,
+	SimEvent,
+	SimEventKind,
+	SimulationOptions,
+	StepResult,
+	UpgradeQuote
+} from './simulation/types';
 
-export interface PlayerState {
-	id: number;
-	name: string;
-	isBot: boolean;
-	alive: boolean;
-	territory: number;
-	/** 0 = free-for-all; equal nonzero ids are allies. */
-	teamId: number;
-	/** Land frontier cells. Derived from owners + land; never trusted across a network. */
-	border: Set<number>;
-}
-
-export interface AttackState {
-	id: number;
-	attackerId: number;
-	defenderId: number;
-	targetX: number;
-	targetY: number;
-	anchorX: number;
-	anchorY: number;
-	growthMode: GrowthMode;
-	frontier: GrowthLayer;
-	createdAtTick: number;
-	lifetimeTicks: number;
-	/** Orders still embedded in this attack; reaching 0 halts it. */
-	orders: number;
-	initialOrders: number;
-	/** Durable Frontage strength pool; captures and attrition spend it. */
-	strength: number;
-	initialStrength: number;
-	/** Supply paid at launch; cancellation refunds a ratio of it. */
-	supplyCost: number;
-	/** Captures per tick allowed by this front's power. */
-	power: number;
-	pierce: number;
-	/** Consecutive ticks without a capture. */
-	idleTicks: number;
-	captures: number;
-	done: boolean;
-}
-
-export interface BotBehaviorTelemetry {
-	threatenedFortificationBuilds: number;
-	threatenedFortificationUpgrades: number;
-	deterrencePostures: number;
-	incomeGapCommandPosts: number;
-	incomeGapWarAcademies: number;
-	opportunityAttacks: number;
-	botPortBuilds: number;
-	botNavalLandings: number;
-	optionSelections: Record<BotOptionId, number>;
-}
-
-/** Per-player behavior used by evolution descriptors and reward shaping. */
-export interface BotPlayerBehaviorMetrics {
-	attacksLaunched: number;
-	supportedAttacks: number;
-	fortificationsBuilt: number;
-	fortificationUpgrades: number;
-	commandPostsBuilt: number;
-	warAcademiesBuilt: number;
-	portsBuilt: number;
-	navalLandings: number;
-	/** Opponent states erased by this player's pressure. */
-	statesEliminated: number;
-	/** Attacks launched against a materially weaker state. */
-	attacksVsWeakerStates: number;
-	/** Hostile fronts that died in combat or stalled out against this player. */
-	attacksRepelled: number;
-	/** Durable strength this player's defense forced attacking fronts to spend. */
-	defenseDamage: number;
-}
-
-export interface PublicAlliance {
-	id: number;
-	playerA: number;
-	playerB: number;
-	startedAtTick: number;
-	expiresAtTick: number;
-}
-
-export interface PublicAllianceProposal {
-	id: number;
-	fromPlayerId: number;
-	toPlayerId: number;
-	createdAtTick: number;
-	expiresAtTick: number;
-}
+// Public payload and command types live in ./simulation/types. Re-export them
+// here so every existing `import ... from '$lib/game/simulation'` keeps working.
+export type {
+	AllianceBreakCommand,
+	AllianceRequestCommand,
+	ArtilleryFireCommand,
+	ArtilleryShell,
+	AttackCommand,
+	AttackFailure,
+	AttackOrderResult,
+	AttackState,
+	BotBehaviorTelemetry,
+	BotDifficulty,
+	BotPlayerBehaviorMetrics,
+	BuildCommand,
+	BuildFailure,
+	BuildOrderResult,
+	DemolishCommand,
+	GameCommand,
+	GameSnapshot,
+	MergedDistrictGroup,
+	NavalCommand,
+	NavalLanding,
+	PlayerState,
+	PublicAlliance,
+	PublicAllianceProposal,
+	PublicArtilleryShell,
+	PublicAttack,
+	PublicNavalLanding,
+	PublicPlayer,
+	SimEvent,
+	SimEventKind,
+	SimulationOptions,
+	StepResult,
+	UpgradeCommand,
+	UpgradeQuote
+} from './simulation/types';
 
 interface Alliance extends PublicAlliance {}
 interface AllianceProposal extends PublicAllianceProposal {}
-
-export interface PublicPlayer {
-	id: number;
-	name: string;
-	isBot: boolean;
-	alive: boolean;
-	territory: number;
-	landShare: number;
-	supply: number;
-	/** Fronts this player could launch right now at their current attack cost. */
-	attacksAffordable: number;
-}
-
-interface BotProfile {
-	aggression: number;
-	economy: number;
-	fortification: number;
-	command: number;
-	vengeful: number;
-	cautious: number;
-	conciliatory: number;
-	opportunist: number;
-	focus: BuildableStructureType;
-	buildPlan: BuildableStructureType[];
-	/** Persistent per-type affinity; dynamic utility layers situational value on top. */
-	structureBias: Record<BuildableStructureType, number>;
-	/** Evolvable behaviour-module weights, neutral at 50. */
-	modules: BotModules;
-	genomeId: string | null;
-	markov: MarkovController | null;
-}
-
-const DEFAULT_BOT_MODULES: BotModules = {
-	income: 50,
-	defense: 50,
-	deterrence: 50,
-	opportunity: 50,
-	expansion: 50,
-	retaliation: 50
-};
 
 interface BotEconomicAction {
 	type: BuildableStructureType;
@@ -283,281 +242,6 @@ interface BotEconomicAction {
 	score: number;
 	cell?: number;
 	structure?: Structure;
-}
-
-export interface PublicAttack {
-	id: number;
-	attackerId: number;
-	defenderId: number;
-	targetX: number;
-	targetY: number;
-	orders: number;
-	strength: number;
-	initialStrength: number;
-	power: number;
-	pierce: number;
-	captures: number;
-	growthMode: GrowthMode;
-}
-
-export interface ArtilleryShell {
-	id: number;
-	ownerId: number;
-	fromX: number;
-	fromY: number;
-	targetX: number;
-	targetY: number;
-	launchedAtTick: number;
-	arriveAtTick: number;
-}
-
-export interface PublicArtilleryShell extends ArtilleryShell {
-	/** Render-only interpolation in `[0, 1]`; not checksummed. */
-	progress: number;
-}
-
-export interface NavalLanding {
-	id: number;
-	ownerId: number;
-	portId: number;
-	targetIndex: number;
-	/** Water route plus the final target shore cell. */
-	path: number[];
-	launchedAtTick: number;
-	arriveAtTick: number;
-}
-
-export interface PublicNavalLanding extends NavalLanding {
-	/** Render-only interpolation in `[0, 1]`; not checksummed. */
-	progress: number;
-}
-
-export interface GameSnapshot {
-	tick: number;
-	seed: number;
-	landCount: number;
-	claimedLand: number;
-	players: PublicPlayer[];
-	alliances: PublicAlliance[];
-	allianceProposals: PublicAllianceProposal[];
-	attacks: PublicAttack[];
-	shells: PublicArtilleryShell[];
-	navalLandings: PublicNavalLanding[];
-	structures: PublicStructure[];
-	/** Human state's economy. Bots do not build cards yet. */
-	gold: number;
-	income: number;
-	supply: number;
-	supplyCap: number;
-	supplyIncome: number;
-	hand: PublicCard[];
-	attackOrders: number;
-	attackOrderCap: number;
-	winnerId: number | null;
-	ended: boolean;
-	humanId: number;
-	/** Growth layer used by attacks created from now on. */
-	growthMode: GrowthMode;
-}
-
-export type SimEventKind =
-	| 'elimination'
-	| 'victory'
-	| 'structure'
-	| 'build'
-	| 'attack'
-	| 'artillery'
-	| 'naval'
-	| 'alliance'
-	| 'system';
-
-export interface SimEvent {
-	id: number;
-	tick: number;
-	kind: SimEventKind;
-	message: string;
-	playerId?: number;
-}
-
-export type AttackFailure =
-	| 'ended'
-	| 'eliminated'
-	| 'ocean'
-	| 'own-territory'
-	| 'no-shared-border'
-	| 'no-orders'
-	| 'invalid'
-	| 'no-artillery'
-	| 'cooling'
-	| 'no-supply'
-	| 'out-of-range'
-	| 'district-clearance'
-	| 'no-port'
-	| 'not-shore'
-	| 'no-sea-path'
-	| 'friendly-shore'
-	| 'allied';
-
-export interface AttackOrderResult {
-	ok: boolean;
-	reason?: AttackFailure;
-	message: string;
-}
-
-export interface AttackCommand {
-	type: 'attack';
-	playerId: number;
-	x: number;
-	y: number;
-	sequence: number;
-}
-
-export interface ArtilleryFireCommand {
-	type: 'artillery';
-	playerId: number;
-	x: number;
-	y: number;
-	sequence: number;
-}
-
-export interface NavalCommand {
-	type: 'naval';
-	playerId: number;
-	x: number;
-	y: number;
-	sequence: number;
-}
-
-export interface BuildCommand {
-	type: 'build';
-	playerId: number;
-	cardId: number;
-	x: number;
-	y: number;
-	sequence: number;
-}
-
-export interface UpgradeCommand {
-	type: 'upgrade';
-	playerId: number;
-	x: number;
-	y: number;
-	/** Quoted base card cost plus the projected current level. */
-	cost: number;
-	/** Merged-district upgrades pin the lowest participating structure. */
-	structureId?: number;
-	sequence: number;
-}
-
-export interface DemolishCommand {
-	type: 'demolish';
-	playerId: number;
-	structureId: number;
-	sequence: number;
-}
-
-export interface AllianceRequestCommand {
-	type: 'alliance-request';
-	playerId: number;
-	targetPlayerId: number;
-	sequence: number;
-}
-
-export interface AllianceBreakCommand {
-	type: 'alliance-break';
-	playerId: number;
-	targetPlayerId: number;
-	sequence: number;
-}
-
-export type GameCommand =
-	| AttackCommand
-	| ArtilleryFireCommand
-	| NavalCommand
-	| BuildCommand
-	| UpgradeCommand
-	| DemolishCommand
-	| AllianceRequestCommand
-	| AllianceBreakCommand;
-
-export type BuildFailure =
-	| 'ended'
-	| 'eliminated'
-	| 'no-card'
-	| 'no-gold'
-	| 'ocean'
-	| 'not-owned'
-	| 'not-shore'
-	| 'occupied'
-	| 'too-close'
-	| 'inside-district'
-	| 'district-clearance'
-	| 'no-district'
-	| 'invalid';
-
-export interface BuildOrderResult {
-	ok: boolean;
-	reason?: BuildFailure;
-	message: string;
-	/** Resolved cell when a Port snap moves the build away from the cursor. */
-	targetX?: number;
-	targetY?: number;
-}
-
-export interface UpgradeQuote extends BuildOrderResult {
-	levels: number;
-	cost: number;
-	currentLevel: number;
-	projectedLevel: number;
-	merged: boolean;
-	structureCount: number;
-}
-
-/** A visual/upgrade group of touching same-owner districts of one structure type. */
-export interface MergedDistrictGroup {
-	ownerId: number;
-	type: BuildableStructureType;
-	totalStacks: number;
-	structureIds: number[];
-	centerX: number;
-	centerY: number;
-	lowestStructureId: number;
-}
-
-export interface StepResult {
-	tick: number;
-	/** Packed as `(owner << 26) | pixelIndex`. Consumed before the next step. */
-	changes: Uint32Array;
-	changeCount: number;
-	changesOverflow: boolean;
-	districtsChanged: boolean;
-	/** Renderer tiles whose district palette changed this tick. */
-	districtTiles: number[];
-	events: SimEvent[];
-	snapshot: GameSnapshot;
-}
-
-export type BotDifficulty = 'relaxed' | 'standard' | 'ruthless';
-
-export interface SimulationOptions {
-	seed: number;
-	width?: number;
-	height?: number;
-	playerCount?: number;
-	growthMode?: GrowthMode;
-	botDifficulty?: BotDifficulty;
-	/** 0 disables the timer. At expiry the largest alive state wins. */
-	matchDurationTicks?: number;
-	/** Optional evolved genomes per player id-1; null keeps the default profile. */
-	botGenomes?: readonly (BotGenome | null)[];
-	/** Evolution/spectator mode: make every seat, including the human seat, a bot. */
-	allPlayersBots?: boolean;
-	/** Player ids controlled by humans. Defaults to [1] unless allPlayersBots is set. */
-	humanPlayerIds?: readonly number[];
-	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
-	teamIds?: readonly number[];
-	/** Optional starting Command Post stacks granted to every AI seat. */
-	botCommandPostStacks?: number;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -577,14 +261,6 @@ const ALLIANCE_PROPOSAL_TICKS = TICK_RATE * 30;
 const ALLIANCE_DURATION_TICKS = TICK_RATE * 180;
 const ALLIANCE_BREAK_COOLDOWN_TICKS = TICK_RATE * 60;
 const ALLIANCE_ACCEPT_SCORE = 10;
-
-function indexToX(index: number, width: number): number {
-	return index % width;
-}
-
-function indexToY(index: number, width: number): number {
-	return (index - (index % width)) / width;
-}
 
 export class TerritorySimulation {
 	readonly seed: number;
@@ -907,7 +583,7 @@ export class TerritorySimulation {
 		this.botAttackers = new Uint8Array(this.playerCount * this.playerCount);
 		this.botProfiles = Array.from({ length: this.playerCount }, (_, index) => {
 			const genome = options.botGenomes?.[index] ?? null;
-			return genome ? this.createProfileFromGenome(genome) : this.createBotProfile(index + 1);
+			return genome ? createProfileFromGenome(genome) : createBotProfile(index + 1, this.seed);
 		});
 		for (let index = 0; index < this.playerCount; index++) {
 			const controller = this.botProfiles[index].markov;
@@ -1313,47 +989,28 @@ export class TerritorySimulation {
 	}
 
 	private artilleryReadyAt(structure: Structure): number {
-		return this.artilleryCooldownUntil.get(structure.id) ?? 0;
+		return artilleryReadyAt(structure, this.artilleryCooldownUntil);
 	}
 
 	private artilleryBatteries(playerId: number, targetX: number, targetY: number): Structure[] {
-		const rangeSq = ARTILLERY_RANGE * ARTILLERY_RANGE;
-		const batteries: Structure[] = [];
-		for (const structure of this.structures.forOwner(playerId)) {
-			if (structure.type !== 'artillery') continue;
-			if (this.artilleryReadyAt(structure) > this.tick) continue;
-			const dx = structure.x - targetX;
-			const dy = structure.y - targetY;
-			if (dx * dx + dy * dy > rangeSq) continue;
-			batteries.push(structure);
-		}
-		batteries.sort((a, b) => a.id - b.id);
-		return batteries;
+		return readyArtilleryBatteries(
+			this.structures.forOwner(playerId),
+			this.artilleryCooldownUntil,
+			this.tick,
+			targetX,
+			targetY
+		);
 	}
 
 	/** Snap a click to a nearby hostile structure so artillery targeting stays usable. */
 	private snapArtilleryTarget(playerId: number, x: number, y: number): { x: number; y: number } {
-		if (ARTILLERY_TARGET_SNAP_RADIUS <= 0) return { x, y };
-		const radiusSq = ARTILLERY_TARGET_SNAP_RADIUS * ARTILLERY_TARGET_SNAP_RADIUS;
-		let best: Structure | null = null;
-		let bestDistance = radiusSq + 1;
-		for (const structure of this.structures.all) {
-			if (structure.ownerId === playerId || this.areAllied(playerId, structure.ownerId)) {
-				continue;
-			}
-			const dx = structure.x - x;
-			const dy = structure.y - y;
-			const distance = dx * dx + dy * dy;
-			if (distance > radiusSq) continue;
-			if (
-				distance < bestDistance ||
-				(distance === bestDistance && structure.id < (best?.id ?? 0))
-			) {
-				best = structure;
-				bestDistance = distance;
-			}
-		}
-		return best ? { x: best.x, y: best.y } : { x, y };
+		return findArtillerySnapTarget(
+			this.structures.all,
+			playerId,
+			(a, b) => this.areAllied(a, b),
+			x,
+			y
+		);
 	}
 
 	/** Queue one active artillery volley. It resolves at the start of the next tick. */
@@ -1622,34 +1279,23 @@ export class TerritorySimulation {
 		const totalCost = totalShells * ARTILLERY_SUPPLY_COST_PER_LEVEL;
 		if (!this.spendSupply(playerId, totalCost)) return 0;
 
-		let shellsFired = 0;
 		for (const battery of batteries) {
 			this.artilleryCooldownUntil.set(battery.id, this.tick + ARTILLERY_COOLDOWN_TICKS);
-			for (let shell = 0; shell < battery.stacks; shell++) {
-				const hashX = hash32(this.seed ^ 0x9e3779b9, battery.id, shell);
-				const hashY = hash32(this.seed ^ 0x85ebca6b, battery.id, shell);
-				const spread = ARTILLERY_SHELL_SPREAD * 2 + 1;
-				const targetX = Math.max(
-					0,
-					Math.min(this.width - 1, target.x + (hashX % spread) - ARTILLERY_SHELL_SPREAD)
-				);
-				const targetY = Math.max(
-					0,
-					Math.min(this.height - 1, target.y + (hashY % spread) - ARTILLERY_SHELL_SPREAD)
-				);
-				this.artilleryShells.push({
-					id: this.nextShellId++,
-					ownerId: playerId,
-					fromX: battery.x,
-					fromY: battery.y,
-					targetX,
-					targetY,
-					launchedAtTick: this.tick,
-					arriveAtTick: this.tick + ARTILLERY_SHELL_TRAVEL_TICKS
-				});
-				shellsFired++;
-			}
 		}
+		const volley = createArtilleryShells({
+			seed: this.seed,
+			width: this.width,
+			height: this.height,
+			tick: this.tick,
+			ownerId: playerId,
+			targetX: target.x,
+			targetY: target.y,
+			batteries,
+			nextShellId: this.nextShellId
+		});
+		this.nextShellId = volley.nextShellId;
+		this.artilleryShells.push(...volley.shells);
+		const shellsFired = volley.shells.length;
 		if (this.isHumanControlled(playerId)) {
 			this.pushEvent(
 				'artillery',
@@ -1664,37 +1310,15 @@ export class TerritorySimulation {
 
 	private processArtilleryShells(): void {
 		if (this.artilleryShells.length === 0) return;
-		const remaining: ArtilleryShell[] = [];
-		for (const shell of this.artilleryShells) {
-			if (this.tick < shell.arriveAtTick) {
-				remaining.push(shell);
-				continue;
-			}
-			this.resolveArtilleryImpact(shell);
-		}
+		const { due, remaining } = partitionDueArtilleryShells(this.artilleryShells, this.tick);
 		this.artilleryShells = remaining;
+		for (const shell of due) this.resolveArtilleryImpact(shell);
 	}
 
 	private resolveArtilleryImpact(shell: ArtilleryShell): void {
-		const radiusSq = ARTILLERY_BLAST_RADIUS * ARTILLERY_BLAST_RADIUS;
-		let target: Structure | null = null;
-		let bestDistance = radiusSq + 1;
-		for (const structure of this.structures.all) {
-			if (structure.ownerId === shell.ownerId) continue;
-			if (this.areAllied(shell.ownerId, structure.ownerId)) continue;
-			if (structure.type === 'state') continue;
-			const dx = structure.x - shell.targetX;
-			const dy = structure.y - shell.targetY;
-			const distance = dx * dx + dy * dy;
-			if (distance > radiusSq) continue;
-			if (
-				distance < bestDistance ||
-				(distance === bestDistance && structure.id < (target?.id ?? 0))
-			) {
-				target = structure;
-				bestDistance = distance;
-			}
-		}
+		const target = findArtilleryImpactTarget(shell, this.structures.all, (a, b) =>
+			this.areAllied(a, b)
+		);
 		if (target) this.damageStructureWithArtillery(target);
 	}
 
@@ -2284,7 +1908,7 @@ export class TerritorySimulation {
 	}
 
 	get activeAttacks(): readonly PublicAttack[] {
-		return this.attacks.map((attack) => this.toPublicAttack(attack));
+		return this.attacks.map((attack) => toPublicAttack(attack));
 	}
 
 	/**
@@ -2292,17 +1916,7 @@ export class TerritorySimulation {
 	 * it is intentionally too expensive to run every tick in production.
 	 */
 	checksum(): number {
-		let hash = 0x811c9dc5;
-		const mix = (value: number) => {
-			hash ^= value & 0xff;
-			hash = Math.imul(hash, 0x01000193);
-			hash ^= (value >>> 8) & 0xff;
-			hash = Math.imul(hash, 0x01000193);
-			hash ^= (value >>> 16) & 0xff;
-			hash = Math.imul(hash, 0x01000193);
-			hash ^= (value >>> 24) & 0xff;
-			hash = Math.imul(hash, 0x01000193);
-		};
+		const { mix, digest } = createChecksumMixer();
 
 		mix(this.tick);
 		mix(this.rng.getState());
@@ -2323,13 +1937,13 @@ export class TerritorySimulation {
 			mix(transfer.from);
 			mix(transfer.to);
 		}
-		for (const humanGold of this.humanGold) mix(humanGold);
-		for (const humanAccrual of this.humanGoldAccrual) mix(humanAccrual);
-		for (const botGold of this.botGold) mix(botGold);
-		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
-		for (const grievance of this.botGrievance) mix(grievance);
-		for (const stacks of this.eliminationIncomeStacks) mix(stacks);
-		for (const epoch of this.botDecisionEpoch) mix(epoch);
+		mixNumbers(mix, this.humanGold);
+		mixNumbers(mix, this.humanGoldAccrual);
+		mixNumbers(mix, this.botGold);
+		mixNumbers(mix, this.botGoldAccrual);
+		mixNumbers(mix, this.botGrievance);
+		mixNumbers(mix, this.eliminationIncomeStacks);
+		mixNumbers(mix, this.botDecisionEpoch);
 		mix(this.nextAllianceId);
 		mix(this.nextAllianceProposalId);
 		for (const proposal of this.allianceProposals) {
@@ -2346,22 +1960,22 @@ export class TerritorySimulation {
 			mix(alliance.startedAtTick);
 			mix(alliance.expiresAtTick);
 		}
-		for (const cooldown of this.allianceCooldownUntil) mix(cooldown);
-		for (const threat of this.botThreat) mix(threat);
-		for (const defensive of this.botDefensive) mix(defensive);
-		for (const reserve of this.botReserve) mix(reserve);
-		for (const stall of this.botDefenseStall) mix(stall);
-		for (const gap of this.botIncomeGap) mix(gap);
-		for (const deterrence of this.botDeterrence) mix(deterrence);
-		for (const option of this.botOption) mix(option);
-		for (const until of this.botOptionUntil) mix(until);
-		for (const target of this.botOptionTarget) mix(target);
-		for (const markov of this.botMarkovState) mix(markov);
-		for (const entry of this.botMarkovEntry) mix(entry);
-		for (const bias of this.botMarkovBias) mix(bias);
-		for (const attacker of this.botLastAttacker) mix(attacker);
-		for (const mark of this.botGrievanceMark) mix(mark);
-		for (const orders of this.attackOrders) mix(orders);
+		mixNumbers(mix, this.allianceCooldownUntil);
+		mixNumbers(mix, this.botThreat);
+		mixNumbers(mix, this.botDefensive);
+		mixNumbers(mix, this.botReserve);
+		mixNumbers(mix, this.botDefenseStall);
+		mixNumbers(mix, this.botIncomeGap);
+		mixNumbers(mix, this.botDeterrence);
+		mixNumbers(mix, this.botOption);
+		mixNumbers(mix, this.botOptionUntil);
+		mixNumbers(mix, this.botOptionTarget);
+		mixNumbers(mix, this.botMarkovState);
+		mixNumbers(mix, this.botMarkovEntry);
+		mixNumbers(mix, this.botMarkovBias);
+		mixNumbers(mix, this.botLastAttacker);
+		mixNumbers(mix, this.botGrievanceMark);
+		mixNumbers(mix, this.attackOrders);
 
 		for (let i = 0; i < this.owners.length; i++) {
 			mix(this.owners[i]);
@@ -2376,54 +1990,18 @@ export class TerritorySimulation {
 		}
 
 		for (const structure of this.structures.all) {
-			mix(structure.id);
-			mix(STRUCTURE_TYPE_CODES[structure.type]);
-			mix(structure.ownerId);
-			mix(structure.index);
-			mix(structure.stacks);
-			mix(this.artilleryReadyAt(structure));
+			mixStructureChecksum(mix, structure, this.artilleryReadyAt(structure));
 		}
 		mix(this.nextShellId);
-		for (const shell of this.artilleryShells) {
-			mix(shell.id);
-			mix(shell.ownerId);
-			mix(shell.fromX);
-			mix(shell.fromY);
-			mix(shell.targetX);
-			mix(shell.targetY);
-			mix(shell.launchedAtTick);
-			mix(shell.arriveAtTick);
-		}
+		for (const shell of this.artilleryShells) mixShellChecksum(mix, shell);
 		mix(this.nextNavalId);
-		for (const landing of this.navalLandings) {
-			mix(landing.id);
-			mix(landing.ownerId);
-			mix(landing.portId);
-			mix(landing.targetIndex);
-			mix(landing.launchedAtTick);
-			mix(landing.arriveAtTick);
-			mix(landing.path.length);
-			for (const cell of landing.path) mix(cell);
-		}
+		for (const landing of this.navalLandings) mixNavalLandingChecksum(mix, landing);
 
 		for (const attack of this.attacks) {
-			mix(attack.id);
-			mix(attack.attackerId);
-			mix(attack.defenderId);
-			mix(attack.targetX);
-			mix(attack.targetY);
-			mix(attack.anchorX);
-			mix(attack.anchorY);
-			mix(growthModeCode(attack.growthMode));
-			mix(attack.createdAtTick);
-			mix(attack.lifetimeTicks);
-			mix(attack.orders);
-			mix(attack.initialOrders);
-			mix(attack.captures);
-			attack.frontier.mixState(mix);
+			mixAttackChecksum(mix, attack, growthModeCode(attack.growthMode));
 		}
 
-		return hash >>> 0;
+		return digest();
 	}
 
 	private applyPendingCommands(): void {
@@ -2619,7 +2197,7 @@ export class TerritorySimulation {
 					const owner = this.nearestDistrictStructure(structure.ownerId, x, y);
 					this.districtTypes[index] = owner ? STRUCTURE_TYPE_CODES[owner.type] : 0;
 					this.districtStructureIds[index] = owner?.id ?? 0;
-					this.districtColorCodes[index] = owner ? this.districtColorCode(owner) : 0;
+					this.districtColorCodes[index] = owner ? districtColorCode(owner) : 0;
 				}
 			}
 		}
@@ -2671,7 +2249,7 @@ export class TerritorySimulation {
 		for (const structure of owned) {
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 			if (range <= 0) continue;
-			const distance = this.districtDistance(structure, x, y, range);
+			const distance = districtDistance(structure, x, y, range, this.seed);
 			if (distance > range * range) continue;
 			const code = STRUCTURE_TYPE_CODES[structure.type];
 			const bestCode = best ? STRUCTURE_TYPE_CODES[best.type] : 0;
@@ -2687,25 +2265,6 @@ export class TerritorySimulation {
 		return best;
 	}
 
-	/**
-	 * Squared distance plus a small, continuous integer noise offset. The
-	 * offset both wiggles Voronoi split lines and lets the outer edge grow or
-	 * shrink by roughly two pixels. It is deterministic and structure-specific.
-	 */
-	private districtDistance(structure: Structure, x: number, y: number, range: number): number {
-		const dx = x - structure.x;
-		const dy = y - structure.y;
-		const distance = dx * dx + dy * dy;
-		const seed = (this.seed ^ Math.imul(structure.id, 0x9e3779b9)) >>> 0;
-		const noise = districtNoise(x, y, seed);
-		return distance + (((noise - 128) * range) >> 5);
-	}
-
-	private districtColorCode(structure: Structure): number {
-		const base = STRUCTURE_TYPE_CODES[structure.type] * 4 - 3;
-		return base + (structure.id % 4);
-	}
-
 	private updateDistrictAt(index: number): void {
 		const owner = this.owners[index];
 		if (!owner) {
@@ -2719,7 +2278,7 @@ export class TerritorySimulation {
 		const structure = this.nearestDistrictStructure(owner, x, y);
 		this.districtTypes[index] = structure ? STRUCTURE_TYPE_CODES[structure.type] : 0;
 		this.districtStructureIds[index] = structure?.id ?? 0;
-		this.districtColorCodes[index] = structure ? this.districtColorCode(structure) : 0;
+		this.districtColorCodes[index] = structure ? districtColorCode(structure) : 0;
 	}
 
 	getDistrictType(x: number, y: number): number {
@@ -3585,97 +3144,6 @@ export class TerritorySimulation {
 		this.changes[this.changeCount++] = ((owner & 0xffff) << CHANGE_INDEX_BITS) | index;
 	}
 
-	private createBotProfile(playerId: number): BotProfile {
-		const seed = this.seed;
-		const aggression = hash32(playerId, 1, seed ^ 0x1b56c4e9) % 101;
-		const economy = hash32(playerId, 2, seed ^ 0x7f4a7c15) % 101;
-		const fortification = hash32(playerId, 3, seed ^ 0x9e3779b9) % 101;
-		const command = hash32(playerId, 4, seed ^ 0x85ebca6b) % 101;
-		const vengeful = hash32(playerId, 6, seed ^ 0xd3a2646c) % 101;
-		const cautious = hash32(playerId, 7, seed ^ 0xfd7046c5) % 101;
-		const conciliatory = hash32(playerId, 8, seed ^ 0xb55a4f09) % 101;
-		const opportunist = hash32(playerId, 9, seed ^ 0x165667b1) % 101;
-
-		const structureBias: Record<BuildableStructureType, number> = {
-			artillery:
-				15 +
-				Math.floor(economy * 0.35) +
-				Math.floor(aggression * 0.55) +
-				(hash32(playerId, 10, seed) % 20),
-			barracks:
-				12 +
-				Math.floor(aggression * 0.7) +
-				Math.floor(cautious * 0.15) +
-				(hash32(playerId, 11, seed) % 20),
-			fortification:
-				10 +
-				Math.floor(fortification * 0.8) +
-				Math.floor((100 - aggression) * 0.1) +
-				(hash32(playerId, 12, seed) % 20),
-			jammer: 8 + Math.floor((fortification + command) * 0.4) + (hash32(playerId, 15, seed) % 20),
-			'command-post':
-				10 +
-				Math.floor(economy * 0.65) +
-				Math.floor(command * 0.2) +
-				(hash32(playerId, 13, seed) % 20),
-			'war-academy':
-				5 +
-				Math.floor(command * 0.55) +
-				Math.floor(economy * 0.35) +
-				(hash32(playerId, 14, seed) % 20),
-			port:
-				4 +
-				Math.floor(aggression * 0.2) +
-				Math.floor(command * 0.2) +
-				(hash32(playerId, 16, seed) % 16)
-		};
-		const preferred = BUILDABLE_STRUCTURE_TYPES.map((type) => [type, structureBias[type]] as const);
-		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-		const buildPlan = preferred.map((entry) => entry[0]);
-		return {
-			aggression,
-			economy,
-			fortification,
-			command,
-			vengeful,
-			cautious,
-			conciliatory,
-			opportunist,
-			focus: buildPlan[0],
-			buildPlan,
-			structureBias,
-			modules: { ...DEFAULT_BOT_MODULES },
-			genomeId: null,
-			markov: null
-		};
-	}
-
-	private createProfileFromGenome(genome: BotGenome): BotProfile {
-		const structureBias = {} as Record<BuildableStructureType, number>;
-		for (const type of BUILDABLE_STRUCTURE_TYPES) structureBias[type] = genome.structureBias[type];
-		const preferred = BUILDABLE_STRUCTURE_TYPES.map((type) => [type, structureBias[type]] as const);
-		preferred.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-		const buildPlan = preferred.map((entry) => entry[0]);
-		const modules = {} as BotModules;
-		for (const id of BOT_MODULE_IDS) modules[id] = genome.modules[id];
-		return {
-			aggression: genome.aggression,
-			economy: genome.economy,
-			fortification: genome.fortification,
-			command: genome.command,
-			vengeful: genome.vengeful,
-			cautious: genome.cautious,
-			conciliatory: genome.conciliatory,
-			opportunist: genome.opportunist,
-			focus: buildPlan[0],
-			buildPlan,
-			structureBias,
-			modules,
-			genomeId: genome.id,
-			markov: genome.markov
-		};
-	}
-
 	/**
 	 * Common opening strategy: alternate Command Posts and War Academies until
 	 * both have two structures, then branch into personality-driven choices.
@@ -4355,7 +3823,7 @@ export class TerritorySimulation {
 	 * spending every second; the reserve is freed as soon as threat is safe.
 	 */
 	private botDecisionDue(playerId: number): boolean {
-		return (this.tick + playerId - 1) % BOT_DECISION_INTERVAL === 0;
+		return botDecisionDue(this.tick, playerId);
 	}
 
 	private updateBotThreat(): void {
@@ -5698,10 +5166,12 @@ export class TerritorySimulation {
 			players,
 			alliances: this.alliances.map((alliance) => ({ ...alliance })),
 			allianceProposals: this.allianceProposals.map((proposal) => ({ ...proposal })),
-			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
-			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
-			navalLandings: this.navalLandings.map((landing) => this.toPublicNavalLanding(landing)),
-			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
+			attacks: this.attacks.map((attack) => toPublicAttack(attack)),
+			shells: this.artilleryShells.map((shell) => toPublicShell(shell, this.tick)),
+			navalLandings: this.navalLandings.map((landing) => toPublicNavalLanding(landing, this.tick)),
+			structures: this.structures.all.map((structure) =>
+				toPublicStructure(structure, this.artilleryReadyAt(structure))
+			),
 			gold: viewer > 0 ? this.supplyOf(viewer) : 0,
 			income: viewer > 0 ? this.supplyIncomeFor(viewer) : 0,
 			supply: viewer > 0 ? this.supplyOf(viewer) : 0,
@@ -5717,54 +5187,9 @@ export class TerritorySimulation {
 		};
 	}
 
-	private toPublicAttack(attack: AttackState): PublicAttack {
-		return {
-			id: attack.id,
-			attackerId: attack.attackerId,
-			defenderId: attack.defenderId,
-			targetX: attack.targetX,
-			targetY: attack.targetY,
-			orders: attack.orders,
-			strength: attack.strength,
-			initialStrength: attack.initialStrength,
-			power: attack.power,
-			pierce: attack.pierce,
-			captures: attack.captures,
-			growthMode: attack.growthMode
-		};
-	}
-
-	private toPublicStructure(structure: Structure): PublicStructure {
-		return {
-			id: structure.id,
-			type: structure.type,
-			ownerId: structure.ownerId,
-			x: structure.x,
-			y: structure.y,
-			stacks: structure.stacks,
-			effects: structure.effects,
-			readyAtTick: this.artilleryReadyAt(structure)
-		};
-	}
-
-	private toPublicNavalLanding(landing: NavalLanding): PublicNavalLanding {
-		const span = Math.max(1, landing.arriveAtTick - landing.launchedAtTick);
-		const elapsed = Math.max(0, Math.min(span, this.tick - landing.launchedAtTick));
-		const path = landing.path.filter(
-			(_, index) => index % 8 === 0 || index === landing.path.length - 1
-		);
-		return { ...landing, path, progress: elapsed / span };
-	}
-
 	/** Read-only landing view for the 2D overlay. */
 	get activeNavalLandings(): readonly PublicNavalLanding[] {
-		return this.navalLandings.map((landing) => this.toPublicNavalLanding(landing));
-	}
-
-	private toPublicShell(shell: ArtilleryShell): PublicArtilleryShell {
-		const span = Math.max(1, shell.arriveAtTick - shell.launchedAtTick);
-		const elapsed = Math.max(0, Math.min(span, this.tick - shell.launchedAtTick));
-		return { ...shell, progress: elapsed / span };
+		return this.navalLandings.map((landing) => toPublicNavalLanding(landing, this.tick));
 	}
 
 	/** Read-only shell view for the 2D structure overlay. */
@@ -5785,33 +5210,4 @@ export class TerritorySimulation {
 
 function fail(reason: AttackFailure, message: string): AttackOrderResult {
 	return { ok: false, reason, message };
-}
-
-function growthModeCode(mode: GrowthMode): number {
-	switch (mode) {
-		case 'circular':
-			return 1;
-		case 'smooth':
-			return 2;
-		case 'organic':
-			return 3;
-	}
-}
-
-/** Bilinear coarse value noise plus a faint per-pixel jitter, both integer. */
-function districtNoise(x: number, y: number, seed: number): number {
-	const cell = DISTRICT_NOISE_CELL;
-	const ix = Math.floor(x / cell);
-	const iy = Math.floor(y / cell);
-	const fx = x - ix * cell;
-	const fy = y - iy * cell;
-	const a = hash32(ix, iy, seed) & 0xff;
-	const b = hash32(ix + 1, iy, seed) & 0xff;
-	const c = hash32(ix, iy + 1, seed) & 0xff;
-	const d = hash32(ix + 1, iy + 1, seed) & 0xff;
-	const coarse =
-		(a * (cell - fx) * (cell - fy) + b * fx * (cell - fy) + c * (cell - fx) * fy + d * fx * fy) /
-		(cell * cell);
-	const fine = hash32(x, y, seed ^ 0x85ebca6b) & 0xff;
-	return (Math.floor(coarse) * 3 + fine) >> 2;
 }

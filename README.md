@@ -254,7 +254,7 @@ Main game - routes/+page.svelte
   |     +-- TerritorySimulation ....... pure deterministic game core
   |           +-- generateMap ......... seeded configurable atlas + starts
   |           +-- growth/ ............. organic frontier layers
-  |           +-- Structures/ ......... structure definitions + registry
+  |           +-- structures/ ......... structure definitions + registry
   |           +-- integrity.ts ........ annexation + pocket cleanup
   |           +-- ai/ ................. genomes, Markov, buckets, bot profiles
   |           +-- attacks ............. durable fronts, attrition, refunds
@@ -330,10 +330,11 @@ src/
       rng.ts                     deterministic PRNG
       map.ts                     seeded configurable map + cached generation
       simulation.ts              world state, fronts, bots, checksums
-      simulation.test.ts         determinism, ownership, frontier, stress tests
+      simulation/                extracted types, artillery, bots, checksums
+      simulation.*.test.ts       split subsystem and determinism suites
       integrity.ts               annexation + neutral-pocket cleanup
       growth/                    circular/smooth/organic frontier layers
-      Structures/                structure definitions + spatial registry
+      structures/                structure definitions + spatial registry
       ai/
         genome.ts                traits, modules, mutation/crossover
         markov.ts                semi-Markov strategic controllers

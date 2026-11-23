@@ -17,7 +17,7 @@ import {
 	type BotDifficulty,
 	type GameSnapshot
 } from '../src/lib/game/simulation';
-import { STRUCTURE_TYPES } from '../src/lib/game/Structures';
+import { STRUCTURE_TYPES } from '../src/lib/game/structures';
 
 const DEFAULT_TICKS = 10_000;
 const DEFAULT_SEED = 1234;

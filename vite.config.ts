@@ -27,10 +27,22 @@ export default defineConfig({
 			{
 				extends: './vite.config.ts',
 				test: {
-					name: 'server',
+					name: 'fast',
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+					exclude: [
+						'src/**/*.svelte.{test,spec}.{js,ts}',
+						'src/lib/game/simulation.*.test.ts',
+						'src/lib/game/ai/evolution.test.ts'
+					]
+				}
+			},
+			{
+				extends: './vite.config.ts',
+				test: {
+					name: 'stress',
+					environment: 'node',
+					include: ['src/lib/game/simulation.*.test.ts', 'src/lib/game/ai/evolution.test.ts']
 				}
 			}
 		]

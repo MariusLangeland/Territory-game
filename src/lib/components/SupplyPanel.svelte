@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { formatSupply } from '#lib/format';
-	import type { PublicStructure } from '#lib/game/Structures';
+	import type { PublicStructure } from '#lib/game/structures';
 	import type { GameSnapshot } from '#lib/game/simulation';
 
 	interface SupplyBar {

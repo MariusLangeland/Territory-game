@@ -20,7 +20,7 @@ import type {
 	LocalWorkerVisual
 } from './local-protocol';
 import { LocalWorkerClient } from './local-client';
-import { STRUCTURE_DEFINITIONS, type PublicStructure } from '../Structures';
+import { STRUCTURE_DEFINITIONS, type PublicStructure } from '../structures';
 
 interface CommandResult {
 	ok: boolean;

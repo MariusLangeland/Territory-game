@@ -1,6 +1,6 @@
 import { HUMAN_PLAYER_ID } from '../constants';
 import type { GameSession } from '../session/game-session';
-import type { PublicStructure } from '../Structures';
+import type { PublicStructure } from '../structures';
 import type { GameSnapshot } from '../simulation';
 import type { WorkerLocalSimulation } from '../worker/local-simulation';
 

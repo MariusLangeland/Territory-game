@@ -2,7 +2,7 @@ import { tick } from 'svelte';
 import { HUMAN_PLAYER_ID, STRUCTURE_MIN_SPACING } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
-import type { PublicCard } from '#lib/game/Structures';
+import type { PublicCard } from '#lib/game/structures';
 import {
 	buildStructureMenu,
 	clampContextMenu,

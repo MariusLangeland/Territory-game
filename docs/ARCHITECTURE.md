@@ -4,65 +4,58 @@ This document describes the code as it currently exists; the app version comes f
 
 ---
 
-## 1. High-level shape
+## 1. Runtime topology
 
-Territory is a client-rendered SvelteKit application with a pure TypeScript simulation core. There is no backend in the current local build. The simulation and renderer are deliberately hard to couple: they exchange a packed change batch after each tick and share immutable map arrays.
+Territory is a client-rendered SvelteKit application. Local matches run the authoritative simulation in a Web Worker; the main thread keeps a read-only mirror. The optional `/online` route adds an in-memory HTTP/SSE room service on the Node adapter.
 
 ```text
-┌──────────────────────────────────────────────────────────────────────┐
-│ Svelte route: src/routes/+page.svelte                                │
-│  - screen state, HUD values, overlays, toasts, seed flow             │
-│  - calls camera bridge and simulation.enqueueAttack                  │
-│  - receives HUD snapshots at 5 Hz; territory renders at 10 Hz        │
-└───────────────▲───────────────────────────────┬──────────────────────┘
-                │ GameSnapshot                   │ props / callbacks
-                │                                ▼
-┌───────────────┴──────────────────────────────────────────────────────┐
-│ GameCanvas.svelte                                                    │
-│  - owns requestAnimationFrame loop and fixed-step accumulator        │
-│  - owns pointer/wheel input and camera bridge actions                │
-│  - calls simulation.step(), consumes changes, renders every frame    │
-└───────┬──────────────────────────────────────────────────┬───────────┘
-        │ change batch                                     │ arrays + camera
-        ▼                                                  ▼
-┌──────────────────────────────┐              ┌─────────────────────────┐
-│ TerritorySimulation          │              │ TerritoryRenderer       │
-│  - owners / land / shade     │              │  - control texture      │
-│  - elevation / defense       │              │  - elevation channel    │
-│  - players, attacks, RNG     │              │  - palette / uniforms   │
-│  - no DOM, no clock          │              │  - WGSL pass            │
-└──────────────────────────────┘              └─────────────────────────┘
+Svelte route (+page.svelte)
+  -> game-page controllers (state, match, interaction, overlay)
+  -> GameSession
+  -> Web Worker
+       local-simulation.worker.ts
+       local-host.ts -> TerritorySimulation (authoritative, 10 Hz)
+       posts visual deltas + snapshots
+  <- WorkerLocalSimulation (read-only mirror)
+  -> GameCanvas / canvas helpers -> TerritoryRenderer (WebGPU, 10 Hz)
+  -> Minimap (throttled 2D overview)
+
+HUD path: throttled snapshots (5 Hz) -> page selectors/components
+
+The evolution route uses its own worker/mirror split. Online rooms are separate:
+
+/online controller -> HTTP intents + SSE ticks -> $lib/server/online.ts
+                                              -> OnlineRoom (authoritative)
 ```
 
-`Minimap.svelte` reads the simulation arrays and camera view independently to paint a throttled 2D overview.
+The simulation/renderer boundary is deliberately narrow: the renderer consumes `SimulationView` plus packed change batches, and never mutates simulation state. The worker host owns command validation and stepping; the page must not call `TerritorySimulation.step()`.
 
 ---
 
 ## 2. Module map
 
-| Module                                      | Layer     | Responsibility                                                                        | Key exports                  |
-| ------------------------------------------- | --------- | ------------------------------------------------------------------------------------- | ---------------------------- |
-| `src/routes/+page.svelte`                   | UI        | Layout, HUD, intro/result/help/error overlays, input commands, seed flow              | Svelte component             |
-| `src/routes/+page.ts`                       | UI        | Disables SSR; the game is browser-only                                                | `ssr = false`                |
-| `src/lib/components/GameCanvas.svelte`      | Driver    | Canvas lifecycle, fixed timestep, pointer handling, camera bridge                     | Svelte component             |
-| `src/lib/components/Minimap.svelte`         | UI        | 2D owner overview and camera rectangle                                                | Svelte component             |
-| `src/lib/game/constants.ts`                 | Rules     | Map size, balance, palette, names, versions                                           | constants, helpers           |
-| `src/lib/game/rng.ts`                       | Core      | Mulberry32 deterministic PRNG                                                         | `DeterministicRng`           |
-| `src/lib/game/map.ts`                       | Core      | Seeded map generation, terrain shade, elevation tiers, starts                         | `generateMap`, `hash32`      |
-| `src/lib/game/simulation.ts`                | Core      | World state, free attacks, bots, checksums, snapshots                                 | `TerritorySimulation`, types |
-| `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
-| `src/lib/game/integrity.ts`                 | Core      | Component labeling, detached-territory annexation, neutral-pocket cleanup             | `TerritoryIntegrity`         |
-| `src/lib/game/Structures/`                  | Core      | Per-type structure definitions, shared types, registry, and effects                   | `StructureRegistry`, cards   |
-| `src/lib/game/net/protocol.ts`              | Contract  | Wire version and legacy message shapes                                                | message types, guard         |
-| `src/lib/game/net/online-protocol.ts`       | Contract  | Online room/intent/baseline/tick types and owner RLE                                  | room, intent, baseline       |
-| `src/lib/game/net/online-room.ts`           | Core      | Multi-human seats, host start, intent validation, viewer snapshots                    | OnlineRoom                   |
-| `src/lib/server/online.ts`                  | Server    | In-memory rooms, 10 Hz ticker, SSE subscribers, idle cleanup                          | room manager                 |
-| `src/routes/online/+page.svelte`            | UI        | Online lobby/live match client                                                        | online screen                |
-| `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
-| `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
-| `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                                     | `TERRITORY_SHADER`           |
-| `src/lib/game/render/territory-renderer.ts` | Render    | WebGPU device, textures, pipeline, adaptive chunked uploads, frame submission         | `TerritoryRenderer`          |
-| `scripts/benchmark.ts`                      | Tooling   | Map/tick/checksum benchmark                                                           | CLI                          |
+| Module                              | Layer      | Responsibility                                                                                            |
+| ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
+| `src/routes/+page.svelte`           | UI         | Main game markup; delegates state/actions to page controllers.                                            |
+| `src/lib/game/page/`                | UI         | Page state, selectors, match lifecycle, interaction, and overlay controllers.                             |
+| `src/lib/components/`               | UI         | Extracted HUD, overlays, card tray, world rail, menus; scoped CSS.                                        |
+| `src/lib/game/canvas/`              | Driver     | Frame loop, pointer/camera input, structure overlay helpers used by `GameCanvas.svelte`.                  |
+| `src/lib/game/render/`              | Render     | Camera, WebGPU renderer, WGSL shader, dirty-upload scheduling.                                            |
+| `src/lib/game/worker/`              | Transport  | Worker protocol, authoritative host, local worker entry, main-thread mirror.                              |
+| `src/lib/game/session/`             | UI/service | Worker match lifecycle, roster loading, seed and onboarding persistence.                                  |
+| `src/lib/game/simulation.ts`        | Core       | `TerritorySimulation` facade: world state, tick orchestration, commands, snapshots.                       |
+| `src/lib/game/simulation/`          | Core       | Extracted simulation types, artillery shell math, bot profiles, checksums, geometry, snapshot converters. |
+| `src/lib/game/ai/`                  | Core       | Genomes, Markov controllers, fitness/buckets, evolution worker, gauntlet logic.                           |
+| `src/lib/game/growth/`              | Core       | Pluggable frontier-selection layers (organic used by player matches).                                     |
+| `src/lib/game/structures/`          | Core       | One definition per structure type, shared registry, effects.                                              |
+| `src/lib/game/integrity.ts`         | Core       | Mainland protection, annexation plans, neutral-pocket cleanup.                                            |
+| `src/lib/game/naval.ts`             | Core       | Sea components and deterministic naval A* routing.                                                        |
+| `src/lib/game/net/`                 | Contract   | Wire protocol, online room/intent/baseline types, authoritative `OnlineRoom`.                             |
+| `src/lib/server/online.ts`          | Server     | In-memory room manager, 10 Hz ticker, SSE subscribers.                                                    |
+| `src/routes/online/+page.svelte`    | UI         | Online lobby/live match markup; delegates to `game/online/page/`.                                         |
+| `src/routes/evolution/+page.svelte` | UI         | AI Lab markup; delegates to `game/evolution/page/` and its worker.                                        |
+| `src/lib/game/simulation-view.ts`   | Contract   | Read-only renderer contract shared by simulation and mirrors.                                             |
+| `scripts/`                          | Tooling    | Benchmarks, telemetry, balance/soak, docs generation, import-boundary check.                              |
 
 ---
 
@@ -142,7 +135,7 @@ Each player has a `Set<number>` of frontier cells. This is a cache, not independ
 - `isBorderCell` checks the four adjacent cells for land owned by a different player.
 - The sets are updated deterministically because insertion/removal order follows deterministic claim order. Bot frontier sampling iterates the set in insertion order and draws a seeded index.
 
-If a bug is suspected, a brute-force border scan in `simulation.test.ts` compares every player's set against the full map.
+If a bug is suspected, a brute-force border scan in `simulation.combat.test.ts` compares every player's set against the full map.
 
 ### 3.5 Tick pipeline
 
@@ -233,7 +226,7 @@ Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`.
 
 ### Structure effects and State auras
 
-`Structures/` keeps each structure definition in its own file: `state.ts`, `artillery.ts`, `barracks.ts`, `fortification.ts`, `jammer.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
+`structures/` keeps each structure definition in its own file: `state.ts`, `artillery.ts`, `barracks.ts`, `fortification.ts`, `jammer.ts`, `command-post.ts`, and `war-academy.ts`. Shared effect/card types live in `types.ts`, the aggregate tables and helpers in `definitions.ts`, the registry in `registry.ts`, and the public API in `index.ts`. Effect descriptors per structure type:
 
 - State: `defense-aura` radius 16, +20, max stacking, friendly-owned land only, no district.
 - Fortification: `defense-aura`, +1, additive stacking, friendly-owned land only, covers the full 40 px district.
@@ -418,37 +411,31 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 
 ## 6. UI orchestration
 
-`src/routes/+page.svelte` owns:
+The main route is intentionally thin: `+page.svelte` imports components, creates the page controller facade, and renders markup. `createGamePage()` composes four feature controllers over a shared reactive state:
 
-- Creating a world from URL seed or random seed.
-- The loading → intro/match-setup → live → defeat/result flow. `match-config.ts` owns match presets, normalization, and localStorage persistence; `createWorld(seed, settings)` passes state count, map dimensions, growth, difficulty, and timer into `TerritorySimulation`.
-- Snapshot state and derived HUD/leaderboard/result data. `PublicPlayer.supply` is included in every snapshot.
-- Structure auras and type-specific markers are drawn by a transparent 2D canvas above the WebGPU territory canvas, using the same `MapCamera`. The same overlay draws rival supply banners from the latest throttled snapshot: transparent name plus compact supply at each rival capital, font size scaled by `sqrt(territory / maxLivingTerritory)` and then capped by the state's on-screen footprint, smallest states painted first so large banners win overlap, and clamped to the viewport. Banners with no room for legible text are skipped rather than allowed to cover the map.
-- The free-floating card hand reads supply/cap/income/hand from snapshots; rival supply banners read the same 5 Hz snapshots; keyed cards use Svelte fly/flip transitions for entrance and reflow. Hover/drag transforms are CSS, and the hand auto-sinks to a peeking strip. HTML drag-and-drop maps the drop point through `MapCamera` and queues a build command. Number keys 1-6 enter the same placement state without a native drag: the overlay shows the card arrow/landing circle, a map left-click queues `playCard`, and right-click/Escape clears the placement; the main shell suppresses the context menu. Clicking an owned district queues one upgrade command; Shift-click uses `getUpgradeQuote` to atomically queue five. Merged groups pick the lowest projected structure per level and pin `structureId`; Ctrl-click targets the clicked structure. A cursor tooltip above the pointer shows the quoted total for the current modifier and flags merged groups. A fixed horizontal supply bar above the hand fills by `supply/supplyCap` from snapshots and previews the hovered click cost (frontier launch, upgrade quote, or artillery volley) as an overlay segment plus a `-cost` chip; its action area hosts FIRE and CANCEL FRONT. The old supply/front/defense panel was removed. Drag rendering uses a transparent drag image plus an SVG curve and landing-radius circle; grid/target status panels were removed.
-- Growth-layer test switch; new fronts use the pending simulation mode while in-flight fronts keep their captured mode.
-- Seed input, rematch, new world, URL synchronization.
-- Global keyboard shortcuts.
-- Event feed (no floating last-action toast; banners are transparent map text).
-- Modal states: result and defeat are match overlays; help sits above both; intro is the first-run state. Only one match-state overlay should be actionable at a time.
+- `game-page-state.svelte.ts` owns `$state` fields and selector getters.
+- `match-controller.svelte.ts` owns match settings, seeds, world rebuild/deploy/pause, `GameSession`, tick dispatch, and worker visual ingestion.
+- `interaction-controller.svelte.ts` owns hover, card drag/drop and placement, context-menu construction/actions, and pointer handlers.
+- `overlay-controller.svelte.ts` owns onboarding transitions, diplomacy toast timing, and result/defeat transitions.
 
-`GameCanvas` communicates upward only through callbacks:
+The facade returns a proxy exposing the historical `game.foo` API; `bind:game.seedInput` and similar bindings keep working through accessor descriptors. Selectors are split under `game-page-state/selectors/` and remain live rune derived values.
 
-- `onTick(snapshot, events)`
-- `onHover(info | null)`
-- `onAttack(x, y)`
-- `onReady()`
-- `onError(error)`
-- `onPerf(stats)`
+`GameCanvas.svelte` is a thin host for:
 
-`GameCameraBridge` lets HUD buttons call camera actions without Svelte component instance APIs. It also reports camera views to the UI.
+- `game/canvas/frame-loop.ts` — renderer/camera setup, rAF loop, local stepping, worker delta queue/ack, throttled snapshots;
+- `game/canvas/input.ts` — pointer capture, tap-vs-drag, pinch/wheel zoom, panning, hover throttle;
+- `game/canvas/structure-overlay.ts` — structure markers, artillery rings/shells, naval landings, alliance rings, rival supply banners.
+
+It reports upward through `onTick`, `onHover`, `onAttack`, `onSelectOwner`, `onReady`, `onError`, `onPerf`, and `onRemoteVisualsApplied`. `GameCameraBridge` lets HUD buttons drive camera actions without component instance APIs.
+
+The HUD reads throttled snapshots and derived selectors. The hand and supply panel render from snapshots; drag/drop maps screen coordinates through the camera and queues worker commands. The leaderboard is virtualized, the renderer mutates its own GPU/texture state outside Svelte reactivity, and no large typed array is wrapped in Svelte state.
 
 ### Reactivity boundary
 
 - Svelte state receives immutable snapshots at a throttled 5 Hz; the actual map updates at 10 Hz.
-- The leaderboard is virtualized to the visible row window (~19 rows), so 51 logical states do not become 51 live DOM rows.
-- The simulation object is not deeply reactive.
+- The leaderboard is virtualized to the visible row window (~19 rows).
+- The simulation object is not deeply reactive; the main thread mirror is updated outside Svelte state.
 - The renderer mutates its own control texture/GPU resources outside Svelte reactivity.
-- This avoids proxy overhead on multi-megabyte typed arrays.
 
 ---
 
@@ -491,7 +478,7 @@ The measured Node RSS for all benchmark worlds (five stress simulations plus too
 
 1. Change `simulation.ts` only.
 2. Decide deterministic ordering.
-3. Add a focused test in `simulation.test.ts`.
+3. Add a focused test in `simulation.combat.test.ts`.
 4. Update rules in [SPEC.md](SPEC.md) section 4 and [DETERMINISM.md](DETERMINISM.md) if ordering changes.
 5. Run `pnpm test` and both determinism tests.
 
@@ -525,14 +512,13 @@ The current constructor rejects non-standard dimensions. Supporting more maps re
 
 ## 10. Known limitations
 
-- Simulation runs on the main thread.
-- No WebGL fallback.
-- No online transport yet.
-- No fog of war, alliances, or spectators.
-- Mobile pinch zoom missing.
-- One map style and fixed dimensions.
+- Local matches run the authoritative simulation in a Web Worker; the main thread only mirrors visuals.
+- No WebGL fallback; WebGPU is required.
+- Online transport is an in-memory MVP (HTTP intents + SSE); no accounts, persistence, matchmaking, chat, or WebSocket transport.
+- Online rooms are started by the host and reject late join; same-token reconnect is supported.
+- No fog of war or spectator mode.
+- One map style; dimensions are configurable within atlas limits.
 - The minimap samples independently and can lag the main renderer slightly.
-- Bot behavior is profile-driven but still simple: one focus structure, local placement, and no coordinated team attacks or defensive alliances.
-- The 51-state free-attack mode is an experiment. Economy and final attack semantics remain provisional.
+- Bot behavior is deterministic utility/profile driven, with one-pair alliances; multi-party diplomacy is deferred.
 - The virtualized leaderboard mounts only the visible window plus overscan; rank numbers remain absolute.
-- Upload volume in a fully active 51-state map is intentionally higher in exchange for smooth input under saturation.
+- Upload volume in a fully active large map is intentionally higher in exchange for smooth input under saturation.

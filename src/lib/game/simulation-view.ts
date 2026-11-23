@@ -1,7 +1,7 @@
 import type { StartPoint } from './map';
 import type { TerritoryRenderSource } from './render/territory-renderer';
 import type { GameSnapshot, MergedDistrictGroup, StepResult } from './simulation';
-import type { StructureType } from './Structures';
+import type { StructureType } from './structures';
 
 /** Structure fields used by the 2D overlay. */
 export interface SimulationStructure {

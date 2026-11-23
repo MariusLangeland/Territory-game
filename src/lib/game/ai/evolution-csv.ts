@@ -1,4 +1,4 @@
-import { BUILDABLE_STRUCTURE_TYPES } from '../Structures';
+import { BUILDABLE_STRUCTURE_TYPES } from '../structures';
 import {
 	BOT_GENOME_VERSION,
 	BOT_MODULE_IDS,

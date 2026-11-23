@@ -16,7 +16,7 @@ import {
 	STRUCTURE_DEFINITIONS,
 	STRUCTURE_TYPE_CODES,
 	type BuildableStructureType
-} from './Structures';
+} from './structures';
 
 function findBuildCell(sim: TerritorySimulation): number {
 	for (let i = 0; i < sim.owners.length; i++) {

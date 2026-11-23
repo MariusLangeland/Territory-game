@@ -1,5 +1,5 @@
 import { hash32 } from '../map';
-import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from '../Structures';
+import { BUILDABLE_STRUCTURE_TYPES, type BuildableStructureType } from '../structures';
 import {
 	cloneMarkov,
 	crossoverMarkov,

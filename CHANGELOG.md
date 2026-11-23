@@ -47,6 +47,17 @@
   hard-coded CSS colors and font sizes with variables.
 - Consolidated duplicated CSS rule groups and restored base-before-media rule
   ordering after the component stylesheet split.
+- Rewrote the architecture runtime topology/module map for worker-owned
+  simulation, page controllers, canvas helpers, and online rooms.
+- Split `simulation.test.ts` into nine subsystem test suites plus shared fixtures.
+- Extracted `simulation/` types, artillery, bot profiles, checksum, geometry, and
+  snapshot modules behind the existing `TerritorySimulation` facade.
+- Reduced `GameCanvas.svelte` to a thin host with `game/canvas/` frame-loop,
+  input, and structure-overlay helpers.
+- Applied controller/facade extraction to the `/evolution` and `/online` routes
+  and split main-page selectors into `game-page-state/selectors/`.
+- Normalized `structures/` casing, added Vitest fast/stress projects, and added a
+  CI import-boundary check (`pnpm check:boundaries`).
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

@@ -7,7 +7,7 @@ import {
 	ARTILLERY_SUPPLY_COST_PER_LEVEL,
 	HUMAN_PLAYER_ID
 } from './constants';
-import { ARTILLERY_DEFINITION, type Structure } from './Structures';
+import { ARTILLERY_DEFINITION, type Structure } from './structures';
 import { TerritorySimulation, type ArtilleryShell } from './simulation';
 
 function createBattery(sim: TerritorySimulation): {
