@@ -210,6 +210,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - **Expansion pressure:** if a missing type has no legal site because existing districts cover the bot's owned cells, expansion becomes the priority and attacks may draw from the economic reserve.
 - **Utility attacks:** bots sample border targets, score them, then derive attack chance from target score, aggression, supply pressure, and held reserves. High-value retaliation/opportunity targets are attacked more often; low-value or expensive targets and threatened/saving bots hold supply.
 - **Decision scheduling:** attack, naval, and artillery decisions are spread across the decision interval by player id, so roughly five bots decide per tick instead of all bots at once. Threat/posture and strategic options still refresh globally on the decision tick, and per-bot decision counters stabilize attack rolls.
+- **Military opening:** after the basic Command Post/War Academy economy, a bot funds a first Barracks before further economy investment. Aggressive states that hold enough territory then cap-grow War Academies until a first Artillery becomes affordable. Cap-blocked aspirations spend only on cap growth, so cheap upgrades cannot keep the artillery savings unreachable.
 - Bots act once per second (`BOT_DECISION_INTERVAL = 10`); economy decisions run every 30 ticks and may take up to two non-defensive actions per interval. A threatened bot takes at most one defensive action.
 - Bots start with **90 supply** and follow the same income/cap rules, evaluating construction every 3 seconds (`BOT_BUILD_INTERVAL = 30`). Build ticks are staggered by player id, so only about two bots act per tick.
 - Construction tries the next unbuilt type in the plan at its base cost, then upgrades the lowest-level existing plan structure when no new type is placeable or affordable. Artillery/Command Posts/War Academies/Jammers prefer capital-adjacent sites; Fortifications/Barracks prefer border sites. Upgrades use the normal level-scaled cost.
@@ -266,7 +267,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 4. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
 5. On decision ticks, refresh bot threat/posture/reserves, then run bot economy/build decisions every 30 ticks and bot attack decisions every 10 ticks.
 6. Process active fronts in creation-id order.
-7. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Every 100 ticks, fill small neutral pockets.
+7. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Annex transfers are queued and applied across later ticks in deterministic cell order; a new scan waits until the queue drains. Every 100 ticks, fill small neutral pockets.
 8. Eliminate states with no territory and remove their fronts.
 9. Check 70% / last-standing victory.
 10. Build the public snapshot.

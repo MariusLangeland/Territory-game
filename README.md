@@ -130,7 +130,7 @@ A click must be on land near a shared border. The simulation reports ocean, own 
 13. **Ports:** Ports cost 200 supply and snap to the nearest valid owned shoreline within 24 px, so clicks on nearby water or a few pixels inland work. Ports may be placed inside unrelated districts. A Port lets you click any non-friendly shore with a sea route; the landing costs a normal attack plus the 200-supply Port cost up front. A boat sails there at 80 px/s, claims a beachhead, auto-builds the landing Port, and opens a regular inward front. Ports whose land reaches your State protect their component, as do ports sharing a sea with such a port.
 14. **Victory:** holding **70% of land** wins immediately. Otherwise the last living state wins; an optional match timer awards the largest alive state.
 15. **State structures anchor territory:** every component connected to a live State structure is protected from annexation.
-16. **Detached land is annexed:** every 3 seconds, unprotected land touching a foreign protected mainland transfers to the largest shared border owner. Capturing a State destroys its annexation protection.
+16. **Detached land is annexed:** every 3 seconds, unprotected land touching a foreign protected mainland transfers to the largest shared border owner; large transfer queues drain across ticks. Capturing a State destroys its annexation protection.
 17. **Small neutral specks are cleaned up:** every 10 seconds, neutral pockets ≤96 cells bordering an owner are filled into the dominant owner.
 
 ### Terrain and defense
@@ -377,6 +377,7 @@ AGENTS.md                        orientation for future coding agents
 | [docs/ROADMAP.md](docs/ROADMAP.md)                     | Phased plan and acceptance criteria                 |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                 | Why the stack and engine work this way              |
 | [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md)         | Implemented Frontage v1 combat design               |
+| [docs/ALLIANCES.md](docs/ALLIANCES.md)                 | Alliance mechanic design proposal                   |
 | [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release verification runbook                        |
 | [docs/AI_BALANCE.md](docs/AI_BALANCE.md)               | Headless AI behavior balance results                |
 | [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md)     | Evolution selection/fitness audit                   |

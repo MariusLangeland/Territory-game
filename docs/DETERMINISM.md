@@ -79,7 +79,7 @@ Pixel positions are integer; clicks are floored to cell coordinates before comma
 - `MAP_VERSION` is part of the map identity. Seed alone is insufficient across generator versions.
 - Match identity also includes map width/height, player count, growth mode, bot difficulty, and match timer.
 - Sea components and naval routes derive from the static land mask; landing ids, owners, source Ports, routes, launch/arrival ticks, and target beachheads are checksummed. Protocol 38 adds `navalLandings` to snapshots.
-- Strategic options are selected on decision ticks from integer utility scores, committed for a bounded duration, and checksummed with their expiry and target. Option selection and the QD descriptor archive use no wall-clock randomness. Attack, naval, and artillery decisions are scheduled by player-id phase across `BOT_DECISION_INTERVAL`; strengths are cached between phases and a checksummed per-bot decision epoch supplies the attack roll. Threat/posture refresh globally on the decision tick.
+- Strategic options are selected on decision ticks from integer utility scores, committed for a bounded duration, and checksummed with their expiry and target. Option selection and the QD descriptor archive use no wall-clock randomness. Attack, naval, and artillery decisions are scheduled by player-id phase across `BOT_DECISION_INTERVAL`; strengths are cached between phases and a checksummed per-bot decision epoch supplies the attack roll. Threat/posture refresh globally on the decision tick. The first Barracks military opening and cap-gated first Artillery are deterministic reserve decisions; the War Academy cap-growth action is the only economy action emitted while an aspiration is cap-blocked. Annexation plans are queued in component/cell order and drained at a fixed per-tick budget; stale cells whose owner changed are skipped and do not affect unrelated transfers.
 - Gauntlet life loss, removal, and top-16 recovery use the run's deterministic fitness order; no randomness chooses who recovers or is removed. Gauntlet genomes are never mutated or crossed.
 - Evolution Lab checkpoint restore/resume uses seeded generation data only; no wall-clock value chooses a mutation. The saved session is a generation-boundary snapshot and does not resume a partially simulated match.
 - Markov-controller state, dwell entry tick, and per-state action biases are checksummed. Transition chance rolls use `hash32(tick, playerId, edgeSalt)`, never the shared RNG. Structural mutation/crossover are seeded and repair the graph to reachable, non-terminal states.
@@ -223,7 +223,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 2. RNG state,
 3. next attack id,
 4. ended flag and winner,
-5. current and pending growth mode, annexation request/cooldown state,
+5. current and pending growth mode, annexation request/cooldown state and the pending annex-transfer queue (index/from/to in deterministic append order),
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,

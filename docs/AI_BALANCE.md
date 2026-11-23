@@ -62,24 +62,26 @@ ramp, and the layer should be re-tuned if future runs show economy starvation.
   counters show all three systems firing. Re-run `pnpm ai:balance` after any
   future AI constant change.
 
-## 0.72.0 post-stagger check
+## 0.72.0 post-stagger and military-opening check
 
-The 8 × 1,800 balance sweep was re-run after elimination income, staggered
-bot decisions, and the Port/UI changes:
+The 8 × 1,800 balance sweep was re-run after elimination income, staggered bot
+decisions, the military opening, and queued annex transfers:
 
-- All 8 runs hit the 1,800-tick cap. Alive states were 48–51; cumulative
-  eliminations were **0–3** per run (1 average). The +10 supply/s elimination
-  reward therefore does **not** visibly snowball in this window because
-  eliminations remain rare.
-- Active fronts at tick 1,800 averaged **24.6**; the early economy ramp reached
-  **31.6%** of living bots, close to the previous ~29% target.
-- The three-seed, 1,200-tick telemetry pass produced **0 eliminations** and
+- All 8 runs hit the 1,800-tick cap. Alive states were 49–51; cumulative
+  eliminations were **0–2** per run (0.5 average). The +10 supply/s elimination
+  reward therefore does **not** visibly snowball in this window.
+- Active fronts recovered to **25 average** at tick 1,800 after the opening
+  reserve was relaxed; this is back near the pre-change pacing.
+- The early economy ramp reached **19.95%** of living bots at tick 1,800. The
+  reduction from the previous 31.6% is the intentional cost of funding the first
+  Barracks before further luxury economy.
+- Bots now build **Barracks**: 15 across the eight runs by tick 1,800, versus
+  zero before the military opening.
+- A seed-1234, 6,000-tick regression check reaches both offensive types:
+  **11 Barracks and 3 Artillery**, with 33 states still alive. Artillery is
+  deliberately late because the 1,000-supply purchase requires cap growth.
+- The three-seed, 1,200-tick telemetry pass still produced 0 eliminations and
   51/51 alive at timeout, with a passive human baseline.
-- Structure mix remains Fortification/Command Post/War Academy-heavy. The sweep
-  recorded **no Barracks or Artillery** at the 1,800-tick checkpoints. This is a
-  pre-existing offense-investment issue and the next balance task: bots need to
-  reach Barracks earlier so fronts trade meaningful strength and eliminations
-  can happen before the timeout.
-- No conclusion should be drawn from the elimination reward alone until bots
-  build attack structures; the reward is implemented and checksummed, but its
-  pacing effect is currently masked by low elimination rates.
+- The elimination reward is implemented and checksummed; its pacing effect
+  remains naturally limited by the small number of eliminations in the sweep
+  window.

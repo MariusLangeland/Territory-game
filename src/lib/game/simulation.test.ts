@@ -350,6 +350,29 @@ describe('elimination rewards', () => {
 	});
 });
 
+describe('bot offensive investment', () => {
+	it('builds Barracks early and reaches Artillery in a normal match', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		let barracksAt1800 = 0;
+		let artilleryAt6000 = 0;
+		for (let tick = 1; tick <= 6000; tick++) {
+			sim.step();
+			if (tick === 1800) {
+				barracksAt1800 = sim.structures.all.filter(
+					(structure) => structure.type === 'barracks'
+				).length;
+			}
+			if (tick === 6000) {
+				artilleryAt6000 = sim.structures.all.filter(
+					(structure) => structure.type === 'artillery'
+				).length;
+			}
+		}
+		expect(barracksAt1800).toBeGreaterThan(0);
+		expect(artilleryAt6000).toBeGreaterThan(0);
+	}, 30_000);
+});
+
 describe('structure demolition', () => {
 	it('demolishes only owned buildable structures', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });

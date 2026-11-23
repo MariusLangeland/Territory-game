@@ -2936,3 +2936,76 @@ would create ambiguous gameplay and protocol commitments.
 - The UI direction is visible for future work without changing gameplay.
 - Players must not expect alliances to have an effect.
 - Implementing alliances later will be a deliberate feature with its own ADR.
+- Detailed proposal/acceptance/break/checksum design is in
+  [ALLIANCES.md](ALLIANCES.md).
+
+---
+
+## ADR-092 — Bot military opening and cap-gated first Artillery
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Balance sweeps showed bots stuck in an economy/defense loop with **zero Barracks
+and zero Artillery**, even after several minutes. Threats kept consuming the
+treasury on cheap Fortifications, and Barracks' 240-supply cost often exceeded
+the bot's supply cap, so the bot never saved enough to escape.
+
+### Decision
+
+- After a basic Command Post/War Academy economy exists, reserve for and build a
+  first Barracks before further luxury economy.
+- Treat the first Barracks as a military aspiration even while the opening
+  economy ramp is still nominally active.
+- If Barracks cost exceeds the supply cap, spend the reserve on War Academy
+  cap-growth actions only; do not emit unrelated cheap actions while cap-blocked.
+- Once a Barracks exists, aggressive high-territory bots enter a first Artillery
+  aspiration and cap-grow until the 1,000-supply purchase is reachable.
+- Allow the completed Artillery purchase to use the full treasury rather than
+  being stranded one reserve short.
+- Restore normal defensive spending outside the military reservation so early
+  Fortification coverage and build diversity are preserved.
+
+### Consequences
+
+- A normal 6,000-tick seed now builds Barracks from the mid-game and reaches
+  Artillery in the late game.
+- Eliminations increase without changing combat constants.
+- Early economy ramp completion and defensive diversity regressions were fixed
+  by separating military/aspiration reserves from ordinary defense.
+- Added a regression test that requires both Barracks by tick 1,800 and
+  Artillery by tick 6,000 on seed 1234.
+
+---
+
+## ADR-093 — Queue and drain annex transfers across ticks
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Late-game annex scans could produce thousands of transfers. Applying all of
+them synchronously in the scan tick created a 20–45 ms hitch every three seconds,
+even after bot decisions were staggered.
+
+### Decision
+
+- Collect annex transfers into a deterministic queue instead of claiming every
+  cell inside the component scan.
+- Drain the queue at a fixed budget per tick (500 cells) in append order.
+- Skip a queued transfer if its cell owner no longer matches the owner captured
+  when the scan ran.
+- Do not start a new scan while the queue is non-empty.
+- Cache the Port land-component walk per scan so multiple Ports in the same
+  component do not repeat a full BFS.
+- Include the pending queue and its cursor in checksums.
+
+### Consequences
+
+- Large annex cleanups no longer block a single simulation tick.
+- Annexation can finish a few ticks after the scan, and some stale cells are
+  skipped safely.
+- Direct unit-test annexation remains synchronous through the non-queued path.

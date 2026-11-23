@@ -39,7 +39,12 @@ import {
 	BOT_ATTACK_SCORE_CENTER,
 	BOT_ATTACK_SCORE_WEIGHT,
 	BOT_ATTACK_SUPPLY_PRESSURE_WEIGHT,
+	BOT_ARTILLERY_OPENING_AGGRESSION,
+	BOT_ARTILLERY_OPENING_TERRITORY,
+	BOT_ARTILLERY_OPENING_TICK,
+	BOT_BARRACKS_OPENING_UTILITY,
 	BOT_BUILD_INTERVAL,
+	BOT_EARLY_ECONOMY_MILITARY_TICK,
 	BOT_DEFENSE_FIRST_UTILITY,
 	BOT_DEFENSE_RESERVE_MAX,
 	BOT_DEFENSE_STALL_INTERVALS,
@@ -507,6 +512,14 @@ export interface SimulationOptions {
 const CHANGE_BUFFER_SIZE = 16_384;
 /** Keep the full annex scan off the bot decision tick. */
 const ANNEX_PHASE_OFFSET_TICKS = 5;
+/** Annex transfers are applied across ticks so a large cleanup cannot block a frame. */
+const ANNEX_TRANSFER_BUDGET = 500;
+
+interface AnnexTransfer {
+	index: number;
+	from: number;
+	to: number;
+}
 
 function indexToX(index: number, width: number): number {
 	return index % width;
@@ -627,6 +640,11 @@ export class TerritorySimulation {
 	private readonly portComponentOf: Uint32Array;
 	private readonly portComponentQueue: Uint32Array;
 	private portVisitToken = 0;
+	/** Reuse one land-component walk for multiple Ports in this scan. */
+	private readonly portComponentMeta = new Map<
+		number,
+		{ ownerId: number; reachesState: boolean }
+	>();
 	private navalLandings: NavalLanding[] = [];
 	private nextNavalId = 1;
 	private attacks: AttackState[] = [];
@@ -641,6 +659,8 @@ export class TerritorySimulation {
 	private lastSnapshot: GameSnapshot | null = null;
 	private annexRequested = false;
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
+	private annexTransferQueue: AnnexTransfer[] = [];
+	private annexTransferIndex = 0;
 	private ownershipChangedSinceAnnex = true;
 	private ownershipChangedSinceCleanup = true;
 	private ownershipVersion = 0;
@@ -1938,6 +1958,9 @@ export class TerritorySimulation {
 
 			this.accrueResources();
 			this.applyPendingCommands();
+			// Large annex cleanups are drained over multiple ticks; determinism
+			// comes from queue order, not from how long the queue took to apply.
+			this.applyAnnexTransfers(ANNEX_TRANSFER_BUDGET);
 
 			// Threat must refresh before the economy and decision passes so a
 			// front opened this tick is already visible to the defender.
@@ -1953,8 +1976,12 @@ export class TerritorySimulation {
 			const annexDue =
 				(this.tick + ANNEX_PHASE_OFFSET_TICKS) % ANNEX_INTERVAL_TICKS === 0 ||
 				(this.annexRequested && this.tick - this.lastAnnexTick >= ANNEX_INTERVAL_TICKS);
-			if (annexDue && (this.ownershipChangedSinceAnnex || this.annexRequested)) {
-				this.annexDisconnectedTerritory();
+			if (
+				this.annexTransferQueue.length === 0 &&
+				annexDue &&
+				(this.ownershipChangedSinceAnnex || this.annexRequested)
+			) {
+				this.annexDisconnectedTerritory(true);
 				this.annexRequested = false;
 				this.lastAnnexTick = this.tick;
 				this.ownershipChangedSinceAnnex = false;
@@ -2071,6 +2098,14 @@ export class TerritorySimulation {
 		mix(this.lastAnnexTick);
 		mix(this.ownershipChangedSinceAnnex ? 1 : 0);
 		mix(this.ownershipChangedSinceCleanup ? 1 : 0);
+		mix(this.annexTransferIndex);
+		for (let i = this.annexTransferIndex; i < this.annexTransferQueue.length; i++) {
+			const transfer = this.annexTransferQueue[i];
+			if (!transfer) continue;
+			mix(transfer.index);
+			mix(transfer.from);
+			mix(transfer.to);
+		}
 		mix(this.gold);
 		mix(this.goldAccrual);
 		for (const botGold of this.botGold) mix(botGold);
@@ -3006,14 +3041,41 @@ export class TerritorySimulation {
 		return 'blocked';
 	}
 
-	private annexDisconnectedTerritory(): void {
+	private collectAnnexTransfers(): AnnexTransfer[] {
 		const anchors: IntegrityAnchor[] = this.structures.all
 			.filter((structure) => structure.type === 'state')
 			.map((structure) => ({ index: structure.index, ownerId: structure.ownerId }));
 		anchors.push(...this.protectedPortAnchors());
+		const transfers: AnnexTransfer[] = [];
 		this.integrity.run(this.owners, this.land, anchors, (index, newOwner) => {
-			this.claim(index, newOwner, 0);
+			transfers.push({ index, from: this.owners[index] ?? 0, to: newOwner });
 		});
+		return transfers;
+	}
+
+	private annexDisconnectedTerritory(queueTransfers = false): void {
+		const transfers = this.collectAnnexTransfers();
+		if (queueTransfers) {
+			this.annexTransferQueue = transfers;
+			this.annexTransferIndex = 0;
+			return;
+		}
+		for (const transfer of transfers) this.claim(transfer.index, transfer.to, 0);
+	}
+
+	private applyAnnexTransfers(budget: number): void {
+		let applied = 0;
+		while (this.annexTransferIndex < this.annexTransferQueue.length && applied < budget) {
+			const transfer = this.annexTransferQueue[this.annexTransferIndex++];
+			applied++;
+			if (!transfer) break;
+			if ((this.owners[transfer.index] ?? 0) !== transfer.from) continue;
+			this.claim(transfer.index, transfer.to, 0);
+		}
+		if (this.annexTransferIndex >= this.annexTransferQueue.length) {
+			this.annexTransferQueue = [];
+			this.annexTransferIndex = 0;
+		}
 	}
 
 	/**
@@ -3028,35 +3090,74 @@ export class TerritorySimulation {
 		const byOwner = new Map<number, typeof ports>();
 		const seaById = new Map<number, Set<number>>();
 		const landAnchored = new Set<number>();
+		this.portComponentMeta.clear();
 
 		for (const port of ports) {
-			const token = ++this.portVisitToken;
-			let head = 0;
-			let tail = 0;
-			this.portComponentOf[port.index] = token;
-			this.portComponentQueue[tail++] = port.index;
+			let token = this.portComponentOf[port.index] ?? 0;
 			let reachesState = false;
-			while (head < tail) {
-				const index = this.portComponentQueue[head++] ?? 0;
-				const structure = this.structures.at(index);
-				if (structure?.type === 'state' && structure.ownerId === port.ownerId) {
-					reachesState = true;
+			const cached = token > 0 ? this.portComponentMeta.get(token) : undefined;
+			if (cached && cached.ownerId === port.ownerId) {
+				reachesState = cached.reachesState;
+			} else {
+				token = ++this.portVisitToken;
+				let head = 0;
+				let tail = 0;
+				this.portComponentOf[port.index] = token;
+				this.portComponentQueue[tail++] = port.index;
+				while (head < tail) {
+					const index = this.portComponentQueue[head++] ?? 0;
+					const structure = this.structures.at(index);
+					if (structure?.type === 'state' && structure.ownerId === port.ownerId) {
+						reachesState = true;
+					}
+					const x = index % this.width;
+					const y = (index - x) / this.width;
+					if (x > 0) {
+						const next = index - 1;
+						if (
+							this.land[next] &&
+							this.owners[next] === port.ownerId &&
+							this.portComponentOf[next] !== token
+						) {
+							this.portComponentOf[next] = token;
+							this.portComponentQueue[tail++] = next;
+						}
+					}
+					if (x + 1 < this.width) {
+						const next = index + 1;
+						if (
+							this.land[next] &&
+							this.owners[next] === port.ownerId &&
+							this.portComponentOf[next] !== token
+						) {
+							this.portComponentOf[next] = token;
+							this.portComponentQueue[tail++] = next;
+						}
+					}
+					if (y > 0) {
+						const next = index - this.width;
+						if (
+							this.land[next] &&
+							this.owners[next] === port.ownerId &&
+							this.portComponentOf[next] !== token
+						) {
+							this.portComponentOf[next] = token;
+							this.portComponentQueue[tail++] = next;
+						}
+					}
+					if (y + 1 < this.height) {
+						const next = index + this.width;
+						if (
+							this.land[next] &&
+							this.owners[next] === port.ownerId &&
+							this.portComponentOf[next] !== token
+						) {
+							this.portComponentOf[next] = token;
+							this.portComponentQueue[tail++] = next;
+						}
+					}
 				}
-				const x = index % this.width;
-				const y = (index - x) / this.width;
-				const neighbours = [
-					x > 0 ? index - 1 : -1,
-					x + 1 < this.width ? index + 1 : -1,
-					y > 0 ? index - this.width : -1,
-					y + 1 < this.height ? index + this.width : -1
-				];
-				for (const next of neighbours) {
-					if (next < 0 || !this.land[next]) continue;
-					if (this.owners[next] !== port.ownerId) continue;
-					if (this.portComponentOf[next] === token) continue;
-					this.portComponentOf[next] = token;
-					this.portComponentQueue[tail++] = next;
-				}
+				this.portComponentMeta.set(token, { ownerId: port.ownerId, reachesState });
 			}
 			const ownerPorts = byOwner.get(port.ownerId) ?? [];
 			ownerPorts.push(port);
@@ -3355,6 +3456,30 @@ export class TerritorySimulation {
 		if (owned.length < BOT_STRATEGIC_SAVE_MIN_STRUCTURES) return null;
 		const built = new Set(owned.map((structure) => structure.type));
 		const cap = Math.max(1, this.supplyCap(player.id));
+		// Once the opening economy ramp is over, fund a first Barracks before
+		// other luxury aspirations. Without this, cheap defensive/economy
+		// upgrades continually consume the treasury and offense never starts.
+		if (!this.inBotEarlyEconomyRamp(player) && !built.has('barracks')) {
+			return {
+				type: 'barracks',
+				cost: STRUCTURE_DEFINITIONS['barracks'].cost
+			};
+		}
+		// Aggressive states with a working economy should eventually fund a
+		// first Artillery; the normal cap-growth path raises War Academies until
+		// the 1,000-supply purchase becomes reachable.
+		if (
+			this.tick >= BOT_ARTILLERY_OPENING_TICK &&
+			built.has('barracks') &&
+			!built.has('artillery') &&
+			profile.aggression >= BOT_ARTILLERY_OPENING_AGGRESSION &&
+			player.territory >= BOT_ARTILLERY_OPENING_TERRITORY
+		) {
+			return {
+				type: 'artillery',
+				cost: STRUCTURE_DEFINITIONS['artillery'].cost
+			};
+		}
 		let bestType: BuildableStructureType | null = null;
 		let bestScore = Number.NEGATIVE_INFINITY;
 		for (const type of BUILDABLE_STRUCTURE_TYPES) {
@@ -3427,9 +3552,29 @@ export class TerritorySimulation {
 		return Number.isFinite(buffer) ? buffer : 0;
 	}
 
+	private botNeedsMilitaryOpening(player: PlayerState): boolean {
+		if (this.structures.forOwnerType(player.id, 'barracks')) return false;
+		if (this.tick < BOT_EARLY_ECONOMY_MILITARY_TICK) return false;
+		const command = this.structures.forOwnerType(player.id, 'command-post');
+		const academy = this.structures.forOwnerType(player.id, 'war-academy');
+		return (command?.stacks ?? 0) >= 1 && (academy?.stacks ?? 0) >= 1;
+	}
+
 	private botStrategicReserve(player: PlayerState): number {
 		const gold = this.botGold[player.id - 1];
 		const earlyType = this.botEarlyEconomyType(player);
+		const academy = this.structures.forOwnerType(player.id, 'war-academy');
+		if (this.botNeedsMilitaryOpening(player)) {
+			const cost = STRUCTURE_DEFINITIONS['barracks'].cost;
+			const cap = Math.max(1, this.supplyCap(player.id));
+			if (cost > cap) {
+				const capCost = academy
+					? STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP
+					: STRUCTURE_DEFINITIONS['war-academy'].cost;
+				return gold >= capCost ? 0 : capCost;
+			}
+			return gold >= cost ? 0 : cost;
+		}
 		if (earlyType) {
 			const earlyCost = STRUCTURE_DEFINITIONS[earlyType].cost;
 			return gold >= earlyCost ? 0 : Math.min(earlyCost, BOT_EARLY_ECONOMY_RESERVE_MAX);
@@ -3438,13 +3583,10 @@ export class TerritorySimulation {
 		if (!aspiration) return 0;
 		const cap = Math.max(1, this.supplyCap(player.id));
 		if (aspiration.cost > cap) {
-			// The stock cap, not income, is the bottleneck. Set the save target
-			// to the next War Academy level so the aspiration becomes reachable.
-			const academy = this.structures.forOwnerType(player.id, 'war-academy');
-			const capCost = academy
-				? STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP
-				: STRUCTURE_DEFINITIONS['war-academy'].cost;
-			return gold >= capCost ? 0 : capCost;
+			// Cap growth is itself the next purchase. Do not reserve a second
+			// copy of the War Academy cost: the economy chooser emits only the
+			// cap-growth action until the aspiration becomes affordable.
+			return 0;
 		}
 		// Once the aspiration is affordable, release the reserve so the bot can
 		// actually buy it instead of saving forever.
@@ -3464,6 +3606,48 @@ export class TerritorySimulation {
 		const supplyRatio = this.supplyOf(player.id) / cap;
 		const aspiration = this.botAspiration(player);
 		const capGap = aspiration !== null && aspiration.cost > cap;
+		if (capGap) {
+			// While the aspiration is cap-blocked, only a War Academy build or
+			// upgrade is useful. Returning null below the price prevents other
+			// cheap actions from consuming the cap-growth savings.
+			const academy = this.structures.forOwnerType(player.id, 'war-academy');
+			const cost = academy
+				? STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP
+				: STRUCTURE_DEFINITIONS['war-academy'].cost;
+			if (cost > budget) return null;
+			if (academy) {
+				return {
+					type: 'war-academy',
+					kind: 'upgrade',
+					cost,
+					score: 10_000,
+					structure: academy
+				};
+			}
+			const cell = this.findBotBuildCell(player, 'war-academy');
+			if (cell < 0) return null;
+			return { type: 'war-academy', kind: 'build', cost, score: 10_000, cell };
+		}
+		if (
+			!defensive &&
+			aspiration?.type === 'artillery' &&
+			!this.structures.forOwnerType(player.id, 'artillery') &&
+			aspiration.cost <= this.botGold[player.id - 1]
+		) {
+			// A completed cap push must actually reach the expensive purchase;
+			// don't let a small defensive reserve strand the bot one purchase
+			// short of its first Artillery.
+			const cell = this.findBotBuildCell(player, 'artillery');
+			if (cell >= 0) {
+				return {
+					type: 'artillery',
+					kind: 'build',
+					cost: aspiration.cost,
+					score: 10_000,
+					cell
+				};
+			}
+		}
 		const earlyType = this.botEarlyEconomyType(player);
 		const incomeGap = this.botIncomeGap[player.id - 1];
 		const deterrence = this.botDeterrence[player.id - 1];
@@ -3586,6 +3770,12 @@ export class TerritorySimulation {
 			// otherwise a lower defensive reserve can release enough supply for
 			// the opening ramp or cap growth to win instead.
 			if (type === earlyType && !defensive) buildScore += BOT_EARLY_ECONOMY_UTILITY;
+			// Do not let the economy opening permanently crowd out offense. Once
+			// a basic economy exists, a first Barracks outranks further economy
+			// investment until it is built.
+			if (type === 'barracks' && count === 0 && this.botNeedsMilitaryOpening(player)) {
+				buildScore += BOT_BARRACKS_OPENING_UTILITY;
+			}
 			if (defensive && type === 'fortification' && count === 0) {
 				buildScore += scaledBonus(BOT_DEFENSE_FIRST_UTILITY, modules.defense);
 			}
@@ -3657,35 +3847,6 @@ export class TerritorySimulation {
 			}
 		}
 
-		if (capGap) {
-			// The cap blocks the aspiration; treat cap growth as the dominant
-			// utility rather than letting cheap upgrades consume the savings.
-			const academy = this.structures.forOwnerType(player.id, 'war-academy');
-			if (academy) {
-				const cost =
-					STRUCTURE_DEFINITIONS['war-academy'].cost + academy.stacks * UPGRADE_LEVEL_COST_STEP;
-				if (cost <= budget) {
-					candidates.push({
-						type: 'war-academy',
-						kind: 'upgrade',
-						cost,
-						score: 10_000,
-						structure: academy
-					});
-				}
-			} else {
-				const cost = STRUCTURE_DEFINITIONS['war-academy'].cost;
-				if (cost <= budget) {
-					candidates.push({
-						type: 'war-academy',
-						kind: 'build',
-						cost,
-						score: 10_000
-					});
-				}
-			}
-		}
-
 		candidates.sort((left, right) => {
 			if (left.score !== right.score) return right.score - left.score;
 			const leftOrder = order.get(left.type) ?? 0;
@@ -3744,7 +3905,13 @@ export class TerritorySimulation {
 			for (let action = 0; action < maxActions; action++) {
 				const budget = this.botGold[goldIndex] - reserve - strategicReserve;
 				if (budget <= 0 && !defensive) break;
-				const choice = this.chooseBotEconomicAction(player, budget, this.botGold[goldIndex]);
+				// A non-threatened bot must not spend its aspiration reserve on
+				// cheap defensive actions; only an active defensive posture may
+				// draw on the full treasury.
+				const defensiveBudget = this.botNeedsMilitaryOpening(player)
+					? Math.max(0, this.botGold[goldIndex] - strategicReserve)
+					: this.botGold[goldIndex];
+				const choice = this.chooseBotEconomicAction(player, budget, defensiveBudget);
 				if (!choice) break;
 				const choiceIsDefensive =
 					choice.type === 'fortification' || choice.type === 'barracks' || choice.type === 'jammer';
@@ -4623,7 +4790,9 @@ export class TerritorySimulation {
 				BOT_ATTACK_SAVE_KEEP_FLOOR,
 				Math.floor(supply * BOT_ATTACK_SAVE_KEEP_FRACTION)
 			);
-			const strategicReserve = expand ? 0 : Math.min(this.botStrategicReserve(player), saveKeep);
+			const waitingForBarracks = this.botNeedsMilitaryOpening(player);
+			const strategicReserve =
+				expand && !waitingForBarracks ? 0 : Math.min(this.botStrategicReserve(player), saveKeep);
 			const economicBuffer = expand
 				? 0
 				: Math.min(this.botEconomicBuffer(player), BOT_ATTACK_ECONOMIC_BUFFER_CAP);

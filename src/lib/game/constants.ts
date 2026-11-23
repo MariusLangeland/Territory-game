@@ -140,6 +140,13 @@ export const BOT_STRATEGIC_SAVE_MIN_STRUCTURES = 2;
 export const BOT_EARLY_ECONOMY_PER_TYPE = 2;
 export const BOT_EARLY_ECONOMY_TICK_LIMIT = 1200;
 export const BOT_EARLY_ECONOMY_UTILITY = 20_000;
+/** Once a basic economy exists, fund a first Barracks before over-investing in economy. */
+export const BOT_EARLY_ECONOMY_MILITARY_TICK = TICK_RATE * 60;
+export const BOT_BARRACKS_OPENING_UTILITY = 20_100;
+/** Aggressive bots start cap-saving for a first Artillery after this point. */
+export const BOT_ARTILLERY_OPENING_TICK = TICK_RATE * 240;
+export const BOT_ARTILLERY_OPENING_AGGRESSION = 50;
+export const BOT_ARTILLERY_OPENING_TERRITORY = 2_000;
 /**
  * During the opening economy ramp, save the full next Command Post/War Academy
  * cost. A small 40-supply reserve let cheap Fortifications win the budget and

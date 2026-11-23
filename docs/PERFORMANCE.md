@@ -135,6 +135,11 @@ Optimizations applied in 0.65.0:
   decision epoch keep behavior deterministic; threat/options remain global.
 - Elimination reward income is cached per player alongside the existing income
   formula, adding no per-tick work.
+- Annex plans are queued and drained across ticks at a fixed transfer budget;
+  a single Port land-component walk now serves every Port in that component,
+  removing repeated full-component BFS during the integrity scan.
+- The first Barracks military opening and cap-gated first Artillery fix offensive
+  investment without adding per-tick work.
 - Full-map pocket cleanup runs only when ownership changed since the previous
   cleanup pass.
 

@@ -11,6 +11,11 @@
 - Bot attack, naval, and artillery decisions are staggered across the decision
   interval, removing the periodic all-bot decision spike while preserving each
   bot's cadence and attack-roll sequence.
+- Bots now break out of the economy/defense loop: after the basic economy they
+  fund a first Barracks, then cap-grow War Academies and field Artillery.
+- Annexation transfers are queued and drained at a fixed per-tick budget, and
+  Port land-component walks are shared per component, removing the large
+  late-game annex hitch.
 
 ### UI
 
