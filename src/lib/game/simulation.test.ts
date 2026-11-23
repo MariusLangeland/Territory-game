@@ -369,6 +369,34 @@ describe('bot command-post modifier', () => {
 			}
 		}
 	});
+
+	it('runs the surge deterministically under load', () => {
+		const build = () =>
+			new TerritorySimulation({
+				seed: 1234,
+				playerCount: PLAYER_COUNT,
+				botCommandPostStacks: 500
+			});
+		const left = build();
+		const right = build();
+		expect(
+			left.structures.all.filter((structure) => structure.type === 'command-post')
+		).toHaveLength(PLAYER_COUNT - 1);
+		for (let tick = 0; tick < 600; tick++) {
+			left.step();
+			right.step();
+		}
+		expect(left.checksum()).toBe(right.checksum());
+		expect(left.players.filter((player) => player.alive).length).toBe(
+			right.players.filter((player) => player.alive).length
+		);
+		expect(left.activeAttacks.length).toBe(right.activeAttacks.length);
+		expect(left.structures.count).toBe(right.structures.count);
+		const snapshot = left.getSnapshot();
+		const totalTerritory = snapshot.players.reduce((sum, player) => sum + player.territory, 0);
+		expect(totalTerritory).toBe(snapshot.claimedLand);
+		for (const player of left.players) expect(player.territory).toBeGreaterThanOrEqual(0);
+	}, 30_000);
 });
 
 describe('bot offensive investment', () => {
