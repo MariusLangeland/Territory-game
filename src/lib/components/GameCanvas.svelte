@@ -480,6 +480,13 @@
 					Math.max(4, Math.min(point.y - 18 - metrics.height, height - metrics.height - 4))
 				);
 
+				// A dark translucent plate keeps the name/supply/affordable-front
+				// text legible over bright or busy territory.
+				context.beginPath();
+				context.roundRect(bannerX, bannerY, metrics.width, metrics.height, Math.max(2, 3 * scale));
+				context.fillStyle = 'rgba(3, 10, 14, 0.72)';
+				context.fill();
+
 				// A faint stem anchors the text to the capital marker.
 				context.beginPath();
 				context.moveTo(bannerX + metrics.width / 2, bannerY + metrics.height);
