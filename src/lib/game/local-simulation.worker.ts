@@ -20,7 +20,10 @@ function postVisual(): void {
 	if (!host) return;
 	const visual = host.step();
 	if (!visual) return;
-	scope.postMessage(visual, [visual.changes.buffer]);
+	const transfer: Transferable[] = [visual.changes.buffer];
+	if (visual.districtTileColors) transfer.push(visual.districtTileColors.buffer);
+	if (visual.districtColorCodes) transfer.push(visual.districtColorCodes.buffer);
+	scope.postMessage(visual, transfer);
 }
 
 function schedule(): void {

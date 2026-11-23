@@ -74,6 +74,8 @@ export interface LocalWorkerVisual {
 	changes: Uint32Array;
 	changesOverflow: boolean;
 	districtTiles: number[];
+	districtTileColors: Uint8Array | null;
+	districtColorCodes: Uint8Array | null;
 	events: StepResult['events'];
 	mergedDistricts: MergedDistrictGroup[];
 }

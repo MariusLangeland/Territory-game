@@ -122,6 +122,9 @@ worker.on('message', (message) => {
 		if (!(message.changes instanceof Uint32Array)) failures.push('changes type');
 		if (!message.snapshot || message.snapshot.tick !== message.tick) failures.push('tick mismatch');
 		if (!Array.isArray(message.mergedDistricts)) failures.push('merged visual');
+		if (message.districtTiles.length > 0 && !(message.districtTileColors instanceof Uint8Array)) {
+			failures.push('district colors');
+		}
 		if (ticks >= 5 && phase === 'running') {
 			phase = 'pausing';
 			worker.postMessage({ type: 'pause' });

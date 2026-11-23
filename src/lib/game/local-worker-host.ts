@@ -1,3 +1,4 @@
+import { RENDER_TILE_SIZE } from './constants';
 import { TerritorySimulation } from './simulation';
 import type {
 	LocalWorkerCommand,
@@ -76,9 +77,37 @@ export class LocalWorkerHost {
 			changes: result.changes.slice(0, result.changeCount),
 			changesOverflow: result.changesOverflow,
 			districtTiles: result.districtTiles,
+			districtTileColors: this.districtTileColors(result.districtTiles),
+			districtColorCodes:
+				result.changesOverflow && result.districtsChanged
+					? this.simulation.districtColorCodes.slice()
+					: null,
 			events: result.events,
 			mergedDistricts: [...this.simulation.getMergedDistricts()]
 		};
+	}
+
+	private districtTileColors(tiles: readonly number[]): Uint8Array | null {
+		if (tiles.length === 0) return null;
+		const colors = new Uint8Array(tiles.length * RENDER_TILE_SIZE * RENDER_TILE_SIZE);
+		const tilesX = Math.ceil(this.simulation.width / RENDER_TILE_SIZE);
+		for (let block = 0; block < tiles.length; block++) {
+			const tile = tiles[block] ?? 0;
+			const x0 = (tile % tilesX) * RENDER_TILE_SIZE;
+			const y0 = Math.floor(tile / tilesX) * RENDER_TILE_SIZE;
+			const offset = block * RENDER_TILE_SIZE * RENDER_TILE_SIZE;
+			for (let y = 0; y < RENDER_TILE_SIZE; y++) {
+				const worldY = y0 + y;
+				if (worldY >= this.simulation.height) break;
+				for (let x = 0; x < RENDER_TILE_SIZE; x++) {
+					const worldX = x0 + x;
+					if (worldX >= this.simulation.width) break;
+					colors[offset + y * RENDER_TILE_SIZE + x] =
+						this.simulation.districtColorCodes[worldY * this.simulation.width + worldX] ?? 0;
+				}
+			}
+		}
+		return colors;
 	}
 
 	command(message: LocalWorkerCommand): LocalWorkerCommandResult {

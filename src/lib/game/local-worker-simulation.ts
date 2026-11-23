@@ -1,5 +1,6 @@
 import {
 	ARTILLERY_RANGE,
+	ATTACK_SEARCH_RADIUS,
 	ATTACK_STRENGTH_BASE,
 	ATTACK_STRENGTH_BONUS,
 	ATTACK_SUPPLY_COST_BASE,
@@ -121,9 +122,9 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 			changeCount: visual.changes.length,
 			overflow: visual.changesOverflow,
 			owners: null,
-			districtColorCodes: null,
+			districtColorCodes: visual.districtColorCodes,
 			districtTiles,
-			districtTileColors: null,
+			districtTileColors: visual.districtTileColors,
 			markovStates: []
 		});
 		this.mergedDistricts = visual.mergedDistricts;
@@ -270,12 +271,7 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		if (owner === HUMAN_PLAYER_ID) {
 			return { ok: false, reason: 'own-territory', message: 'That territory is already yours.' };
 		}
-		const hasBorder =
-			(cellX > 0 && this.getOwner(cellX - 1, cellY) === HUMAN_PLAYER_ID) ||
-			(cellX + 1 < this.width && this.getOwner(cellX + 1, cellY) === HUMAN_PLAYER_ID) ||
-			(cellY > 0 && this.getOwner(cellX, cellY - 1) === HUMAN_PLAYER_ID) ||
-			(cellY + 1 < this.height && this.getOwner(cellX, cellY + 1) === HUMAN_PLAYER_ID);
-		if (!hasBorder) {
+		if (!this.hasAttackSeeds(cellX, cellY, owner)) {
 			return {
 				ok: false,
 				reason: 'no-shared-border',
@@ -513,6 +509,33 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 			}
 		}
 		return best;
+	}
+
+	private hasAttackSeeds(x: number, y: number, targetOwner: number): boolean {
+		const radius = ATTACK_SEARCH_RADIUS;
+		for (
+			let scanY = Math.max(0, y - radius);
+			scanY <= Math.min(this.height - 1, y + radius);
+			scanY++
+		) {
+			for (
+				let scanX = Math.max(0, x - radius);
+				scanX <= Math.min(this.width - 1, x + radius);
+				scanX++
+			) {
+				if (!this.isLand(scanX, scanY)) continue;
+				if (this.getOwner(scanX, scanY) !== targetOwner) continue;
+				if (
+					(scanX > 0 && this.getOwner(scanX - 1, scanY) === HUMAN_PLAYER_ID) ||
+					(scanX + 1 < this.width && this.getOwner(scanX + 1, scanY) === HUMAN_PLAYER_ID) ||
+					(scanY > 0 && this.getOwner(scanX, scanY - 1) === HUMAN_PLAYER_ID) ||
+					(scanY + 1 < this.height && this.getOwner(scanX, scanY + 1) === HUMAN_PLAYER_ID)
+				) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private structureAtCell(x: number, y: number): PublicStructure | undefined {
