@@ -2771,3 +2771,40 @@ coastal placement unnecessarily fiddly.
 - Ports may sit visually inside unrelated districts without joining or upgrading
   them.
 - A Port still cannot be placed inland or on top of another structure.
+
+---
+
+## ADR-087 — Smooth long-match frame pacing and naval request latency
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Long matches showed a periodic hitch every decision tick and a large freeze when
+issuing a naval landing. Profiling found three compounding costs: the bot
+decision pass re-ran expensive inner-ring build-site scans for every bot, the
+full-map annexation scan landed on the same tick as bot decisions, and a single
+naval request ran several full-ocean A* searches (validation, queue, and apply)
+before spending supply.
+
+### Decision
+
+- Validate and retain known-good bot build sites across ticks; re-scan negative
+  inner-ring results only on a slower cadence or when ownership changes near
+  that State.
+- Run annexation every 3 seconds instead of every second, offset from the bot
+  decision tick, while keeping the immediate post-cancellation request.
+- Reuse a positive bot expansion result for one build interval.
+- Order naval validation so supply is checked before routing.
+- Stop naval route selection at the nearest-Port/first successful sea path and
+  cache deterministic sea routes.
+
+### Consequences
+
+- The combined 20–30 ms annexation-plus-decision tick spike is removed; annex
+  scans no longer coincide with bot decision work.
+- Detached territory can remain for up to 3 seconds before annexation.
+- A long naval landing request dropped from roughly 150 ms to under 10 ms.
+- Routes may be marginally longer than the previous exhaustive shortest-path
+  selection but stay deterministic and sea-connected.

@@ -264,7 +264,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 4. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
 5. On decision ticks, refresh bot threat/posture/reserves, then run bot economy/build decisions every 30 ticks and bot attack decisions every 10 ticks.
 6. Process active fronts in creation-id order.
-7. Every 10 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Every 100 ticks, fill small neutral pockets.
+7. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Every 100 ticks, fill small neutral pockets.
 8. Eliminate states with no territory and remove their fronts.
 9. Check 70% / last-standing victory.
 10. Build the public snapshot.
@@ -319,7 +319,7 @@ A stronger or higher-Barracks front deals more contact damage and can break a we
 
 ### 4.14 Territory integrity
 
-Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (10 ticks / 1 second), and promptly after a clash halts a front, the simulation labels components and annexes unprotected ones:
+Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (30 ticks / 3 seconds), and promptly after a clash halts a front, the simulation labels components and annexes unprotected ones:
 
 - a component is transferred only if it touches another player's **protected mainland**;
 - the recipient is the adjacent protected-mainland owner with the greatest shared border;

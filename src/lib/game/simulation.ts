@@ -490,6 +490,8 @@ export interface SimulationOptions {
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
+/** Keep the full annex scan off the bot decision tick. */
+const ANNEX_PHASE_OFFSET_TICKS = 5;
 
 function indexToX(index: number, width: number): number {
 	return index % width;
@@ -575,6 +577,14 @@ export class TerritorySimulation {
 	private readonly botMarkovState: Uint8Array;
 	private readonly botMarkovEntry: Uint32Array;
 	private readonly botMarkovBias: Uint8Array;
+	/** Reuse only a positive expansion result; a negative one can block attacks. */
+	private readonly botExpansionCached: Uint8Array;
+	private readonly botExpansionTick: Uint32Array;
+	/** Scratch cache for per-defender target utility within one decision. */
+	private readonly botTargetScoreStamp: Uint32Array;
+	private readonly botTargetScore: Int32Array;
+	private readonly botTargetOpportunity: Uint8Array;
+	private botTargetStamp = 0;
 	/** Last player to launch a front against this bot (blackboard memory). */
 	private readonly botLastAttacker: Uint16Array;
 	/** Last player to capture one of this player's cells, for elimination credit. */
@@ -624,7 +634,7 @@ export class TerritorySimulation {
 	private buildSiteCacheLayoutVersion = -1;
 	/** Port/core sites are tick-independent and can survive across ticks. */
 	private stableBuildSiteCache = new Int32Array(0);
-	private stableBuildSiteCacheOwnershipVersion = -1;
+	private stableBuildSiteTick = new Uint32Array(0);
 	private stableBuildSiteCacheVersion = -1;
 	private stableBuildSiteCacheLayoutVersion = -1;
 	private readonly integrity: TerritoryIntegrity;
@@ -700,6 +710,7 @@ export class TerritorySimulation {
 			-2
 		);
 		this.stableBuildSiteCache = new Int32Array(this.playerCount * 4).fill(-2);
+		this.stableBuildSiteTick = new Uint32Array(this.playerCount * 4);
 		this.needsExpansionCache = new Int8Array(this.playerCount).fill(-1);
 		this.botGoldAccrual = new Uint16Array(this.playerCount);
 		this.botGrievance = new Uint16Array(this.playerCount * this.playerCount);
@@ -716,6 +727,11 @@ export class TerritorySimulation {
 		this.botMarkovState = new Uint8Array(this.playerCount);
 		this.botMarkovEntry = new Uint32Array(this.playerCount);
 		this.botMarkovBias = new Uint8Array(this.playerCount * 5);
+		this.botExpansionCached = new Uint8Array(this.playerCount);
+		this.botExpansionTick = new Uint32Array(this.playerCount);
+		this.botTargetScoreStamp = new Uint32Array(this.playerCount + 1);
+		this.botTargetScore = new Int32Array(this.playerCount + 1);
+		this.botTargetOpportunity = new Uint8Array(this.playerCount + 1);
 		this.botLastAttacker = new Uint16Array(this.playerCount);
 		this.lastAttackerOf = new Uint16Array(this.playerCount);
 		this.botPlayerMetrics = Array.from({ length: this.playerCount }, () => ({
@@ -1148,8 +1164,6 @@ export class TerritorySimulation {
 		}
 		const ports = this.structures.forOwner(playerId).filter((entry) => entry.type === 'port');
 		if (ports.length === 0) return fail('no-port', 'Build a Port before launching a landing.');
-		const route = this.findNavalRoute(playerId, index);
-		if (!route) return fail('no-sea-path', 'No sea route reaches that shore.');
 		const cost = this.attackSupplyCost(playerId, targetOwner) + STRUCTURE_DEFINITIONS.port.cost;
 		if (
 			this.supplyOf(playerId) -
@@ -1159,6 +1173,8 @@ export class TerritorySimulation {
 		) {
 			return fail('no-supply', `Need ${cost} supply for a naval landing.`);
 		}
+		const route = this.findNavalRoute(playerId, index);
+		if (!route) return fail('no-sea-path', 'No sea route reaches that shore.');
 		return { ok: true, message: `Naval landing ordered for ${cost} supply.` };
 	}
 
@@ -1199,17 +1215,24 @@ export class TerritorySimulation {
 		if (targetWater.length === 0) return null;
 
 		let best: { port: Structure; path: Uint32Array; targetWater: number } | null = null;
-		for (const port of ports) {
+		outer: for (const port of ports) {
 			const sourceWater: number[] = [];
 			adjacentWater(this.land, this.width, this.height, port.index, sourceWater);
+			targetWater.sort((left, right) => {
+				const leftDistance =
+					Math.abs((left % this.width) - port.x) + Math.abs(Math.floor(left / this.width) - port.y);
+				const rightDistance =
+					Math.abs((right % this.width) - port.x) +
+					Math.abs(Math.floor(right / this.width) - port.y);
+				return leftDistance - rightDistance || left - right;
+			});
 			for (const start of sourceWater) {
 				for (const end of targetWater) {
 					if (this.seaComponents[start] !== this.seaComponents[end]) continue;
 					const path = this.seaRouter.findPath(start, end);
 					if (!path) continue;
-					if (!best || path.length < best.path.length) {
-						best = { port, path, targetWater: end };
-					}
+					best = { port, path, targetWater: end };
+					break outer;
 				}
 			}
 		}
@@ -1845,7 +1868,7 @@ export class TerritorySimulation {
 			this.processNavalLandings();
 			this.processAttacks();
 			const annexDue =
-				this.tick % ANNEX_INTERVAL_TICKS === 0 ||
+				(this.tick + ANNEX_PHASE_OFFSET_TICKS) % ANNEX_INTERVAL_TICKS === 0 ||
 				(this.annexRequested && this.tick - this.lastAnnexTick >= ANNEX_INTERVAL_TICKS);
 			if (annexDue && (this.ownershipChangedSinceAnnex || this.annexRequested)) {
 				this.annexDisconnectedTerritory();
@@ -3009,6 +3032,8 @@ export class TerritorySimulation {
 			}
 		}
 
+		this.invalidateStableSitesNear(index, previousOwner);
+		this.invalidateStableSitesNear(index, newOwner);
 		this.owners[index] = newOwner;
 		this.claimedBy[index] = sourceAttackId;
 
@@ -3074,6 +3099,23 @@ export class TerritorySimulation {
 			const owner = this.owners[i];
 			if (!owner) continue;
 			if (this.isBorderCell(i, owner)) this.players[owner - 1].border.add(i);
+		}
+	}
+
+	/** Invalidate a player's cached inner-ring build sites only for nearby changes. */
+	private invalidateStableSitesNear(index: number, playerId: number): void {
+		if (playerId <= 0) return;
+		const state = this.structures.forOwnerType(playerId, 'state');
+		if (!state) return;
+		const x = index % this.width;
+		const y = (index - x) / this.width;
+		const dx = state.x - x;
+		const dy = state.y - y;
+		if (dx * dx + dy * dy > 100 * 100) return;
+		const base = (playerId - 1) * 4;
+		for (let i = 0; i < 4; i++) {
+			this.stableBuildSiteCache[base + i] = -2;
+			this.stableBuildSiteTick[base + i] = 0;
 		}
 	}
 
@@ -3953,16 +3995,21 @@ export class TerritorySimulation {
 		const version = this.structures.version;
 		const layoutVersion = this.structures.layoutVersion;
 		if (
-			this.stableBuildSiteCacheOwnershipVersion === this.ownershipVersion &&
 			this.stableBuildSiteCacheVersion === version &&
 			this.stableBuildSiteCacheLayoutVersion === layoutVersion
 		) {
 			return;
 		}
-		this.stableBuildSiteCacheOwnershipVersion = this.ownershipVersion;
 		this.stableBuildSiteCacheVersion = version;
 		this.stableBuildSiteCacheLayoutVersion = layoutVersion;
-		this.stableBuildSiteCache.fill(-2);
+		// Keep known-good sites: they are validated on read. Only unknown/negative
+		// results need a fresh ring scan after layout changes.
+		for (let i = 0; i < this.stableBuildSiteCache.length; i++) {
+			if (this.stableBuildSiteCache[i] < 0) {
+				this.stableBuildSiteCache[i] = -2;
+				this.stableBuildSiteTick[i] = 0;
+			}
+		}
 	}
 
 	private findBotBuildCell(player: PlayerState, type: BuildableStructureType): number {
@@ -3970,11 +4017,23 @@ export class TerritorySimulation {
 		if (stableTypeIndex >= 0) {
 			this.ensureStableBuildSiteCache();
 			const stableCacheIndex = (player.id - 1) * 4 + stableTypeIndex;
-			const stableCached = this.stableBuildSiteCache[stableCacheIndex];
-			if (stableCached >= 0) return stableCached;
-			if (stableCached === -2) {
+			let stableCached = this.stableBuildSiteCache[stableCacheIndex];
+			if (stableCached >= 0) {
+				if (this.isBotBuildCellValid(player, stableCached, type === 'port')) {
+					return stableCached;
+				}
+				stableCached = -2;
+			}
+			// A negative result stays valid briefly. Sites only appear through
+			// expansion, so re-scanning the full ring every tick is wasted work.
+			const keepNegative =
+				stableCached === -1 && this.tick - this.stableBuildSiteTick[stableCacheIndex] < 200;
+			if (keepNegative) {
+				if (type === 'port') return -1;
+			} else {
 				const stableSite = this.computeStableBotBuildCell(player, type);
 				this.stableBuildSiteCache[stableCacheIndex] = stableSite;
+				this.stableBuildSiteTick[stableCacheIndex] = this.tick;
 				if (stableSite >= 0) return stableSite;
 			}
 			if (type === 'port') return -1;
@@ -4448,7 +4507,17 @@ export class TerritorySimulation {
 			const defenderId = this.owners[choice.index];
 			const supply = this.supplyOf(player.id);
 			const cost = this.attackSupplyCost(player.id, defenderId);
-			const expand = this.botNeedsExpansion(player);
+			const expansionIndex = player.id - 1;
+			let expand =
+				this.botExpansionCached[expansionIndex] === 1 &&
+				this.tick - this.botExpansionTick[expansionIndex] < BOT_BUILD_INTERVAL;
+			if (!expand) {
+				expand = this.botNeedsExpansion(player);
+				if (expand) {
+					this.botExpansionCached[expansionIndex] = 1;
+					this.botExpansionTick[expansionIndex] = this.tick;
+				}
+			}
 			// Saving for an aspiration must not freeze expansion. Keep at most
 			// half the stock (or a small floor) for the save and cap the
 			// next-purchase buffer; take max instead of stacking both.
@@ -4589,6 +4658,9 @@ export class TerritorySimulation {
 		let bestScore = Number.NEGATIVE_INFINITY;
 		let bestTargetScore = 0;
 		let bestOpportunity = false;
+		// Target utility depends on the defender, not the sampled contact cell.
+		// Cache it so a decision pays for roughly four targets rather than 96.
+		const targetStamp = ++this.botTargetStamp;
 		const samples = BOT_SEARCH_TRIES * 3;
 		for (let attempt = 0; attempt < samples; attempt++) {
 			const borderIndex = this.pickBorderCell(player);
@@ -4616,15 +4688,33 @@ export class TerritorySimulation {
 				// Opening economy ramp: expand into neutral ground but avoid
 				// opening state wars before the Command Post/War Academy line.
 				if (neutralOnly && defenderId !== 0) continue;
-				const target = this.scoreBotTarget(player.id, profile, defenderId, selfStrength, strengths);
+				let targetScore: number;
+				let targetOpportunity: boolean;
+				if (this.botTargetScoreStamp[defenderId] === targetStamp) {
+					targetScore = this.botTargetScore[defenderId] ?? 0;
+					targetOpportunity = this.botTargetOpportunity[defenderId] === 1;
+				} else {
+					const scored = this.scoreBotTarget(
+						player.id,
+						profile,
+						defenderId,
+						selfStrength,
+						strengths
+					);
+					targetScore = scored.score;
+					targetOpportunity = scored.opportunity;
+					this.botTargetScoreStamp[defenderId] = targetStamp;
+					this.botTargetScore[defenderId] = targetScore;
+					this.botTargetOpportunity[defenderId] = targetOpportunity ? 1 : 0;
+				}
 				// Prefer the cheapest ground on the preferred target: fortified
 				// or elevated contact cells are deprioritized.
 				const defense = this.getDefense(x, y);
-				const score = target.score - defense * BOT_ATTACK_DEFENSE_WEIGHT;
+				const score = targetScore - defense * BOT_ATTACK_DEFENSE_WEIGHT;
 				if (score > bestScore) {
 					bestScore = score;
-					bestTargetScore = target.score;
-					bestOpportunity = target.opportunity;
+					bestTargetScore = targetScore;
+					bestOpportunity = targetOpportunity;
 					bestIndex = index;
 				}
 			}

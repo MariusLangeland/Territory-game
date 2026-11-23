@@ -43,6 +43,8 @@ export class TerritoryIntegrity {
 	private readonly pixelCount: number;
 	private readonly componentOf: Uint32Array;
 	private readonly cellOrder: Uint32Array;
+	/** Precomputed column per pixel; avoids modulo in every neighbour scan. */
+	private readonly columnOf: Uint16Array;
 	private readonly components: ComponentMeta[] = [];
 	private readonly protectedComponent: Uint8Array;
 	private readonly contactCounts: Uint32Array;
@@ -55,6 +57,10 @@ export class TerritoryIntegrity {
 		this.pixelCount = width * height;
 		this.componentOf = new Uint32Array(this.pixelCount);
 		this.cellOrder = new Uint32Array(this.pixelCount);
+		this.columnOf = new Uint16Array(this.pixelCount);
+		for (let index = 0; index < this.pixelCount; index++) {
+			this.columnOf[index] = index % width;
+		}
 		this.protectedComponent = new Uint8Array(this.pixelCount);
 		this.contactCounts = new Uint32Array(playerCount + 1);
 	}
@@ -72,7 +78,7 @@ export class TerritoryIntegrity {
 		this.resetComponentLabels();
 		this.components.length = 0;
 
-		this.labelComponents(owners, land);
+		this.labelComponents(owners);
 		this.protectedComponent.fill(0, 0, this.components.length);
 		for (const anchor of anchors) {
 			if (owners[anchor.index] !== anchor.ownerId) continue;
@@ -200,14 +206,14 @@ export class TerritoryIntegrity {
 		this.cellOrder[this.cellCount++] = index;
 	}
 
-	private labelComponents(owners: Uint16Array, land: Uint8Array): void {
+	private labelComponents(owners: Uint16Array): void {
 		const componentOf = this.componentOf;
 		const cellOrder = this.cellOrder;
+		const columnOf = this.columnOf;
 		const width = this.width;
-		const height = this.height;
 
 		for (let seed = 0; seed < this.pixelCount; seed++) {
-			if (componentOf[seed] !== 0 || !land[seed] || owners[seed] === 0) continue;
+			if (componentOf[seed] !== 0 || owners[seed] === 0) continue;
 
 			const owner = owners[seed];
 			const id = this.components.length + 1;
@@ -218,31 +224,41 @@ export class TerritoryIntegrity {
 
 			while (head < this.cellCount) {
 				const index = cellOrder[head++];
-				const x = index % width;
-				const y = (index - x) / width;
+				const x = columnOf[index];
 
-				if (x > 0) this.visit(index - 1, owner, id, owners, land);
-				if (x + 1 < width) this.visit(index + 1, owner, id, owners, land);
-				if (y > 0) this.visit(index - width, owner, id, owners, land);
-				if (y + 1 < height) this.visit(index + width, owner, id, owners, land);
+				if (x > 0) {
+					const next = index - 1;
+					if (componentOf[next] === 0 && owners[next] === owner) {
+						componentOf[next] = id;
+						cellOrder[this.cellCount++] = next;
+					}
+				}
+				if (x + 1 < width) {
+					const next = index + 1;
+					if (componentOf[next] === 0 && owners[next] === owner) {
+						componentOf[next] = id;
+						cellOrder[this.cellCount++] = next;
+					}
+				}
+				if (index >= width) {
+					const next = index - width;
+					if (componentOf[next] === 0 && owners[next] === owner) {
+						componentOf[next] = id;
+						cellOrder[this.cellCount++] = next;
+					}
+				}
+				if (index + width < this.pixelCount) {
+					const next = index + width;
+					if (componentOf[next] === 0 && owners[next] === owner) {
+						componentOf[next] = id;
+						cellOrder[this.cellCount++] = next;
+					}
+				}
 			}
 
 			const end = this.cellCount;
 			this.components.push({ id, owner, start, end, area: end - start });
 		}
-	}
-
-	private visit(
-		index: number,
-		owner: number,
-		id: number,
-		owners: Uint16Array,
-		land: Uint8Array
-	): void {
-		if (this.componentOf[index] !== 0) return;
-		if (!land[index] || owners[index] !== owner) return;
-		this.componentOf[index] = id;
-		this.cellOrder[this.cellCount++] = index;
 	}
 
 	private chooseAnnexingOwner(

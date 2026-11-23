@@ -77,7 +77,7 @@ export const BASE_DEFENSE_OFFSET = 1;
 export const OCCUPIED_DEFENSE_BONUS = 1;
 
 /** How often disconnected territory is reattached to a surrounding mainland. */
-export const ANNEX_INTERVAL_TICKS = 10;
+export const ANNEX_INTERVAL_TICKS = TICK_RATE * 3;
 /** Small landlocked neutral pockets are filled at most once per 10 seconds. */
 export const UNCLAIMED_CLEANUP_INTERVAL_TICKS = TICK_RATE * 10;
 /** Only pockets at or below this area are auto-filled. */

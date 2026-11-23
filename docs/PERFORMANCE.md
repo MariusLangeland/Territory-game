@@ -105,7 +105,7 @@ CPU profile hot spots, largest first:
    (`structures.hasWithinRadius`). It accounts for roughly **20–45%** of worker
    samples depending on player count.
 2. `TerritoryIntegrity.labelComponents`: full-map component labeling every
-   annex interval (1 s). Roughly **25–40%** of worker samples.
+   annex interval (3 s). Roughly **25–40%** of worker samples.
 3. `cleanupUnclaimedPockets`: full-map scan every 10 s, roughly **5–10%**.
 4. Attack processing, map generation, and structure work are secondary at
    normal match sizes.
@@ -119,12 +119,17 @@ simulation work, not WebGPU rendering or Svelte.
 
 Optimizations applied in 0.65.0:
 
-- `findBotBuildCell` results are cached per player/type for each tick and
-  structure layout, and `botNeedsExpansion` is cached per player/tick.
+- `findBotBuildCell` results are cached per player/type across ticks. Known-good
+  sites are validated on read; negative inner-ring results are re-scanned on a
+  slower cadence or when ownership changes near that State.
 - The structure registry indexes spacing queries in 32 px buckets instead of
   scanning every structure for every candidate.
 - Annex component scans run only when ownership changed since the previous
-  scan or a State/Port was destroyed.
+  scan or a State/Port was destroyed, every 3 seconds, and are offset from the
+  bot decision tick. This removes the 20–30 ms combined tick spike.
+- Naval route searches use weighted A* with a route cache and stop at the first
+  nearest-Port sea path; a long landing request dropped from ~150 ms to under
+  10 ms.
 - Full-map pocket cleanup runs only when ownership changed since the previous
   cleanup pass.
 

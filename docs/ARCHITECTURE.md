@@ -166,7 +166,7 @@ step()
  │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
- ├─ every 10 ticks or after a cancellation: annex detached components
+ ├─ every 30 ticks or after a cancellation: annex detached components
  ├─ every 100 ticks: fill small neutral pockets into their dominant neighbour
  ├─ updateEliminations()
  ├─ checkVictory()

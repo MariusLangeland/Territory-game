@@ -86,6 +86,9 @@ export function computeSeaComponents(land: Uint8Array, width: number, height: nu
 	return components;
 }
 
+/** Weighted A*: near-shortest routes without exploring the full ocean basin. */
+const NAVAL_HEURISTIC_WEIGHT = 2;
+
 /**
  * Deterministic 4-neighbour A*. Ties break by map index so the same request
  * always produces the same boat route.
@@ -97,6 +100,7 @@ export class SeaRouter {
 	private readonly heapIndex: number[] = [];
 	private readonly heapPriority: number[] = [];
 	private readonly touched: number[] = [];
+	private readonly routeCache = new Map<number, Uint32Array | null>();
 
 	constructor(
 		private readonly land: Uint8Array,
@@ -110,6 +114,8 @@ export class SeaRouter {
 
 	findPath(start: number, target: number): Uint32Array | null {
 		if (start === target) return new Uint32Array([start]);
+		const cacheKey = start * this.land.length + target;
+		if (this.routeCache.has(cacheKey)) return this.routeCache.get(cacheKey) ?? null;
 		if (this.land[start] || this.land[target]) return null;
 		this.resetTouched();
 		const touched = this.touched;
@@ -120,7 +126,11 @@ export class SeaRouter {
 		while (this.heapIndex.length > 0) {
 			const current = this.heapPop();
 			if (current < 0 || this.closed[current]) continue;
-			if (current === target) return this.reconstruct(current);
+			if (current === target) {
+				const path = this.reconstruct(current);
+				this.cacheRoute(cacheKey, path);
+				return path;
+			}
 			this.closed[current] = 1;
 			const currentG = this.gScore[current] ?? 0;
 
@@ -143,12 +153,21 @@ export class SeaRouter {
 				if (tentative >= known) continue;
 				this.gScore[next] = tentative;
 				this.parent[next] = current;
-				this.heapPush(next, tentative + this.heuristic(next, target));
+				this.heapPush(next, tentative + this.heuristic(next, target) * NAVAL_HEURISTIC_WEIGHT);
 			}
 		}
 
 		this.resetTouched();
+		this.cacheRoute(cacheKey, null);
 		return null;
+	}
+
+	private cacheRoute(key: number, path: Uint32Array | null): void {
+		if (this.routeCache.size >= 256) {
+			const oldest = this.routeCache.keys().next().value;
+			if (oldest !== undefined) this.routeCache.delete(oldest);
+		}
+		this.routeCache.set(key, path);
 	}
 
 	private heuristic(index: number, target: number): number {
