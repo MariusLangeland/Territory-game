@@ -111,8 +111,8 @@
 		appliedMatchSettings !== null && !matchSettingsEqual(matchSettings, appliedMatchSettings)
 	);
 	let stateCount = $derived(sim?.playerCount ?? matchSettings.states);
-	let mapWidth = $derived(sim?.width ?? mapPreset(matchSettings.mapPreset).width);
-	let mapHeight = $derived(sim?.height ?? mapPreset(matchSettings.mapPreset).height);
+	let mapWidth = $derived(sim?.width ?? matchSettings.mapWidth);
+	let mapHeight = $derived(sim?.height ?? matchSettings.mapHeight);
 	let keyboardCursor = $state<{ x: number; y: number } | null>(null);
 	let keyboardCursorScreen = $derived.by(() => {
 		if (!keyboardCursor || !cameraView) return null;
@@ -547,6 +547,16 @@
 		saveMatchSettings(matchSettings);
 	}
 
+	function applyMapPreset(): void {
+		const preset = mapPreset(matchSettings.mapPreset);
+		matchSettings = {
+			...matchSettings,
+			mapWidth: preset.width,
+			mapHeight: preset.height
+		};
+		persistMatchSettings();
+	}
+
 	function applyMatchSettings(): void {
 		persistMatchSettings();
 		createWorld(currentSeed || readSeedFromLocation(), matchSettings);
@@ -561,7 +571,6 @@
 		const normalized = normalizeMatchSettings(settings);
 		matchSettings = { ...normalized };
 		appliedMatchSettings = { ...normalized };
-		const preset = mapPreset(normalized.mapPreset);
 		clearTimeout(worldTimer);
 		phase = 'loading';
 		errorMessage = '';
@@ -600,8 +609,8 @@
 				const next = new TerritorySimulation({
 					seed: seed >>> 0,
 					playerCount: normalized.states,
-					width: preset.width,
-					height: preset.height,
+					width: normalized.mapWidth,
+					height: normalized.mapHeight,
 					growthMode: DEFAULT_GROWTH_MODE,
 					botDifficulty: normalized.difficulty,
 					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
@@ -2239,11 +2248,33 @@
 						</label>
 						<label>
 							<span>MAP SIZE</span>
-							<select bind:value={matchSettings.mapPreset} onchange={persistMatchSettings}>
+							<select bind:value={matchSettings.mapPreset} onchange={applyMapPreset}>
 								{#each MAP_PRESETS as preset (preset.id)}
 									<option value={preset.id}>{preset.label}</option>
 								{/each}
 							</select>
+						</label>
+						<label>
+							<span>WIDTH</span>
+							<input
+								type="number"
+								min="512"
+								max="8192"
+								step="16"
+								bind:value={matchSettings.mapWidth}
+								onchange={persistMatchSettings}
+							/>
+						</label>
+						<label>
+							<span>HEIGHT</span>
+							<input
+								type="number"
+								min="256"
+								max="8192"
+								step="16"
+								bind:value={matchSettings.mapHeight}
+								onchange={persistMatchSettings}
+							/>
 						</label>
 						<label>
 							<span>BOT DIFFICULTY</span>

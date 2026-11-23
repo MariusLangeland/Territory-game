@@ -10,6 +10,8 @@ import {
 	BOT_DEFENSE_RESERVE_MAX,
 	BOT_DEFENSE_STALL_INTERVALS,
 	BOT_THREAT_DEFENSIVE,
+	CHANGE_INDEX_BITS,
+	CHANGE_INDEX_MASK,
 	ELEVATION_LEVELS,
 	HUMAN_PLAYER_ID,
 	LAND_FRACTION,
@@ -421,6 +423,27 @@ describe('bot offensive investment', () => {
 		expect(barracksAt1800).toBeGreaterThan(0);
 		expect(artilleryAt6000).toBeGreaterThan(0);
 	}, 30_000);
+});
+
+describe('arbitrary atlas sizes', () => {
+	it('packs ownership changes beyond the old 21-bit index limit', () => {
+		const sim = new TerritorySimulation({
+			seed: 1234,
+			playerCount: 2,
+			width: 2048,
+			height: 2048
+		});
+		const index = 2_100_000;
+		const internals = sim as unknown as {
+			claim(index: number, newOwner: number): void;
+			changes: Uint32Array;
+			changeCount: number;
+		};
+		internals.claim(index, 2);
+		const packed = internals.changes[internals.changeCount - 1] ?? 0;
+		expect(packed >>> CHANGE_INDEX_BITS).toBe(2);
+		expect(packed & CHANGE_INDEX_MASK).toBe(index);
+	});
 });
 
 describe('multiplayer seats', () => {

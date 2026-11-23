@@ -77,6 +77,7 @@ import {
 	BOT_THREAT_SAFE,
 	BOT_THREAT_UNRELATED_PENALTY,
 	BOT_TEAM_COORDINATION_BONUS,
+	CHANGE_INDEX_BITS,
 	DISTRICT_NOISE_CELL,
 	DISTRICT_NOISE_MARGIN,
 	BOT_SEARCH_TRIES,
@@ -525,7 +526,7 @@ export interface MergedDistrictGroup {
 
 export interface StepResult {
 	tick: number;
-	/** Packed as `(owner << 21) | pixelIndex`. Consumed before the next step. */
+	/** Packed as `(owner << 26) | pixelIndex`. Consumed before the next step. */
 	changes: Uint32Array;
 	changeCount: number;
 	changesOverflow: boolean;
@@ -3581,7 +3582,7 @@ export class TerritorySimulation {
 			this.changesOverflow = true;
 			return;
 		}
-		this.changes[this.changeCount++] = ((owner & 0xffff) << 21) | index;
+		this.changes[this.changeCount++] = ((owner & 0xffff) << CHANGE_INDEX_BITS) | index;
 	}
 
 	private createBotProfile(playerId: number): BotProfile {

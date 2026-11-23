@@ -1,8 +1,8 @@
 # TERRITORY — Specification
 
 **Version:** see generated [REFERENCE.md](REFERENCE.md) / `package.json`  
-**Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** map version 4, protocol draft 40  
+**Status:** Local Frontage implementation plus authoritative online MVP  
+**Last synchronized with:** map version 5, protocol draft 41  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -32,7 +32,7 @@ OpenFront is the closest genre reference: a browser strategy game with a huge pi
 ### 1.4 Long-term match shape (target, not current)
 
 - 8 human states (or configurable rooms), with bots filling empty seats.
-- One shared procedural atlas; default 2048 × 1024 (about 38% land) with compact and clash presets.
+- One shared procedural atlas; default 4096 × 2048 (about 38% land) with compact and clash presets. Arbitrary width/height is supported within the atlas limits.
 - Fixed 10 Hz simulation.
 - Land generates a resource; attacks cost resources and time.
 - Final attack semantics are **undecided**. The current free flood-fill front is a stress-test stand-in; a concrete replacement proposal is in [COMBAT_DESIGN.md](COMBAT_DESIGN.md) and is not implemented.
@@ -56,27 +56,27 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 
 ### 2.2 Implemented
 
-| Area                                                      | Status                   |
-| --------------------------------------------------------- | ------------------------ |
-| Seeded procedural atlas, 2048×1024 / 1536×768 / 1280×720  | ✅                       |
-| Land/ocean mask and terrain relief                        | ✅                       |
-| 8–51 states (1 human + N AI), default 51                  | ✅                       |
-| Pixel ownership and incremental frontier tracking         | ✅                       |
-| Resource-free local-front attacks (BFS)                   | ✅                       |
-| Single supply economy, durable fronts, cancellation       | ✅                       |
-| Bot expansion/attacks                                     | ✅                       |
-| Elimination and last-state-standing victory               | ✅                       |
-| Pause, camera pan/zoom/fit/focus                          | ✅                       |
-| WebGPU renderer with adaptive dirty-tile/chunked uploads  | ✅                       |
-| Organic growth locked for player matches                  | ✅                       |
-| State structures anchoring territory and projecting auras | ✅                       |
-| Supply income, drag-and-drop build cards, 70% victory     | ✅                       |
-| Minimap, virtualized state-count-aware leaderboard, perf  | ✅                       |
-| Seed input, URL seed, new world, rematch                  | ✅                       |
-| Intro, field manual, defeat, result, WebGPU error screens | ✅                       |
-| Deterministic tests + attack stress tests + benchmark     | ✅                       |
-| Troops, caps, launch costs                                | ❌ intentionally removed |
-| Single supply/card economy                                | ✅                       |
+| Area                                                                         | Status                   |
+| ---------------------------------------------------------------------------- | ------------------------ |
+| Arbitrary seeded procedural atlas; 4096×2048 / 3072×1536 / 2560×1440 presets | ✅                       |
+| Land/ocean mask and terrain relief                                           | ✅                       |
+| 8–51 states (1 human + N AI), default 51                                     | ✅                       |
+| Pixel ownership and incremental frontier tracking                            | ✅                       |
+| Resource-free local-front attacks (BFS)                                      | ✅                       |
+| Single supply economy, durable fronts, cancellation                          | ✅                       |
+| Bot expansion/attacks                                                        | ✅                       |
+| Elimination and last-state-standing victory                                  | ✅                       |
+| Pause, camera pan/zoom/fit/focus                                             | ✅                       |
+| WebGPU renderer with adaptive dirty-tile/chunked uploads                     | ✅                       |
+| Organic growth locked for player matches                                     | ✅                       |
+| State structures anchoring territory and projecting auras                    | ✅                       |
+| Supply income, drag-and-drop build cards, 70% victory                        | ✅                       |
+| Minimap, virtualized state-count-aware leaderboard, perf                     | ✅                       |
+| Seed input, URL seed, new world, rematch                                     | ✅                       |
+| Intro, field manual, defeat, result, WebGPU error screens                    | ✅                       |
+| Deterministic tests + attack stress tests + benchmark                        | ✅                       |
+| Troops, caps, launch costs                                                   | ❌ intentionally removed |
+| Single supply/card economy                                                   | ✅                       |
 
 ### 2.3 Not implemented
 
@@ -97,7 +97,7 @@ The user requested removing troops and adding 50 AI opponents, then approved Fro
 
 | Term                 | Meaning                                                                                |
 | -------------------- | -------------------------------------------------------------------------------------- |
-| **Cell / map pixel** | One element of the 2048 × 1024 ownership grid                                          |
+| **Cell / map pixel** | One element of the arbitrary ownership grid                                            |
 | **Owner**            | State id `1..51`; `0` means unclaimed                                                  |
 | **Territory**        | Count of land cells owned by a state                                                   |
 | **Frontier**         | An owned land cell with an adjacent land cell owned by someone else (unclaimed counts) |
@@ -116,13 +116,13 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 
 ### 4.1 The world
 
-- Default 2048 × 1024 cells (2,097,152 total); compact 1536 × 768 and clash 1280 × 720 presets.
+- Default 4096 × 2048 cells (8,388,608 total); compact 3072 × 1536 and clash 2560 × 1440 presets. Custom dimensions are 512–8192 px per side and at most 2²⁶ total cells.
 - Generator targets 38% land.
 - Static binary land mask, 8-bit terrain shade, and a discrete elevation tier (0–5).
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 40`.
+- `MAP_VERSION = 5`; `PROTOCOL_VERSION = 41`.
 
 ### 4.2 Starting positions
 
@@ -491,7 +491,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 5.1 Screen flow
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
-2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), optional 10/20/30-minute timer, optional **500-stack bot Command Post surge**, victory summary, saved defaults, rebuild, deploy. Simulation paused.
+2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset and custom width/height (standard/compact/clash presets), bot difficulty (relaxed/standard/ruthless), optional 10/20/30-minute timer, optional **500-stack bot Command Post surge**, victory summary, saved defaults, rebuild, deploy. Simulation paused.
 3. **Live match:** state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
@@ -630,7 +630,7 @@ Full detail: [DETERMINISM.md](DETERMINISM.md).
 
 Full detail: [RENDERING.md](RENDERING.md).
 
-1. One map-sized `rgba8unorm` control texture (default 2048 × 1024) and a 256 × 1 palette texture.
+1. One map-sized `rgba8unorm` control texture (default 4096 × 2048) and a 256 × 1 palette texture.
 2. R = owner id, G = land, B = terrain shade, A = normalized elevation tier.
 3. Per-tick changes normally upload 32 × 32 dirty tiles merged into strips. Above 96 dirty tiles, an adaptive full-texture resync is queued and uploaded in eight horizontal chunks, at most two per frame. No frame does a synchronous full-map upload.
 4. One full-screen triangle and one fragment shader.

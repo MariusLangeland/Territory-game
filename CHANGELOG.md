@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.75.0 — 2026-11-23
+
+### Arbitrary map sizes
+
+- Default atlas doubled per side: **4096 × 2048** (8,388,608 cells).
+- Map presets are now 4096×2048 / 3072×1536 / 2560×1440.
+- Match setup accepts custom width/height up to **8192 px per side** and
+  **2²⁶ total cells**.
+- Expanded packed ownership changes from 21 to **26 index bits**, preserving six
+  owner bits and supporting every atlas within the GPU-safe limits.
+- Map generation validates arbitrary dimensions instead of assuming
+  2048×1024.
+- Bumped `MAP_VERSION` to **5** and wire protocol to **41**.
+
 ## 0.74.1 — 2026-11-23
 
 ### Online capacity

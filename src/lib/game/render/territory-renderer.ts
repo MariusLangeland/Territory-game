@@ -1,4 +1,4 @@
-import { PALETTE, RENDER_TILE_SIZE } from '../constants';
+import { CHANGE_INDEX_BITS, CHANGE_INDEX_MASK, PALETTE, RENDER_TILE_SIZE } from '../constants';
 
 /** Minimal simulation surface needed to upload and sample the control texture. */
 export interface TerritoryRenderSource {
@@ -293,8 +293,8 @@ export class TerritoryRenderer {
 
 		for (let i = 0; i < count; i++) {
 			const packed = changes[i];
-			const owner = packed >>> 21;
-			const index = packed & 0x1f_ffff;
+			const owner = packed >>> CHANGE_INDEX_BITS;
+			const index = packed & CHANGE_INDEX_MASK;
 			const x = index % width;
 			const y = (index - x) / width;
 			if (x < 0 || y < 0 || x >= width || y >= height) continue;

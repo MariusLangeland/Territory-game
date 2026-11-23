@@ -72,7 +72,7 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 
 `TerritorySimulation` is the single source of truth for:
 
-- `owners: Uint16Array` — length 2,097,152; owner id per cell, `0` for unclaimed.
+- `owners: Uint16Array` — length `width * height`; owner id per cell, `0` for unclaimed.
 - `land: Uint8Array` — static land mask.
 - `shade: Uint8Array` — static terrain brightness for the renderer.
 - `elevation: Uint8Array` — six discrete terrain tiers; base defense = `1 + elevation`.
@@ -107,17 +107,17 @@ The public arrays are exposed read-only-by-convention for the renderer and minim
 - The renderer only needs a byte per owner. It packs changed cells as:
 
 ```text
- 31                    21 20                    0
+ 31                    26 25                    0
 ┌───────────────────────┬───────────────────────┐
-│ owner (11 bits used)  │ pixel index (21 bits) │
+│ owner (6 bits used)   │ pixel index (26 bits) │
 └───────────────────────┴───────────────────────┘
 ```
 
-Because `2048 × 1024 = 2²¹`, indices fit exactly. Decode:
+The 26-bit index supports arbitrary rectangular atlases up to **67,108,864 cells** and **8192 px per side**, with six owner bits reserved for the existing 64-seat headroom. Decode:
 
 ```ts
-const owner = packed >>> 21;
-const index = packed & 0x1f_ffff;
+const owner = packed >>> 26;
+const index = packed & 0x3ffffff;
 ```
 
 ### 3.3 Change buffer
@@ -394,7 +394,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - CSS screen space: canvas client pixels.
 - Physical GPU space: CSS multiplied by DPR (capped at 2).
 - `MapCamera` owns center, zoom, fit scale, screen-to-map and map-to-screen. There is no edge pan clamp: edge states can be dragged toward the viewport center to escape HUD occlusion, showing ocean/void beyond the map.
-- `generateMap(seed, options)` supports runtime state count and map dimensions while preserving the default 2048×1024/51-state output. `TerritorySimulation` stores `playerCount`; per-player arrays and grievance/attacker matrices are sized from it.
+- `generateMap(seed, options)` supports runtime state count and arbitrary map dimensions up to 8192 px per side / 2^26 cells; the default is 4096×2048 with 51 states. `TerritorySimulation` stores `playerCount`; per-player arrays and grievance/attacker matrices are sized from it.
 - `ai/options.ts` defines the committed strategic-option layer above tactical utility scoring.
 - `ai/markov.ts` defines the genome-v2 semi-Markov strategic controller: state graph, option labels, per-state biases/dwell, observation-conditioned transitions, validity repair, structural mutation, and labeled crossover.
 - `ai/evolution.worker.ts` owns the Evolution Lab sandbox and simulation loop off the UI thread. It posts compact visual deltas plus a read-only snapshot; `ai/evolution-view.ts` mirrors the current match on the main thread for the renderer, camera, hover readout, and selection. `ai/evolution-worker-protocol.ts` defines the command/message boundary.

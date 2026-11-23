@@ -34,6 +34,10 @@ import {
 	MAP_HEIGHT,
 	MAP_WIDTH,
 	MAP_VERSION,
+	MAX_MAP_CELLS,
+	MAX_MAP_DIMENSION,
+	MIN_MAP_HEIGHT,
+	MIN_MAP_WIDTH,
 	NAVAL_SPEED_PX_PER_SECOND,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
@@ -368,9 +372,13 @@ function renderMatch(): string {
 			`- \`${mode}\` — ${GROWTH_LABELS[mode]}: retained for internal tests and benchmarks only.`
 		);
 	}
+	lines.push('', '### Atlas limits', '');
+	lines.push(
+		`Custom atlases accept width ${MIN_MAP_WIDTH}–${MAX_MAP_DIMENSION} px, height ${MIN_MAP_HEIGHT}–${MAX_MAP_DIMENSION} px, and at most ${MAX_MAP_CELLS.toLocaleString('en-US')} total cells.`
+	);
 	lines.push('', '### Default match settings', '');
 	lines.push(
-		`\`states\` = \`${DEFAULT_MATCH_SETTINGS.states}\`, \`mapPreset\` = \`${DEFAULT_MATCH_SETTINGS.mapPreset}\`, \`difficulty\` = \`${DEFAULT_MATCH_SETTINGS.difficulty}\`, \`timerMinutes\` = \`${DEFAULT_MATCH_SETTINGS.timerMinutes}\`, \`botCommandPostStacks\` = \`${DEFAULT_MATCH_SETTINGS.botCommandPostStacks}\`.`
+		`\`states\` = \`${DEFAULT_MATCH_SETTINGS.states}\`, \`mapPreset\` = \`${DEFAULT_MATCH_SETTINGS.mapPreset}\`, \`mapWidth\` = \`${DEFAULT_MATCH_SETTINGS.mapWidth}\`, \`mapHeight\` = \`${DEFAULT_MATCH_SETTINGS.mapHeight}\`, \`difficulty\` = \`${DEFAULT_MATCH_SETTINGS.difficulty}\`, \`timerMinutes\` = \`${DEFAULT_MATCH_SETTINGS.timerMinutes}\`, \`botCommandPostStacks\` = \`${DEFAULT_MATCH_SETTINGS.botCommandPostStacks}\`.`
 	);
 	return lines.join('\n');
 }

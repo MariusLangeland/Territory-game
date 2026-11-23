@@ -3,6 +3,10 @@ import {
 	LAND_FRACTION,
 	MAP_HEIGHT,
 	MAP_WIDTH,
+	MAX_MAP_CELLS,
+	MAX_MAP_DIMENSION,
+	MIN_MAP_HEIGHT,
+	MIN_MAP_WIDTH,
 	PLAYER_COUNT,
 	START_RADIUS
 } from './constants';
@@ -265,8 +269,25 @@ export function generateMap(seed: number, options: MapGenerationOptions = {}): G
 	const width = options.width ?? MAP_WIDTH;
 	const height = options.height ?? MAP_HEIGHT;
 	const playerCount = options.playerCount ?? PLAYER_COUNT;
-	if (width < 256 || height < 256) {
-		throw new Error(`Map dimensions must be at least 256 x 256, received ${width} x ${height}.`);
+	if (
+		!Number.isSafeInteger(width) ||
+		!Number.isSafeInteger(height) ||
+		width < MIN_MAP_WIDTH ||
+		height < MIN_MAP_HEIGHT
+	) {
+		throw new Error(
+			`Map dimensions must be integers of at least ${MIN_MAP_WIDTH} x ${MIN_MAP_HEIGHT}, received ${width} x ${height}.`
+		);
+	}
+	if (width > MAX_MAP_DIMENSION || height > MAX_MAP_DIMENSION) {
+		throw new Error(
+			`Map dimensions cannot exceed ${MAX_MAP_DIMENSION} px per side, received ${width} x ${height}.`
+		);
+	}
+	if (width * height > MAX_MAP_CELLS) {
+		throw new Error(
+			`Map cannot exceed ${MAX_MAP_CELLS.toLocaleString()} cells, received ${(width * height).toLocaleString()}.`
+		);
 	}
 	if (playerCount < 2) throw new Error('A match needs at least two states.');
 	const cacheKey = `${seed >>> 0}:${width}x${height}:${playerCount}`;

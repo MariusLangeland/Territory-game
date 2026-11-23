@@ -12,7 +12,7 @@ describe('match settings', () => {
 	it('provides deterministic presets and state-count options', () => {
 		expect(STATE_COUNT_OPTIONS).toContain(51);
 		expect(MAP_PRESETS.map((preset) => preset.id)).toEqual(['standard', 'compact', 'clash']);
-		expect(mapPreset('compact')).toMatchObject({ width: 1536, height: 768 });
+		expect(mapPreset('compact')).toMatchObject({ width: 3072, height: 1536 });
 	});
 
 	it('normalizes invalid or partial saved settings back to supported values', () => {
@@ -23,6 +23,25 @@ describe('match settings', () => {
 			timerMinutes: 11
 		});
 		expect(normalized).toEqual(DEFAULT_MATCH_SETTINGS);
+	});
+
+	it('accepts arbitrary valid atlas dimensions and rejects unsafe ones', () => {
+		expect(normalizeMatchSettings({ mapWidth: 3000, mapHeight: 2000 })).toMatchObject({
+			mapWidth: 3000,
+			mapHeight: 2000
+		});
+		expect(normalizeMatchSettings({ mapWidth: 99999, mapHeight: 2000 })).toMatchObject({
+			mapWidth: DEFAULT_MATCH_SETTINGS.mapWidth,
+			mapHeight: 2000
+		});
+		expect(normalizeMatchSettings({ mapWidth: 8192, mapHeight: 8192 })).toMatchObject({
+			mapWidth: 8192,
+			mapHeight: 8192
+		});
+		expect(normalizeMatchSettings({ mapWidth: 8192, mapHeight: 8256 })).toMatchObject({
+			mapWidth: 8192,
+			mapHeight: DEFAULT_MATCH_SETTINGS.mapHeight
+		});
 	});
 
 	it('detects changed settings', () => {

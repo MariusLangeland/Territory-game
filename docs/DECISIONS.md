@@ -3195,3 +3195,41 @@ the next scale step beyond this target.
 - Memory is bounded enough for a modest host; room map choice is part of the
   support contract.
 - 200 is a validated ceiling, not an invitation to unbounded room creation.
+
+---
+
+## ADR-099 — Arbitrary atlas dimensions with 26-bit change indices
+
+**Status:** accepted; implemented  
+**Date:** 2026-11-23
+
+### Context
+
+The original atlas was 2048×1024 and ownership-change packets reserved only 21
+bits for the pixel index, which capped the simulation at 2²¹ cells. Increasing
+the world size and supporting arbitrary rectangular atlases required a wire and
+map-version change.
+
+### Decision
+
+- Raise the default local atlas to **4096×2048** (8,388,608 cells).
+- Support arbitrary rectangular dimensions within **512–8192 px per side** and
+  **2²⁶ total cells**.
+- Expand packed ownership changes to **26 index bits + 6 owner bits** in a
+  Uint32; decode with packed >>> 26 and packed & 0x3ffffff.
+- Validate dimensions in generateMap; match settings normalize invalid sizes
+  back to the selected preset.
+- Expose custom width/height in match setup.
+- Bump MAP_VERSION to 5 and wire protocol to 41.
+- Keep online rooms on their compact arena for the 200-player capacity target;
+  online room config already accepts explicit dimensions.
+
+### Consequences
+
+- Every simulation path, renderer delta, evolution mirror, and online payload
+  uses the wider packing.
+- Full-map checksum cost grows with atlas area (~64 ms at the default size);
+  it remains an on-demand operation.
+- The 8192-per-side and 2²⁶-cell ceilings are GPU/texture and packed-wire limits,
+  not arbitrary constants; larger atlases would require a wider change packet
+  format.

@@ -1,3 +1,4 @@
+import { CHANGE_INDEX_BITS, CHANGE_INDEX_MASK } from '../constants';
 import type { PublicStructure, StructureType } from '../Structures';
 import type { GameSnapshot } from '../simulation';
 import type { StartPoint } from '../map';
@@ -102,8 +103,8 @@ export class RemoteEvolutionSimulation {
 		} else {
 			for (let index = 0; index < visual.changeCount; index++) {
 				const packed = visual.changes[index] ?? 0;
-				const cell = packed & 0x1fffff;
-				const owner = packed >>> 21;
+				const cell = packed & CHANGE_INDEX_MASK;
+				const owner = packed >>> CHANGE_INDEX_BITS;
 				if (cell < this.owners.length) this.owners[cell] = owner;
 			}
 			if (visual.districtTileColors && visual.districtTiles.length > 0) {

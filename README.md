@@ -1,6 +1,6 @@
 # TERRITORY
 
-**A deterministic, WebGPU-rendered pixel territory war.** Every pixel of the 2048 × 1024 atlas is land, ocean, or somebody's country.
+**A deterministic, WebGPU-rendered pixel territory war.** Every pixel of the 4096 × 2048 atlas is land, ocean, or somebody's country.
 
 ![Territory Frontage v1](docs/media/gameplay.png)
 
@@ -17,7 +17,7 @@
 >
 > **AI commanders:** main-game bots are seeded from **21 gauntlet survivors** (seed 1236, run 24), followed by any locally saved Evolution Lab buckets. Genomes carry deterministic personality traits, per-type structure affinities, and optional semi-Markov strategic controllers. Every bot opens with a shared supply ramp, scores build/upgrade actions by affinity, threat, income, cap pressure, novelty, diminishing returns, and affordability, and converts strategic modes into build/attack priorities. Attack frequency is target-utility driven rather than a flat aggression roll; high-value grudges/opportunities attract attacks, while threatened or saving bots hold supply.
 >
-> The main game runs **8–51 states** (default 51: 1 human + 50 AI), three map presets, locked organic growth, optional match timers, and three bot difficulties. The **Evolution Lab** runs worker-driven population evolution and a **64-bot, 3-life gauntlet** with top-16 life recovery, JSON state export/import, and IndexedDB session restore. Online multiplayer remains specified but **not wired up**.
+> The main game runs **8–51 states** (default 51: 1 human + 50 AI), three map presets with arbitrary custom atlas sizes, locked organic growth, optional match timers, and three bot difficulties. The **Evolution Lab** runs worker-driven population evolution and a **64-bot, 3-life gauntlet** with top-16 life recovery, JSON state export/import, and IndexedDB session restore. Online multiplayer rooms are wired through an authoritative HTTP/SSE server.
 >
 > **Rules source of truth:** code and tests are authoritative; generated values live in [docs/REFERENCE.md](docs/REFERENCE.md) (`pnpm docs:reference`, checked by `pnpm docs:check`). AI balance results live in [docs/AI_BALANCE.md](docs/AI_BALANCE.md); headless evolution findings live in [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md).
 
@@ -28,7 +28,7 @@
 | Area            | Implementation                                                                                                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                                               |
-| Large pixel map | 2,097,152 ownership cells rendered from a single GPU control texture, nearest-neighbour sampled, with pixel-grid and terrain shader detail                                                     |
+| Large pixel map | 8,388,608 ownership cells by default; arbitrary atlas dimensions up to 8192 px per side and 67M total cells, rendered from one GPU control texture                                             |
 | Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically                                 |
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                             |
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                               |
@@ -43,7 +43,7 @@
 | AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                              |
 | AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                      |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                          |
-| Match setup     | State count, three map presets, bot difficulty, optional timer, 500-stack bot Command Post surge, saved defaults                                                                               |
+| Match setup     | State count, three map presets or custom width/height, bot difficulty, optional timer, 500-stack bot Command Post surge, saved defaults                                                        |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                       |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                    |
@@ -354,7 +354,7 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
-- Match setup chooses states/map/difficulty/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
+- Match setup chooses states/map size/difficulty/timer and an optional 500-stack bot Command Post surge. Online rooms are in-memory only; there is no persistent lobby yet.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
 - Online rooms are an in-memory MVP: up to eight humans, bots fill empty seats, HTTP commands, and SSE snapshots. The single-process support target is 200 concurrent players at 10 Hz (25 rooms × 8 humans), enforced by `pnpm bench:online`. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.

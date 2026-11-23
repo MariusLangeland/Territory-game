@@ -148,7 +148,9 @@ describe('ports and naval landings', () => {
 	});
 
 	it('snaps Port placement from a nearby water tile to owned shoreline', () => {
-		const sim = new TerritorySimulation({ seed: 2 });
+		// A compact atlas keeps this fixture coastal without weakening the
+		// arbitrary-size map contract.
+		const sim = new TerritorySimulation({ seed: 2, width: 1024, height: 512 });
 		const card = sim.hand.find((entry) => entry.type === 'port');
 		expect(card).toBeDefined();
 		if (!card) return;
@@ -181,7 +183,7 @@ describe('ports and naval landings', () => {
 	});
 
 	it('allows a Port inside another structure district', () => {
-		const sim = new TerritorySimulation({ seed: 2 });
+		const sim = new TerritorySimulation({ seed: 2, width: 1024, height: 512 });
 		const card = sim.hand.find((entry) => entry.type === 'port');
 		expect(card).toBeDefined();
 		if (!card) return;

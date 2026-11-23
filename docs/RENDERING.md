@@ -6,7 +6,7 @@ The renderer is WebGPU-only and designed around one large raster map with small,
 
 ## 1. Renderer goals
 
-1. Display a 2048 × 1024 pixel ownership map crisply at any zoom.
+1. Display the default 4096 × 2048 pixel ownership map (and arbitrary supported atlas sizes) crisply at any zoom.
 2. Update the GPU texture without re-uploading the full map when a few pixels change.
 3. Keep the fragment shader cheap enough for a full-screen pass at 60–144 fps.
 4. Survive GPU device loss and shader failures with a clear error state.
@@ -17,7 +17,7 @@ The renderer is WebGPU-only and designed around one large raster map with small,
 ## 2. Pipeline
 
 ```text
-CPU control shadow (RGBA8, 2048 × 1024)
+CPU control shadow (RGBA8, map-sized)
         │ 32 × 32 dirty tiles / adaptive full resync chunks
         ▼
 queue.writeTexture (partial updates)
@@ -93,7 +93,7 @@ Why not upload owner only as R8? A single RGBA8 texture keeps sampling simple an
 
 District geometry changes are local too. A new or destroyed buildable reports the 32 × 32 tiles whose district palette can change; the renderer rewrites only the packed alpha bytes for those tiles and sends them through the same dirty-tile upload path. It no longer rebuilds the whole 2.1M-pixel control texture when a bot builds a structure. Full resync remains the fallback for overflow, reconnect, GPU reset, or an explicit rebuild.
 
-The CPU shadow is `Uint8Array(2048 * 1024 * 4) = 8 MiB`. The GPU texture is another 8 MiB. This is acceptable for the target map size.
+The CPU shadow is `Uint8Array(width * height * 4)`; the default 4096 × 2048 atlas is 32 MiB, and the GPU texture is another 32 MiB.
 
 ### Palette
 
@@ -169,7 +169,7 @@ No vertex buffers, no index buffers.
 | ------------------- | --------------------------------------------------------------------------- |
 | `resolution`        | Physical framebuffer size                                                   |
 | `camera`            | Map-space center                                                            |
-| `mapSize`           | 2048 × 1024                                                                 |
+| `mapSize`           | 4096 × 2048 default; arbitrary supported dimensions                         |
 | `hover`             | Hovered map cell, negative when none                                        |
 | `scale`             | Physical pixels per map pixel                                               |
 | `time`              | Seconds for ocean animation                                                 |

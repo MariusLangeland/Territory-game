@@ -1,3 +1,4 @@
+import { MAX_MAP_CELLS, MAX_MAP_DIMENSION, MIN_MAP_HEIGHT, MIN_MAP_WIDTH } from './constants';
 import type { BotDifficulty } from './simulation';
 
 export type MapPresetId = 'standard' | 'compact' | 'clash';
@@ -10,9 +11,9 @@ export interface MapPreset {
 }
 
 export const MAP_PRESETS: readonly MapPreset[] = [
-	{ id: 'standard', label: 'STANDARD · 2048×1024', width: 2048, height: 1024 },
-	{ id: 'compact', label: 'COMPACT · 1536×768', width: 1536, height: 768 },
-	{ id: 'clash', label: 'CLASH · 1280×720', width: 1280, height: 720 }
+	{ id: 'standard', label: 'STANDARD · 4096×2048', width: 4096, height: 2048 },
+	{ id: 'compact', label: 'COMPACT · 3072×1536', width: 3072, height: 1536 },
+	{ id: 'clash', label: 'CLASH · 2560×1440', width: 2560, height: 1440 }
 ] as const;
 
 export const STATE_COUNT_OPTIONS = [8, 16, 24, 32, 51] as const;
@@ -35,6 +36,9 @@ export const BOT_COMMAND_POST_STACK_OPTIONS = [0, 500] as const;
 export interface MatchSettings {
 	states: number;
 	mapPreset: MapPresetId;
+	/** Arbitrary rectangular atlas size; validated against the map limits. */
+	mapWidth: number;
+	mapHeight: number;
 	difficulty: BotDifficulty;
 	timerMinutes: number;
 	botCommandPostStacks: number;
@@ -43,6 +47,8 @@ export interface MatchSettings {
 export const DEFAULT_MATCH_SETTINGS: MatchSettings = {
 	states: 51,
 	mapPreset: 'standard',
+	mapWidth: 4096,
+	mapHeight: 2048,
 	difficulty: 'standard',
 	timerMinutes: 0,
 	botCommandPostStacks: 0
@@ -61,6 +67,19 @@ export function normalizeMatchSettings(value: Partial<MatchSettings> | null): Ma
 	const mapPresetId = MAP_PRESETS.some((preset) => preset.id === value?.mapPreset)
 		? (value?.mapPreset ?? DEFAULT_MATCH_SETTINGS.mapPreset)
 		: DEFAULT_MATCH_SETTINGS.mapPreset;
+	const preset = mapPreset(mapPresetId);
+	const dimension = (candidate: number | undefined, fallback: number, minimum: number): number =>
+		Number.isSafeInteger(candidate) &&
+		(candidate ?? 0) >= minimum &&
+		(candidate ?? 0) <= MAX_MAP_DIMENSION
+			? Number(candidate)
+			: fallback;
+	let mapWidth = dimension(value?.mapWidth, preset.width, MIN_MAP_WIDTH);
+	let mapHeight = dimension(value?.mapHeight, preset.height, MIN_MAP_HEIGHT);
+	if (mapWidth * mapHeight > MAX_MAP_CELLS) {
+		mapWidth = preset.width;
+		mapHeight = preset.height;
+	}
 	const difficulty = BOT_DIFFICULTY_OPTIONS.some((option) => option.id === value?.difficulty)
 		? (value?.difficulty ?? DEFAULT_MATCH_SETTINGS.difficulty)
 		: DEFAULT_MATCH_SETTINGS.difficulty;
@@ -75,6 +94,8 @@ export function normalizeMatchSettings(value: Partial<MatchSettings> | null): Ma
 	return {
 		states,
 		mapPreset: mapPresetId,
+		mapWidth,
+		mapHeight,
 		difficulty,
 		timerMinutes,
 		botCommandPostStacks
@@ -102,6 +123,8 @@ export function matchSettingsEqual(left: MatchSettings, right: MatchSettings): b
 	return (
 		left.states === right.states &&
 		left.mapPreset === right.mapPreset &&
+		left.mapWidth === right.mapWidth &&
+		left.mapHeight === right.mapHeight &&
 		left.difficulty === right.difficulty &&
 		left.timerMinutes === right.timerMinutes &&
 		left.botCommandPostStacks === right.botCommandPostStacks

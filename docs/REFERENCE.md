@@ -20,7 +20,7 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:version START -->
 
-- App version: `0.74.1` (from `package.json` `version`).
+- App version: `0.75.0` (from `package.json` `version`).
 
 <!-- AUTOGEN:version END -->
 
@@ -30,11 +30,11 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.ts`.
 
-- `PROTOCOL_VERSION` — simulation protocol revision: `40`.
-- `NET_PROTOCOL_VERSION` — wire protocol revision: `40`.
-- `MAP_VERSION` — map generation revision: `4`.
-- `MAP_WIDTH` — map width in pixels: `2048`.
-- `MAP_HEIGHT` — map height in pixels: `1024`.
+- `PROTOCOL_VERSION` — simulation protocol revision: `41`.
+- `NET_PROTOCOL_VERSION` — wire protocol revision: `41`.
+- `MAP_VERSION` — map generation revision: `5`.
+- `MAP_WIDTH` — map width in pixels: `4096`.
+- `MAP_HEIGHT` — map height in pixels: `2048`.
 - `PLAYER_COUNT` — maximum states per match: `51`.
 - `NAVAL_SPEED_PX_PER_SECOND` — boat speed along a sea route: `80`.
 - `TICK_RATE` — simulation ticks per second: `10`.
@@ -172,9 +172,9 @@ Presets come from `src/lib/game/match-config.ts`; growth layers come from `src/l
 
 ### Map presets
 
-- `standard` — STANDARD · 2048×1024 (width 2048 px, height 1024 px).
-- `compact` — COMPACT · 1536×768 (width 1536 px, height 768 px).
-- `clash` — CLASH · 1280×720 (width 1280 px, height 720 px).
+- `standard` — STANDARD · 4096×2048 (width 4096 px, height 2048 px).
+- `compact` — COMPACT · 3072×1536 (width 3072 px, height 1536 px).
+- `clash` — CLASH · 2560×1440 (width 2560 px, height 1440 px).
 
 ### State count
 
@@ -202,8 +202,12 @@ Player matches are locked to `organic` growth (ORGANIC: Deterministic random fro
 - `circular` — CIRCULAR: retained for internal tests and benchmarks only.
 - `smooth` — SMOOTH: retained for internal tests and benchmarks only.
 
+### Atlas limits
+
+Custom atlases accept width 512–8192 px, height 256–8192 px, and at most 67,108,864 total cells.
+
 ### Default match settings
 
-`states` = `51`, `mapPreset` = `standard`, `difficulty` = `standard`, `timerMinutes` = `0`, `botCommandPostStacks` = `0`.
+`states` = `51`, `mapPreset` = `standard`, `mapWidth` = `4096`, `mapHeight` = `2048`, `difficulty` = `standard`, `timerMinutes` = `0`, `botCommandPostStacks` = `0`.
 
 <!-- AUTOGEN:match END -->

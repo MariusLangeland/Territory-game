@@ -10,9 +10,18 @@
  * bump PROTOCOL_VERSION and the map version whenever a value here changes.
  */
 
-export const MAP_WIDTH = 2048;
-export const MAP_HEIGHT = 1024;
-export const MAP_VERSION = 4;
+export const MAP_WIDTH = 4096;
+export const MAP_HEIGHT = 2048;
+/** Smallest supported atlas. */
+export const MIN_MAP_WIDTH = 512;
+export const MIN_MAP_HEIGHT = 256;
+/** WebGPU texture dimension limit respected by every supported device. */
+export const MAX_MAP_DIMENSION = 8192;
+/** Change packets reserve 26 index bits and 6 owner bits in a Uint32. */
+export const CHANGE_INDEX_BITS = 26;
+export const CHANGE_INDEX_MASK = (1 << CHANGE_INDEX_BITS) - 1;
+export const MAX_MAP_CELLS = 1 << CHANGE_INDEX_BITS;
+export const MAP_VERSION = 5;
 
 export const TICK_RATE = 10;
 export const TICK_MS = 1000 / TICK_RATE;
@@ -236,7 +245,7 @@ export const BOT_OPTION_MAX_TICKS = 90;
 export const BOT_OPTION_SWITCH_MARGIN = 18;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
-export const PROTOCOL_VERSION = 40;
+export const PROTOCOL_VERSION = 41;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

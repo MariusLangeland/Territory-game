@@ -32,8 +32,8 @@ This directory is the long-term reference for the project. Start with the specif
 
 | Surface                | Version          | Defined in                                                 |
 | ---------------------- | ---------------- | ---------------------------------------------------------- |
-| Map + start generation | `4`              | `MAP_VERSION` in `src/lib/game/constants.ts`               |
-| Wire protocol          | `40`             | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts`   |
+| Map + start generation | `5`              | `MAP_VERSION` in `src/lib/game/constants.ts`               |
+| Wire protocol          | `41`             | `NET_PROTOCOL_VERSION` in `src/lib/game/net/protocol.ts`   |
 | Application            | see package.json | `package.json`                                             |
 | Generated rules        | `REFERENCE.md`   | `scripts/docs-reference.ts` (code/tests are authoritative) |
 | Simulation tick rate   | 10 Hz            | `TICK_RATE` in `src/lib/game/constants.ts`                 |

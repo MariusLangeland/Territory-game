@@ -416,7 +416,7 @@ human snapshot, or for all players if the server wants a readable scoreboard —
   JSON, and the protocol `hello`. Old stress checksums are keyed by the rules version.
 - Bump `PROTOCOL_VERSION` from its value at implementation time (30 when this proposal was written;
   concurrent non-combat work may advance it first), because attack and player payloads change.
-- `MAP_VERSION` stays 4: no map or elevation change.
+- `MAP_VERSION` becomes 5 for the larger default atlas; elevation rules are unchanged.
 - Add `SimulationOptions.combatRules: 'stress' | 'frontage'`. Default stays `'stress'` until the
   change is approved and the validation gates pass; then flip the default to `'frontage'` and keep
   `'stress'` for the 51-state benchmark. On a server this is authoritative match configuration, never

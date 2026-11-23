@@ -65,7 +65,7 @@ function visual(overrides: Partial<WorkerVisual> = {}): WorkerVisual {
 describe('RemoteEvolutionSimulation', () => {
 	it('applies worker owner and district deltas without stepping', () => {
 		const view = new RemoteEvolutionSimulation(init());
-		const changes = new Uint32Array([(2 << 21) | 10, (3 << 21) | 11]);
+		const changes = new Uint32Array([(2 << 26) | 10, (3 << 26) | 11]);
 		const districtTileColors = new Uint8Array(32 * 32);
 		districtTileColors[3] = 7;
 		view.applyVisual(

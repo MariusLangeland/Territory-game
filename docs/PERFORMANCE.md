@@ -48,17 +48,17 @@ Environment: Windows, Node.js 24.21, development hardware. Benchmark seeds: `0xb
 
 | Operation                                               | Result          |
 | ------------------------------------------------------- | --------------- |
-| Generate 2048 × 1024 map + 51 starts                    | **~230 ms/op**  |
-| Sustained all-bot attack tick                           | **~3.3 ms/op**  |
-| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~3.2 ms/op**  |
-| Circular layer comparison tick                          | **~2.6 ms/op**  |
-| Smooth layer comparison tick                            | **~3.1 ms/op**  |
-| Organic layer comparison tick                           | **~3.2 ms/op**  |
-| Full-state checksum                                     | **~16.2 ms/op** |
+| Generate 4096 × 2048 map + 51 starts                    | **~879 ms/op**  |
+| Sustained all-bot attack tick                           | **~2.6 ms/op**  |
+| All-bot attack tick (collision-heavy, 100 ticks warmed) | **~2.1 ms/op**  |
+| Circular layer comparison tick                          | **~2.0 ms/op**  |
+| Smooth layer comparison tick                            | **~2.3 ms/op**  |
+| Organic layer comparison tick                           | **~1.9 ms/op**  |
+| Full-state checksum                                     | **~64.3 ms/op** |
 | Active attacks after sustained run                      | ~10–24 fronts   |
 | Node RSS (all benchmark simulations)                    | ~296 MiB        |
 
-At 10 Hz, 2.6–3.3 ms per tick is roughly **2.6–3.3% of a 100 ms tick budget**. The derived structure-stack cache keeps per-tick income and per-launch attack stats independent of total structure count. The least-resistance sampler adds 10 frontier operations per capture; smooth remains the most expensive layer. The exact number varies with active fronts, mode, how much of the map is contested, and how many states still hold a State structure. Smooth is the most expensive layer because it scans the nearest radial band and scores candidates for attacker-neighbour count. Attack orders reduce active fronts relative to the old free-front model; defense, capital auras, conflict cancellation, and structure loss further reduce capture volume.
+At 10 Hz, 2.1–2.6 ms per tick is roughly **2.1–2.6% of a 100 ms tick budget** on the default 4096 × 2048 atlas. Benchmark RSS is ~1.2 GiB with all simulations resident, and the full-state checksum is ~64 ms so it stays an on-demand operation.
 
 ### 2.2 Browser baseline
 
