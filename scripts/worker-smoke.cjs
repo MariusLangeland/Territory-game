@@ -65,7 +65,8 @@ let init = null;
 let initMs = 0;
 let ticks = 0;
 let ticksAtPause = 0;
-let commandResult = null;
+const commandResults = new Map();
+let expectedCommandCount = 0;
 let failures = [];
 let phase = 'init';
 
@@ -89,11 +90,30 @@ worker.on('message', (message) => {
 		if (init.owners.length !== width * height) failures.push('owners');
 		if (!Array.isArray(init.mergedDistricts)) failures.push('merged init');
 		phase = 'running';
-		worker.postMessage({
-			type: 'command',
-			id: 1,
-			command: { type: 'alliance-request', targetPlayerId: 2 }
-		});
+		const start = init.starts[0];
+		const cardId = init.snapshot.hand[0]?.id ?? 0;
+		const ownStructure = init.snapshot.structures.find(
+			(structure) => structure.ownerId === init.snapshot.humanId && structure.type !== 'state'
+		);
+		const commands = [
+			{ type: 'alliance-request', targetPlayerId: 2 },
+			{ type: 'build', cardId, x: start.x, y: start.y },
+			{ type: 'attack', x: start.x + 10, y: start.y },
+			{ type: 'artillery', x: start.x, y: start.y },
+			{ type: 'demolish', structureId: ownStructure?.id ?? 0 },
+			{ type: 'upgrade', x: start.x, y: start.y, levels: 1, merged: true },
+			{ type: 'naval', x: start.x + 50, y: start.y },
+			{ type: 'cancel-attack' },
+			{ type: 'alliance-break', targetPlayerId: 2 }
+		];
+		expectedCommandCount = commands.length;
+		for (let index = 0; index < commands.length; index++) {
+			worker.postMessage({
+				type: 'command',
+				id: index + 1,
+				command: commands[index]
+			});
+		}
 		worker.postMessage({ type: 'resume' });
 		return;
 	}
@@ -112,19 +132,28 @@ worker.on('message', (message) => {
 		if (phase === 'pausing') {
 			phase = 'paused';
 			ticksAtPause = ticks;
-			setTimeout(finish, 400);
+			scheduleFinish();
 		}
 		return;
 	}
 	if (message.type === 'command-result') {
-		commandResult = { ok: message.ok, id: message.id, message: message.message };
-		if (message.id !== 1) failures.push('command id');
+		if (message.id < 1 || message.id > expectedCommandCount) failures.push('command id');
+		if (commandResults.has(message.id)) failures.push('duplicate command id');
+		commandResults.set(message.id, { ok: message.ok, message: message.message });
+		if (phase === 'paused' && commandResults.size === expectedCommandCount) scheduleFinish();
 	}
 });
+
+let finishTimer = null;
+function scheduleFinish() {
+	if (finishTimer) return;
+	finishTimer = setTimeout(finish, 400);
+}
 
 function finish() {
 	clearTimeout(timeout);
 	if (ticks !== ticksAtPause) failures.push('ticks advanced while paused');
+	if (commandResults.size !== expectedCommandCount) failures.push('missing command results');
 	phase = 'done';
 	console.log(
 		JSON.stringify({
@@ -136,10 +165,12 @@ function finish() {
 			initMs,
 			elapsedMs: Date.now() - startedAt,
 			ticks,
-			commandResult,
+			commandResults: [...commandResults.entries()],
 			failures
 		})
 	);
 	worker.terminate();
-	process.exit(failures.length > 0 || ticks < 5 || !commandResult ? 1 : 0);
+	process.exit(
+		failures.length > 0 || ticks < 5 || commandResults.size !== expectedCommandCount ? 1 : 0
+	);
 }
