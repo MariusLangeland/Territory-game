@@ -96,6 +96,7 @@ pnpm format     # Prettier write
 | Shift + click your district | Queue 5 upgrades at once                                        |
 | Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
 | Right-click a structure     | Open structure actions; first item demolishes it (no refund)    |
+| Right-click rival territory | Open rival actions; request alliance (not implemented yet)      |
 | `1`–`7`                     | Start placing that card; left-click builds, right-click cancels |
 | Drag                        | Pan the map                                                     |
 | Scroll                      | Zoom at the pointer                                             |

@@ -59,12 +59,14 @@
 	interface StructureContextMenu {
 		x: number;
 		y: number;
-		structureId: number;
+		structureId: number | null;
 		ownerId: number;
 		typeLabel: string;
 		stacks: number;
 		isOwn: boolean;
 		isState: boolean;
+		allianceOwnerId: number | null;
+		allianceName: string;
 	}
 
 	let sim = $state<TerritorySimulation | null>(null);
@@ -849,6 +851,17 @@
 		return best;
 	}
 
+	function ownerAtScreen(clientX: number, clientY: number): number {
+		if (!sim || !cameraView) return 0;
+		const mapX =
+			cameraView.centerX +
+			(clientX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
+		const mapY =
+			cameraView.centerY +
+			(clientY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
+		return sim.getOwner(Math.floor(mapX), Math.floor(mapY));
+	}
+
 	function handleContextMenu(event: MouseEvent): void {
 		event.preventDefault();
 		const target = event.target as HTMLElement;
@@ -869,19 +882,23 @@
 			return;
 		}
 		const structure = structureAtScreen(event.clientX, event.clientY);
-		if (!structure) return;
-		const isOwn = structure.ownerId === snapshot.humanId;
+		const ownerId = structure?.ownerId ?? ownerAtScreen(event.clientX, event.clientY);
+		const isOpponent = ownerId > 0 && ownerId !== snapshot.humanId;
+		if (!structure && !isOpponent) return;
+		const isOwn = ownerId === snapshot.humanId;
 		const menuWidth = 264;
-		const menuHeight = 122;
+		const menuHeight = structure ? 186 : 104;
 		structureMenu = {
 			x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
 			y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-			structureId: structure.id,
-			ownerId: structure.ownerId,
-			typeLabel: STRUCTURE_DEFINITIONS[structure.type].label,
-			stacks: structure.stacks,
+			structureId: structure?.id ?? null,
+			ownerId,
+			typeLabel: structure ? STRUCTURE_DEFINITIONS[structure.type].label : '',
+			stacks: structure?.stacks ?? 0,
 			isOwn,
-			isState: structure.type === 'state'
+			isState: structure?.type === 'state',
+			allianceOwnerId: isOpponent ? ownerId : null,
+			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : ''
 		};
 	}
 
@@ -898,13 +915,18 @@
 	function demolishStructure(): void {
 		const menu = structureMenu;
 		structureMenu = null;
-		if (!menu || !sim || !menu.isOwn || menu.isState) return;
+		if (!menu || !sim || menu.structureId === null || !menu.isOwn || menu.isState) return;
 		if (paused) {
 			showToast('Resume the simulation before demolishing.', 'warn');
 			return;
 		}
 		const result = sim.demolishStructure(HUMAN_PLAYER_ID, menu.structureId);
 		showToast(result.message, result.ok ? 'success' : 'error');
+	}
+
+	function requestAlliance(): void {
+		// Placeholder: alliance mechanics are not implemented yet.
+		structureMenu = null;
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -1227,35 +1249,49 @@
 			class="context-menu"
 			role="menu"
 			tabindex="-1"
-			aria-label="Structure actions"
+			aria-label="Map actions"
 			style={`left:${structureMenu.x}px;top:${structureMenu.y}px`}
 			oncontextmenu={(event) => event.preventDefault()}
 			onpointerdown={(event) => event.stopPropagation()}
 		>
-			<button
-				type="button"
-				class="context-item context-demolish"
-				role="menuitem"
-				disabled={!structureMenu.isOwn || structureMenu.isState || paused}
-				title={!structureMenu.isOwn
-					? 'You can only demolish your own structures.'
-					: structureMenu.isState
-						? 'The State structure cannot be demolished.'
-						: paused
-							? 'Resume the simulation first.'
-							: 'Remove this structure. No supply refund.'}
-				onclick={demolishStructure}
-			>
-				<span>DEMOLISH STRUCTURE</span>
-				<small>
-					{structureMenu.typeLabel} · LV.{structureMenu.stacks}
-					{structureMenu.isState
-						? ' · CAPITAL'
-						: !structureMenu.isOwn
-							? ' · RIVAL'
-							: ' · NO REFUND'}
-				</small>
-			</button>
+			{#if structureMenu.structureId !== null}
+				<button
+					type="button"
+					class="context-item context-demolish"
+					role="menuitem"
+					disabled={!structureMenu.isOwn || structureMenu.isState || paused}
+					title={!structureMenu.isOwn
+						? 'You can only demolish your own structures.'
+						: structureMenu.isState
+							? 'The State structure cannot be demolished.'
+							: paused
+								? 'Resume the simulation first.'
+								: 'Remove this structure. No supply refund.'}
+					onclick={demolishStructure}
+				>
+					<span>DEMOLISH STRUCTURE</span>
+					<small>
+						{structureMenu.typeLabel} · LV.{structureMenu.stacks}
+						{structureMenu.isState
+							? ' · CAPITAL'
+							: !structureMenu.isOwn
+								? ' · RIVAL'
+								: ' · NO REFUND'}
+					</small>
+				</button>
+			{/if}
+			{#if structureMenu.allianceOwnerId !== null}
+				<button
+					type="button"
+					class="context-item context-alliance"
+					role="menuitem"
+					title="Alliance mechanics are not implemented yet."
+					onclick={requestAlliance}
+				>
+					<span>REQUEST ALLIANCE</span>
+					<small>{structureMenu.allianceName} · NOT IMPLEMENTED YET</small>
+				</button>
+			{/if}
 			<div class="context-divider"></div>
 			<button type="button" class="context-item" role="menuitem" onclick={closeStructureMenu}>
 				<span>CANCEL</span>
@@ -4397,6 +4433,13 @@
 		border-color: rgba(255, 120, 103, 0.45);
 		background: rgba(255, 120, 103, 0.11);
 		color: #ffd0c7;
+	}
+
+	.context-alliance:hover,
+	.context-alliance:focus-visible {
+		border-color: rgba(124, 224, 190, 0.42);
+		background: rgba(124, 224, 190, 0.1);
+		color: #c6ffe9;
 	}
 
 	.context-divider {
