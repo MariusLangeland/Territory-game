@@ -120,6 +120,13 @@ worker.on('message', (message) => {
 	if (message.type === 'visual') {
 		ticks++;
 		if (!(message.changes instanceof Uint32Array)) failures.push('changes type');
+		if (message.changes.length > 0) {
+			if (!(message.changeDistrictColors instanceof Uint8Array))
+				failures.push('change colors type');
+			else if (message.changeDistrictColors.length !== message.changes.length) {
+				failures.push('change colors length');
+			}
+		}
 		if (!message.snapshot || message.snapshot.tick !== message.tick) failures.push('tick mismatch');
 		if (!Array.isArray(message.mergedDistricts)) failures.push('merged visual');
 		if (message.districtTiles.length > 0 && !(message.districtTileColors instanceof Uint8Array)) {

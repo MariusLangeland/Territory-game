@@ -21,6 +21,8 @@ function postVisual(): void {
 	const visual = host.step();
 	if (!visual) return;
 	const transfer: Transferable[] = [visual.changes.buffer];
+	if (visual.owners) transfer.push(visual.owners.buffer);
+	if (visual.changeDistrictColors) transfer.push(visual.changeDistrictColors.buffer);
 	if (visual.districtTileColors) transfer.push(visual.districtTileColors.buffer);
 	if (visual.districtColorCodes) transfer.push(visual.districtColorCodes.buffer);
 	scope.postMessage(visual, transfer);

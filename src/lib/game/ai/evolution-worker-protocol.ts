@@ -41,6 +41,8 @@ export interface WorkerVisual {
 	/** Packed `(owner << 21) | pixelIndex` changes since the previous visual. */
 	changes: Uint32Array;
 	changeCount: number;
+	/** District palette codes parallel to `changes`, when supplied. */
+	changeDistrictColors?: Uint8Array | null;
 	/** Full owners/district arrays replace the change stream. */
 	overflow: boolean;
 	owners: Uint16Array | null;

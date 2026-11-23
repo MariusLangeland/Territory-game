@@ -61,6 +61,18 @@ describe('local worker host', () => {
 		expect(host.simulation.getSnapshot().tick).toBe(120);
 	});
 
+	it('transfers a district color for every owner change', () => {
+		const host = new LocalWorkerHost({ ...CONFIG, playerCount: 8 });
+		let visual = host.step();
+		for (let tick = 1; tick < 30 && (visual?.changes.length ?? 0) === 0; tick++) {
+			visual = host.step();
+		}
+		expect(visual?.changes.length ?? 0).toBeGreaterThan(0);
+		expect(visual?.changeDistrictColors?.length).toBe(visual?.changes.length);
+		const cell = (visual?.changes[0] ?? 0) & 0x3ffffff;
+		expect(visual?.changeDistrictColors?.[0]).toBe(host.simulation.districtColorCodes[cell]);
+	});
+
 	it('transfers district tile color bytes for dirty district tiles', () => {
 		const host = new LocalWorkerHost({ ...CONFIG, playerCount: 8 });
 		let visual = host.step();

@@ -107,6 +107,14 @@ export class RemoteEvolutionSimulation {
 				const owner = packed >>> CHANGE_INDEX_BITS;
 				if (cell < this.owners.length) this.owners[cell] = owner;
 			}
+			if (visual.changeDistrictColors) {
+				for (let index = 0; index < visual.changeCount; index++) {
+					const cell = (visual.changes[index] ?? 0) & CHANGE_INDEX_MASK;
+					if (cell < this.districtColorCodes.length) {
+						this.districtColorCodes[cell] = visual.changeDistrictColors[index] ?? 0;
+					}
+				}
+			}
 			if (visual.districtTileColors && visual.districtTiles.length > 0) {
 				this.applyDistrictTiles(visual.districtTiles, visual.districtTileColors);
 			}

@@ -72,7 +72,9 @@ export interface LocalWorkerVisual {
 	tick: number;
 	snapshot: GameSnapshot;
 	changes: Uint32Array;
+	changeDistrictColors: Uint8Array | null;
 	changesOverflow: boolean;
+	owners: Uint16Array | null;
 	districtTiles: number[];
 	districtTileColors: Uint8Array | null;
 	districtColorCodes: Uint8Array | null;

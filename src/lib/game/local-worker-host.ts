@@ -1,4 +1,4 @@
-import { RENDER_TILE_SIZE } from './constants';
+import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from './constants';
 import { TerritorySimulation } from './simulation';
 import type {
 	LocalWorkerCommand,
@@ -75,16 +75,30 @@ export class LocalWorkerHost {
 			tick: result.tick,
 			snapshot: result.snapshot,
 			changes: result.changes.slice(0, result.changeCount),
+			changeDistrictColors: this.changeDistrictColors(result),
 			changesOverflow: result.changesOverflow,
+			owners: result.changesOverflow ? this.simulation.owners.slice() : null,
 			districtTiles: result.districtTiles,
 			districtTileColors: this.districtTileColors(result.districtTiles),
-			districtColorCodes:
-				result.changesOverflow && result.districtsChanged
-					? this.simulation.districtColorCodes.slice()
-					: null,
+			districtColorCodes: result.changesOverflow
+				? this.simulation.districtColorCodes.slice()
+				: null,
 			events: result.events,
 			mergedDistricts: [...this.simulation.getMergedDistricts()]
 		};
+	}
+
+	private changeDistrictColors(result: {
+		changes: Uint32Array;
+		changeCount: number;
+	}): Uint8Array | null {
+		if (result.changeCount === 0) return null;
+		const colors = new Uint8Array(result.changeCount);
+		for (let index = 0; index < result.changeCount; index++) {
+			const cell = (result.changes[index] ?? 0) & CHANGE_INDEX_MASK;
+			colors[index] = this.simulation.districtColorCodes[cell] ?? 0;
+		}
+		return colors;
 	}
 
 	private districtTileColors(tiles: readonly number[]): Uint8Array | null {
