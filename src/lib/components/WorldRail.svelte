@@ -116,16 +116,6 @@
 </aside>
 
 <style>
-	@media (max-width: 1180px) {
-		.right-rail {
-			width: 272px;
-		}
-	}
-	@media (max-width: 900px) {
-		.right-rail {
-			display: none;
-		}
-	}
 	.right-rail {
 		top: 92px;
 		right: 22px;
@@ -135,9 +125,11 @@
 		width: 302px;
 		pointer-events: none;
 	}
+
 	.right-rail > * {
 		pointer-events: auto;
 	}
+
 	.panel {
 		position: relative;
 		border: 1px solid var(--line-strong);
@@ -146,6 +138,7 @@
 		backdrop-filter: blur(18px) saturate(0.82);
 		animation: hud-in 550ms 100ms ease-out both;
 	}
+
 	.panel::before {
 		content: '';
 		position: absolute;
@@ -157,6 +150,7 @@
 		border-left: 1px solid rgba(220, 233, 149, 0.68);
 		pointer-events: none;
 	}
+
 	.panel-head {
 		display: flex;
 		justify-content: space-between;
@@ -169,42 +163,34 @@
 		letter-spacing: 0.14em;
 		color: var(--ink-dim);
 	}
+
 	.panel-meta {
 		color: var(--ink-faint);
 		font-size: var(--text-7);
 	}
+
 	.world-meter {
 		padding: 12px 14px 11px;
 		border-bottom: 1px solid var(--line-soft);
 	}
-	.world-meter-copy {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-	}
+
+	.world-meter-copy,
 	.world-meter-foot {
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
-	}
-	.world-meter-copy span {
 		font-family: var(--font-mono);
 		font-size: var(--text-7);
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
-	.world-meter-foot {
-		font-family: var(--font-mono);
-		font-size: var(--text-7);
-		letter-spacing: 0.1em;
-		color: var(--ink-faint);
-	}
+
 	.world-meter-copy strong {
-		font-family: var(--font-mono);
 		font-size: var(--text-13);
 		font-weight: 500;
 		color: var(--signal);
 	}
+
 	.meter-track {
 		position: relative;
 		height: 3px;
@@ -212,6 +198,7 @@
 		background: var(--alpha-white-08);
 		overflow: hidden;
 	}
+
 	.meter-track span {
 		display: block;
 		height: 100%;
@@ -219,17 +206,20 @@
 		box-shadow: 0 0 12px rgba(220, 233, 149, 0.4);
 		transition: width 450ms ease;
 	}
+
 	.rank-scroll {
 		max-height: min(40vh, 360px);
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		scrollbar-gutter: stable;
 	}
+
 	.rank-list {
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
+
 	.rank-list li {
 		position: relative;
 		display: grid;
@@ -242,12 +232,15 @@
 		font-size: var(--text-11);
 		transition: background 150ms ease;
 	}
+
 	.rank-list li:hover {
 		background: rgba(255, 255, 255, 0.025);
 	}
+
 	.rank-list li.is-human {
 		background: color-mix(in srgb, var(--player-color) 9%, transparent);
 	}
+
 	.rank-list li.is-human::before {
 		content: '';
 		position: absolute;
@@ -257,10 +250,12 @@
 		width: 2px;
 		background: var(--player-color);
 	}
+
 	.rank-list li.is-dead {
 		opacity: 0.34;
 		filter: grayscale(1);
 	}
+
 	.rank-progress {
 		position: absolute;
 		left: 0;
@@ -270,16 +265,19 @@
 		background: var(--player-color);
 		opacity: 0.35;
 	}
+
 	.rank-index {
 		font-family: var(--font-mono);
 		font-size: var(--text-8);
 		color: var(--ink-faint);
 	}
+
 	.rank-swatch {
 		width: 6px;
 		height: 12px;
 		background: var(--player-color);
 	}
+
 	.rank-name {
 		display: flex;
 		align-items: center;
@@ -293,6 +291,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+
 	.rank-name em {
 		flex: none;
 		padding: 1px 3px;
@@ -303,16 +302,19 @@
 		letter-spacing: 0.08em;
 		color: var(--player-color);
 	}
+
 	.rank-name em.dead-tag {
 		border-color: var(--line-strong);
 		color: var(--ink-faint);
 	}
+
 	.rank-land {
 		font-family: var(--font-mono);
 		font-size: var(--text-9);
 		text-align: right;
 		color: var(--ink-dim);
 	}
+
 	.panel-foot {
 		display: flex;
 		justify-content: space-between;
@@ -324,6 +326,7 @@
 		letter-spacing: 0.08em;
 		color: var(--ink-faint);
 	}
+
 	.live-dot {
 		display: inline-block;
 		width: 4px;
@@ -334,14 +337,17 @@
 		box-shadow: 0 0 7px var(--signal);
 		vertical-align: 1px;
 	}
+
 	.feed {
 		animation-delay: 160ms;
 	}
+
 	.feed ul {
 		margin: 0;
 		padding: 7px 0;
 		list-style: none;
 	}
+
 	.feed li {
 		display: flex;
 		justify-content: space-between;
@@ -351,19 +357,35 @@
 		line-height: 1.45;
 		color: var(--ink-dim);
 	}
+
 	.feed li.elimination span {
 		color: var(--danger-strong);
 	}
+
 	.feed li.structure span {
 		color: var(--warning);
 	}
+
 	.feed li.build span {
 		color: var(--success);
 	}
+
 	.feed time {
 		flex: none;
 		font-family: var(--font-mono);
 		font-size: var(--text-7);
 		color: var(--ink-faint);
+	}
+
+	@media (max-width: 1180px) {
+		.right-rail {
+			width: 272px;
+		}
+	}
+
+	@media (max-width: 900px) {
+		.right-rail {
+			display: none;
+		}
 	}
 </style>

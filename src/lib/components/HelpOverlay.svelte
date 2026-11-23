@@ -94,18 +94,6 @@
 </div>
 
 <style>
-	@media (max-width: 900px) {
-		.manual-grid {
-			grid-template-columns: 1fr;
-		}
-		.manual-grid section:nth-child(even) {
-			padding-left: 0;
-			border-left: 0;
-		}
-		.manual-grid section:nth-last-child(2) {
-			border-bottom: 1px solid var(--line-soft);
-		}
-	}
 	.help-modal::before {
 		content: '';
 		position: absolute;
@@ -116,14 +104,17 @@
 		border-top: 1px solid var(--signal);
 		border-left: 1px solid var(--signal);
 	}
+
 	.help-overlay {
 		z-index: 80;
 	}
+
 	.help-modal {
 		width: min(96vw, 900px);
 		max-height: 92vh;
 		padding: clamp(24px, 3.5vw, 42px);
 	}
+
 	.help-head {
 		display: flex;
 		justify-content: space-between;
@@ -132,38 +123,46 @@
 		padding-bottom: 20px;
 		border-bottom: 1px solid var(--line-soft);
 	}
+
 	.help-head h2 {
 		margin-bottom: 0;
 		font-size: var(--display-xs);
 	}
+
 	.close-manual {
 		flex: none;
 		font-size: var(--text-20);
 		line-height: 1;
 	}
+
 	.manual-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 0;
 		margin-top: 4px;
 	}
+
 	.manual-grid section {
 		padding: 22px 26px 20px 0;
 		border-bottom: 1px solid var(--line-soft);
 	}
+
 	.manual-grid section:nth-child(even) {
 		padding-left: 26px;
 		border-left: 1px solid var(--line-soft);
 	}
+
 	.manual-grid section:nth-last-child(-n + 2) {
 		border-bottom: 0;
 	}
+
 	.manual-index {
 		font-family: var(--font-mono);
 		font-size: var(--text-7);
 		letter-spacing: 0.13em;
 		color: var(--signal);
 	}
+
 	.manual-grid h3 {
 		margin: 8px 0 8px;
 		font-family: var(--font-display);
@@ -172,12 +171,14 @@
 		line-height: 1;
 		letter-spacing: 0.02em;
 	}
+
 	.manual-grid p {
 		margin: 0;
 		font-size: var(--text-12);
 		line-height: 1.65;
 		color: var(--ink-dim);
 	}
+
 	.manual-footer {
 		display: flex;
 		flex-wrap: wrap;
@@ -190,7 +191,21 @@
 		letter-spacing: 0.07em;
 		color: var(--ink-faint);
 	}
+
 	.manual-footer span:last-child {
 		margin-left: auto;
+	}
+
+	@media (max-width: 900px) {
+		.manual-grid {
+			grid-template-columns: 1fr;
+		}
+		.manual-grid section:nth-child(even) {
+			padding-left: 0;
+			border-left: 0;
+		}
+		.manual-grid section:nth-last-child(2) {
+			border-bottom: 1px solid var(--line-soft);
+		}
 	}
 </style>

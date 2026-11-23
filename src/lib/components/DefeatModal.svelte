@@ -44,6 +44,75 @@
 </div>
 
 <style>
+	.result-modal::before {
+		content: '';
+		position: absolute;
+		top: -1px;
+		left: -1px;
+		width: 18px;
+		height: 18px;
+		border-top: 1px solid var(--signal);
+		border-left: 1px solid var(--signal);
+	}
+
+	.result-modal {
+		width: min(92vw, 670px);
+	}
+
+	.result-modal h2 {
+		font-size: var(--display-md);
+	}
+
+	.result-lede {
+		max-width: 490px;
+		margin: 0 0 24px;
+		font-size: var(--text-13);
+		line-height: 1.6;
+		color: var(--ink-dim);
+	}
+
+	.result-stats {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		margin: 20px 0 22px;
+		border-top: 1px solid var(--line-soft);
+		border-bottom: 1px solid var(--line-soft);
+	}
+
+	.result-stats div {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		padding: 12px 14px;
+		border-right: 1px solid var(--line-soft);
+	}
+
+	.result-stats div:last-child {
+		border-right: 0;
+	}
+
+	.result-stats span {
+		font-family: var(--font-mono);
+		font-size: var(--text-2xs);
+		letter-spacing: 0.1em;
+		color: var(--ink-faint);
+	}
+
+	.result-stats strong {
+		font-family: var(--font-mono);
+		font-size: var(--text-16);
+		font-weight: 500;
+		color: var(--ink);
+	}
+
+	.defeat-modal h2 {
+		color: var(--danger-bright);
+	}
+
+	.defeat-modal h2 em {
+		-webkit-text-stroke-color: rgba(255, 143, 125, 0.8);
+	}
+
 	@media (max-width: 900px) {
 		.result-stats {
 			grid-template-columns: 1fr 1fr;
@@ -55,64 +124,7 @@
 			border-bottom: 1px solid var(--line-soft);
 		}
 	}
+
 	@media (max-width: 900px) {
-	}
-	.result-modal::before {
-		content: '';
-		position: absolute;
-		top: -1px;
-		left: -1px;
-		width: 18px;
-		height: 18px;
-		border-top: 1px solid var(--signal);
-		border-left: 1px solid var(--signal);
-	}
-	.result-modal {
-		width: min(92vw, 670px);
-	}
-	.result-modal h2 {
-		font-size: var(--display-md);
-	}
-	.result-lede {
-		max-width: 490px;
-		margin: 0 0 24px;
-		font-size: var(--text-13);
-		line-height: 1.6;
-		color: var(--ink-dim);
-	}
-	.result-stats {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		margin: 20px 0 22px;
-		border-top: 1px solid var(--line-soft);
-		border-bottom: 1px solid var(--line-soft);
-	}
-	.result-stats div {
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
-		padding: 12px 14px;
-		border-right: 1px solid var(--line-soft);
-	}
-	.result-stats div:last-child {
-		border-right: 0;
-	}
-	.result-stats span {
-		font-family: var(--font-mono);
-		font-size: var(--text-2xs);
-		letter-spacing: 0.1em;
-		color: var(--ink-faint);
-	}
-	.result-stats strong {
-		font-family: var(--font-mono);
-		font-size: var(--text-16);
-		font-weight: 500;
-		color: var(--ink);
-	}
-	.defeat-modal h2 {
-		color: var(--danger-bright);
-	}
-	.defeat-modal h2 em {
-		-webkit-text-stroke-color: rgba(255, 143, 125, 0.8);
 	}
 </style>

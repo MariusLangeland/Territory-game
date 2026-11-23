@@ -37,16 +37,14 @@
 			0 0 24px rgba(61, 219, 217, 0.62);
 		pointer-events: none;
 	}
-	.keyboard-cursor::before {
-		content: '';
-		position: absolute;
-		background: rgba(61, 219, 217, 0.94);
-	}
+
+	.keyboard-cursor::before,
 	.keyboard-cursor::after {
 		content: '';
 		position: absolute;
 		background: rgba(61, 219, 217, 0.94);
 	}
+
 	.keyboard-cursor::before {
 		left: 50%;
 		top: -9px;
@@ -54,6 +52,7 @@
 		height: 50px;
 		transform: translateX(-50%);
 	}
+
 	.keyboard-cursor::after {
 		top: 50%;
 		left: -9px;
@@ -61,6 +60,7 @@
 		width: 50px;
 		transform: translateY(-50%);
 	}
+
 	.keyboard-cursor.allied {
 		opacity: 0.48;
 		border-color: rgba(255, 208, 120, 0.86);
@@ -69,15 +69,16 @@
 			0 0 0 2px rgba(3, 8, 13, 0.88),
 			0 0 18px rgba(255, 208, 120, 0.34);
 	}
-	.keyboard-cursor.allied::before {
-		background: rgba(255, 208, 120, 0.72);
-	}
+
+	.keyboard-cursor.allied::before,
 	.keyboard-cursor.allied::after {
 		background: rgba(255, 208, 120, 0.72);
 	}
+
 	.keyboard-cursor.allied span {
 		background: rgba(255, 236, 196, 0.8);
 	}
+
 	.keyboard-cursor span {
 		position: absolute;
 		inset: 13px;

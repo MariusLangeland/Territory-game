@@ -21,18 +21,6 @@
 </aside>
 
 <style>
-	@media (max-width: 620px) {
-		.onboarding-hint {
-			top: 74px;
-			padding: 11px 13px 12px;
-		}
-		.onboarding-hint h2 {
-			font-size: var(--text-15);
-		}
-		.onboarding-hint p {
-			font-size: var(--text-9);
-		}
-	}
 	.onboarding-hint {
 		position: fixed;
 		top: 94px;
@@ -47,6 +35,7 @@
 		backdrop-filter: blur(16px);
 		animation: hint-in 220ms ease-out both;
 	}
+
 	.onboarding-meta {
 		display: flex;
 		align-items: center;
@@ -56,6 +45,7 @@
 		font-size: var(--text-7);
 		letter-spacing: 0.16em;
 	}
+
 	.onboarding-meta button {
 		padding: 2px 0;
 		background: none;
@@ -65,9 +55,11 @@
 		letter-spacing: 0.16em;
 		cursor: pointer;
 	}
+
 	.onboarding-meta button:hover {
 		color: var(--ink);
 	}
+
 	.onboarding-hint h2 {
 		margin: 7px 0 5px;
 		color: var(--ink);
@@ -75,10 +67,24 @@
 		font-weight: 600;
 		letter-spacing: 0.06em;
 	}
+
 	.onboarding-hint p {
 		margin: 0;
 		color: var(--ink-dim);
 		font-size: var(--text-10);
 		line-height: 1.45;
+	}
+
+	@media (max-width: 620px) {
+		.onboarding-hint {
+			top: 74px;
+			padding: 11px 13px 12px;
+		}
+		.onboarding-hint h2 {
+			font-size: var(--text-15);
+		}
+		.onboarding-hint p {
+			font-size: var(--text-9);
+		}
 	}
 </style>

@@ -8,6 +8,7 @@
 		transform: translateY(0);
 	}
 }
+
 @keyframes hud-fade {
 	from {
 		opacity: 0;
@@ -16,6 +17,7 @@
 		opacity: 1;
 	}
 }
+
 @keyframes veil-in {
 	from {
 		opacity: 0;
@@ -24,6 +26,7 @@
 		opacity: 1;
 	}
 }
+
 @keyframes modal-in {
 	from {
 		opacity: 0;
@@ -34,6 +37,7 @@
 		transform: translateY(0) scale(1);
 	}
 }
+
 @keyframes toast-in {
 	from {
 		opacity: 0;
@@ -44,6 +48,7 @@
 		transform: translate(-50%, 0);
 	}
 }
+
 @keyframes supply-cost-in {
 	from {
 		opacity: 0;
@@ -54,6 +59,7 @@
 		transform: translateY(-50%);
 	}
 }
+
 @keyframes loader-pulse {
 	0%,
 	100% {
@@ -63,29 +69,7 @@
 		opacity: 1;
 	}
 }
-@media (max-width: 900px) {
-	.game-shell .minimap-dock {
-		left: 14px;
-		top: 64px;
-		bottom: auto;
-		width: 150px;
-	}
-	.game-shell .paused-flag {
-		top: 72px;
-		font-size: var(--text-7);
-	}
-}
-@media (max-width: 620px) {
-	.game-shell .minimap-dock {
-		display: none;
-	}
-	.game-shell .minimap-meta {
-		display: none;
-	}
-	.game-shell .deploy-button {
-		width: 100%;
-	}
-}
+
 @keyframes hint-in {
 	from {
 		opacity: 0;
@@ -96,26 +80,7 @@
 		transform: translate(-50%, 0);
 	}
 }
-@media (prefers-reduced-motion: reduce) {
-	.game-shell * {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		scroll-behavior: auto !important;
-		transition-duration: 0.01ms !important;
-	}
-	.game-shell *::before {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		scroll-behavior: auto !important;
-		transition-duration: 0.01ms !important;
-	}
-	.game-shell *::after {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		scroll-behavior: auto !important;
-		transition-duration: 0.01ms !important;
-	}
-}
+
 .game-shell {
 	position: fixed;
 	inset: 0;
@@ -123,6 +88,7 @@
 	isolation: isolate;
 	background: var(--bg-abyss);
 }
+
 .game-shell .map-atmosphere {
 	position: absolute;
 	inset: 0;
@@ -144,19 +110,13 @@
 			rgba(2, 6, 9, 0.58)
 		);
 }
+
 .game-shell .hud {
 	position: absolute;
 	z-index: 20;
 }
-.game-shell .eyebrow {
-	margin: 0;
-	font-family: var(--font-mono);
-	font-size: var(--text-8);
-	font-weight: 600;
-	letter-spacing: 0.2em;
-	line-height: 1.4;
-	color: var(--ink-dim);
-}
+
+.game-shell .eyebrow,
 .game-shell .overlay-kicker {
 	margin: 0;
 	font-family: var(--font-mono);
@@ -166,12 +126,14 @@
 	line-height: 1.4;
 	color: var(--ink-dim);
 }
+
 .game-shell .minimap-dock {
 	left: 22px;
 	bottom: 22px;
 	width: clamp(220px, 22vw, 300px);
 	animation: hud-in 600ms 180ms ease-out both;
 }
+
 .game-shell .minimap-meta {
 	display: flex;
 	justify-content: space-between;
@@ -182,6 +144,7 @@
 	letter-spacing: 0.08em;
 	color: var(--ink-faint);
 }
+
 .game-shell kbd {
 	display: inline-block;
 	padding: 2px 4px;
@@ -192,6 +155,7 @@
 	letter-spacing: 0.05em;
 	color: var(--ink-dim);
 }
+
 .game-shell .paused-flag {
 	top: 84px;
 	left: 50%;
@@ -205,10 +169,12 @@
 	color: var(--signal);
 	backdrop-filter: blur(10px);
 }
+
 .game-shell .paused-flag span {
 	margin-left: 9px;
 	color: var(--ink-faint);
 }
+
 .game-shell .overlay {
 	position: fixed;
 	inset: 0;
@@ -220,11 +186,13 @@
 	backdrop-filter: blur(7px);
 	animation: veil-in 350ms ease-out both;
 }
+
 .game-shell .kicker-line {
 	width: 28px;
 	height: 1px;
 	background: var(--signal);
 }
+
 .game-shell .deploy-button {
 	display: inline-flex;
 	align-items: center;
@@ -246,6 +214,7 @@
 		color 160ms ease,
 		transform 160ms ease;
 }
+
 .game-shell .deploy-button svg {
 	width: 16px;
 	height: 16px;
@@ -253,14 +222,17 @@
 	stroke: currentColor;
 	stroke-width: 1.2;
 }
+
 .game-shell .deploy-button:hover:not(:disabled) {
 	background: var(--signal-strong);
 	transform: translateY(-1px);
 }
+
 .game-shell .deploy-button:disabled {
 	cursor: wait;
 	opacity: 0.52;
 }
+
 .game-shell .modal {
 	position: relative;
 	width: min(92vw, 680px);
@@ -272,6 +244,7 @@
 	box-shadow: 0 40px 120px var(--alpha-black-60);
 	animation: modal-in 400ms 60ms ease-out both;
 }
+
 .game-shell .modal h2 {
 	margin: 12px 0 16px;
 	font-family: var(--font-display);
@@ -280,11 +253,13 @@
 	line-height: 0.82;
 	letter-spacing: 0.01em;
 }
+
 .game-shell .modal h2 em {
 	font-style: normal;
 	color: transparent;
 	-webkit-text-stroke: 1px rgba(241, 236, 217, 0.76);
 }
+
 .game-shell .modal > p {
 	max-width: 540px;
 	margin: 0 0 16px;
@@ -292,12 +267,14 @@
 	line-height: 1.65;
 	color: var(--ink-dim);
 }
+
 .game-shell .modal-actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 9px;
 	margin-top: 24px;
 }
+
 .game-shell .ghost-button {
 	height: 47px;
 	padding: 0 18px;
@@ -312,7 +289,54 @@
 		border-color 150ms ease,
 		color 150ms ease;
 }
+
 .game-shell .ghost-button:hover {
 	border-color: var(--signal);
 	color: var(--signal);
+}
+
+@media (max-width: 900px) {
+	.game-shell .minimap-dock {
+		left: 14px;
+		top: 64px;
+		bottom: auto;
+		width: 150px;
+	}
+	.game-shell .paused-flag {
+		top: 72px;
+		font-size: var(--text-7);
+	}
+}
+
+@media (max-width: 620px) {
+	.game-shell .minimap-dock {
+		display: none;
+	}
+	.game-shell .minimap-meta {
+		display: none;
+	}
+	.game-shell .deploy-button {
+		width: 100%;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.game-shell * {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+	.game-shell *::before {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+	.game-shell *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
 }

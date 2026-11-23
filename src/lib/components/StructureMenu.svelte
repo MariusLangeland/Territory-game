@@ -184,6 +184,7 @@
 		font-family: var(--font-mono);
 		backdrop-filter: blur(12px);
 	}
+
 	.context-item {
 		display: grid;
 		gap: 3px;
@@ -200,34 +201,40 @@
 		text-transform: uppercase;
 		cursor: pointer;
 	}
+
 	.context-item:hover:not(:disabled) {
 		border-color: var(--signal-35);
 		background: var(--alpha-white-05);
 		color: var(--ink);
 		outline: none;
 	}
+
 	.context-item:focus-visible:not(:disabled) {
 		border-color: var(--signal-35);
 		background: var(--alpha-white-05);
 		color: var(--ink);
 		outline: none;
 	}
+
 	.context-item:focus:not(:disabled) {
 		border-color: var(--signal-35);
 		background: var(--alpha-white-05);
 		color: var(--ink);
 		outline: none;
 	}
+
 	.context-item:disabled {
 		cursor: not-allowed;
 		opacity: 0.42;
 	}
+
 	.context-item small {
 		font-size: var(--text-7);
 		font-weight: 500;
 		letter-spacing: 0.05em;
 		color: var(--ink-faint);
 	}
+
 	.context-info {
 		display: grid;
 		gap: 2px;
@@ -236,6 +243,7 @@
 		border-bottom: 1px solid var(--line-soft);
 		pointer-events: none;
 	}
+
 	.context-info span {
 		font-size: var(--text-9);
 		font-weight: 700;
@@ -243,6 +251,7 @@
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
+
 	.context-info small {
 		font-size: var(--text-7);
 		font-weight: 500;
@@ -250,50 +259,61 @@
 		text-transform: uppercase;
 		color: var(--ink-faint);
 	}
+
 	.context-info-warning span {
 		color: var(--danger-strong);
 	}
+
 	.context-info-warning small {
 		color: rgba(255, 176, 159, 0.72);
 	}
+
 	.context-confirm:not(:disabled) {
 		border-color: rgba(255, 120, 103, 0.42);
 		background: rgba(255, 120, 103, 0.14);
 		color: var(--danger-soft);
 	}
+
 	.context-demolish:not(:disabled) {
 		color: var(--danger-strong);
 	}
+
 	.context-demolish:hover:not(:disabled) {
 		border-color: var(--danger-45);
 		background: var(--danger-11);
 		color: var(--danger-soft);
 	}
+
 	.context-demolish:focus-visible:not(:disabled) {
 		border-color: var(--danger-45);
 		background: var(--danger-11);
 		color: var(--danger-soft);
 	}
+
 	.context-demolish:focus:not(:disabled) {
 		border-color: var(--danger-45);
 		background: var(--danger-11);
 		color: var(--danger-soft);
 	}
+
 	.context-alliance:hover {
 		border-color: var(--success-42);
 		background: var(--success-10);
 		color: var(--success);
 	}
+
 	.context-alliance:focus-visible {
 		border-color: var(--success-42);
 		background: var(--success-10);
 		color: var(--success);
 	}
+
 	.context-alliance:focus {
 		border-color: var(--success-42);
 		background: var(--success-10);
 		color: var(--success);
 	}
+
 	.context-divider {
 		height: 1px;
 		margin: 5px 4px;

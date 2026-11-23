@@ -126,70 +126,85 @@
 		flex-direction: column;
 		gap: 4px;
 	}
+
 	svg {
 		width: 100%;
 		height: auto;
 		background: var(--bg-deep);
 		border: 1px solid var(--line-online-soft);
 	}
+
 	.grid {
 		stroke: rgba(247, 238, 208, 0.08);
 		stroke-width: 1;
 	}
+
 	.axis {
 		fill: var(--bone-40);
 		font:
 			7px 'IBM Plex Mono',
 			monospace;
 	}
+
 	.line {
 		fill: none;
 		stroke-width: 1.8;
 		stroke-linejoin: round;
 		stroke-linecap: round;
 	}
+
 	.line.best,
 	.best-dot {
 		stroke: var(--accent-gold);
 		fill: var(--accent-gold);
 	}
+
 	.line.average {
 		stroke: var(--accent-cyan);
 	}
+
 	.line.selected,
 	.selected-dot {
 		stroke: var(--accent-mint);
 		fill: var(--accent-mint);
 	}
+
 	.best-dot,
 	.selected-dot {
 		stroke-width: 0;
 	}
+
 	.history-legend {
 		display: flex;
 		gap: 10px;
 		font-size: var(--text-8);
 		color: var(--bone-55);
 	}
+
 	.history-legend span {
 		display: flex;
 		align-items: center;
 		gap: 4px;
 	}
+
 	.history-legend i {
 		width: 10px;
 		height: 2px;
 		display: inline-block;
 	}
+
 	.history-legend i.best {
 		background: var(--accent-gold);
 	}
+
 	.history-legend i.average {
 		background: var(--accent-cyan);
 	}
+
 	.history-legend i.selected {
 		background: var(--accent-mint);
 	}
+
 	.empty {
 		margin: 0;
 		color: var(--ink-faint);

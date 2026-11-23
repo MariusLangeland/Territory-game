@@ -36,10 +36,12 @@
 		box-shadow: 0 14px 38px var(--alpha-black-45);
 		animation: hud-in 180ms ease-out both;
 	}
+
 	.diplomacy-toast.warn {
 		border-color: rgba(255, 208, 120, 0.46);
 		border-left-color: var(--warning);
 	}
+
 	.diplomacy-toast.error {
 		border-color: var(--danger-50);
 		border-left-color: var(--danger);

@@ -24,6 +24,7 @@
 		background: var(--bg-deep);
 		text-align: center;
 	}
+
 	.loader-mark {
 		position: relative;
 		width: 54px;
@@ -32,22 +33,26 @@
 		border: 1px solid rgba(220, 233, 149, 0.26);
 		transform: rotate(45deg);
 	}
+
 	.loader-mark span {
 		position: absolute;
 		background: var(--signal);
 		animation: loader-pulse 1.6s ease-in-out infinite;
 	}
+
 	.loader-mark span:nth-child(1) {
 		inset: 8px 8px auto auto;
 		width: 8px;
 		height: 8px;
 	}
+
 	.loader-mark span:nth-child(2) {
 		inset: auto auto 8px 8px;
 		width: 8px;
 		height: 8px;
 		animation-delay: 180ms;
 	}
+
 	.loader-mark span:nth-child(3) {
 		top: 50%;
 		left: 50%;
@@ -56,9 +61,11 @@
 		transform: translate(-50%, -50%) rotate(-45deg);
 		opacity: 0.45;
 	}
+
 	.loading-overlay .overlay-kicker {
 		color: var(--signal);
 	}
+
 	.loading-overlay h2 {
 		margin: 9px 0 10px;
 		font-family: var(--font-display);
@@ -67,6 +74,7 @@
 		line-height: 0.84;
 		letter-spacing: 0.02em;
 	}
+
 	.loading-copy {
 		margin: 0;
 		font-family: var(--font-mono);

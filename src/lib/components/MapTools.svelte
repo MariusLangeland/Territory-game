@@ -29,23 +29,6 @@
 </div>
 
 <style>
-	@media (max-width: 900px) {
-		.map-tools {
-			right: 14px;
-			bottom: 202px;
-		}
-		.perf-readout {
-			display: none;
-		}
-		.map-tools .tool-wide {
-			width: 36px;
-		}
-	}
-	@media (max-width: 620px) {
-		.map-tools {
-			gap: 4px;
-		}
-	}
 	.map-tools {
 		right: 22px;
 		bottom: 22px;
@@ -55,10 +38,12 @@
 		gap: 5px;
 		animation: hud-in 600ms 260ms ease-out both;
 	}
+
 	.tool-stack {
 		display: flex;
 		gap: 5px;
 	}
+
 	.map-tools button {
 		display: grid;
 		place-items: center;
@@ -76,16 +61,19 @@
 			color 150ms ease,
 			border-color 150ms ease;
 	}
+
 	.map-tools button:hover {
 		color: var(--signal);
 		border-color: var(--signal-55);
 	}
+
 	.map-tools .tool-wide {
 		width: 77px;
 		height: 26px;
 		font-size: var(--text-7);
 		letter-spacing: 0.12em;
 	}
+
 	.perf-readout {
 		display: flex;
 		gap: 9px;
@@ -94,5 +82,24 @@
 		font-size: var(--text-2xs);
 		letter-spacing: 0.05em;
 		color: var(--ink-faint);
+	}
+
+	@media (max-width: 900px) {
+		.map-tools {
+			right: 14px;
+			bottom: 202px;
+		}
+		.perf-readout {
+			display: none;
+		}
+		.map-tools .tool-wide {
+			width: 36px;
+		}
+	}
+
+	@media (max-width: 620px) {
+		.map-tools {
+			gap: 4px;
+		}
 	}
 </style>

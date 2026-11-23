@@ -56,9 +56,11 @@
 		pointer-events: none;
 		backdrop-filter: blur(12px);
 	}
+
 	.upgrade-tooltip span {
 		color: var(--ink-dim);
 	}
+
 	.upgrade-tooltip strong {
 		font-family: var(--font-display);
 		font-size: var(--text-18);
@@ -66,6 +68,7 @@
 		letter-spacing: 0.02em;
 		color: var(--warning);
 	}
+
 	.upgrade-tooltip strong small {
 		margin-left: 3px;
 		font-family: var(--font-mono);
@@ -73,17 +76,20 @@
 		letter-spacing: 0.1em;
 		color: var(--ink-faint);
 	}
+
 	.upgrade-tooltip i {
 		font-style: normal;
 		font-size: var(--text-6);
 		color: var(--ink-dim);
 	}
+
 	.upgrade-tooltip em {
 		font-style: normal;
 		font-size: var(--text-3xs);
 		letter-spacing: 0.1em;
 		color: var(--danger);
 	}
+
 	.upgrade-tooltip.insufficient {
 		border-color: var(--danger-50);
 	}
