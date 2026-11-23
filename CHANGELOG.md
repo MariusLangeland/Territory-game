@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.75.1 — 2026-11-23
+
+### Client performance
+
+- Investigated large-map client stutter: normal 4096² ticks average ~1.8 ms, but
+  annex scans average ~41 ms and neutral-pocket cleanup ~81 ms on the main
+  thread.
+- Full-texture resyncs now use a fixed 512K-pixel chunk budget (~4 MiB/frame)
+  instead of splitting by height, preventing oversized upload frames on large
+  atlases.
+- The full-resync dirty-tile threshold now scales with atlas tile count.
+- Minimap base refreshes every 6 ticks above 8.4M cells.
+- Documented that integrity-scan time-slicing or worker offload is the required
+  next fix for fully smooth large-map clients.
+
 ## 0.75.0 — 2026-11-23
 
 ### Arbitrary map sizes

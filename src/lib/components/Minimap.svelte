@@ -41,7 +41,12 @@
 		if (!context) return;
 		const now = performance.now();
 
-		if (!baseImage || tick - lastBaseTick >= 3 || now - lastBaseAt > 650) {
+		const baseInterval = simulation.width * simulation.height > 8_388_608 ? 6 : 3;
+		if (
+			!baseImage ||
+			tick - lastBaseTick >= baseInterval ||
+			now - lastBaseAt > baseInterval * 220
+		) {
 			const image = context.createImageData(width, height);
 			const data = image.data;
 			const sx = simulation.width / width;

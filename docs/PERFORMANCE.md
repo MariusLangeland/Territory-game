@@ -69,6 +69,32 @@ A collision-heavy run measured **3.475 ms** average, **5.435 ms** p95, **52.173
 ms** p99. The p99 tail is GC-driven; average load remains inside the 100 ms tick
 budget. Browser/GPU memory was not measured.
 
+#### Client main-thread audit
+
+The client runs the local simulation inside the render `requestAnimationFrame`
+loop. Breaking a 900-tick 4096 × 4096 run down by phase shows that the average
+tick is not the problem; the periodic integrity passes are:
+
+| Phase                  | Count in 900 ticks |      Average |      p95 |
+| ---------------------- | -----------------: | -----------: | -------: |
+| Normal tick            |                861 |  **1.81 ms** |  5.19 ms |
+| Annex scan             |                 30 | **40.88 ms** | 52.68 ms |
+| Neutral-pocket cleanup |                  9 | **81.01 ms** | 96.75 ms |
+
+Those scans are synchronous main-thread work, so a large-map client can drop a
+frame every annex scan and a longer hitch every cleanup pass even though the
+steady tick is ~2 ms. This is the primary client-side cause of large-map
+stutter. The integrity planner needs time-slicing or worker offload to remove it
+without slowing annexation cadence.
+
+Safe client mitigations already applied:
+
+- full-texture uploads are now split by a fixed **512K-pixel chunk** budget
+  (4 MiB RGBA) regardless of atlas size;
+- the full-resync threshold adapts to the atlas tile count instead of staying
+  at 96 tiles;
+- the minimap base image updates every 6 ticks above 8.4M cells instead of 3.
+
 ### 2.2 Browser baseline
 
 Measured in headless Chrome with hardware acceleration, 1600 × 1000, devicePixelRatio 1, seed `1234`:
@@ -84,7 +110,7 @@ Measured in headless Chrome with hardware acceleration, 1600 × 1000, devicePixe
 | Failed WebGPU initialization             | 0 in supported test browser                                            |
 | Console/page errors during sustained run | 0                                                                      |
 
-The upload strategy intentionally trades bandwidth for input smoothness under extreme load: once dirty tiles exceed 96, the renderer schedules a full-texture resync split into 8 horizontal chunks, at most 2 chunks per frame. Uploading one contiguous 8 MiB texture is far cheaper for the main thread than hundreds of tiny texture writes. At lower action, the normal 32 × 32 dirty-tile path is used, including for district palette changes.
+The upload strategy intentionally trades bandwidth for input smoothness under extreme load: once dirty tiles exceed the adaptive threshold, the renderer schedules a full-texture resync split into 512K-pixel chunks, at most 2 chunks per frame. This keeps uploads near 4 MiB/frame on every atlas size. At lower action, the normal 32 × 32 dirty-tile path is used, including for district palette changes.
 
 The leaderboard virtualization is just as important: updating 51 Svelte rows at 5 Hz produced ~14 ms tick-boundary frames; mounting only the visible slice removed those. The HUD clock/values update at 5 Hz while map rendering remains per-tick.
 

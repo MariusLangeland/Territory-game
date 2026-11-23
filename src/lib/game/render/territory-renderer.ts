@@ -31,8 +31,9 @@ const UPLOAD_TILE_SIZE = RENDER_TILE_SIZE;
  * a full-texture resync. The resync is split across frames so no single frame
  * pays for the whole 8 MiB transfer.
  */
-const FULL_UPLOAD_TILE_THRESHOLD = 96;
-const FULL_UPLOAD_CHUNKS = 8;
+const FULL_UPLOAD_TILE_MIN_THRESHOLD = 96;
+/** Keep each upload frame near 4 MiB regardless of atlas size. */
+const FULL_UPLOAD_CHUNK_PIXELS = 512 * 1024;
 const FULL_UPLOAD_CHUNKS_PER_FRAME = 2;
 
 export class WebGPUUnavailableError extends Error {
@@ -87,6 +88,7 @@ export class TerritoryRenderer {
 	private readonly tilesX: number;
 	private readonly tilesY: number;
 	private readonly tileMarks: Uint32Array;
+	private readonly fullUploadTileThreshold: number;
 	private readonly dirtyRows: Uint8Array;
 
 	private tileGeneration = 0;
@@ -129,6 +131,10 @@ export class TerritoryRenderer {
 		this.tilesX = Math.ceil(simulation.width / UPLOAD_TILE_SIZE);
 		this.tilesY = Math.ceil(simulation.height / UPLOAD_TILE_SIZE);
 		this.tileMarks = new Uint32Array(this.tilesX * this.tilesY);
+		this.fullUploadTileThreshold = Math.max(
+			FULL_UPLOAD_TILE_MIN_THRESHOLD,
+			Math.floor((this.tilesX * this.tilesY) / 16)
+		);
 		this.dirtyRows = new Uint8Array(this.tilesY);
 		this.buildControlTexture();
 		this.uploadFullTexture();
@@ -329,7 +335,7 @@ export class TerritoryRenderer {
 			this.markDirtyTile(tileX, tileY);
 		}
 
-		if (this.dirtyTileCount > FULL_UPLOAD_TILE_THRESHOLD) {
+		if (this.dirtyTileCount > this.fullUploadTileThreshold) {
 			this.queueFullUpload();
 		} else if (!this.fullUploadQueued && !this.fullUploadInProgress) {
 			this.uploadDirty();
@@ -488,7 +494,7 @@ export class TerritoryRenderer {
 		}
 
 		const { width, height } = this.simulation;
-		const chunkHeight = Math.ceil(height / FULL_UPLOAD_CHUNKS);
+		const chunkHeight = Math.max(1, Math.floor(FULL_UPLOAD_CHUNK_PIXELS / width));
 		const bytesPerRow = width * 4;
 
 		for (let chunk = 0; chunk < FULL_UPLOAD_CHUNKS_PER_FRAME; chunk++) {
