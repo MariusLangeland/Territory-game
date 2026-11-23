@@ -1,4 +1,5 @@
 import {
+	ARTILLERY_RANGE,
 	ATTACK_STRENGTH_BASE,
 	ATTACK_STRENGTH_BONUS,
 	ATTACK_SUPPLY_COST_BASE,
@@ -250,6 +251,18 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		if (owner === HUMAN_PLAYER_ID) {
 			return { ok: false, reason: 'own-territory', message: 'That territory is already yours.' };
 		}
+		const hasBorder =
+			(cellX > 0 && this.getOwner(cellX - 1, cellY) === HUMAN_PLAYER_ID) ||
+			(cellX + 1 < this.width && this.getOwner(cellX + 1, cellY) === HUMAN_PLAYER_ID) ||
+			(cellY > 0 && this.getOwner(cellX, cellY - 1) === HUMAN_PLAYER_ID) ||
+			(cellY + 1 < this.height && this.getOwner(cellX, cellY + 1) === HUMAN_PLAYER_ID);
+		if (!hasBorder) {
+			return {
+				ok: false,
+				reason: 'no-shared-border',
+				message: 'No friendly border is close enough. Move your frontier.'
+			};
+		}
 		const stats = this.getAttackStats(HUMAN_PLAYER_ID, owner);
 		if ((this.snapshot?.supply ?? 0) < stats.cost) {
 			return {
@@ -273,11 +286,26 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		if (cellX < 0 || cellY < 0 || cellX >= this.width || cellY >= this.height) {
 			return { ok: false, reason: 'invalid', message: 'Outside the map.' };
 		}
-		const artillery = this.snapshot.structures.some(
-			(structure) => structure.ownerId === HUMAN_PLAYER_ID && structure.type === 'artillery'
+		const artillery = this.snapshot.structures.filter(
+			(structure) =>
+				structure.ownerId === HUMAN_PLAYER_ID &&
+				structure.type === 'artillery' &&
+				structure.readyAtTick <= this.snapshot.tick
 		);
-		if (!artillery) {
+		if (artillery.length === 0) {
 			return { ok: false, reason: 'no-artillery', message: 'Build an Artillery card first.' };
+		}
+		const inRange = artillery.some((battery) => {
+			const dx = battery.x - cellX;
+			const dy = battery.y - cellY;
+			return dx * dx + dy * dy <= ARTILLERY_RANGE * ARTILLERY_RANGE;
+		});
+		if (!inRange) {
+			return {
+				ok: false,
+				reason: 'out-of-range',
+				message: 'No ready artillery can reach that point.'
+			};
 		}
 		return { ok: true, message: 'Artillery target ready.' };
 	}
@@ -304,11 +332,32 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		if (this.structureAtCell(cellX, cellY)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
 		}
-		for (const structure of this.snapshot.structures) {
-			const dx = structure.x - cellX;
-			const dy = structure.y - cellY;
-			if (dx * dx + dy * dy < STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) {
-				return { ok: false, reason: 'too-close', message: 'Too close to another structure.' };
+		const stackingStructure = this.snapshot.structures.find((structure) => {
+			if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type !== card.type) return false;
+			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+			return Math.abs(structure.x - cellX) <= range && Math.abs(structure.y - cellY) <= range;
+		});
+		if (!stackingStructure) {
+			for (const structure of this.snapshot.structures) {
+				if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type === 'state') continue;
+				const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+				if (
+					card.type !== 'port' &&
+					structure.type !== card.type &&
+					Math.abs(structure.x - cellX) <= range &&
+					Math.abs(structure.y - cellY) <= range
+				) {
+					return {
+						ok: false,
+						reason: 'inside-district',
+						message: 'A different structure district occupies that ground.'
+					};
+				}
+				const dx = structure.x - cellX;
+				const dy = structure.y - cellY;
+				if (dx * dx + dy * dy < STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) {
+					return { ok: false, reason: 'too-close', message: 'Too close to another structure.' };
+				}
 			}
 		}
 		const definition = STRUCTURE_DEFINITIONS[card.type];
