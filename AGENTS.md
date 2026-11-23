@@ -158,7 +158,11 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/ui/actions.ts` — player command dispatch and action validation flow.
 - `src/lib/game/ui/keyboard.ts` — global shortcuts and keyboard cursor navigation.
 - `src/lib/game/ui/structure-menu.ts` — structure/diplomacy popup construction and focus handling.
-- `src/lib/game/page/game-page.svelte.ts` — main game page state, derived view values, lifecycle, and event wiring.
+- `src/lib/game/page/game-page-state.svelte.ts` — reactive page state and derived selectors.
+- `src/lib/game/page/match-controller.svelte.ts` — settings, seeds, world lifecycle, worker session.
+- `src/lib/game/page/interaction-controller.svelte.ts` — hover, drag/drop, cards, context menu.
+- `src/lib/game/page/overlay-controller.svelte.ts` — onboarding, toasts, result/defeat transitions.
+- `src/lib/game/page/game-page.svelte.ts` — composition and `game.foo` proxy facade.
 - `src/lib/server/online.ts` — in-memory room manager, 10 Hz ticker, SSE subscribers.
 - `src/routes/online/+page.svelte` — online lobby/live match client.
 - `src/routes/api/online/rooms/` — create/join/start/intent/events HTTP surface.

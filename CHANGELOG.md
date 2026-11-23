@@ -35,8 +35,10 @@
 - Extracted `IntroOverlay`, `LoadingOverlay`, `ErrorModal`, `ResultModal`,
   `DefeatModal`, `HelpOverlay`, `OnboardingHint`, and `KeyboardCursor`.
 - Moved the remaining page state, derived values, lifecycle, match settings,
-  drag/card interaction, and event wiring into
-  `lib/game/page/game-page.svelte.ts`.
+  drag/card interaction, and event wiring into `lib/game/page/`.
+- Split that layer into `game-page-state.svelte.ts`, `match-controller.svelte.ts`,
+  `interaction-controller.svelte.ts`, `overlay-controller.svelte.ts`, and a
+  descriptor-preserving proxy facade in `game-page.svelte.ts`.
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

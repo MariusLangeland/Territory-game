@@ -355,7 +355,11 @@ src/
         keyboard.ts              keyboard shortcuts + cursor navigation
         structure-menu.ts        structure/diplomacy popup + focus handling
       page/
-        game-page.svelte.ts      main game page state, derived values, lifecycle
+        game-page-state.svelte.ts   reactive state + derived selectors
+        match-controller.svelte.ts  settings, seeds, world lifecycle, worker
+        interaction-controller.svelte.ts hover, cards, drag/drop, context menu
+        overlay-controller.svelte.ts onboarding, toasts, result/defeat flow
+        game-page.svelte.ts         composition + game.foo proxy facade
       worker/
         protocol.ts              shared worker init/visual payloads
         view.ts                  shared read-only match mirror
