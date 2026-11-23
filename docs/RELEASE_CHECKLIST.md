@@ -37,6 +37,7 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] Attack a frontier, pause/resume, and confirm no floating last-action box.
 - [ ] Build and upgrade a structure; confirm supply/cost feedback and district highlight.
 - [ ] Build a Port and launch a naval landing.
+- [ ] Right-click a rival, request an alliance, and confirm pending status/remaining time. Wait for acceptance; confirm the ally capital ring, rival-banner `ALLY` label, formation toast, and blocked allied attacks/cursor. Break the alliance and confirm the toast plus 60-second cooldown.
 - [ ] Pan/zoom under load; no recurring frame hitch and camera clamps at map edges.
 - [ ] Open a narrow viewport and scroll the leaderboard to the last rank.
 

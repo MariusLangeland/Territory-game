@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.73.0 — 2026-11-23
+
+### Diplomacy
+
+- Implemented player-only alliances: request an AI ally from the rival context
+  menu, deterministic bot acceptance, 30-second proposals, three-minute pacts,
+  non-aggression, common-enemy coordination, proportional front cancellation,
+  betrayal cooldown, and expiry/elimination cleanup.
+- Added allied-capital rings, an `ALLY` / `PENDING` label in rival banners, an
+  alliance-aware attack cursor, remaining-time context-menu labels, and
+  alliance result toasts.
+- Protocol 39 adds `alliances` and `allianceProposals` to snapshots.
+- Added tests for acceptance, rejection, allied attack blocking, front
+  cancellation, break cooldown, expiry, elimination cleanup, and checksum
+  determinism.
+
 ## 0.72.0 — 2026-11-23
 
 ### Gameplay

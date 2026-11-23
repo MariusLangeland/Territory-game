@@ -63,6 +63,7 @@
 		allianceOwnerId: number | null;
 		allianceName: string;
 		allianceStatus: 'none' | 'pending' | 'active' | 'busy';
+		allianceExpiresAtTick: number | null;
 		confirmingDemolish: boolean;
 	}
 
@@ -130,11 +131,13 @@
 		const ownerId = sim.getOwner(x, y);
 		const owner = snapshot.players.find((player) => player.id === ownerId);
 		const defense = sim.getDefense(x, y);
-		const action = artilleryTargeting
-			? 'Enter fires artillery'
-			: ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
-				? 'Enter upgrades'
-				: 'Enter attacks';
+		const action = keyboardCursorAllied
+			? 'Allied territory; Enter is disabled'
+			: artilleryTargeting
+				? 'Enter fires artillery'
+				: ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
+					? 'Enter upgrades'
+					: 'Enter attacks';
 		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;
 	});
 	let draggingCardId = $state<number | null>(null);
@@ -185,6 +188,49 @@
 				proposal.fromPlayerId === HUMAN_PLAYER_ID || proposal.toPlayerId === HUMAN_PLAYER_ID
 		) ?? false
 	);
+	let hoverIsAlly = $derived.by(() => {
+		if (!snapshot || !hover?.land || hover.owner <= 0 || hover.owner === snapshot.humanId) {
+			return false;
+		}
+		return snapshot.alliances.some(
+			(alliance) =>
+				(alliance.playerA === snapshot?.humanId && alliance.playerB === hover?.owner) ||
+				(alliance.playerB === snapshot?.humanId && alliance.playerA === hover?.owner)
+		);
+	});
+	let keyboardCursorAllied = $derived.by(() => {
+		if (!keyboardCursor || !sim || !snapshot) return false;
+		const ownerId = sim.getOwner(keyboardCursor.x, keyboardCursor.y);
+		if (ownerId <= 0 || ownerId === snapshot.humanId) return false;
+		return snapshot.alliances.some(
+			(alliance) =>
+				(alliance.playerA === snapshot?.humanId && alliance.playerB === ownerId) ||
+				(alliance.playerB === snapshot?.humanId && alliance.playerA === ownerId)
+		);
+	});
+	let diplomacyToast = $state<{ message: string; tone: 'success' | 'warn' | 'error' } | null>(null);
+	let diplomacyToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showDiplomacyToast(
+		message: string,
+		tone: 'success' | 'warn' | 'error' = 'success'
+	): void {
+		diplomacyToast = { message, tone };
+		if (diplomacyToastTimer) clearTimeout(diplomacyToastTimer);
+		diplomacyToastTimer = setTimeout(() => {
+			diplomacyToast = null;
+			diplomacyToastTimer = null;
+		}, 3400);
+	}
+
+	function diplomacyRemaining(expiresAtTick: number | null): string {
+		if (expiresAtTick === null) return '';
+		const ticks = Math.max(0, expiresAtTick - (snapshot?.tick ?? 0));
+		const seconds = Math.ceil(ticks / TICK_RATE);
+		return seconds >= 60
+			? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+			: `${seconds}s`;
+	}
 	let humanArtillery = $derived(
 		snapshot?.structures.filter(
 			(structure) => structure.type === 'artillery' && structure.ownerId === HUMAN_PLAYER_ID
@@ -630,9 +676,40 @@
 	function showToast(_message: string, _tone: 'success' | 'error' | 'warn' = 'success'): void {}
 
 	function handleTick(next: GameSnapshot, events: SimEvent[]): void {
+		const previous = snapshot;
 		snapshot = next;
 
 		const important = events.filter((event) => event.kind !== 'system');
+		if (previous && next.humanId > 0) {
+			const hadActive = previous.alliances.some(
+				(alliance) => alliance.playerA === next.humanId || alliance.playerB === next.humanId
+			);
+			const hasActive = next.alliances.some(
+				(alliance) => alliance.playerA === next.humanId || alliance.playerB === next.humanId
+			);
+			const hadPending = previous.allianceProposals.some(
+				(proposal) => proposal.fromPlayerId === next.humanId || proposal.toPlayerId === next.humanId
+			);
+			const hasPending = next.allianceProposals.some(
+				(proposal) => proposal.fromPlayerId === next.humanId || proposal.toPlayerId === next.humanId
+			);
+			if (!hadActive && hasActive) {
+				showDiplomacyToast('Alliance formed. Allied territory is now protected.', 'success');
+			} else if (hadPending && !hasPending && !hasActive) {
+				const declined = important.some(
+					(event) => event.kind === 'alliance' && event.message.includes('declined')
+				);
+				showDiplomacyToast(
+					declined ? 'Alliance request declined.' : 'Alliance request expired.',
+					'warn'
+				);
+			} else if (hadActive && !hasActive) {
+				const broke = important.some(
+					(event) => event.kind === 'alliance' && event.message.includes('broke')
+				);
+				if (!broke) showDiplomacyToast('Alliance expired.', 'warn');
+			}
+		}
 		if (important.length > 0) {
 			eventFeed = [...important, ...eventFeed].slice(0, 4);
 		}
@@ -1001,17 +1078,22 @@
 		const isOwn = ownerId === snapshot.humanId;
 		const humanId = snapshot.humanId;
 		let allianceStatus: StructureContextMenu['allianceStatus'] = 'none';
+		let allianceExpiresAtTick: number | null = null;
 		if (isOpponent && humanId > 0) {
-			const active = snapshot.alliances.some(
+			const activeAlliance = snapshot.alliances.find(
 				(alliance) =>
 					(alliance.playerA === humanId && alliance.playerB === ownerId) ||
 					(alliance.playerA === ownerId && alliance.playerB === humanId)
 			);
-			const pending = snapshot.allianceProposals.some(
+			const active = activeAlliance !== undefined;
+			const pendingProposal = snapshot.allianceProposals.find(
 				(proposal) =>
 					(proposal.fromPlayerId === humanId && proposal.toPlayerId === ownerId) ||
 					(proposal.fromPlayerId === ownerId && proposal.toPlayerId === humanId)
 			);
+			const pending = pendingProposal !== undefined;
+			allianceExpiresAtTick =
+				activeAlliance?.expiresAtTick ?? pendingProposal?.expiresAtTick ?? null;
 			const targetBusy =
 				snapshot.alliances.some(
 					(alliance) => alliance.playerA === ownerId || alliance.playerB === ownerId
@@ -1041,6 +1123,7 @@
 			allianceOwnerId: isOpponent ? ownerId : null,
 			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : '',
 			allianceStatus,
+			allianceExpiresAtTick,
 			confirmingDemolish: false
 		};
 		structureMenuCameraView = cameraView;
@@ -1098,7 +1181,7 @@
 			return;
 		}
 		const result = sim.requestAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
-		showToast(result.message, result.ok ? 'success' : 'error');
+		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
 	}
 
 	function breakAlliance(): void {
@@ -1112,7 +1195,7 @@
 			return;
 		}
 		const result = sim.breakAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
-		showToast(result.message, result.ok ? 'success' : 'error');
+		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -1277,6 +1360,10 @@
 	function activateKeyboardCursor(): void {
 		const cursor = ensureKeyboardCursor();
 		if (!cursor) return;
+		if (keyboardCursorAllied) {
+			showDiplomacyToast('Allied territory cannot be attacked.', 'warn');
+			return;
+		}
 		handleAttack(cursor.x, cursor.y);
 	}
 
@@ -1399,6 +1486,7 @@
 			window.removeEventListener('pointermove', handleWindowPointerMove);
 			window.removeEventListener('pointerdown', handleWindowPointerDown);
 			clearTimeout(worldTimer);
+			if (diplomacyToastTimer) clearTimeout(diplomacyToastTimer);
 			cameraBridge.onView = undefined;
 		};
 	});
@@ -1414,6 +1502,16 @@
 	ondrop={handleCardDrop}
 	oncontextmenu={handleContextMenu}
 >
+	{#if diplomacyToast}
+		<div
+			class="diplomacy-toast"
+			class:warn={diplomacyToast.tone === 'warn'}
+			class:error={diplomacyToast.tone === 'error'}
+			role="status"
+		>
+			{diplomacyToast.message}
+		</div>
+	{/if}
 	{#if upgradeTooltip}
 		<div
 			class="upgrade-tooltip"
@@ -1521,10 +1619,14 @@
 							class="context-item context-alliance"
 							role="menuitem"
 							aria-label={`Break alliance with ${structureMenu.allianceName}`}
+							title={`Alliance expires in ${diplomacyRemaining(structureMenu.allianceExpiresAtTick)}`}
 							onclick={breakAlliance}
 						>
 							<span>BREAK ALLIANCE</span>
-							<small>{structureMenu.allianceName} · ACTIVE</small>
+							<small>
+								{structureMenu.allianceName} · ACTIVE ·
+								{diplomacyRemaining(structureMenu.allianceExpiresAtTick)} LEFT
+							</small>
 						</button>
 					{:else if structureMenu.allianceStatus === 'pending'}
 						<button
@@ -1533,9 +1635,13 @@
 							role="menuitem"
 							disabled
 							aria-label={`Alliance request with ${structureMenu.allianceName} pending`}
+							title={`Bot response window: ${diplomacyRemaining(structureMenu.allianceExpiresAtTick)}`}
 						>
 							<span>ALLIANCE PENDING</span>
-							<small>{structureMenu.allianceName} · AWAITING RESPONSE</small>
+							<small>
+								{structureMenu.allianceName} · AWAITING RESPONSE ·
+								{diplomacyRemaining(structureMenu.allianceExpiresAtTick)} LEFT
+							</small>
 						</button>
 					{:else if structureMenu.allianceStatus === 'busy'}
 						<button
@@ -1580,6 +1686,7 @@
 				simulation={sim}
 				{paused}
 				targeting={artilleryTargeting}
+				allyTarget={hoverIsAlly}
 				mergeDistricts={!ctrlHeld}
 				highlightType={draggingCard?.type ?? null}
 				{cameraBridge}
@@ -1593,6 +1700,7 @@
 			{#if keyboardCursorScreen && keyboardCursor}
 				<div
 					class="keyboard-cursor"
+					class:allied={keyboardCursorAllied}
 					style:left={`${keyboardCursorScreen.x}px`}
 					style:top={`${keyboardCursorScreen.y}px`}
 					aria-hidden="true"
@@ -5356,11 +5464,60 @@
 		transform: translateY(-50%);
 	}
 
+	.keyboard-cursor.allied {
+		opacity: 0.48;
+		border-color: rgba(255, 208, 120, 0.86);
+		background: radial-gradient(circle, rgba(255, 208, 120, 0.14), transparent 68%);
+		box-shadow:
+			0 0 0 2px rgba(3, 8, 13, 0.88),
+			0 0 18px rgba(255, 208, 120, 0.34);
+	}
+
+	.keyboard-cursor.allied::before,
+	.keyboard-cursor.allied::after {
+		background: rgba(255, 208, 120, 0.72);
+	}
+
+	.keyboard-cursor.allied span {
+		background: rgba(255, 236, 196, 0.8);
+	}
+
 	.keyboard-cursor span {
 		position: absolute;
 		inset: 13px;
 		border-radius: 50%;
 		background: #d9ffff;
+	}
+
+	.diplomacy-toast {
+		position: fixed;
+		top: 78px;
+		left: 50%;
+		z-index: 42;
+		transform: translateX(-50%);
+		max-width: min(420px, calc(100vw - 28px));
+		padding: 9px 14px;
+		border: 1px solid rgba(61, 219, 217, 0.46);
+		border-left: 3px solid var(--signal);
+		background: rgba(4, 13, 18, 0.94);
+		backdrop-filter: blur(14px);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 9px;
+		line-height: 1.5;
+		letter-spacing: 0.03em;
+		box-shadow: 0 14px 38px rgba(0, 0, 0, 0.45);
+		animation: hud-in 180ms ease-out both;
+	}
+
+	.diplomacy-toast.warn {
+		border-color: rgba(255, 208, 120, 0.46);
+		border-left-color: #ffd078;
+	}
+
+	.diplomacy-toast.error {
+		border-color: rgba(255, 120, 103, 0.5);
+		border-left-color: #ff7867;
 	}
 
 	.onboarding-hint {

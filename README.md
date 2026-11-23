@@ -33,7 +33,7 @@
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                             |
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                               |
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions |
-| Diplomacy       | One active player-requested alliance; bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                                  |
+| Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                             |
 | Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                             |
@@ -349,7 +349,7 @@ AGENTS.md                        orientation for future coding agents
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
 - Match setup chooses states/map/difficulty/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
-- Alliances are local-match diplomacy only: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown.
+- Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
 - The main game still runs on the main thread; only the Evolution Lab uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.

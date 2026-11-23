@@ -490,6 +490,62 @@ describe('alliances', () => {
 		).toBe(false);
 	});
 
+	it('rejects a low-trust request and expires stale diplomatic state', () => {
+		const sim = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		const internals = sim as unknown as {
+			botGrievance: Uint16Array;
+			tick: number;
+			allianceProposals: Array<Record<string, number>>;
+			alliances: Array<Record<string, number>>;
+			updateAlliances(): void;
+		};
+		internals.botGrievance[1 * 8 + 0] = 200;
+		expect(sim.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		for (let tick = 0; tick < 30 && sim.getSnapshot().allianceProposals.length > 0; tick++) {
+			sim.step();
+		}
+		expect(sim.getSnapshot().alliances).toHaveLength(0);
+		expect(sim.getSnapshot().allianceProposals).toHaveLength(0);
+
+		internals.tick = 100;
+		internals.allianceProposals = [
+			{ id: 10, fromPlayerId: 1, toPlayerId: 2, createdAtTick: 0, expiresAtTick: 50 }
+		];
+		internals.alliances = [
+			{
+				id: 11,
+				playerA: 1,
+				playerB: 2,
+				startedAtTick: 0,
+				expiresAtTick: 50
+			}
+		];
+		internals.updateAlliances();
+		expect(internals.allianceProposals).toHaveLength(0);
+		expect(internals.alliances).toHaveLength(0);
+	});
+
+	it('removes alliances when a member is eliminated', () => {
+		const sim = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		const internals = sim as unknown as {
+			alliances: Array<Record<string, number>>;
+			players: Array<{ alive: boolean }>;
+			updateAlliances(): void;
+		};
+		internals.alliances = [
+			{
+				id: 20,
+				playerA: HUMAN_PLAYER_ID,
+				playerB: 2,
+				startedAtTick: 0,
+				expiresAtTick: 10_000
+			}
+		];
+		internals.players[1].alive = false;
+		internals.updateAlliances();
+		expect(internals.alliances).toHaveLength(0);
+	});
+
 	it('produces identical alliance state for identical runs', () => {
 		const left = new TerritorySimulation({ seed: 1234, playerCount: 8 });
 		const right = new TerritorySimulation({ seed: 1234, playerCount: 8 });

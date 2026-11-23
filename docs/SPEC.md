@@ -241,7 +241,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 
 ### 4.8a Alliances
 
-The human commander can request one alliance at a time from an AI state using the rival context menu.
+Diplomacy is player-only: the human commander can request one alliance at a time from an AI state using the rival context menu. Bots accept or decline but never initiate proposals or ally with each other.
 
 - A pending proposal expires after **30 seconds**; the AI target accepts or rejects it on its next staggered decision phase.
 - Acceptance is deterministic integer utility: requester strength, target posture, grievances, and whether the requester was the last attacker. A living state can hold at most one active alliance or pending proposal.
@@ -253,6 +253,7 @@ The human commander can request one alliance at a time from an AI state using th
 - Either side may break an active alliance from the context menu. Breaking applies a **60-second pair cooldown** and adds a betrayal grievance.
 - Proposals and active alliances are removed when either state is eliminated.
 - Alliance state is deterministic, tick-based, and included in checksums and snapshots.
+- UI: allied capitals gain a dashed ally-colored ring, rival banners append `ALLY` or `PENDING`, the map cursor becomes a blocked cursor over allied territory (keyboard activation is disabled), the context menu shows remaining time, and acceptance/decline/expiry produce a short toast.
 
 ### 4.8b Evolution lab
 

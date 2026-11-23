@@ -1,6 +1,6 @@
 # Alliances
 
-**Status:** implemented in 0.72.0. The right-click `REQUEST ALLIANCE` item starts
+**Status:** implemented in 0.73.0. The right-click `REQUEST ALLIANCE` item starts
 a real proposal and `BREAK ALLIANCE` ends an active pair.
 
 ## Goal
@@ -11,8 +11,9 @@ territory economy or front model.
 
 ## Implemented version
 
-- The human can request an alliance with a living AI state from the rival
-  context menu.
+- Diplomacy is **player-only**: the human can request an alliance with a living
+  AI state from the rival context menu. Bots respond but never initiate
+  proposals or ally with one another.
 - A pending proposal resolves on that bot's next staggered decision phase and
   expires after 30 seconds.
 - One active alliance or pending proposal per player.

@@ -46,6 +46,8 @@
 		remoteVisuals?: RemoteVisual[];
 		onRemoteVisualsApplied?: (revision: number) => void;
 		targeting?: boolean;
+		/** The pointer is over an allied state; suppress the attack cursor. */
+		allyTarget?: boolean;
 		mergeDistricts?: boolean;
 		highlightType?: StructureType | null;
 		cameraBridge: GameCameraBridge;
@@ -72,6 +74,7 @@
 		remoteVisuals = [],
 		onRemoteVisualsApplied,
 		targeting = false,
+		allyTarget = false,
 		mergeDistricts = true,
 		highlightType = null,
 		cameraBridge,
@@ -392,6 +395,44 @@
 		 * Supply banners are map-anchored at each rival capital and scaled by
 		 * territory. Snapshot throttling keeps 50 banners off the per-tick path.
 		 */
+		/**
+		 * Allied states get a dashed ring around their capital so the relationship
+		 * is readable without hovering or opening a menu.
+		 */
+		function drawAllianceRings(context: CanvasRenderingContext2D): void {
+			const snapshot = lastSnapshot;
+			const camera = renderer?.camera;
+			if (!snapshot || !camera || snapshot.humanId <= 0) return;
+			const allies = new Set<number>();
+			for (const alliance of snapshot.alliances) {
+				if (alliance.playerA === snapshot.humanId) allies.add(alliance.playerB);
+				if (alliance.playerB === snapshot.humanId) allies.add(alliance.playerA);
+			}
+			if (allies.size === 0) return;
+			for (const playerId of allies) {
+				const capital =
+					simulation.structures.all.find(
+						(structure) => structure.type === 'state' && structure.ownerId === playerId
+					) ?? simulation.map.starts[playerId - 1];
+				if (!capital) continue;
+				const point = camera.mapToScreen(capital.x + 0.5, capital.y + 0.5);
+				context.save();
+				context.beginPath();
+				context.arc(point.x, point.y, STATE_BOT_MARKER_RADIUS + 8, 0, Math.PI * 2);
+				context.setLineDash([4, 3]);
+				context.lineWidth = 2;
+				context.strokeStyle = colorForPlayer(playerId).hex;
+				context.globalAlpha = 0.9;
+				context.stroke();
+				context.globalAlpha = 0.35;
+				context.beginPath();
+				context.arc(point.x, point.y, STATE_BOT_MARKER_RADIUS + 11, 0, Math.PI * 2);
+				context.lineWidth = 1;
+				context.stroke();
+				context.restore();
+			}
+		}
+
 		function drawSupplyBanners(
 			context: CanvasRenderingContext2D,
 			width: number,
@@ -437,7 +478,17 @@
 				let scale = 0.75 + sizeRatio;
 				const supplyText = formatSupply(player.supply);
 				const attackText = `${player.attacksAffordable} ATK`;
-				const nameText = player.name;
+				const allied = snapshot.alliances.some(
+					(alliance) =>
+						(alliance.playerA === snapshot.humanId && alliance.playerB === player.id) ||
+						(alliance.playerB === snapshot.humanId && alliance.playerA === player.id)
+				);
+				const pending = snapshot.allianceProposals.some(
+					(proposal) =>
+						(proposal.fromPlayerId === snapshot.humanId && proposal.toPlayerId === player.id) ||
+						(proposal.toPlayerId === snapshot.humanId && proposal.fromPlayerId === player.id)
+				);
+				const nameText = `${player.name}${allied ? ' · ALLY' : pending ? ' · PENDING' : ''}`;
 				const accent = colorForPlayer(player.id).hex;
 				const measure = (fontScale: number) => {
 					const supplySize = Math.max(1, Math.round(17 * fontScale));
@@ -695,6 +746,7 @@
 				context.stroke();
 			}
 
+			drawAllianceRings(context);
 			drawSupplyBanners(context, width, height);
 		}
 
@@ -1032,6 +1084,7 @@
 	class:grabbing={dragging}
 	class="territory-canvas"
 	class:targeting
+	class:ally-target={allyTarget && !targeting}
 	aria-label={targeting
 		? 'Artillery targeting. Click a hostile structure near the aim point to fire.'
 		: 'Territory map. Drag to pan, scroll to zoom, click to attack.'}
@@ -1053,6 +1106,10 @@
 
 	.territory-canvas.targeting {
 		cursor: cell;
+	}
+
+	.territory-canvas.ally-target {
+		cursor: not-allowed;
 	}
 
 	.territory-canvas.grabbing {
