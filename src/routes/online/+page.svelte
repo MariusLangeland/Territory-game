@@ -9,6 +9,7 @@
 	import { STRUCTURE_DEFINITIONS, type BuildableStructureType } from '#lib/game/Structures';
 	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
 	import {
+		decodeByteRuns,
 		decodeOwnerRuns,
 		type OnlineBaseline,
 		type OnlineIntent,
@@ -286,6 +287,7 @@
 			height: MAP_HEIGHT
 		});
 		const owners = decodeOwnerRuns(baseline.ownerRuns, map.width * map.height);
+		const districtColorCodes = decodeByteRuns(baseline.districtColorRuns, map.width * map.height);
 		const init: WorkerMatchInit = {
 			width: map.width,
 			height: map.height,
@@ -294,7 +296,7 @@
 			terrainShade: map.shade,
 			terrainElevation: map.elevation,
 			owners,
-			districtColorCodes: new Uint8Array(map.width * map.height),
+			districtColorCodes,
 			snapshot: baseline.snapshot
 		};
 		remoteView = new RemoteEvolutionSimulation(init);
@@ -315,6 +317,9 @@
 			return;
 		}
 		const changes = Uint32Array.from(tick.changes);
+		const districtTiles = tick.districtTiles;
+		const districtTileColors =
+			tick.districtTileColors.length > 0 ? Uint8Array.from(tick.districtTileColors) : null;
 		remoteView.applyVisual({
 			matchId: 1,
 			tick: tick.tick,
@@ -324,8 +329,8 @@
 			overflow: false,
 			owners: null,
 			districtColorCodes: null,
-			districtTiles: [],
-			districtTileColors: null,
+			districtTiles,
+			districtTileColors,
 			markovStates: []
 		});
 		snapshot = tick.snapshot;
@@ -339,7 +344,7 @@
 				changes,
 				changeCount: changes.length,
 				overflow: false,
-				districtTiles: []
+				districtTiles
 			}
 		].slice(-8);
 	}

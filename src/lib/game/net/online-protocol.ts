@@ -65,7 +65,8 @@ export interface OnlineBaseline {
 	config: OnlineRoomConfig;
 	snapshot: GameSnapshot;
 	ownerRuns: OnlineOwnerRun[];
-	/** Packed 32×32 district palette tiles, one color code per cell. */
+	districtColorRuns: OnlineOwnerRun[];
+	/** Legacy baseline placeholders retained for wire compatibility. */
 	districtTileColors: number[];
 	districtTiles: number[];
 	checksum: number;
@@ -83,6 +84,8 @@ export interface OnlineTick {
 	tick: number;
 	changes: number[];
 	changesOverflow: boolean;
+	districtTiles: number[];
+	districtTileColors: number[];
 	snapshot: GameSnapshot;
 	events: OnlineWireEvent[];
 	checksum: number;
@@ -121,6 +124,37 @@ export function encodeOwnerRuns(owners: Uint16Array): OnlineOwnerRun[] {
 	}
 	runs.push({ owner, count });
 	return runs;
+}
+
+export function encodeByteRuns(values: Uint8Array): OnlineOwnerRun[] {
+	const runs: OnlineOwnerRun[] = [];
+	let owner = values[0] ?? 0;
+	let count = 0;
+	for (let index = 0; index < values.length; index++) {
+		const next = values[index] ?? 0;
+		if (next !== owner) {
+			runs.push({ owner, count });
+			owner = next;
+			count = 0;
+		}
+		count++;
+	}
+	runs.push({ owner, count });
+	return runs;
+}
+
+export function decodeByteRuns(runs: readonly OnlineOwnerRun[], length: number): Uint8Array {
+	const values = new Uint8Array(length);
+	let offset = 0;
+	for (const run of runs) {
+		const count = Math.max(0, Math.trunc(run.count));
+		const owner = Math.max(0, Math.min(255, Math.trunc(run.owner)));
+		const end = Math.min(length, offset + count);
+		values.fill(owner, offset, end);
+		offset = end;
+		if (offset >= length) break;
+	}
+	return values;
 }
 
 export function decodeOwnerRuns(runs: readonly OnlineOwnerRun[], length: number): Uint16Array {

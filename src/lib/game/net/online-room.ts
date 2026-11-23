@@ -2,6 +2,7 @@ import { TICK_RATE } from '../constants';
 import { TerritorySimulation } from '../simulation';
 import { NET_PROTOCOL_VERSION } from './protocol';
 import {
+	encodeByteRuns,
 	encodeOwnerRuns,
 	type OnlineBaseline,
 	type OnlineIntent,
@@ -44,6 +45,8 @@ export class OnlineRoom {
 	private lastEvents: OnlineWireEvent[] = [];
 	private lastChanges: number[] = [];
 	private lastChangesOverflow = false;
+	private lastDistrictTiles: number[] = [];
+	private lastDistrictTileColors: number[] = [];
 
 	constructor(roomId: string, config: OnlineRoomConfig) {
 		if (!/^[a-z0-9-]{4,40}$/i.test(roomId)) throw new Error('Invalid room id.');
@@ -154,6 +157,7 @@ export class OnlineRoom {
 			config: { ...this.config },
 			snapshot,
 			ownerRuns: encodeOwnerRuns(this.simulation.owners),
+			districtColorRuns: encodeByteRuns(this.simulation.districtColorCodes),
 			districtTiles: [],
 			districtTileColors: [],
 			checksum: this.simulation.checksum()
@@ -241,6 +245,8 @@ export class OnlineRoom {
 		}));
 		this.lastChanges = Array.from(step.changes.subarray(0, step.changeCount));
 		this.lastChangesOverflow = step.changesOverflow;
+		this.lastDistrictTiles = [...step.districtTiles];
+		this.lastDistrictTileColors = this.packDistrictTiles(step.districtTiles);
 		if (this.simulation.ended) {
 			this.phase = 'completed';
 			this.winnerId = this.simulation.winnerId;
@@ -250,6 +256,8 @@ export class OnlineRoom {
 			tick: step.tick,
 			changes: this.lastChanges,
 			changesOverflow: this.lastChangesOverflow,
+			districtTiles: this.lastDistrictTiles,
+			districtTileColors: this.lastDistrictTileColors,
 			snapshot: this.simulation.getSnapshot(),
 			events: this.lastEvents,
 			checksum: this.checksumValue ?? this.simulation.checksum(),
@@ -266,6 +274,8 @@ export class OnlineRoom {
 			tick: this.simulation.tick,
 			changes: this.lastChanges,
 			changesOverflow: this.lastChangesOverflow,
+			districtTiles: this.lastDistrictTiles,
+			districtTileColors: this.lastDistrictTileColors,
 			snapshot: this.simulation.getSnapshot(seat.playerId),
 			events: this.lastEvents,
 			checksum: this.checksumValue ?? this.simulation.checksum(),
@@ -273,23 +283,27 @@ export class OnlineRoom {
 		};
 	}
 
-	/** District palette baseline is optional in the MVP; expose raw code tiles for later sync. */
-	districtColorRuns(): number[] {
-		if (!this.simulation) return [];
+	private packDistrictTiles(tiles: readonly number[]): number[] {
+		if (!this.simulation || tiles.length === 0) return [];
 		const codes = this.simulation.districtColorCodes;
 		const tilesX = Math.ceil(this.simulation.width / DISTRICT_TILE_SIZE);
-		const tilesY = Math.ceil(this.simulation.height / DISTRICT_TILE_SIZE);
 		const result: number[] = [];
-		for (let ty = 0; ty < tilesY; ty++) {
-			for (let tx = 0; tx < tilesX; tx++) {
-				for (let y = 0; y < DISTRICT_TILE_SIZE; y++) {
-					const worldY = ty * DISTRICT_TILE_SIZE + y;
-					if (worldY >= this.simulation.height) break;
-					for (let x = 0; x < DISTRICT_TILE_SIZE; x++) {
-						const worldX = tx * DISTRICT_TILE_SIZE + x;
-						if (worldX >= this.simulation.width) break;
-						result.push(codes[worldY * this.simulation.width + worldX] ?? 0);
-					}
+		for (const tile of tiles) {
+			const tileY = Math.floor(tile / tilesX);
+			const tileX = tile - tileY * tilesX;
+			for (let y = 0; y < DISTRICT_TILE_SIZE; y++) {
+				const worldY = tileY * DISTRICT_TILE_SIZE + y;
+				if (worldY >= this.simulation.height) {
+					for (let x = 0; x < DISTRICT_TILE_SIZE; x++) result.push(0);
+					continue;
+				}
+				for (let x = 0; x < DISTRICT_TILE_SIZE; x++) {
+					const worldX = tileX * DISTRICT_TILE_SIZE + x;
+					result.push(
+						worldX >= this.simulation.width
+							? 0
+							: (codes[worldY * this.simulation.width + worldX] ?? 0)
+					);
 				}
 			}
 		}
