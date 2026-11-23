@@ -45,7 +45,8 @@ export class LocalWorkerHost {
 			terrainElevation: sim.map.elevation,
 			owners: sim.owners.slice(),
 			districtColorCodes: sim.districtColorCodes.slice(),
-			snapshot: sim.getSnapshot()
+			snapshot: sim.getSnapshot(),
+			mergedDistricts: [...sim.getMergedDistricts()]
 		};
 	}
 
@@ -75,7 +76,8 @@ export class LocalWorkerHost {
 			changes: result.changes.slice(0, result.changeCount),
 			changesOverflow: result.changesOverflow,
 			districtTiles: result.districtTiles,
-			events: result.events
+			events: result.events,
+			mergedDistricts: [...this.simulation.getMergedDistricts()]
 		};
 	}
 

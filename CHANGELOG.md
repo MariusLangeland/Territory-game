@@ -16,8 +16,7 @@
 - Added worker host tests covering init, stepping, pause/resume, and commands.
 
 Known parity notes for UI verification: hover/upgrade previews use mirror
-approximations, merged-district icon grouping is currently not recreated in the
-worker mirror, and the browser worker path has not been exercised by automated
+approximations, and the browser worker path has not been exercised by automated
 browser tests.
 
 ## 0.75.1 — 2026-11-23

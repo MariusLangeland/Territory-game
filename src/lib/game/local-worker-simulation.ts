@@ -9,6 +9,7 @@ import {
 } from './constants';
 import { RemoteEvolutionSimulation } from './ai/evolution-view';
 import type { WorkerMatchInit } from './ai/evolution-worker-protocol';
+import type { MergedDistrictGroup } from './simulation';
 import type {
 	LocalWorkerCommandType,
 	LocalWorkerInit,
@@ -46,6 +47,7 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 	readonly matchDurationTicks: number;
 	private client: LocalWorkerClient;
 	private telemetry: LocalWorkerTelemetry['behavior'] | null = null;
+	private mergedDistricts: MergedDistrictGroup[] = [];
 
 	static async create(
 		config: LocalWorkerInitConfig,
@@ -98,6 +100,7 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		this.playerCount = init.config.playerCount;
 		this.matchDurationTicks = init.config.matchDurationTicks;
 		this.client = client;
+		this.mergedDistricts = init.mergedDistricts;
 	}
 
 	applyWorkerVisual(visual: LocalWorkerVisual): void {
@@ -115,6 +118,11 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 			districtTileColors: null,
 			markovStates: []
 		});
+		this.mergedDistricts = visual.mergedDistricts;
+	}
+
+	override getMergedDistricts(): readonly MergedDistrictGroup[] {
+		return this.mergedDistricts;
 	}
 
 	setTelemetry(behavior: LocalWorkerTelemetry['behavior']): void {

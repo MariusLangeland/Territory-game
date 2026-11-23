@@ -1,6 +1,6 @@
 import { CHANGE_INDEX_BITS, CHANGE_INDEX_MASK } from '../constants';
 import type { PublicStructure, StructureType } from '../Structures';
-import type { GameSnapshot } from '../simulation';
+import type { GameSnapshot, MergedDistrictGroup } from '../simulation';
 import type { StartPoint } from '../map';
 import type { WorkerMatchInit, WorkerVisual } from './evolution-worker-protocol';
 
@@ -59,7 +59,7 @@ export class RemoteEvolutionSimulation {
 		return this.snapshot;
 	}
 
-	getMergedDistricts(): [] {
+	getMergedDistricts(): readonly MergedDistrictGroup[] {
 		// District seam merging is a live-game cosmetic; the worker mirror keeps
 		// the raw per-structure districts to avoid serializing merged groups.
 		return [];

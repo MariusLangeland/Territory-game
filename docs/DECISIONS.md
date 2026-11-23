@@ -3263,5 +3263,4 @@ Those scans caused repeatable frame hitches, and atlas area makes them worse.
 - Integrity spikes no longer block rendering or input.
 - UI validation/preview paths use mirror approximations; the worker result is
   authoritative for every command.
-- Merged-district icon grouping is currently not mirrored.
 - Browser worker behavior still requires manual UI verification.

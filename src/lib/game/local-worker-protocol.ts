@@ -1,6 +1,6 @@
 import type { BotGenome } from './ai/genome';
 import type { StartPoint } from './map';
-import type { BotDifficulty, GameSnapshot, StepResult } from './simulation';
+import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from './simulation';
 import type { GrowthMode } from './growth';
 
 export interface LocalWorkerInitConfig {
@@ -27,6 +27,7 @@ export interface LocalWorkerInit {
 	owners: Uint16Array;
 	districtColorCodes: Uint8Array;
 	snapshot: GameSnapshot;
+	mergedDistricts: MergedDistrictGroup[];
 }
 
 export type LocalWorkerCommandType =
@@ -74,6 +75,7 @@ export interface LocalWorkerVisual {
 	changesOverflow: boolean;
 	districtTiles: number[];
 	events: StepResult['events'];
+	mergedDistricts: MergedDistrictGroup[];
 }
 
 export interface LocalWorkerCommandResult {
