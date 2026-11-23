@@ -307,6 +307,8 @@ src/
       Minimap.svelte             throttled 2D overview
       GameTopBar.svelte          commander readout, clock, global actions
       WorldRail.svelte           leaderboard + war feed
+      SupplyPanel.svelte         supply bar, cancel/fire actions
+      CardTray.svelte            card hand and drag-source cards
       StructureMenu.svelte       structure/diplomacy context menu
       DiplomacyToast.svelte      diplomacy status toast
       UpgradeTooltip.svelte      upgrade cost/supply tooltip

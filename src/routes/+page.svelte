@@ -1,14 +1,14 @@
 <script lang="ts">
 	import './game-page.css';
 	import { onMount, tick } from 'svelte';
-	import { flip } from 'svelte/animate';
-	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import CardTray from '#lib/components/CardTray.svelte';
 	import GameTopBar from '#lib/components/GameTopBar.svelte';
 	import WorldRail from '#lib/components/WorldRail.svelte';
 	import DiplomacyToast from '#lib/components/DiplomacyToast.svelte';
 	import StructureMenu from '#lib/components/StructureMenu.svelte';
+	import SupplyPanel from '#lib/components/SupplyPanel.svelte';
 	import UpgradeTooltip from '#lib/components/UpgradeTooltip.svelte';
 	import { formatClock, formatCompact, formatShare, formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
@@ -854,29 +854,6 @@
 		rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
 	}
 
-	function cardDefinition(card: PublicCard) {
-		return STRUCTURE_DEFINITIONS[card.type];
-	}
-
-	function cardCategory(type: BuildableStructureType): string {
-		switch (type) {
-			case 'artillery':
-				return 'SIEGE';
-			case 'barracks':
-				return 'MILITARY';
-			case 'fortification':
-				return 'FORTIFICATION';
-			case 'jammer':
-				return 'SUPPRESSION';
-			case 'command-post':
-				return 'COMMAND';
-			case 'war-academy':
-				return 'DOCTRINE';
-			case 'port':
-				return 'NAVAL';
-		}
-	}
-
 	function clearDragState(): void {
 		draggingCardId = null;
 		keyboardPlacement = false;
@@ -1434,167 +1411,29 @@
 			</div>
 		</div>
 
-		<div
-			class="supply-dock hud"
-			class:previewing={!!supplyPreview}
-			class:short={supplyPreview ? !supplyPreview.affordable : false}
-			aria-label="Supply"
-		>
-			<div class="supply-row">
-				<div class="supply-edge supply-now">
-					<span>SUPPLY</span>
-					<strong title={`${supplyBar.supply} / ${supplyBar.cap}`}>
-						{formatSupply(supplyBar.supply)}
-					</strong>
-				</div>
-				<div
-					class="supply-track"
-					role="progressbar"
-					aria-label="Supply"
-					aria-valuemin={0}
-					aria-valuemax={supplyBar.cap}
-					aria-valuenow={supplyBar.supply}
-					title={supplyPreview
-						? `${supplyPreview.label}: ${supplyPreview.cost} supply`
-						: `${supplyBar.supply} / ${supplyBar.cap} supply`}
-				>
-					<div class="supply-fill" style={`width:${supplyBar.fill}%`}></div>
-					{#if supplyPreview && supplyBar.costWidth > 0}
-						<div
-							class="supply-cost-fill"
-							style={`left:${supplyBar.costStart}%;width:${supplyBar.costWidth}%`}
-						></div>
-					{/if}
-					<div class="supply-cap" style={`left:${supplyBar.fill}%`}></div>
-				</div>
-				<div class="supply-edge supply-max">
-					<span>MAX</span>
-					<strong title={`${supplyBar.supply} / ${supplyBar.cap}`}>
-						{formatSupply(supplyBar.cap)}
-					</strong>
-				</div>
-			</div>
-			<div class="supply-meta">
-				<em>+{snapshot.supplyIncome}/s</em>
-				{#if supplyPreview}
-					<div class="supply-cost" class:short={!supplyPreview.affordable}>
-						<span>{supplyPreview.label}</span>
-						<strong>-{formatSupply(supplyPreview.cost)}S</strong>
-						{#if !supplyPreview.affordable}<i>NEED</i>{/if}
-					</div>
-				{/if}
-				<div class="supply-actions">
-					{#if humanFronts.length > 0}
-						<button class="cancel-front" type="button" onclick={actions.cancelLatestFront}>
-							CANCEL FRONT
-						</button>
-					{/if}
-					{#if humanArtillery.length > 0}
-						<button
-							class="fire-artillery"
-							class:active={artilleryTargeting}
-							class:unaffordable={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
-							type="button"
-							onclick={actions.toggleArtilleryTargeting}
-							disabled={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
-							title={`Fire every ready battery (${readyArtilleryShells} shells, ${artilleryVolleyCost} supply) at a point within range`}
-						>
-							{artilleryTargeting
-								? 'SELECT TARGET'
-								: `FIRE ${readyArtillery.length}/${humanArtillery.length} · ${formatSupply(artilleryVolleyCost)}S`}
-						</button>
-					{/if}
-				</div>
-			</div>
-		</div>
-
-		<div class="card-tray hud" aria-label="Build cards">
-			<div
-				class="hand-shell"
-				class:collapsed={!handRaised}
-				bind:this={handShellEl}
-				aria-label="Card hand"
-			>
-				<div class="hand-row">
-					{#each snapshot.hand as card, index (card.id)}
-						{@const definition = cardDefinition(card)}
-						{@const accent = STRUCTURE_ACCENTS[card.type]}
-						<article
-							class="build-card"
-							data-card-id={card.id}
-							class:unaffordable={snapshot.supply < definition.cost}
-							class:dragging={draggingCardId === card.id}
-							style={`--card-accent:${accent};--card-tilt:${(index - (snapshot.hand.length - 1) / 2) * 2.2}deg`}
-							draggable={snapshot.supply >= definition.cost}
-							in:fly={{ y: 42, duration: 360, delay: Math.min(index, 2) * 55 }}
-							out:fly={{ y: 28, duration: 240 }}
-							animate:flip={{ duration: 260 }}
-							ondragstart={(event) => startCardDrag(event, card)}
-							ondrag={updateDragHover}
-							ondragend={endCardDrag}
-							onpointerdown={() => (handRaised = true)}
-							title={`Drag ${definition.label} into your territory`}
-						>
-							<div class="card-face">
-								<div class="card-banner">
-									<span>BUILD CARD</span>
-									<b class="card-hotkey" title={`Press ${index + 1} to place`}>{index + 1}</b>
-									<div class="card-cost">
-										<b title={String(definition.cost)}>{formatSupply(definition.cost)}</b><small>
-											S
-										</small>
-									</div>
-								</div>
-								<h3 class="card-title">{definition.label}</h3>
-								<div class="card-art" aria-hidden="true">
-									<span class="card-art-icon">
-										{#if card.type === 'artillery'}
-											<svg viewBox="0 0 24 24">
-												<path
-													d="M3 19h8M5 19a3 3 0 0 1 6 0M11 18 20 7M17 5l3 2-2 3M4 12c3-5 8-7 16-7"
-												/>
-											</svg>
-										{:else if card.type === 'barracks'}
-											<svg viewBox="0 0 24 24">
-												<path d="M5 19 19 5M8 5l11 11M5 16l3 3M16 5l3 3" />
-											</svg>
-										{:else if card.type === 'fortification'}
-											<svg viewBox="0 0 24 24">
-												<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
-											</svg>
-										{:else if card.type === 'jammer'}
-											<svg viewBox="0 0 24 24">
-												<path
-													d="M12 12v9M4 8a11 11 0 0 1 16 0M7 11a7 7 0 0 1 10 0M10 14a3 3 0 0 1 4 0"
-												/>
-											</svg>
-										{:else if card.type === 'command-post'}
-											<svg viewBox="0 0 24 24">
-												<path d="M12 21V9M8 9a6 6 0 0 1 8 0M5 6a10 10 0 0 1 14 0M9 21h6" />
-											</svg>
-										{:else if card.type === 'port'}
-											<svg viewBox="0 0 24 24">
-												<path d="M12 3v15M8 6a4 4 0 0 1 8 0M5 12h14M5 15c0 4 3 6 7 6s7-2 7-6" />
-											</svg>
-										{:else}
-											<svg viewBox="0 0 24 24">
-												<path d="M12 4 20 8l-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
-											</svg>
-										{/if}
-									</span>
-								</div>
-								<div class="card-type">STRUCTURE / {cardCategory(card.type)}</div>
-								<p class="card-rules">{definition.description}</p>
-								<div class="card-footer">
-									<span>DRAG OR {index + 1} TO BUILD</span><span>◆</span>
-								</div>
-							</div>
-						</article>
-					{/each}
-				</div>
-			</div>
-		</div>
-
+		<SupplyPanel
+			{snapshot}
+			{supplyBar}
+			{supplyPreview}
+			{humanFronts}
+			{humanArtillery}
+			{readyArtillery}
+			{readyArtilleryShells}
+			{artilleryVolleyCost}
+			{artilleryTargeting}
+			onCancelFront={actions.cancelLatestFront}
+			onToggleArtillery={actions.toggleArtilleryTargeting}
+		/>
+		<CardTray
+			{snapshot}
+			{handRaised}
+			bind:handShellElement={handShellEl}
+			{draggingCardId}
+			onStartDrag={startCardDrag}
+			onDrag={updateDragHover}
+			onDragEnd={endCardDrag}
+			onRaise={() => (handRaised = true)}
+		/>
 		{#if draggingCardId !== null && dragOrigin && dragPointer && dragArrow}
 			<svg class="drag-overlay" aria-hidden="true">
 				{#if dragLanding}

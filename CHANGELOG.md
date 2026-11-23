@@ -28,7 +28,9 @@
 - Extracted `DiplomacyToast`, `UpgradeTooltip`, and `StructureMenu` UI components.
 - Extracted `GameTopBar` (commander/clock/actions) and `WorldRail`
   (leaderboard/war feed) components.
-- `+page.svelte` is now ~1,975 lines, down from 5,773 before the restructure.
+- Extracted `SupplyPanel` (supply bar/actions) and `CardTray` (card hand and
+  drag-source cards) components.
+- `+page.svelte` is now ~1,820 lines, down from 5,773 before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23
