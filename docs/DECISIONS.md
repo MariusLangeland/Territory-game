@@ -3264,3 +3264,33 @@ Those scans caused repeatable frame hitches, and atlas area makes them worse.
 - UI validation/preview paths use mirror approximations; the worker result is
   authoritative for every command.
 - Browser worker behavior still requires manual UI verification.
+
+---
+
+## ADR-101 — Worker module and SimulationView boundary
+
+**Status:** accepted and implemented
+**Date:** 2026-11-23
+
+### Context
+
+The worker migration left main-game code split between `game/` and `ai/`, reused
+evolution-named classes, and required components to cast the worker mirror to
+`TerritorySimulation`.
+
+### Decision
+
+- Own all worker simulation boundaries under `src/lib/game/worker/`.
+- Keep only evolution-specific commands in `ai/evolution-worker-protocol.ts`;
+  share init/visual payloads in `worker/protocol.ts`.
+- Rename the render mirror to `RemoteSimulationView` in `worker/view.ts`.
+- Define `SimulationView` in `simulation-view.ts` as the read-only contract used
+  by `GameCanvas` and `Minimap`; both the authoritative simulation and worker
+  mirror satisfy it.
+- Run the built-worker smoke test in CI after the production build.
+
+### Consequences
+
+- The worker boundary is discoverable in one module.
+- Components no longer depend on a concrete simulation class or casts.
+- Future renderer/query consumers should target `SimulationView`.

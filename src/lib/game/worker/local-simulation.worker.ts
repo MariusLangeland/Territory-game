@@ -1,5 +1,5 @@
-import { LocalWorkerHost } from './local-worker-host';
-import type { LocalWorkerInbound, LocalWorkerOutbound } from './local-worker-protocol';
+import { LocalWorkerHost } from './local-host';
+import type { LocalWorkerInbound, LocalWorkerOutbound } from './local-protocol';
 
 const TICK_MS = 100;
 const TELEMETRY_INTERVAL_MS = 1000;

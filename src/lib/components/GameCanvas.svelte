@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { ARTILLERY_RANGE, HUMAN_PLAYER_ID, TICK_MS, colorForPlayer } from '#lib/game/constants';
 	import { formatSupply } from '#lib/format';
-	import type { GameSnapshot, SimEvent, TerritorySimulation } from '#lib/game/simulation';
+	import type { GameSnapshot, SimEvent, StepResult } from '#lib/game/simulation';
+	import type { SimulationView } from '#lib/game/simulation-view';
 	import {
 		STRUCTURE_ACCENTS,
 		STRUCTURE_TYPE_CODES,
@@ -39,7 +40,7 @@
 	}
 
 	interface Props {
-		simulation: TerritorySimulation;
+		simulation: SimulationView;
 		paused: boolean;
 		/** When false, the simulation is advanced by a worker instead of this frame loop. */
 		simulate?: boolean;
@@ -112,6 +113,12 @@
 	/** Latest throttled snapshot, used by the 2D supply banners. */
 	let lastSnapshot: GameSnapshot | null = null;
 	let lastRemoteRevision = -1;
+
+	function stepSimulation(): StepResult {
+		const step = simulation.step;
+		if (!step) throw new Error('This simulation view is worker-owned and cannot be stepped here.');
+		return step.call(simulation);
+	}
 
 	function applyRemoteVisual(visual: RemoteVisual): void {
 		if (!renderer || visual.revision <= lastRemoteRevision) return;
@@ -777,7 +784,7 @@
 				const pendingEvents: SimEvent[] = [];
 
 				while (accumulator >= TICK_MS && steps < maxStepsPerFrame && !simulation.ended) {
-					const result = simulation.step();
+					const result = stepSimulation();
 					renderer.applyChanges(
 						result.changes,
 						result.changeCount,

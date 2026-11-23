@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { LocalWorkerHost } from './local-worker-host';
-import type { LocalWorkerInitConfig } from './local-worker-protocol';
-import { TerritorySimulation } from './simulation';
+import { LocalWorkerHost } from './local-host';
+import type { LocalWorkerInitConfig } from './local-protocol';
+import { TerritorySimulation } from '../simulation';
 
 const CONFIG: LocalWorkerInitConfig = {
 	seed: 1234,

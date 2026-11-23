@@ -245,23 +245,25 @@ The main game uses the committed gauntlet survivor pool as its base bot roster, 
 ## Architecture at a glance
 
 ```text
-Main game — Svelte UI (+page.svelte)
-  └── GameCanvas.svelte ......... fixed-step driver, pointer input, camera bridge
-        ├── TerritorySimulation .. pure deterministic game core
-        │     ├── generateMap .... seeded, versioned configurable atlas + state starts
-        │     ├── TerritoryRng ... deterministic PRNG
-        │     ├── growth/ ........ circular / smooth / organic frontier layers
-        │     ├── Structures/ .... one file per structure type + registry
-        │     ├── integrity.ts ... annexation + neutral-pocket cleanup
-        │     ├── ai/ ............ genomes, Markov options, buckets, bot profiles
-        │     └── attacks ........ durable fronts, strength attrition, refunds
-        ├── TerritoryRenderer .... WebGPU device, shader, adaptive chunked uploads
-        └── MapCamera ............ CSS-pixel camera, zoom, free overscroll pan
-  └── Minimap.svelte ............ 2D overview, throttled independent redraw
+Main game - routes/+page.svelte
+  +-- Worker client/transport (lib/game/worker/local-client.ts)
+  |     +-- local-simulation.worker.ts . worker-owned 10 Hz loop
+  |     +-- local-host.ts ............. authoritative simulation + commands
+  |     +-- view.ts .................... read-only mirror for rendering/UI
+  |     +-- simulation-view.ts ........ shared renderer contract
+  |     +-- TerritorySimulation ....... pure deterministic game core
+  |           +-- generateMap ......... seeded configurable atlas + starts
+  |           +-- growth/ ............. organic frontier layers
+  |           +-- Structures/ ......... structure definitions + registry
+  |           +-- integrity.ts ........ annexation + pocket cleanup
+  |           +-- ai/ ................. genomes, Markov, buckets, bot profiles
+  |           +-- attacks ............. durable fronts, attrition, refunds
+  +-- GameCanvas.svelte ............... input, camera, WebGPU + 2D overlays
+  +-- Minimap.svelte .................. throttled 2D overview
 
 Evolution Lab — routes/evolution
   ├── evolution.worker.ts ....... match loop, evolution/gauntlet sandbox, IndexedDB checkpoints
-  ├── evolution-view.ts ......... main-thread render mirror
+  ├── worker/view.ts  ............ main-thread render mirror
   └── GameCanvas.svelte ......... acknowledged ordered visual deltas
 ```
 
@@ -320,16 +322,19 @@ src/
         markov.ts                semi-Markov strategic controllers
         evolution.ts             population evolution + gauntlet sandbox
         evolution.worker.ts      worker match loop + IndexedDB checkpoints
-        evolution-view.ts        main-thread render mirror
         gauntlet-survivors.ts    committed main-game survivor roster loader
         buckets.ts               saved difficulty buckets
         evolution-csv.ts         CSV round-trip
       net/protocol.ts            multiplayer wire protocol draft
       net/online-protocol.ts     authoritative room/intent/baseline types
       net/online-room.ts         multi-human room lifecycle + intent validation
-      local-worker-host.ts       worker-owned local simulation + commands
-      local-simulation.worker.ts local match worker entry
-      local-worker-simulation.ts main-thread mirror + async command facade
+      simulation-view.ts         read-only contract shared by all renderers
+      worker/
+        protocol.ts              shared worker init/visual payloads
+        view.ts                  shared read-only match mirror
+        local-host.ts            worker-owned local simulation + commands
+        local-simulation.worker.ts local match worker entry
+        local-simulation.ts      main-thread local mirror + async commands
   lib/server/online.ts         in-memory rooms, 10 Hz ticker, SSE subscribers
       render/
         camera.ts                pan / zoom / free overscroll camera
@@ -361,8 +366,8 @@ AGENTS.md                        orientation for future coding agents
 - Match setup chooses states/map size/difficulty/timer and an optional 500-stack bot Command Post surge. Online rooms are in-memory only; there is no persistent lobby yet.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
 - Online rooms are an in-memory MVP: up to eight humans, bots fill empty seats, HTTP commands, and SSE snapshots. The single-process support target is 200 concurrent players at 10 Hz (25 rooms × 8 humans), enforced by `pnpm bench:online`. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
-- Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
-- The main game still runs on the main thread; only the Evolution Lab uses a worker.
+- Online rooms exist as an in-memory MVP; accounts, matchmaking, chat, and server persistence are not implemented.
+- The local match simulation runs in a worker; the Evolution Lab also uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.
 - Further accessibility/WCAG work and richer diplomacy are still deferred.
 - No audio or fog.

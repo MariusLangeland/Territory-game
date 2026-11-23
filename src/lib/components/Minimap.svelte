@@ -2,10 +2,11 @@
 	import { onMount } from 'svelte';
 	import { PALETTE } from '#lib/game/constants';
 	import type { CameraView } from '#lib/game/render/camera-bridge';
-	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
+	import type { GameSnapshot } from '#lib/game/simulation';
+	import type { SimulationView } from '#lib/game/simulation-view';
 
 	interface Props {
-		simulation: TerritorySimulation;
+		simulation: SimulationView;
 		snapshot: GameSnapshot;
 		cameraView: CameraView | null;
 		onNavigate: (x: number, y: number) => void;

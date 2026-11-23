@@ -7,7 +7,7 @@ import type {
 	LocalWorkerOutbound,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
-} from './local-worker-protocol';
+} from './local-protocol';
 
 interface LocalWorkerHandlers {
 	onInit: (init: LocalWorkerInit) => void;

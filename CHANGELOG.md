@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.77.0 — 2026-11-23
+
+### Project structure
+
+- Moved all worker-owned simulation code into `src/lib/game/worker/`:
+  host, client, protocols, local facade, worker entry, and tests.
+- Extracted shared worker `WorkerMatchInit`/`WorkerVisual` payloads into
+  `worker/protocol.ts`; evolution-specific commands stay in `ai/`.
+- Replaced the misnamed `RemoteEvolutionSimulation`/`evolution-view.ts` with the
+  shared `RemoteSimulationView`/`worker/view.ts`.
+- Added `SimulationView` as the read-only renderer/UI contract. `GameCanvas` and
+  `Minimap` no longer cast worker mirrors through `TerritorySimulation`.
+- Moved the built-worker smoke test into CI after the production build.
+- No gameplay, protocol, or deterministic behavior changed.
+
 ## 0.76.0 — 2026-11-23
 
 ### Worker-owned local simulation

@@ -8,19 +8,19 @@ import {
 	HUMAN_PLAYER_ID,
 	STRUCTURE_MIN_SPACING,
 	UPGRADE_LEVEL_COST_STEP
-} from './constants';
-import { RemoteEvolutionSimulation } from './ai/evolution-view';
-import type { WorkerMatchInit } from './ai/evolution-worker-protocol';
-import type { MergedDistrictGroup } from './simulation';
+} from '../constants';
+import { RemoteSimulationView } from './view';
+import type { WorkerMatchInit } from './protocol';
+import type { MergedDistrictGroup } from '../simulation';
 import type {
 	LocalWorkerCommandType,
 	LocalWorkerInit,
 	LocalWorkerInitConfig,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
-} from './local-worker-protocol';
-import { LocalWorkerClient } from './local-worker-client';
-import { STRUCTURE_DEFINITIONS, type PublicStructure } from './Structures';
+} from './local-protocol';
+import { LocalWorkerClient } from './local-client';
+import { STRUCTURE_DEFINITIONS, type PublicStructure } from '../Structures';
 
 interface CommandResult {
 	ok: boolean;
@@ -44,7 +44,7 @@ interface UpgradeQuote {
  * Read-only mirror of the worker-owned simulation. It provides fast synchronous
  * queries for hover/preview and async command forwarding; it never steps.
  */
-export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
+export class WorkerLocalSimulation extends RemoteSimulationView {
 	readonly playerCount: number;
 	readonly matchDurationTicks: number;
 	private client: LocalWorkerClient;

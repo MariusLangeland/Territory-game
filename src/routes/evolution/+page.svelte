@@ -5,7 +5,7 @@
 	import FitnessHistoryGraph from '#lib/components/FitnessHistoryGraph.svelte';
 	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
 	import { buildFitnessHistory } from '#lib/game/ai/fitness-history';
-	import { RemoteEvolutionSimulation } from '#lib/game/ai/evolution-view';
+	import { RemoteSimulationView } from '#lib/game/worker/view';
 	import type {
 		EvolutionWorkerCommand,
 		EvolutionWorkerMessage,
@@ -33,7 +33,7 @@
 		type GenomePerformance
 	} from '#lib/game/ai';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
-	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
+	import type { GameSnapshot } from '#lib/game/simulation';
 
 	const SPEEDS = [
 		{ label: '1×', steps: 1 },
@@ -85,7 +85,7 @@
 	let markovStates = $state<(number | null)[]>([]);
 	let lastReport = $state<EvolutionReport | null>(null);
 	const emptySeats = $derived(Math.max(0, GAUNTLET_SEATS - population.length));
-	let remoteView = $state<RemoteEvolutionSimulation | null>(null);
+	let remoteView = $state<RemoteSimulationView | null>(null);
 	let remoteVisualQueue = $state<RemoteVisual[]>([]);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let cameraBridge = new GameCameraBridge();
@@ -212,7 +212,7 @@
 				break;
 			case 'match':
 				activeMatchId = message.matchId;
-				remoteView = new RemoteEvolutionSimulation(message.init);
+				remoteView = new RemoteSimulationView(message.init);
 				snapshot = message.init.snapshot;
 				remoteVisualQueue = [];
 				resetThroughput();
@@ -596,7 +596,7 @@
 			{#if remoteView}
 				{#key matchKey}
 					<GameCanvas
-						simulation={remoteView as unknown as TerritorySimulation}
+						simulation={remoteView}
 						paused={!running}
 						simulate={false}
 						remoteVisuals={remoteVisualQueue}

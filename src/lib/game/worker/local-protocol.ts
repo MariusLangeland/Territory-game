@@ -1,7 +1,7 @@
-import type { BotGenome } from './ai/genome';
-import type { StartPoint } from './map';
-import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from './simulation';
-import type { GrowthMode } from './growth';
+import type { BotGenome } from '../ai/genome';
+import type { StartPoint } from '../map';
+import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from '../simulation';
+import type { GrowthMode } from '../growth';
 
 export interface LocalWorkerInitConfig {
 	seed: number;
@@ -93,7 +93,7 @@ export interface LocalWorkerCommandResult {
 
 export interface LocalWorkerTelemetry {
 	type: 'telemetry';
-	behavior: ReturnType<import('./simulation').TerritorySimulation['getBotBehaviorTelemetry']>;
+	behavior: ReturnType<import('../simulation').TerritorySimulation['getBotBehaviorTelemetry']>;
 }
 
 export interface LocalWorkerPaused {

@@ -1,5 +1,5 @@
-import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from './constants';
-import { TerritorySimulation } from './simulation';
+import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from '../constants';
+import { TerritorySimulation } from '../simulation';
 import type {
 	LocalWorkerCommand,
 	LocalWorkerCommandResult,
@@ -7,7 +7,7 @@ import type {
 	LocalWorkerInitConfig,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
-} from './local-worker-protocol';
+} from './local-protocol';
 
 /**
  * Worker-owned local match. The main thread only receives immutable snapshots and

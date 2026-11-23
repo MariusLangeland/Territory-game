@@ -49,3 +49,6 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      - name: Built worker smoke
+        run: pnpm test:worker

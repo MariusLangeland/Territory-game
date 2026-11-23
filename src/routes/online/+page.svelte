@@ -2,12 +2,12 @@
 	import { onMount } from 'svelte';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
 	import { GameCameraBridge } from '#lib/game/render/camera-bridge';
-	import { RemoteEvolutionSimulation } from '#lib/game/ai/evolution-view';
-	import type { WorkerMatchInit } from '#lib/game/ai/evolution-worker-protocol';
+	import { RemoteSimulationView } from '#lib/game/worker/view';
+	import type { WorkerMatchInit } from '#lib/game/worker/protocol';
 	import { generateMap } from '#lib/game/map';
 	import { TICK_RATE, colorForPlayer } from '#lib/game/constants';
 	import { STRUCTURE_DEFINITIONS, type BuildableStructureType } from '#lib/game/Structures';
-	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
+	import type { GameSnapshot } from '#lib/game/simulation';
 	import {
 		decodeByteRuns,
 		decodeOwnerRuns,
@@ -49,7 +49,7 @@
 	let connected = $state(false);
 	let subscribed = false;
 	let eventSource: EventSource | null = null;
-	let remoteView = $state<RemoteEvolutionSimulation | null>(null);
+	let remoteView = $state<RemoteSimulationView | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
 	let visuals = $state<Visual[]>([]);
 	let revision = 0;
@@ -299,7 +299,7 @@
 			districtColorCodes,
 			snapshot: baseline.snapshot
 		};
-		remoteView = new RemoteEvolutionSimulation(init);
+		remoteView = new RemoteSimulationView(init);
 		snapshot = baseline.snapshot;
 		visuals = [];
 		revision = 0;
@@ -578,7 +578,7 @@
 				{#if remoteView}
 					{#key remoteView}
 						<GameCanvas
-							simulation={remoteView as unknown as TerritorySimulation}
+							simulation={remoteView}
 							paused={!running}
 							simulate={false}
 							remoteVisuals={visuals}

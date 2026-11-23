@@ -14,9 +14,9 @@
 		colorForPlayer
 	} from '#lib/game/constants';
 	import { DEFAULT_GROWTH_MODE } from '#lib/game/growth';
-	import { type GameSnapshot, type SimEvent, type TerritorySimulation } from '#lib/game/simulation';
-	import { WorkerLocalSimulation } from '#lib/game/local-worker-simulation';
-	import type { LocalWorkerVisual } from '#lib/game/local-worker-protocol';
+	import { type GameSnapshot, type SimEvent } from '#lib/game/simulation';
+	import { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
+	import type { LocalWorkerVisual } from '#lib/game/worker/local-protocol';
 	import {
 		BOT_COMMAND_POST_STACK_OPTIONS,
 		BOT_DIFFICULTY_OPTIONS,
@@ -1778,7 +1778,7 @@
 	{#if sim}
 		{#key sim}
 			<GameCanvas
-				simulation={sim as unknown as TerritorySimulation}
+				simulation={sim}
 				{paused}
 				simulate={false}
 				remoteVisuals={workerVisuals}
@@ -1992,12 +1992,7 @@
 		</aside>
 
 		<div class="minimap-dock hud">
-			<Minimap
-				simulation={sim as unknown as TerritorySimulation}
-				{snapshot}
-				{cameraView}
-				onNavigate={navigateFromMinimap}
-			/>
+			<Minimap simulation={sim} {snapshot} {cameraView} onNavigate={navigateFromMinimap} />
 			<div class="minimap-meta">
 				<span>ATLAS / {mapWidth} × {mapHeight}</span>
 				<span>{scaleLegend}</span>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameSnapshot } from '../simulation';
-import { RemoteEvolutionSimulation } from './evolution-view';
-import type { WorkerMatchInit, WorkerVisual } from './evolution-worker-protocol';
+import { RemoteSimulationView } from './view';
+import type { WorkerMatchInit, WorkerVisual } from './protocol';
 
 function snapshotWith(structures: GameSnapshot['structures'] = []): GameSnapshot {
 	return {
@@ -62,9 +62,9 @@ function visual(overrides: Partial<WorkerVisual> = {}): WorkerVisual {
 	};
 }
 
-describe('RemoteEvolutionSimulation', () => {
+describe('RemoteSimulationView', () => {
 	it('applies worker owner and district deltas without stepping', () => {
-		const view = new RemoteEvolutionSimulation(init());
+		const view = new RemoteSimulationView(init());
 		const changes = new Uint32Array([(2 << 26) | 10, (3 << 26) | 11]);
 		const districtTileColors = new Uint8Array(32 * 32);
 		districtTileColors[3] = 7;
@@ -83,7 +83,7 @@ describe('RemoteEvolutionSimulation', () => {
 	});
 
 	it('replaces full arrays on overflow and refreshes structure queries', () => {
-		const view = new RemoteEvolutionSimulation(init());
+		const view = new RemoteSimulationView(init());
 		const owners = new Uint16Array(64 * 32);
 		owners[5] = 4;
 		const districtColorCodes = new Uint8Array(64 * 32);

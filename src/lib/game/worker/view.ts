@@ -2,7 +2,7 @@ import { CHANGE_INDEX_BITS, CHANGE_INDEX_MASK } from '../constants';
 import type { PublicStructure, StructureType } from '../Structures';
 import type { GameSnapshot, MergedDistrictGroup } from '../simulation';
 import type { StartPoint } from '../map';
-import type { WorkerMatchInit, WorkerVisual } from './evolution-worker-protocol';
+import type { WorkerMatchInit, WorkerVisual } from './protocol';
 
 const DISTRICT_TILE_SIZE = 32;
 
@@ -18,7 +18,7 @@ interface ViewStructures {
  * the real TerritorySimulation; this object only carries the data the WebGPU
  * renderer, camera, hover readout and selection overlay need.
  */
-export class RemoteEvolutionSimulation {
+export class RemoteSimulationView {
 	readonly width: number;
 	readonly height: number;
 	readonly map: { starts: StartPoint[] };
