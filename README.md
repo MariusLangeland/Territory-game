@@ -305,6 +305,9 @@ src/
     components/
       GameCanvas.svelte          canvas lifecycle, input, main/worker visual consumption
       Minimap.svelte             throttled 2D overview
+      StructureMenu.svelte       structure/diplomacy context menu
+      DiplomacyToast.svelte      diplomacy status toast
+      UpgradeTooltip.svelte      upgrade cost/supply tooltip
       MarkovGraph.svelte         selected genome strategic-state graph
       FitnessHistoryGraph.svelte fitness history chart
       FitnessWeightsEditor.svelte reward-weight editor

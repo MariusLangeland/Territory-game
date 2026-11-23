@@ -114,6 +114,8 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 
 - `src/routes/+page.svelte` — screen flow and HUD. Large file by design; keep gameplay rules out.
 - `src/lib/components/GameCanvas.svelte` — canvas/fixed loop/pointer; do not add simulation logic here.
+- `src/lib/components/StructureMenu.svelte` — structure/diplomacy context menu presentation.
+- `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.
 - `src/lib/game/simulation.ts` — the core. Prefer focused edits and add tests.

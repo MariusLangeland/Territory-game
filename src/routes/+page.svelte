@@ -5,6 +5,9 @@
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import DiplomacyToast from '#lib/components/DiplomacyToast.svelte';
+	import StructureMenu from '#lib/components/StructureMenu.svelte';
+	import UpgradeTooltip from '#lib/components/UpgradeTooltip.svelte';
 	import { formatClock, formatCompact, formatShare, formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
@@ -1287,182 +1290,24 @@
 	oncontextmenu={handleContextMenu}
 >
 	{#if diplomacyToast}
-		<div
-			class="diplomacy-toast"
-			class:warn={diplomacyToast.tone === 'warn'}
-			class:error={diplomacyToast.tone === 'error'}
-			role="status"
-		>
-			{diplomacyToast.message}
-		</div>
+		<DiplomacyToast message={diplomacyToast.message} tone={diplomacyToast.tone} />
 	{/if}
 	{#if upgradeTooltip}
-		<div
-			class="upgrade-tooltip"
-			class:insufficient={!upgradeTooltip.ok}
-			style={`left:${upgradeTooltip.x}px;top:${upgradeTooltip.y}px`}
-			aria-hidden="true"
-		>
-			<span>UPGRADE +{upgradeTooltip.levels} LV</span>
-			<strong>{formatSupply(upgradeTooltip.cost)}<small>S TOTAL</small></strong>
-			<i>
-				{#if upgradeTooltip.merged}
-					MERGED ×{upgradeTooltip.structureCount} · LOWEST LV.{upgradeTooltip.currentLevel}
-				{:else}
-					LV.{upgradeTooltip.currentLevel} → LV.{upgradeTooltip.projectedLevel +
-						upgradeTooltip.levels}
-				{/if}
-			</i>
-			{#if !upgradeTooltip.ok}<em>INSUFFICIENT SUPPLY</em>{/if}
-		</div>
+		<UpgradeTooltip tooltip={upgradeTooltip} />
 	{/if}
 	{#if structureMenu}
-		<div
-			class="context-menu"
-			bind:this={contextMenuEl}
-			role="menu"
-			tabindex="-1"
-			aria-label={structureMenu.structureId !== null
-				? `${structureMenu.typeLabel} actions`
-				: 'Rival territory actions'}
-			style={`left:${structureMenu.x}px;top:${structureMenu.y}px`}
-			oncontextmenu={(event) => event.preventDefault()}
-			onpointerdown={(event) => event.stopPropagation()}
-		>
-			{#if structureMenu.confirmingDemolish}
-				<div class="context-info context-info-warning">
-					<span>CONFIRM DEMOLITION</span>
-					<small>{structureMenu.typeLabel} · LV.{structureMenu.stacks} · NO REFUND</small>
-				</div>
-				<button
-					type="button"
-					class="context-item context-demolish context-confirm"
-					role="menuitem"
-					aria-label={`Confirm demolition of ${structureMenu.typeLabel} level ${structureMenu.stacks}. No refund.`}
-					onclick={demolishStructure}
-				>
-					<span>CONFIRM / DEMOLISH</span>
-					<small>NO REFUND · PERMANENT</small>
-				</button>
-				<button
-					type="button"
-					class="context-item"
-					role="menuitem"
-					aria-label="Back to structure actions"
-					onclick={cancelDemolishConfirm}
-				>
-					<span>BACK</span>
-					<small>RETURN TO ACTIONS</small>
-				</button>
-			{:else}
-				{#if structureMenu.structureId !== null}
-					<div class="context-info">
-						<span>{structureMenu.typeLabel} · LV.{structureMenu.stacks}</span>
-						{#if structureMenu.allianceOwnerId !== null}
-							<small>{structureMenu.allianceName} · RIVAL STRUCTURE</small>
-						{:else}
-							<small>YOUR STRUCTURE</small>
-						{/if}
-						{#if structureMenu.isState}<small>CAPITAL · CANNOT BE DEMOLISHED</small>{/if}
-					</div>
-					<button
-						type="button"
-						class="context-item context-demolish"
-						role="menuitem"
-						disabled={!structureMenu.isOwn || structureMenu.isState || paused}
-						aria-label={`Demolish ${structureMenu.typeLabel} level ${structureMenu.stacks}`}
-						title={!structureMenu.isOwn
-							? 'You can only demolish your own structures.'
-							: structureMenu.isState
-								? 'The State structure cannot be demolished.'
-								: paused
-									? 'Resume the simulation first.'
-									: 'Remove this structure. No supply refund.'}
-						onclick={requestDemolish}
-					>
-						<span>DEMOLISH STRUCTURE</span>
-						<small>
-							{structureMenu.typeLabel} · LV.{structureMenu.stacks}
-							{structureMenu.isState
-								? ' · CAPITAL'
-								: !structureMenu.isOwn
-									? ' · RIVAL'
-									: ' · NO REFUND'}
-						</small>
-					</button>
-				{:else if structureMenu.allianceOwnerId !== null}
-					<div class="context-info">
-						<span>RIVAL TERRITORY</span>
-						<small>{structureMenu.allianceName}</small>
-					</div>
-				{/if}
-				{#if structureMenu.allianceOwnerId !== null}
-					{#if structureMenu.allianceStatus === 'active'}
-						<button
-							type="button"
-							class="context-item context-alliance"
-							role="menuitem"
-							aria-label={`Break alliance with ${structureMenu.allianceName}`}
-							title={`Alliance expires in ${diplomacyRemaining(structureMenu.allianceExpiresAtTick)}`}
-							onclick={breakAlliance}
-						>
-							<span>BREAK ALLIANCE</span>
-							<small>
-								{structureMenu.allianceName} · ACTIVE ·
-								{diplomacyRemaining(structureMenu.allianceExpiresAtTick)} LEFT
-							</small>
-						</button>
-					{:else if structureMenu.allianceStatus === 'pending'}
-						<button
-							type="button"
-							class="context-item context-alliance"
-							role="menuitem"
-							disabled
-							aria-label={`Alliance request with ${structureMenu.allianceName} pending`}
-							title={`Bot response window: ${diplomacyRemaining(structureMenu.allianceExpiresAtTick)}`}
-						>
-							<span>ALLIANCE PENDING</span>
-							<small>
-								{structureMenu.allianceName} · AWAITING RESPONSE ·
-								{diplomacyRemaining(structureMenu.allianceExpiresAtTick)} LEFT
-							</small>
-						</button>
-					{:else if structureMenu.allianceStatus === 'busy'}
-						<button
-							type="button"
-							class="context-item context-alliance"
-							role="menuitem"
-							disabled
-							aria-label={`Diplomatic commitment with ${structureMenu.allianceName} unavailable`}
-						>
-							<span>ALLIANCE UNAVAILABLE</span>
-							<small>{structureMenu.allianceName} · ALREADY COMMITTED</small>
-						</button>
-					{:else}
-						<button
-							type="button"
-							class="context-item context-alliance"
-							role="menuitem"
-							aria-label={`Request alliance with ${structureMenu.allianceName}`}
-							onclick={requestAlliance}
-						>
-							<span>REQUEST ALLIANCE</span>
-							<small>{structureMenu.allianceName} · SEND REQUEST</small>
-						</button>
-					{/if}
-				{/if}
-				<div class="context-divider"></div>
-				<button
-					type="button"
-					class="context-item"
-					role="menuitem"
-					aria-label="Close menu"
-					onclick={closeStructureMenu}
-				>
-					<span>CANCEL</span>
-				</button>
-			{/if}
-		</div>
+		<StructureMenu
+			bind:menuElement={contextMenuEl}
+			menu={structureMenu}
+			{paused}
+			{diplomacyRemaining}
+			onRequestDemolish={requestDemolish}
+			onCancelDemolish={cancelDemolishConfirm}
+			onConfirmDemolish={demolishStructure}
+			onRequestAlliance={requestAlliance}
+			onBreakAlliance={breakAlliance}
+			onClose={closeStructureMenu}
+		/>
 	{/if}
 	{#if sim}
 		{#key sim}
