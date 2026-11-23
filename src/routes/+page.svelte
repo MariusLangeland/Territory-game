@@ -5,6 +5,8 @@
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import GameTopBar from '#lib/components/GameTopBar.svelte';
+	import WorldRail from '#lib/components/WorldRail.svelte';
 	import DiplomacyToast from '#lib/components/DiplomacyToast.svelte';
 	import StructureMenu from '#lib/components/StructureMenu.svelte';
 	import UpgradeTooltip from '#lib/components/UpgradeTooltip.svelte';
@@ -1347,88 +1349,24 @@
 	<div class="map-atmosphere" aria-hidden="true"></div>
 
 	{#if gameStarted && !showIntro && phase === 'ready' && sim && snapshot && human}
-		<header class="hud topbar">
-			<div class="brand-lockup">
-				<div class="brand-mark" aria-hidden="true"><span></span></div>
-				<div class="brand-type">
-					<p class="eyebrow">FRONTAGE V1 / {stateCount} STATES</p>
-					<h1>TERRITORY<span>.</span></h1>
-				</div>
-			</div>
-
-			<div class="command-readout">
-				<div class="commander" style={`--player-color:${colorForPlayer(human.id).hex}`}>
-					<span class="commander-swatch" aria-hidden="true"></span>
-					<span class="commander-name">
-						<strong>{human.name}</strong>
-						<small class:lost={!humanStructure}>
-							{humanStructure ? 'COMMANDER / ANCHORED' : 'COMMANDER / NO ANCHOR'}
-							{humanAllyName
-								? ` · ALLIED ${humanAllyName}`
-								: humanAlliancePending
-									? ' · ALLIANCE PENDING'
-									: ''}
-						</small>
-					</span>
-				</div>
-				<div class="readout-stat">
-					<span>LAND</span>
-					<strong>{formatShare(human.landShare)}<em>%</em></strong>
-				</div>
-				<div class="readout-stat">
-					<span>RANK</span>
-					<strong>#{humanRank}<em>/{aliveCount}</em></strong>
-				</div>
-				<div class="readout-stat">
-					<span>STATES</span>
-					<strong>{aliveCount}<em>/{stateCount}</em></strong>
-				</div>
-			</div>
-
-			<div class="top-actions">
-				<div class="clock-block">
-					<span>WAR CLOCK</span>
-					<strong>{matchClock}</strong>
-					{#if matchTimeRemaining}
-						<small>{matchTimeRemaining} LEFT</small>
-					{/if}
-				</div>
-				<button
-					class="action-button pause-button"
-					type="button"
-					onclick={togglePause}
-					disabled={showResult}
-					aria-label={paused ? 'Resume simulation' : 'Pause simulation'}
-				>
-					{#if paused}
-						<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5 10 6l-7 4.5z" /></svg>
-						<span>RESUME</span>
-					{:else}
-						<svg viewBox="0 0 12 12" aria-hidden="true">
-							<path d="M3 1.5h2.2v9H3zm3.8 0H9v9H6.8z" />
-						</svg>
-						<span>PAUSE</span>
-					{/if}
-				</button>
-				<button
-					class="square-button"
-					type="button"
-					onclick={() => (showHelp = true)}
-					aria-label="Open field manual"
-				>
-					<span>?</span>
-				</button>
-				<button class="action-button" type="button" onclick={() => goto('/online')}>
-					ONLINE
-				</button>
-				<button class="action-button" type="button" onclick={() => goto('/evolution')}>
-					AI LAB
-				</button>
-				<button class="action-button new-world-button" type="button" onclick={newWorld}>
-					NEW WORLD
-				</button>
-			</div>
-		</header>
+		<GameTopBar
+			{human}
+			humanStructure={Boolean(humanStructure)}
+			humanAllyName={humanAllyName ?? null}
+			humanAlliancePending={Boolean(humanAlliancePending)}
+			{humanRank}
+			{aliveCount}
+			{stateCount}
+			{matchClock}
+			{matchTimeRemaining}
+			{paused}
+			{showResult}
+			onTogglePause={togglePause}
+			onOpenHelp={() => (showHelp = true)}
+			onOnline={() => goto('/online')}
+			onEvolution={() => goto('/evolution')}
+			onNewWorld={newWorld}
+		/>
 
 		{#if onboardingVisible && onboardingCopy}
 			<aside class="onboarding-hint hud" aria-live="polite">
@@ -1443,87 +1381,20 @@
 			</aside>
 		{/if}
 
-		<aside class="right-rail hud">
-			<section class="panel board" aria-label="World leaderboard">
-				<div class="panel-head">
-					<span>WORLD CONTROL</span>
-					<span class="panel-meta">{aliveCount} ALIVE · {snapshot.attacks.length} FRONTS</span>
-				</div>
-				<div class="world-meter">
-					<div class="world-meter-copy">
-						<span>CLAIMED TERRITORY</span>
-						<strong>{worldClaim.toFixed(1)}%</strong>
-					</div>
-					<div class="meter-track"><span style={`width:${Math.min(100, worldClaim)}%`}></span></div>
-					<div class="world-meter-foot">
-						<span>{formatCompact(snapshot.claimedLand)} PX</span>
-						<span>{formatCompact(snapshot.landCount)} LAND</span>
-					</div>
-				</div>
-
-				<div class="rank-scroll" bind:this={rankScrollEl} onscroll={handleRankScroll}>
-					{#if rankWindow.start > 0}
-						<div
-							class="rank-spacer"
-							style={`height:${rankWindow.start * RANK_ROW_HEIGHT}px`}
-							aria-hidden="true"
-						></div>
-					{/if}
-					<ol class="rank-list">
-						{#each visibleRanked as player, index (player.id)}
-							<li
-								class:is-human={player.id === human.id}
-								class:is-dead={!player.alive}
-								style={`--player-color:${colorForPlayer(player.id).hex};--share:${Math.min(100, player.landShare * 100)}%`}
-							>
-								<span class="rank-index">
-									{String(rankWindow.start + index + 1).padStart(3, '0')}
-								</span>
-								<span class="rank-swatch" aria-hidden="true"></span>
-								<span class="rank-name">
-									{player.name}
-									{#if player.id === human.id}<em>YOU</em>{/if}
-									{#if !player.alive}<em class="dead-tag">OUT</em>{/if}
-								</span>
-								<span class="rank-land">{formatShare(player.landShare)}%</span>
-								<span class="rank-progress" aria-hidden="true"></span>
-							</li>
-						{/each}
-					</ol>
-					{#if rankWindow.end < ranked.length}
-						<div
-							class="rank-spacer"
-							style={`height:${(ranked.length - rankWindow.end) * RANK_ROW_HEIGHT}px`}
-							aria-hidden="true"
-						></div>
-					{/if}
-				</div>
-
-				<div class="panel-foot">
-					<span><i class="live-dot"></i>WEBGPU</span>
-					<span>TICK {String(snapshot.tick).padStart(5, '0')}</span>
-					<span>SEED {seedHex}</span>
-				</div>
-			</section>
-
-			{#if eventFeed.length > 0}
-				<section class="panel feed" aria-label="War feed">
-					<div class="panel-head"><span>WAR FEED</span><span class="panel-meta">LIVE</span></div>
-					<ul>
-						{#each eventFeed as event (event.id)}
-							<li
-								class:elimination={event.kind === 'elimination'}
-								class:structure={event.kind === 'structure'}
-								class:build={event.kind === 'build'}
-							>
-								<span>{event.message}</span>
-								<time>{formatClock(event.tick / TICK_RATE)}</time>
-							</li>
-						{/each}
-					</ul>
-				</section>
-			{/if}
-		</aside>
+		<WorldRail
+			{snapshot}
+			{human}
+			{ranked}
+			{visibleRanked}
+			{rankWindow}
+			rankRowHeight={RANK_ROW_HEIGHT}
+			bind:rankScrollElement={rankScrollEl}
+			{worldClaim}
+			{aliveCount}
+			{seedHex}
+			{eventFeed}
+			onRankScroll={handleRankScroll}
+		/>
 
 		<div class="minimap-dock hud">
 			<Minimap simulation={sim} {snapshot} {cameraView} onNavigate={navigateFromMinimap} />

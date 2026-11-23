@@ -26,7 +26,9 @@
   into `ui/keyboard.ts`, and context-menu construction/focus handling into
   `ui/structure-menu.ts`.
 - Extracted `DiplomacyToast`, `UpgradeTooltip`, and `StructureMenu` UI components.
-- `+page.svelte` is now ~2,100 lines, down from 5,773 before the restructure.
+- Extracted `GameTopBar` (commander/clock/actions) and `WorldRail`
+  (leaderboard/war feed) components.
+- `+page.svelte` is now ~1,975 lines, down from 5,773 before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23
