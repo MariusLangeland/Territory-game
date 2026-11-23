@@ -333,6 +333,10 @@ src/
         game-session.ts          worker match lifecycle + command facade
         seed.ts                  URL seed parsing/random seed formatting
         onboarding.ts            onboarding completion persistence
+      ui/
+        actions.ts               player command dispatch
+        keyboard.ts              keyboard shortcuts + cursor navigation
+        structure-menu.ts        structure/diplomacy popup + focus handling
       worker/
         protocol.ts              shared worker init/visual payloads
         view.ts                  shared read-only match mirror

@@ -19,6 +19,17 @@
 	import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 	import { type GameSnapshot, type SimEvent } from '#lib/game/simulation';
 	import { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
+	import {
+		buildStructureMenu,
+		clampContextMenu,
+		contextMenuItemButtons,
+		focusContextMenuItem,
+		handleContextMenuKey,
+		moveContextMenuFocus,
+		type StructureContextMenu
+	} from '#lib/game/ui/structure-menu';
+	import { createActions } from '#lib/game/ui/actions';
+	import { createKeyboardInput } from '#lib/game/ui/keyboard';
 	import type { LocalWorkerVisual } from '#lib/game/worker/local-protocol';
 	import {
 		BOT_COMMAND_POST_STACK_OPTIONS,
@@ -52,22 +63,6 @@
 		baseDefense: number;
 		auraDefense: number;
 		defense: number;
-	}
-
-	interface StructureContextMenu {
-		x: number;
-		y: number;
-		structureId: number | null;
-		ownerId: number;
-		typeLabel: string;
-		stacks: number;
-		isOwn: boolean;
-		isState: boolean;
-		allianceOwnerId: number | null;
-		allianceName: string;
-		allianceStatus: 'none' | 'pending' | 'active' | 'busy';
-		allianceExpiresAtTick: number | null;
-		confirmingDemolish: boolean;
 	}
 
 	let sim = $state<WorkerLocalSimulation | null>(null);
@@ -265,6 +260,119 @@
 	);
 	let artilleryVolleyCost = $derived(readyArtilleryShells * ARTILLERY_SUPPLY_COST_PER_LEVEL);
 	let artilleryTargeting = $state(false);
+	const actions = createActions({
+		get sim() {
+			return sim;
+		},
+		get snapshot() {
+			return snapshot;
+		},
+		get paused() {
+			return paused;
+		},
+		get gameStarted() {
+			return gameStarted;
+		},
+		get showIntro() {
+			return showIntro;
+		},
+		get defeatOpen() {
+			return defeatOpen;
+		},
+		get artilleryTargeting() {
+			return artilleryTargeting;
+		},
+		get keyboardPlacement() {
+			return keyboardPlacement;
+		},
+		get shiftHeld() {
+			return shiftHeld;
+		},
+		get ctrlHeld() {
+			return ctrlHeld;
+		},
+		get humanArtillery() {
+			return humanArtillery;
+		},
+		get readyArtillery() {
+			return readyArtillery;
+		},
+		get artilleryVolleyCost() {
+			return artilleryVolleyCost;
+		},
+		get onboardingStep() {
+			return onboardingStep;
+		},
+		setArtilleryTargeting(value) {
+			artilleryTargeting = value;
+		},
+		showToast,
+		advanceOnboarding,
+		finishOnboarding,
+		buildKeyboardPlacement,
+		session: gameSession
+	});
+	const keyboard = createKeyboardInput({
+		get sim() {
+			return sim;
+		},
+		get cameraView() {
+			return cameraView;
+		},
+		get keyboardCursor() {
+			return keyboardCursor;
+		},
+		get keyboardCursorAllied() {
+			return keyboardCursorAllied;
+		},
+		get keyboardPlacement() {
+			return keyboardPlacement;
+		},
+		get structureMenu() {
+			return structureMenu;
+		},
+		get artilleryTargeting() {
+			return artilleryTargeting;
+		},
+		get showHelp() {
+			return showHelp;
+		},
+		get defeatOpen() {
+			return defeatOpen;
+		},
+		get showIntro() {
+			return showIntro;
+		},
+		get showResult() {
+			return showResult;
+		},
+		get canDeploy() {
+			return canDeploy;
+		},
+		setKeyboardCursor(cursor) {
+			keyboardCursor = cursor;
+		},
+		setArtilleryTargeting(value) {
+			artilleryTargeting = value;
+		},
+		setShowHelp(value) {
+			showHelp = value;
+		},
+		setShiftHeld(value) {
+			shiftHeld = value;
+		},
+		setCtrlHeld(value) {
+			ctrlHeld = value;
+		},
+		cancelKeyboardPlacement,
+		beginKeyboardPlacement,
+		togglePause,
+		deploy,
+		handleStructureMenuKey,
+		showDiplomacyToast,
+		camera: cameraBridge,
+		actions
+	});
 	let supplyPreview: { label: string; cost: number; affordable: boolean } | null = $derived.by(
 		() => {
 			if (
@@ -715,78 +823,6 @@
 		}
 	}
 
-	async function handleAttack(x: number, y: number): Promise<void> {
-		if (!sim || !snapshot || !gameStarted || showIntro) return;
-		if (snapshot.ended || defeatOpen) return;
-		if (keyboardPlacement) {
-			await buildKeyboardPlacement(x, y);
-			return;
-		}
-		if (paused) {
-			showToast('Simulation paused. Resume to fire.', 'warn');
-			return;
-		}
-		if (artilleryTargeting) {
-			const barrage = await gameSession.command('artillery', { x, y });
-			showToast(
-				barrage.ok ? 'Artillery barrage queued.' : barrage.message,
-				barrage.ok ? 'success' : 'error'
-			);
-			if (barrage.ok) artilleryTargeting = false;
-			return;
-		}
-		if (sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID) {
-			const upgrade = await gameSession.command('upgrade', {
-				x,
-				y,
-				levels: shiftHeld ? 5 : 1,
-				merged: !ctrlHeld
-			});
-			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
-			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
-			return;
-		}
-		const result = await gameSession.command('attack', { x, y });
-		if (!result.ok && result.reason === 'no-shared-border') {
-			const naval = await gameSession.command('naval', { x, y });
-			if (naval.ok) {
-				showToast(naval.message, 'success');
-				return;
-			}
-		}
-		showToast(result.message, result.ok ? 'success' : 'error');
-		if (result.ok) advanceOnboarding(1, 2);
-	}
-
-	function toggleArtilleryTargeting(): void {
-		if (!sim || !snapshot || snapshot.ended) return;
-		if (humanArtillery.length === 0) {
-			showToast('Build an Artillery card first.', 'warn');
-			return;
-		}
-		if (!artilleryTargeting && readyArtillery.length === 0) {
-			showToast('All artillery is reloading.', 'warn');
-			return;
-		}
-		if (!artilleryTargeting && snapshot.supply < artilleryVolleyCost) {
-			showToast(`Need ${artilleryVolleyCost} supply to fire this volley.`, 'warn');
-			return;
-		}
-		artilleryTargeting = !artilleryTargeting;
-		showToast(
-			artilleryTargeting
-				? 'Artillery selected. Click a hostile structure or aim point in range.'
-				: 'Artillery targeting cancelled.',
-			artilleryTargeting ? 'success' : 'warn'
-		);
-	}
-
-	async function cancelLatestFront(): Promise<void> {
-		if (!sim) return;
-		const result = await gameSession.command('cancel-attack');
-		showToast(result.message, result.ok ? 'success' : 'warn');
-	}
-
 	function handleHover(next: HoverState | null): void {
 		hover = next;
 	}
@@ -950,82 +986,26 @@
 	}
 
 	function menuItemButtons(): HTMLButtonElement[] {
-		if (!contextMenuEl) return [];
-		return Array.from(
-			contextMenuEl.querySelectorAll<HTMLButtonElement>('.context-item:not(:disabled)')
-		);
+		return contextMenuItemButtons(contextMenuEl);
 	}
 
 	function focusMenuItem(index = 0): void {
-		const items = menuItemButtons();
-		if (items.length === 0) return;
-		items[Math.max(0, Math.min(index, items.length - 1))]?.focus();
+		focusContextMenuItem(contextMenuEl, index);
 	}
 
 	function moveMenuFocus(delta: 1 | -1): void {
-		const items = menuItemButtons();
-		if (items.length === 0) return;
-		const current = items.findIndex((item) => item === document.activeElement);
-		const next =
-			current === -1
-				? delta > 0
-					? 0
-					: items.length - 1
-				: (current + delta + items.length) % items.length;
-		items[next]?.focus();
+		moveContextMenuFocus(contextMenuEl, delta);
 	}
 
 	function handleStructureMenuKey(event: KeyboardEvent): void {
-		switch (event.key) {
-			case 'ArrowDown':
-				event.preventDefault();
-				moveMenuFocus(1);
-				return;
-			case 'ArrowUp':
-				event.preventDefault();
-				moveMenuFocus(-1);
-				return;
-			case 'Home':
-				event.preventDefault();
-				focusMenuItem(0);
-				return;
-			case 'End':
-				event.preventDefault();
-				focusMenuItem(menuItemButtons().length - 1);
-				return;
-			case 'Tab':
-				// Wrap inside the popup rather than tabbing into the HUD behind it.
-				event.preventDefault();
-				moveMenuFocus(event.shiftKey ? -1 : 1);
-				return;
-			case 'Enter':
-			case ' ':
-			case 'Spacebar': {
-				event.preventDefault();
-				const active = document.activeElement;
-				if (active instanceof HTMLButtonElement && active.closest('.context-menu')) {
-					active.click();
-				} else {
-					focusMenuItem(0);
-				}
-				return;
-			}
-			case 'Escape':
-				event.preventDefault();
-				closeStructureMenu();
-				return;
-		}
+		handleContextMenuKey(event, contextMenuEl, closeStructureMenu);
 	}
 
 	function clampStructureMenuToViewport(): void {
 		const menu = structureMenu;
 		const element = contextMenuEl;
 		if (!menu || !element) return;
-		const width = element.offsetWidth || 264;
-		const height = element.offsetHeight || 160;
-		const x = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
-		const y = Math.max(8, Math.min(menu.y, window.innerHeight - height - 8));
-		if (x !== menu.x || y !== menu.y) structureMenu = { ...menu, x, y };
+		structureMenu = clampContextMenu(menu, element, window.innerWidth, window.innerHeight);
 	}
 
 	function focusMenuAfterRender(index = 0): void {
@@ -1057,59 +1037,17 @@
 		}
 		const structure = structureAtScreen(event.clientX, event.clientY);
 		const ownerId = structure?.ownerId ?? ownerAtScreen(event.clientX, event.clientY);
-		const isOpponent = ownerId > 0 && ownerId !== snapshot.humanId;
-		if (!structure && !isOpponent) return;
-		const isOwn = ownerId === snapshot.humanId;
-		const humanId = snapshot.humanId;
-		let allianceStatus: StructureContextMenu['allianceStatus'] = 'none';
-		let allianceExpiresAtTick: number | null = null;
-		if (isOpponent && humanId > 0) {
-			const activeAlliance = snapshot.alliances.find(
-				(alliance) =>
-					(alliance.playerA === humanId && alliance.playerB === ownerId) ||
-					(alliance.playerA === ownerId && alliance.playerB === humanId)
-			);
-			const active = activeAlliance !== undefined;
-			const pendingProposal = snapshot.allianceProposals.find(
-				(proposal) =>
-					(proposal.fromPlayerId === humanId && proposal.toPlayerId === ownerId) ||
-					(proposal.fromPlayerId === ownerId && proposal.toPlayerId === humanId)
-			);
-			const pending = pendingProposal !== undefined;
-			allianceExpiresAtTick =
-				activeAlliance?.expiresAtTick ?? pendingProposal?.expiresAtTick ?? null;
-			const targetBusy =
-				snapshot.alliances.some(
-					(alliance) => alliance.playerA === ownerId || alliance.playerB === ownerId
-				) ||
-				snapshot.allianceProposals.some(
-					(proposal) => proposal.fromPlayerId === ownerId || proposal.toPlayerId === ownerId
-				) ||
-				snapshot.alliances.some(
-					(alliance) => alliance.playerA === humanId || alliance.playerB === humanId
-				) ||
-				snapshot.allianceProposals.some(
-					(proposal) => proposal.fromPlayerId === humanId || proposal.toPlayerId === humanId
-				);
-			allianceStatus = active ? 'active' : pending ? 'pending' : targetBusy ? 'busy' : 'none';
-		}
-		const menuWidth = 264;
-		const menuHeight = structure ? 236 : 168;
-		structureMenu = {
-			x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-			y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-			structureId: structure?.id ?? null,
+		const menu = buildStructureMenu({
+			snapshot,
+			structure,
 			ownerId,
-			typeLabel: structure ? STRUCTURE_DEFINITIONS[structure.type].label : '',
-			stacks: structure?.stacks ?? 0,
-			isOwn,
-			isState: structure?.type === 'state',
-			allianceOwnerId: isOpponent ? ownerId : null,
-			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : '',
-			allianceStatus,
-			allianceExpiresAtTick,
-			confirmingDemolish: false
-		};
+			clientX: event.clientX,
+			clientY: event.clientY,
+			viewportWidth: window.innerWidth,
+			viewportHeight: window.innerHeight
+		});
+		if (!menu) return;
+		structureMenu = menu;
 		structureMenuCameraView = cameraView;
 		focusMenuAfterRender(0);
 	}
@@ -1317,152 +1255,9 @@
 		window.location.reload();
 	}
 
-	function ensureKeyboardCursor(): { x: number; y: number } | null {
-		if (!sim) return null;
-		if (keyboardCursor) return keyboardCursor;
-		const start = sim.map.starts[HUMAN_PLAYER_ID - 1];
-		keyboardCursor = start ? { x: start.x, y: start.y } : null;
-		return keyboardCursor;
-	}
-
-	function moveKeyboardCursor(dx: number, dy: number, fast: boolean): void {
-		if (!sim || !cameraView) return;
-		const cursor = ensureKeyboardCursor();
-		if (!cursor) return;
-		const step = Math.max(1, Math.round(6 / Math.max(0.2, cameraView.scale))) * (fast ? 3 : 1);
-		const next = {
-			x: Math.max(0, Math.min(sim.width - 1, cursor.x + dx * step)),
-			y: Math.max(0, Math.min(sim.height - 1, cursor.y + dy * step))
-		};
-		keyboardCursor = next;
-
-		const screenX =
-			cameraView.viewportWidth / 2 + (next.x + 0.5 - cameraView.centerX) * cameraView.scale;
-		const screenY =
-			cameraView.viewportHeight / 2 + (next.y + 0.5 - cameraView.centerY) * cameraView.scale;
-		if (
-			screenX < 70 ||
-			screenY < 70 ||
-			screenX > cameraView.viewportWidth - 70 ||
-			screenY > cameraView.viewportHeight - 70
-		) {
-			cameraBridge.centerOn(next.x, next.y);
-		}
-	}
-
-	function activateKeyboardCursor(): void {
-		const cursor = ensureKeyboardCursor();
-		if (!cursor) return;
-		if (keyboardCursorAllied) {
-			showDiplomacyToast('Allied territory cannot be attacked.', 'warn');
-			return;
-		}
-		handleAttack(cursor.x, cursor.y);
-	}
-
-	function handleKeyup(event: KeyboardEvent): void {
-		if (event.key === 'Shift') shiftHeld = false;
-		if (event.key === 'Control') ctrlHeld = false;
-	}
-
-	function handleKeydown(event: KeyboardEvent): void {
-		shiftHeld = event.shiftKey;
-		ctrlHeld = event.ctrlKey;
-		const target = event.target as HTMLElement | null;
-		if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-
-		if (structureMenu) {
-			handleStructureMenuKey(event);
-			return;
-		}
-
-		if (event.key === 'Escape') {
-			if (keyboardPlacement) cancelKeyboardPlacement();
-			else if (artilleryTargeting) artilleryTargeting = false;
-			else if (keyboardCursor) keyboardCursor = null;
-			else if (showHelp) showHelp = false;
-			else if (defeatOpen) return;
-			return;
-		}
-
-		if (showIntro) {
-			if (event.key === 'Enter' && canDeploy) {
-				event.preventDefault();
-				deploy();
-			}
-			return;
-		}
-
-		if (showResult || defeatOpen || showHelp) return;
-
-		if (/^[1-7]$/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
-			event.preventDefault();
-			beginKeyboardPlacement(Number(event.key) - 1);
-			return;
-		}
-
-		if (target?.closest('button, a')) return;
-
-		if (event.code === 'Space') {
-			event.preventDefault();
-			togglePause();
-			return;
-		}
-
-		const fast = event.shiftKey;
-		switch (event.key) {
-			case 'ArrowLeft':
-				event.preventDefault();
-				moveKeyboardCursor(-1, 0, fast);
-				return;
-			case 'ArrowRight':
-				event.preventDefault();
-				moveKeyboardCursor(1, 0, fast);
-				return;
-			case 'ArrowUp':
-				event.preventDefault();
-				moveKeyboardCursor(0, -1, fast);
-				return;
-			case 'ArrowDown':
-				event.preventDefault();
-				moveKeyboardCursor(0, 1, fast);
-				return;
-			case 'Enter':
-				event.preventDefault();
-				activateKeyboardCursor();
-				return;
-		}
-
-		switch (event.key.toLowerCase()) {
-			case 'f':
-				cameraBridge.fitMap();
-				break;
-			case 'c':
-				cameraBridge.focusHuman();
-				break;
-			case '+':
-			case '=':
-				cameraBridge.zoomIn();
-				break;
-			case '-':
-			case '_':
-				cameraBridge.zoomOut();
-				break;
-			case 'h':
-				showHelp = true;
-				break;
-			case 'x':
-				cancelLatestFront();
-				break;
-			case 'a':
-				toggleArtilleryTargeting();
-				break;
-		}
-	}
-
 	onMount(() => {
-		window.addEventListener('keydown', handleKeydown);
-		window.addEventListener('keyup', handleKeyup);
+		window.addEventListener('keydown', keyboard.handleKeydown);
+		window.addEventListener('keyup', keyboard.handleKeyup);
 		window.addEventListener('pointermove', handleWindowPointerMove);
 		window.addEventListener('pointerdown', handleWindowPointerDown);
 		onboardingDone = loadOnboardingDone();
@@ -1470,8 +1265,8 @@
 		createWorld(readSeedFromLocation(), matchSettings);
 
 		return () => {
-			window.removeEventListener('keydown', handleKeydown);
-			window.removeEventListener('keyup', handleKeyup);
+			window.removeEventListener('keydown', keyboard.handleKeydown);
+			window.removeEventListener('keyup', keyboard.handleKeyup);
 			window.removeEventListener('pointermove', handleWindowPointerMove);
 			window.removeEventListener('pointerdown', handleWindowPointerDown);
 			if (diplomacyToastTimer) clearTimeout(diplomacyToastTimer);
@@ -1684,7 +1479,7 @@
 				{cameraBridge}
 				onTick={handleTick}
 				onHover={handleHover}
-				onAttack={handleAttack}
+				onAttack={actions.handleAttack}
 				onReady={handleReady}
 				onError={handleError}
 				onPerf={handlePerf}
@@ -1974,7 +1769,7 @@
 				{/if}
 				<div class="supply-actions">
 					{#if humanFronts.length > 0}
-						<button class="cancel-front" type="button" onclick={cancelLatestFront}>
+						<button class="cancel-front" type="button" onclick={actions.cancelLatestFront}>
 							CANCEL FRONT
 						</button>
 					{/if}
@@ -1984,7 +1779,7 @@
 							class:active={artilleryTargeting}
 							class:unaffordable={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
 							type="button"
-							onclick={toggleArtilleryTargeting}
+							onclick={actions.toggleArtilleryTargeting}
 							disabled={!artilleryTargeting && snapshot.supply < artilleryVolleyCost}
 							title={`Fire every ready battery (${readyArtilleryShells} shells, ${artilleryVolleyCost} supply) at a point within range`}
 						>
