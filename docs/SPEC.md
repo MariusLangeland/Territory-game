@@ -303,7 +303,7 @@ throttled to 5 Hz while visual deltas arrive at 10 Hz.
 5. On decision ticks, refresh bot threat/posture/reserves, then run bot economy/build decisions every 30 ticks and bot attack decisions every 10 ticks.
 6. Resolve pending alliance proposals on the target bot's staggered phase, expire old proposals/alliances, and remove diplomatic state for dead players.
 7. Process active fronts in creation-id order.
-8. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Annex transfers are queued and applied across later ticks in deterministic cell order; a new scan waits until the queue drains. Every 100 ticks, fill small neutral pockets.
+8. Every 30 ticks (or immediately after a clash halts a front), resolve detached territory atomically. Owned components must contain a State or be sea-connected through same-owner Ports; components reachable through a chain of adjacent owned components annex to that protected owner, while components with no path to protection are abandoned to neutral land. Every 100 ticks, fill small neutral pockets.
 9. Eliminate states with no territory and remove their fronts/diplomatic commitments.
 10. Check 70% / last-standing victory.
 11. Build the public snapshot.
@@ -350,14 +350,14 @@ A stronger or higher-Barracks front deals more contact damage and can break a we
 
 ### 4.14 Territory integrity
 
-Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only). Every `ANNEX_INTERVAL_TICKS` (30 ticks / 3 seconds), and promptly after a clash halts a front, the simulation labels components and annexes unprotected ones:
+Every player begins with one **State structure** at their capital. A player's **protected mainland** is every connected land component containing a live State structure they own (4-neighbour, land only), plus components protected by same-owner Port chains. Every `ANNEX_INTERVAL_TICKS` (30 ticks / 3 seconds), and promptly after a clash halts a front, the simulation labels components and resolves every unprotected one:
 
-- a component is transferred only if it touches another player's **protected mainland**;
-- the recipient is the adjacent protected-mainland owner with the greatest shared border;
+- a component reachable through any chain of adjacent owned components to a protected mainland is annexed to that protected owner;
+- the recipient is the adjacent/chain protected owner with the greatest shared border;
 - ties go to the lower player id;
-- components touching only ocean, unclaimed land, another unprotected component, or an unprotected territory are left alone.
+- components with no path to protection are abandoned to neutral land, so no owned enclave survives indefinitely.
 
-This restores dead pixels and severed pockets to the surrounding claim while guaranteeing that territory connected to a State structure is never annexed. Legitimate islands with no adjacent protected claimant are not deleted.
+The plan is applied atomically in one scan. A Port protects its land component when it reaches the owner's State; same-owner Ports linked through any chain of shared sea components carry that protection transitively. Capturing a State destroys its annexation protection.
 
 #### Neutral pocket cleanup
 

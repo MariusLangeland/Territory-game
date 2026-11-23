@@ -200,17 +200,19 @@ describe('fronts and combat', () => {
 	it('never claims a pixel that is disconnected from the attacker at capture time', () => {
 		const sim = new TerritorySimulation({ seed: 2026 });
 		const internals = sim as unknown as {
-			claim(index: number, newOwner: number): void;
+			claim(index: number, newOwner: number, sourceAttackId?: number): void;
 			hasNeighbourOwner(index: number, ownerId: number): boolean;
 		};
 		const originalClaim = internals.claim.bind(sim);
 		let captures = 0;
 		let disconnectedCaptures = 0;
 
-		internals.claim = (index: number, newOwner: number) => {
-			if (!internals.hasNeighbourOwner(index, newOwner)) disconnectedCaptures++;
-			captures++;
-			originalClaim(index, newOwner);
+		internals.claim = (index: number, newOwner: number, sourceAttackId = 0) => {
+			if (sourceAttackId !== 0 && !internals.hasNeighbourOwner(index, newOwner)) {
+				disconnectedCaptures++;
+			}
+			if (sourceAttackId !== 0) captures++;
+			originalClaim(index, newOwner, sourceAttackId);
 		};
 
 		for (let tick = 0; tick < 40; tick++) sim.step();

@@ -65,7 +65,7 @@ ramp, and the layer should be re-tuned if future runs show economy starvation.
 ## 0.72.0 post-stagger and military-opening check
 
 The 8 × 1,800 balance sweep was re-run after elimination income, staggered bot
-decisions, the military opening, and queued annex transfers:
+decisions, the military opening, and annexation resolution:
 
 - All 8 runs hit the 1,800-tick cap. Alive states were 49–51; cumulative
   eliminations were **0–2** per run (0.5 average). The +10 supply/s elimination

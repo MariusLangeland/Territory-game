@@ -2,19 +2,22 @@
  * Territory-integrity cleanup.
  *
  * A live State structure anchors a player's mainland: every land component
- * connected to one of their structures is protected. Unprotected components that
- * touch a foreign protected component are annexed by the owner with the largest
- * shared border (lowest id on a tie).
+ * connected to one of their structures is protected. An unprotected component
+ * that can reach protection through a chain of adjacent owned components is
+ * annexed by that protected owner; ties use the largest shared border, then the
+ * lowest owner id.
  *
- * Components that only touch unclaimed land, ocean, or another unprotected
- * component are left alone. This avoids deleting legitimate islands and avoids
- * chains of detached components swapping owners every pass.
+ * Unprotected components with no path to any protected component are abandoned
+ * to neutral land. This guarantees that owned territory never survives as a
+ * detached enclave indefinitely, even when it is an ocean island.
  */
 
 export interface IntegrityResult {
 	components: number;
 	annexedComponents: number;
 	annexedCells: number;
+	abandonedComponents: number;
+	abandonedCells: number;
 }
 
 interface ComponentMeta {
@@ -73,7 +76,8 @@ export class TerritoryIntegrity {
 		owners: Uint16Array,
 		land: Uint8Array,
 		anchors: readonly IntegrityAnchor[],
-		onAnnex: (index: number, newOwner: number) => void
+		onAnnex: (index: number, newOwner: number) => void,
+		onAbandon: (index: number) => void
 	): IntegrityResult {
 		this.resetComponentLabels();
 		this.components.length = 0;
@@ -86,24 +90,73 @@ export class TerritoryIntegrity {
 			if (component > 0) this.protectedComponent[component - 1] = 1;
 		}
 
+		const adjacency = this.buildComponentAdjacency();
+		const componentCount = this.components.length;
+		const targetOwner = new Uint16Array(componentCount + 1);
+		const resolved = new Uint8Array(componentCount + 1);
+
+		// Protected components are the roots. Every unprotected component that can
+		// reach one through any number of adjacent owned components is resolved to
+		// that root's owner; the rest are abandoned.
+		for (const component of this.components) {
+			if (!this.protectedComponent[component.id - 1]) continue;
+			targetOwner[component.id] = component.owner;
+			resolved[component.id] = 1;
+		}
+
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const component of this.components) {
+				if (resolved[component.id]) continue;
+				const target = this.chooseResolvedNeighbourTarget(
+					component.id,
+					adjacency,
+					resolved,
+					targetOwner
+				);
+				if (target === 0) continue;
+				targetOwner[component.id] = target;
+				resolved[component.id] = 1;
+				changed = true;
+			}
+		}
+
 		let annexedComponents = 0;
 		let annexedCells = 0;
+		let abandonedComponents = 0;
+		let abandonedCells = 0;
 		for (const component of this.components) {
 			if (this.protectedComponent[component.id - 1]) continue;
-			const target = this.chooseAnnexingOwner(component, owners, land);
-			if (target === 0) continue;
+			const target = targetOwner[component.id];
+			if (target === 0) {
+				abandonedComponents++;
+				for (let i = component.start; i < component.end; i++) {
+					onAbandon(this.cellOrder[i]);
+					abandonedCells++;
+				}
+				continue;
+			}
 
-			annexedComponents++;
+			let changedCells = 0;
 			for (let i = component.start; i < component.end; i++) {
-				onAnnex(this.cellOrder[i], target);
-				annexedCells++;
+				const index = this.cellOrder[i];
+				if (owners[index] === target) continue;
+				onAnnex(index, target);
+				changedCells++;
+			}
+			if (changedCells > 0) {
+				annexedComponents++;
+				annexedCells += changedCells;
 			}
 		}
 
 		return {
 			components: this.components.length,
 			annexedComponents,
-			annexedCells
+			annexedCells,
+			abandonedComponents,
+			abandonedCells
 		};
 	}
 
@@ -261,29 +314,66 @@ export class TerritoryIntegrity {
 		}
 	}
 
-	private chooseAnnexingOwner(
-		component: ComponentMeta,
-		owners: Uint16Array,
-		land: Uint8Array
-	): number {
+	/**
+	 * Undirected component adjacency, weighted by shared pixel edges. Built once
+	 * per run so the protection graph can be traversed transitively.
+	 */
+	private buildComponentAdjacency(): Array<Map<number, number>> {
+		const adjacency = Array.from(
+			{ length: this.components.length + 1 },
+			() => new Map<number, number>()
+		);
 		const width = this.width;
 		const height = this.height;
-		const counts = this.contactCounts;
-		counts.fill(0);
-		let bestOwner = 0;
-		let bestCount = 0;
 
-		for (let i = component.start; i < component.end; i++) {
-			const index = this.cellOrder[i];
+		for (let index = 0; index < this.pixelCount; index++) {
+			const component = this.componentOf[index];
+			if (component === 0) continue;
+
 			const x = index % width;
 			const y = (index - x) / width;
-
-			this.countContact(index - 1, x > 0, component.owner, owners, land);
-			this.countContact(index + 1, x + 1 < width, component.owner, owners, land);
-			this.countContact(index - width, y > 0, component.owner, owners, land);
-			this.countContact(index + width, y + 1 < height, component.owner, owners, land);
+			this.addComponentEdge(adjacency, component, index - 1, x > 0);
+			this.addComponentEdge(adjacency, component, index + 1, x + 1 < width);
+			this.addComponentEdge(adjacency, component, index - width, y > 0);
+			this.addComponentEdge(adjacency, component, index + width, y + 1 < height);
 		}
 
+		return adjacency;
+	}
+
+	private addComponentEdge(
+		adjacency: Array<Map<number, number>>,
+		component: number,
+		neighbour: number,
+		inBounds: boolean
+	): void {
+		if (!inBounds) return;
+		const other = this.componentOf[neighbour];
+		if (other === 0 || other === component) return;
+		const forwards = adjacency[component] as Map<number, number>;
+		forwards.set(other, (forwards.get(other) ?? 0) + 1);
+		const backwards = adjacency[other] as Map<number, number>;
+		backwards.set(component, (backwards.get(component) ?? 0) + 1);
+	}
+
+	private chooseResolvedNeighbourTarget(
+		componentId: number,
+		adjacency: Array<Map<number, number>>,
+		resolved: Uint8Array,
+		targetOwner: Uint16Array
+	): number {
+		const counts = this.contactCounts;
+		counts.fill(0);
+		const neighbours = adjacency[componentId] as Map<number, number>;
+		for (const [neighbourId, contact] of neighbours) {
+			if (!resolved[neighbourId]) continue;
+			const owner = targetOwner[neighbourId];
+			if (owner === 0) continue;
+			counts[owner] += contact;
+		}
+
+		let bestOwner = 0;
+		let bestCount = 0;
 		for (let owner = 1; owner <= this.playerCount; owner++) {
 			const count = counts[owner];
 			if (count === 0) continue;
@@ -292,23 +382,6 @@ export class TerritoryIntegrity {
 				bestCount = count;
 			}
 		}
-
 		return bestOwner;
-	}
-
-	private countContact(
-		neighbour: number,
-		inBounds: boolean,
-		componentOwner: number,
-		owners: Uint16Array,
-		land: Uint8Array
-	): void {
-		if (!inBounds || !land[neighbour]) return;
-		const owner = owners[neighbour];
-		if (owner === 0 || owner === componentOwner) return;
-		const neighbourComponent = this.componentOf[neighbour];
-		if (neighbourComponent === 0) return;
-		if (!this.protectedComponent[neighbourComponent - 1]) return;
-		this.contactCounts[owner]++;
 	}
 }

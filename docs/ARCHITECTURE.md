@@ -163,7 +163,7 @@ step()
  │    ├─ skip stale/disconnected candidates without spending attack points
  │    ├─ drop a front if it had zero legal captures this tick
  │    └─ drop completed/expired attacks
- ├─ every 30 ticks or after a cancellation: annex detached components
+ ├─ every 30 ticks or after a cancellation: resolve detached components atomically
  ├─ every 100 ticks: fill small neutral pockets into their dominant neighbour
  ├─ updateEliminations()
  ├─ checkVictory()
@@ -218,9 +218,9 @@ The simulation validates every candidate identically. The layer never claims own
 
 ### Territory integrity
 
-`TerritoryIntegrity` labels every owned land component in scan order. The simulation passes only State structures as anchors; a component is **protected** if it contains a live State structure owned by the same player. Every other component — including components containing only Artillery, Barracks, Fortifications, Jammers, Command Posts, or War Academies — is unprotected. An unprotected component is annexed only when it directly touches a foreign protected component; the target is the owner with the largest shared border, with lower player id as the tie-break. Components touching only water, unclaimed land, or another unprotected component are left untouched, so valid islands and chains are not deleted. Annexations go through `claim(..., 0)`, which updates territory counts, borders, renderer changes, and clears attack provenance.
+`TerritoryIntegrity` labels every owned land component in scan order. Anchors are State structures plus same-owner Ports protected transitively through shared sea components. A component is **protected** if it contains an anchor. Every other component is unprotected. The scan builds a weighted component-adjacency graph and propagates protection outward: an unprotected component reachable through any chain of adjacent owned components is annexed to the protected root owner, choosing the largest shared border then the lower player id. Components with no path to protection are **abandoned to neutral land** rather than left as indefinite enclaves. The complete transfer/abandon plan is applied atomically through `claim(...)`; there is no cross-tick transfer queue. `claim(..., 0)` updates territory counts, borders, districts/auras, renderer changes, destroys structures on abandoned cells, and clears attack provenance.
 
-`cleanupUnclaimedPockets` is a second labeling pass over neutral land. It fills components of at most `UNCLAIMED_POCKET_MAX_AREA` (96) that directly border an owner, assigning the pocket to the owner with the largest shared border (lowest id tie-break). Ocean contact is intentionally allowed so thin coastal slivers left by organic fronts are removed; ownerless islands and larger neutral regions are skipped. It runs every 100 ticks and also applies claims through `claim(..., 0)`.
+`cleanupUnclaimedPockets` is a second labeling pass over neutral land. It fills components of at most `UNCLAIMED_POCKET_MAX_AREA` (96) that directly border an owner, assigning the pocket to the owner with the largest shared border (lowest id tie-break). Ocean contact is intentionally allowed so thin coastal slivers left by organic fronts are removed; ownerless islands and larger neutral regions are skipped. It runs every 100 ticks and immediately after a non-empty integrity scan; fills also go through `claim(...)`.
 
 Capturing a structure's cell calls `structures.destroyAt(index)` inside `claim`. The structure disappears from the map, minimap, snapshot, and checksums, its aura is removed, and the owner loses protection for all remaining components. A dead state's territory is therefore not a valid annexation target, though it can still be attacked.
 
@@ -395,7 +395,7 @@ Continuous rendering is intentional for ocean shimmer and smooth camera input. T
 - `ai/genome.ts` defines evolvable bot genomes; `FitnessWeights` in `ai/evolution.ts` is the single source for reward scaling used by the Evolution Lab and headless runs.
 - `ai/genome.ts` defines evolvable bot genomes: traits, per-type affinities, and six behaviour-module weights, with deterministic creation/mutation/crossover.
 - `ai/evolution.ts` runs deterministic all-bot selection rounds, 64-seat gauntlet survival with global lives and top-16 recovery, fitness scoring, 1v1 mirrored lineage duels, QD descriptor archives, pruning/reproduction, poor/good/top buckets, and generation/run-boundary session capture/restore for the worker's IndexedDB checkpoint. `ai/evolution-csv.ts` round-trips genomes through the spreadsheet format; `ai/buckets.ts` persists selected buckets for match difficulty.
-- `naval.ts` labels static 4-connected sea components once and provides deterministic 4-neighbour A* for boat routes. `TerritorySimulation` queues naval commands, spends launch supply, advances boats by arrival tick, claims the beachhead, auto-builds a Port, and opens a normal inward front. Port protection adds `IntegrityAnchor`s for Ports whose friendly land reaches the State, plus same-owner Ports sharing a sea component with one.
+- `naval.ts` labels static 4-connected sea components once and provides deterministic 4-neighbour A* for boat routes. `TerritorySimulation` queues naval commands, spends launch supply, advances boats by arrival tick, claims the beachhead, auto-builds a Port, and opens a normal inward front. Port protection adds `IntegrityAnchor`s for Ports whose friendly land reaches the State, plus same-owner Ports reachable through any chain of shared sea components.
 - Pointer events are converted to map cells using CSS space.
 - The renderer writes physical resolution and physical scale into uniforms.
 

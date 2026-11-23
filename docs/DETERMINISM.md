@@ -225,7 +225,7 @@ Border set membership has no outcome effect by itself, but bot target selection 
 2. RNG state,
 3. next attack id,
 4. ended flag and winner,
-5. current and pending growth mode, annexation request/cooldown state and the pending annex-transfer queue (index/from/to in deterministic append order),
+5. current and pending growth mode, annexation request/cooldown state and ownership-dirty flags (annexed and abandoned components are applied atomically, so there is no pending transfer queue),
 6. every owner cell and per-cell attack-claim provenance,
 7. each player's id, alive flag, and territory,
 8. live structure ids, type, owner, cell index, and stack count,
@@ -314,8 +314,8 @@ The split `src/lib/game/simulation.*.test.ts` suites cover:
 13. Growth-layer tests verify circular priority ordering, smooth radial-band priority/concavity filling, and organic seed reproducibility.
 14. A deep click produces an attack anchor at the border contact, not at the click.
 15. Mutual attacks trade strength on contact: each side loses `100 + 50 × opponent logTier` once per pair per tick; zero strength kills a front.
-16. Detached territory is annexed only to a foreign protected mainland with the largest shared border; islands with no claimant are left. Small neutral pockets (≤96 cells) are filled into their dominant owner every 100 ticks.
-17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, no-claim islands, deterministic tie-breaks, small neutral/coastal pocket filling, ownerless-pocket skips, and the area threshold.
+16. Every owned component is resolved atomically: components reachable through an adjacent-component chain to a State/Port-protected root are annexed to that root by largest shared border (lower id tie-break), while components with no path to protection are abandoned to neutral land. Small neutral pockets (<=96 cells) with an owner border are filled into their dominant owner every 100 ticks.
+17. Territory-integrity unit tests cover structure-anchored protection, unprotected larger components, abandoned islands, transitive chain annexation, deterministic tie-breaks, small neutral/coastal pocket filling, ownerless-pocket skips, and the area threshold.
 18. Each state has one State structure at its start; capturing that cell removes it from the registry and snapshot.
 19. Every land pixel has an elevation tier 0–5 and base defense `1 + elevation`; occupied pixels add one.
 20. An attack against a 20-pixel lowland owned border captures 15 pixels per tick; the same front against peaks captures 4.

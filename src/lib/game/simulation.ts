@@ -247,14 +247,6 @@ interface BotEconomicAction {
 const CHANGE_BUFFER_SIZE = 16_384;
 /** Keep the full annex scan off the bot decision tick. */
 const ANNEX_PHASE_OFFSET_TICKS = 5;
-/** Annex transfers are applied across ticks so a large cleanup cannot block a frame. */
-const ANNEX_TRANSFER_BUDGET = 500;
-
-interface AnnexTransfer {
-	index: number;
-	from: number;
-	to: number;
-}
 
 /** Diplomacy timing is tick-based; no wall clock enters the simulation. */
 const ALLIANCE_PROPOSAL_TICKS = TICK_RATE * 30;
@@ -426,8 +418,6 @@ export class TerritorySimulation {
 	private lastSnapshot: GameSnapshot | null = null;
 	private annexRequested = false;
 	private lastAnnexTick = -ANNEX_INTERVAL_TICKS;
-	private annexTransferQueue: AnnexTransfer[] = [];
-	private annexTransferIndex = 0;
 	private ownershipChangedSinceAnnex = true;
 	private ownershipChangedSinceCleanup = true;
 	private ownershipVersion = 0;
@@ -1795,9 +1785,6 @@ export class TerritorySimulation {
 
 			this.accrueResources();
 			this.applyPendingCommands();
-			// Large annex cleanups are drained over multiple ticks; determinism
-			// comes from queue order, not from how long the queue took to apply.
-			this.applyAnnexTransfers(ANNEX_TRANSFER_BUDGET);
 
 			// Threat must refresh before the economy and decision passes so a
 			// front opened this tick is already visible to the defender.
@@ -1814,15 +1801,18 @@ export class TerritorySimulation {
 			const annexDue =
 				(this.tick + ANNEX_PHASE_OFFSET_TICKS) % ANNEX_INTERVAL_TICKS === 0 ||
 				(this.annexRequested && this.tick - this.lastAnnexTick >= ANNEX_INTERVAL_TICKS);
-			if (
-				this.annexTransferQueue.length === 0 &&
-				annexDue &&
-				(this.ownershipChangedSinceAnnex || this.annexRequested)
-			) {
-				this.annexDisconnectedTerritory(true);
+			if (annexDue && (this.ownershipChangedSinceAnnex || this.annexRequested)) {
+				const result = this.annexDisconnectedTerritory();
 				this.annexRequested = false;
 				this.lastAnnexTick = this.tick;
 				this.ownershipChangedSinceAnnex = false;
+				// Clean up neutral pockets immediately after ownership transfers so
+				// annexation cannot leave short-lived unclaimed holes or expose newly
+				// detached cells to another attack window.
+				if (result.annexedCells > 0 || result.abandonedCells > 0) {
+					this.cleanupUnclaimedPockets();
+					this.ownershipChangedSinceCleanup = false;
+				}
 			}
 			if (this.tick % UNCLAIMED_CLEANUP_INTERVAL_TICKS === 0 && this.ownershipChangedSinceCleanup) {
 				this.cleanupUnclaimedPockets();
@@ -1929,14 +1919,6 @@ export class TerritorySimulation {
 		mix(this.lastAnnexTick);
 		mix(this.ownershipChangedSinceAnnex ? 1 : 0);
 		mix(this.ownershipChangedSinceCleanup ? 1 : 0);
-		mix(this.annexTransferIndex);
-		for (let i = this.annexTransferIndex; i < this.annexTransferQueue.length; i++) {
-			const transfer = this.annexTransferQueue[i];
-			if (!transfer) continue;
-			mix(transfer.index);
-			mix(transfer.from);
-			mix(transfer.to);
-		}
 		mixNumbers(mix, this.humanGold);
 		mixNumbers(mix, this.humanGoldAccrual);
 		mixNumbers(mix, this.botGold);
@@ -2864,58 +2846,40 @@ export class TerritorySimulation {
 		return 'blocked';
 	}
 
-	private collectAnnexTransfers(): AnnexTransfer[] {
+	private annexDisconnectedTerritory(): ReturnType<TerritoryIntegrity['run']> {
 		const anchors: IntegrityAnchor[] = this.structures.all
 			.filter((structure) => structure.type === 'state')
 			.map((structure) => ({ index: structure.index, ownerId: structure.ownerId }));
 		anchors.push(...this.protectedPortAnchors());
-		const transfers: AnnexTransfer[] = [];
-		this.integrity.run(this.owners, this.land, anchors, (index, newOwner) => {
-			transfers.push({ index, from: this.owners[index] ?? 0, to: newOwner });
-		});
-		return transfers;
-	}
-
-	private annexDisconnectedTerritory(queueTransfers = false): void {
-		const transfers = this.collectAnnexTransfers();
-		if (queueTransfers) {
-			this.annexTransferQueue = transfers;
-			this.annexTransferIndex = 0;
-			return;
-		}
-		for (const transfer of transfers) this.claim(transfer.index, transfer.to, 0);
-	}
-
-	private applyAnnexTransfers(budget: number): void {
-		let applied = 0;
-		while (this.annexTransferIndex < this.annexTransferQueue.length && applied < budget) {
-			const transfer = this.annexTransferQueue[this.annexTransferIndex++];
-			applied++;
-			if (!transfer) break;
-			if ((this.owners[transfer.index] ?? 0) !== transfer.from) continue;
-			this.claim(transfer.index, transfer.to, 0);
-		}
-		if (this.annexTransferIndex >= this.annexTransferQueue.length) {
-			this.annexTransferQueue = [];
-			this.annexTransferIndex = 0;
-		}
+		// Apply the complete plan atomically. A queued transfer leaves a window in
+		// which a new attack can capture a cell that the plan was about to move,
+		// making annexation dependent on tick timing.
+		return this.integrity.run(
+			this.owners,
+			this.land,
+			anchors,
+			(index, newOwner) => this.claim(index, newOwner, 0),
+			(index) => this.claim(index, 0, 0)
+		);
 	}
 
 	/**
 	 * A Port protects its land component when that component reaches the
-	 * owner's State, or when it shares a sea component with another friendly
-	 * Port whose land component reaches the State.
+	 * owner's State, or when it is sea-connected to another friendly Port that
+	 * reaches the State. Sea connections are transitive: A-B-C carries
+	 * protection from A to C even when A and C do not share a sea component.
 	 */
 	private protectedPortAnchors(): IntegrityAnchor[] {
 		const ports = this.structures.all.filter((structure) => structure.type === 'port');
 		if (ports.length === 0) return [];
-		const anchor: IntegrityAnchor[] = [];
-		const byOwner = new Map<number, typeof ports>();
+		const portById = new Map<number, (typeof ports)[number]>();
 		const seaById = new Map<number, Set<number>>();
+		const portsBySea = new Map<number, number[]>();
 		const landAnchored = new Set<number>();
 		this.portComponentMeta.clear();
 
 		for (const port of ports) {
+			portById.set(port.id, port);
 			let token = this.portComponentOf[port.index] ?? 0;
 			let reachesState = false;
 			const cached = token > 0 ? this.portComponentMeta.get(token) : undefined;
@@ -2982,39 +2946,40 @@ export class TerritorySimulation {
 				}
 				this.portComponentMeta.set(token, { ownerId: port.ownerId, reachesState });
 			}
-			const ownerPorts = byOwner.get(port.ownerId) ?? [];
-			ownerPorts.push(port);
-			byOwner.set(port.ownerId, ownerPorts);
 			const waters: number[] = [];
 			adjacentWater(this.land, this.width, this.height, port.index, waters);
 			const seaIds = new Set<number>();
 			for (const water of waters) {
 				const sea = this.seaComponents[water] ?? 0;
-				if (sea > 0) seaIds.add(sea);
+				if (sea <= 0) continue;
+				seaIds.add(sea);
+				const ids = portsBySea.get(sea) ?? [];
+				ids.push(port.id);
+				portsBySea.set(sea, ids);
 			}
 			seaById.set(port.id, seaIds);
-			if (reachesState) {
-				landAnchored.add(port.id);
-				anchor.push({ index: port.index, ownerId: port.ownerId });
-			}
+			if (reachesState) landAnchored.add(port.id);
 		}
 
-		for (const ownerPorts of byOwner.values()) {
-			const anchoredSea = new Set<number>();
-			for (const port of ownerPorts) {
-				if (!landAnchored.has(port.id)) continue;
-				for (const sea of seaById.get(port.id) ?? []) anchoredSea.add(sea);
-			}
-			for (const port of ownerPorts) {
-				if (landAnchored.has(port.id)) continue;
-				for (const sea of seaById.get(port.id) ?? []) {
-					if (!anchoredSea.has(sea)) continue;
-					anchor.push({ index: port.index, ownerId: port.ownerId });
-					break;
+		const anchored = new Set(landAnchored);
+		const queue = ports.filter((port) => landAnchored.has(port.id)).map((port) => port.id);
+		for (let head = 0; head < queue.length; head++) {
+			const port = portById.get(queue[head] ?? 0);
+			if (!port) continue;
+			for (const sea of seaById.get(port.id) ?? []) {
+				for (const otherId of portsBySea.get(sea) ?? []) {
+					const other = portById.get(otherId);
+					if (!other || other.ownerId !== port.ownerId) continue;
+					if (anchored.has(other.id)) continue;
+					anchored.add(other.id);
+					queue.push(other.id);
 				}
 			}
 		}
-		return anchor;
+
+		return ports
+			.filter((port) => anchored.has(port.id))
+			.map((port) => ({ index: port.index, ownerId: port.ownerId }));
 	}
 
 	private cleanupUnclaimedPockets(): void {
@@ -3067,8 +3032,8 @@ export class TerritorySimulation {
 			);
 		}
 
-		const next = this.players[newOwner - 1];
-		next.territory++;
+		const next = newOwner > 0 ? this.players[newOwner - 1] : null;
+		if (next) next.territory++;
 		this.refreshBorder(index);
 
 		const x = index % this.width;

@@ -83,18 +83,19 @@ describe('deterministic checksums', () => {
 		}
 	}, 15_000);
 
-	it('includes pending annex transfers in the checksum', () => {
+	it('produces identical checksums after atomic annexation', () => {
 		const left = new TerritorySimulation({ seed: 667788 });
 		const right = new TerritorySimulation({ seed: 667788 });
-		const leftInternals = left as unknown as { annexTransferQueue: Array<Record<string, number>> };
-		const rightInternals = right as unknown as {
-			annexTransferQueue: Array<Record<string, number>>;
-		};
-		leftInternals.annexTransferQueue = [{ index: 77, from: 2, to: 1 }];
-		rightInternals.annexTransferQueue = [{ index: 77, from: 2, to: 1 }];
+		const leftInternals = left as unknown as { annexDisconnectedTerritory(): void };
+		const rightInternals = right as unknown as { annexDisconnectedTerritory(): void };
+		leftInternals.annexDisconnectedTerritory();
+		rightInternals.annexDisconnectedTerritory();
 		expect(left.checksum()).toBe(right.checksum());
-		rightInternals.annexTransferQueue[0].to = 3;
-		expect(left.checksum()).not.toBe(right.checksum());
+		for (let tick = 0; tick < 30; tick++) {
+			left.step();
+			right.step();
+		}
+		expect(left.checksum()).toBe(right.checksum());
 	});
 
 	it('produces identical alliance state for identical runs', () => {

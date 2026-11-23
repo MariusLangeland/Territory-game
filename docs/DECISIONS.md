@@ -3294,3 +3294,40 @@ evolution-named classes, and required components to cast the worker mirror to
 - The worker boundary is discoverable in one module.
 - Components no longer depend on a concrete simulation class or casts.
 - Future renderer/query consumers should target `SimulationView`.
+
+---
+
+## ADR-102 — Resolve every detached component atomically
+
+**Status:** accepted and implemented
+**Date:** 2026-11-23
+
+### Context
+
+Annexation only moved an unprotected component when it directly touched a
+foreign protected mainland. Components with no protected contact were left
+alone, so detached enclaves could survive indefinitely. The cross-tick transfer
+queue also left a window in which a new attack could capture a cell that the
+annexation plan was about to move, making the result depend on tick timing.
+
+### Decision
+
+- Build a component-adjacency graph during the integrity scan and propagate
+  protection outward from State/Port anchors through any chain of adjacent owned
+  components.
+- Annex reachable components to the protected root owner; abandon components
+  with no path to protection to neutral land.
+- Apply the complete annex/abandon plan atomically in one scan. Remove the
+  cross-tick transfer queue and its checksum fields.
+- Protect same-owner Ports transitively across any chain of shared sea
+  components, not only one hop.
+- Run small-neutral-pocket cleanup immediately after a non-empty integrity scan
+  so annexation cannot leave temporary holes.
+
+### Consequences
+
+- Every owned component either reaches protection or becomes neutral; no owned
+  enclave survives indefinitely.
+- Annexation is deterministic and cannot race a new capture.
+- Large cleanups may do more work in one tick; benchmark before changing the
+  cadence.
