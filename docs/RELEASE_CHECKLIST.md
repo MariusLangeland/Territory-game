@@ -41,6 +41,15 @@ Verify in current Chrome or Edge with WebGPU enabled.
 - [ ] Pan/zoom under load; no recurring frame hitch and camera clamps at map edges.
 - [ ] Open a narrow viewport and scroll the leaderboard to the last rank.
 
+### Online rooms
+
+- [ ] Open `/online`; create a room and copy its share URL.
+- [ ] In a second tab, join by room code; confirm the lobby seat list and host start control.
+- [ ] Start the match; confirm both clients receive ticks, independent supply/hand HUDs, bots in empty seats, and authoritative map updates.
+- [ ] Send attacks/builds from both clients; confirm rejected commands do not desync the map.
+- [ ] Reload one client and confirm same-token reconnect receives a mid-match baseline.
+- [ ] Confirm the host cannot start without a joined host, late join after start is rejected, and server restart loss is documented.
+
 ### Evolution Lab
 
 - [ ] Open `/evolution`; no `/duel` link or route (direct `/duel` returns 404).

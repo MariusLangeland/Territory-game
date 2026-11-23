@@ -2,7 +2,7 @@
 
 **Version:** see generated [REFERENCE.md](REFERENCE.md) / `package.json`  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** map version 4, protocol draft 39  
+**Last synchronized with:** map version 4, protocol draft 40  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -122,7 +122,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 39`.
+- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 40`.
 
 ### 4.2 Starting positions
 
@@ -238,6 +238,17 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Capturing a pixel records one grievance for the defender against the attacking owner. Grievances persist, are capped, and are checksummed.
 - Bots use the same attack-order, structure, district, aura, and clash rules as the human.
 - Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, affinities, grievances, and utility decisions are deterministic. Behavior is replayable.
+
+### 4.8 Online multiplayer
+
+The `/online` route hosts authoritative rooms over HTTP + Server-Sent Events.
+
+- A room has up to four human seats and a configurable total state count; bots fill every seat without a human.
+- The host starts the match. Each human gets an independent supply pool, income accrual, card hand, and viewer-specific snapshot.
+- The server advances the simulation at 10 Hz, validates every intent (attack, artillery, naval, build, upgrade, demolish, cancel, alliance request/break), enforces monotonic client sequences and a per-tick rate limit, and owns winners/checksums.
+- Clients send intents; they never submit player ids or mutate simulation state. Authoritative owner changes and snapshots stream back as tick events.
+- Reconnect uses the same session token and receives a mid-match owner baseline plus viewer snapshot. Late join after start is rejected in the MVP.
+- MVP limitations: in-memory rooms are lost on server restart; no accounts, matchmaking, chat, persistence, or WebSocket/binary transport yet.
 
 ### 4.8a Alliances
 

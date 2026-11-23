@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.74.0 — 2026-11-23
+
+### Online multiplayer MVP
+
+- Added authoritative online rooms: create/join a room code, up to four human
+  seats, bots fill every remaining seat, and the host starts the match.
+- Added a server-side 10 Hz tick loop, intent sequence validation, rate limits,
+  authoritative player ids, baseline welcome snapshots, and SSE tick streaming.
+- Added multi-human simulation support: per-seat supply, hands, income accrual,
+  and viewer-specific snapshots while preserving local single-player defaults.
+- Added `/online` lobby and live match UI with cards, upgrades, attacks,
+  artillery targeting, cancel-front, server connection state, and share links.
+- Added `online-room` tests covering seat assignment, host start, monotonic
+  intents, per-viewer snapshots, owner-baseline RLE, and mid-match reconnect.
+- Wire protocol bumped to 40.
+
+Limitations in this MVP: rooms are in memory and lost on server restart; late
+join after start is rejected (reconnect with the same session is supported);
+tokens live in session storage; no accounts, chat, persistence, or matchmaking;
+transport is HTTP/SSE rather than WebSocket.
+
 ## 0.73.0 — 2026-11-23
 
 ### Diplomacy

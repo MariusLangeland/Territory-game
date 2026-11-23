@@ -48,6 +48,8 @@
 		targeting?: boolean;
 		/** The pointer is over an allied state; suppress the attack cursor. */
 		allyTarget?: boolean;
+		/** Seat controlled by this client; defaults to the local human seat. */
+		humanPlayerId?: number;
 		mergeDistricts?: boolean;
 		highlightType?: StructureType | null;
 		cameraBridge: GameCameraBridge;
@@ -75,6 +77,7 @@
 		onRemoteVisualsApplied,
 		targeting = false,
 		allyTarget = false,
+		humanPlayerId = HUMAN_PLAYER_ID,
 		mergeDistricts = true,
 		highlightType = null,
 		cameraBridge,
@@ -308,7 +311,7 @@
 			x: number,
 			y: number
 		): void {
-			const human = ownerId === HUMAN_PLAYER_ID;
+			const human = ownerId === humanPlayerId;
 			const isState = type === 'state';
 			const radius = isState
 				? human
@@ -598,7 +601,7 @@
 			context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 			if (targeting) {
-				for (const structure of simulation.structures.forOwner(HUMAN_PLAYER_ID)) {
+				for (const structure of simulation.structures.forOwner(humanPlayerId)) {
 					if (structure.type !== 'artillery') continue;
 					const center = camera.mapToScreen(structure.x + 0.5, structure.y + 0.5);
 					const edge = camera.mapToScreen(structure.x + 0.5 + ARTILLERY_RANGE, structure.y + 0.5);
@@ -806,7 +809,7 @@
 			renderer.highlightDistrictCode = highlightType
 				? STRUCTURE_TYPE_CODES[highlightType] * 4 - 3
 				: 0;
-			renderer.highlightDistrictOwner = highlightType ? HUMAN_PLAYER_ID : 0;
+			renderer.highlightDistrictOwner = highlightType ? humanPlayerId : 0;
 			renderer.render(now);
 			drawStructures();
 
@@ -834,7 +837,7 @@
 				applyRemoteVisualQueue();
 
 				const camera = renderer.camera;
-				const humanStart = simulation.map.starts[HUMAN_PLAYER_ID - 1];
+				const humanStart = simulation.map.starts[humanPlayerId - 1];
 				if (cameraFocus === 'map') {
 					camera.focusOn(simulation.width / 2, simulation.height / 2, 1);
 				} else {

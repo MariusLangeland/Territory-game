@@ -20,7 +20,7 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:version START -->
 
-- App version: `0.73.0` (from `package.json` `version`).
+- App version: `0.74.0` (from `package.json` `version`).
 
 <!-- AUTOGEN:version END -->
 
@@ -30,8 +30,8 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.ts`.
 
-- `PROTOCOL_VERSION` — simulation protocol revision: `39`.
-- `NET_PROTOCOL_VERSION` — wire protocol revision: `39`.
+- `PROTOCOL_VERSION` — simulation protocol revision: `40`.
+- `NET_PROTOCOL_VERSION` — wire protocol revision: `40`.
 - `MAP_VERSION` — map generation revision: `4`.
 - `MAP_WIDTH` — map width in pixels: `2048`.
 - `MAP_HEIGHT` — map height in pixels: `1024`.

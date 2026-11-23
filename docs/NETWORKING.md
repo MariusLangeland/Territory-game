@@ -1,6 +1,26 @@
 # Networking
 
-> **Status:** design target, not implemented. The local vertical slice has no server, accounts, rooms, matchmaking, or WebSocket transport. This document defines the architecture to build next so the simulation stays authoritative and deterministic.
+> **Status:** authoritative online MVP implemented in 0.74.0 over HTTP + SSE;
+> the WebSocket/binary target below remains the scale path. There are no
+> accounts, matchmaking, chat, or persistence yet.
+
+## 0. Implemented online MVP (0.74.0)
+
+- `src/lib/game/net/online-protocol.ts` defines room config, viewer baselines,
+  intents, and tick payloads.
+- `src/lib/game/net/online-room.ts` owns seats, host start, monotonic intent
+  sequences, per-tick rate limits, intent validation, RLE owner baselines, and
+  per-viewer snapshots.
+- `src/lib/server/online.ts` owns in-memory rooms, 10 Hz authoritative ticking,
+  SSE subscribers, and idle cleanup.
+- HTTP endpoints live under `/api/online/rooms`; the browser client is
+  `/online`.
+- Transport is HTTP POST for commands and Server-Sent Events for ticks. This
+  keeps the MVP dependency-free; the WebSocket/binary sections below describe
+  the production upgrade path.
+- Limitations: in-memory rooms (lost on restart), no late join after start
+  (same-token reconnect works), no accounts/chat/matchmaking, session tokens are
+  held in `sessionStorage`, and no server snapshot compression beyond owner RLE.
 
 ---
 
@@ -185,7 +205,9 @@ Ownership is discrete. Do not interpolate pixel owners. Camera pan/zoom may be s
 
 ## 6. Wire protocol
 
-The draft is in `src/lib/game/net/protocol.ts`. Core messages:
+The original wire sketch is in `src/lib/game/net/protocol.ts`; the implemented
+MVP room/intent/baseline types are in `src/lib/game/net/online-protocol.ts`.
+Core target messages:
 
 ### Client → server
 
@@ -255,7 +277,7 @@ Player economy and cards:
 - the hand is the fixed six-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - continuous supply income, uncapped cap growth, Artillery cooldowns/shells, Barracks/Jammer attack stats, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
-- bots use the same supply economy; every public player payload includes current `supply` so clients can render rival supply banners. Protocol 38 adds Port/naval landing state and naval intents. Protocol 39 adds active alliances and pending alliance proposals; an online server must make request acceptance and expiry authoritative tick commands/state.
+- bots use the same supply economy; every public player payload includes current `supply` so clients can render rival supply banners. Protocol 38 adds Port/naval landing state and naval intents. Protocol 39 adds active alliances and pending alliance proposals. Protocol 40 adds multi-human seats and authoritative online room messages; intent acceptance and expiry remain server-authoritative.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);

@@ -3115,3 +3115,42 @@ betrayal real without adding shared resources or server-only concepts.
   them.
 - Multi-party alliances, renewal, bot-initiated requests, shared vision/supply,
   and protocol delivery remain deferred.
+
+---
+
+## ADR-097 — Authoritative online rooms over HTTP/SSE
+
+**Status:** accepted; MVP implemented  
+**Date:** 2026-11-23
+
+### Context
+
+[NETWORKING.md](NETWORKING.md) defined a server-authoritative WebSocket target but
+the game still had one human seat and no server surface. The first playable
+online milestone needed to support several humans in one deterministic match
+without disturbing local play.
+
+### Decision
+
+- Add humanPlayerIds to SimulationOptions. Human seats keep independent
+  supply, income accrual, card hands, and viewer-specific snapshots; local mode
+  still defaults to seat 1.
+- Add an authoritative OnlineRoom core: seat assignment, host start,
+  monotonic per-player intent sequences, per-tick rate limits, intent
+  application, owner-baseline RLE, and per-viewer snapshots.
+- Transport the MVP over HTTP command posts and Server-Sent Events tick streams
+  rather than WebSocket. This keeps the browser/server implementation
+  dependency-free and gives a clear upgrade path without changing authority.
+- Rooms are in memory and support reconnect with the same session token. Late
+  joins after start are rejected for the MVP.
+- Bump the wire protocol to 40.
+
+### Consequences
+
+- A room can host up to four humans with server-side bots filling remaining
+  seats.
+- The server owns tick advancement, command validation, rates, and winner state.
+- Room state is lost on process restart; persistence, matchmaking, chat, late
+  join, and WebSocket/binary transport remain future work.
+- Online clients render authoritative deltas; they do not predict or mutate
+  simulation state.

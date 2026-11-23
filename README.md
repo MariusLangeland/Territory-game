@@ -34,6 +34,7 @@
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                               |
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions |
 | Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                             |
+| Online rooms    | `/online`: up to four human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline                                                             |
 | Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                             |
@@ -65,6 +66,7 @@ http://localhost:5173/?seed=1234
 ```
 
 Open the Evolution Lab at <http://localhost:5173/evolution>.
+Open authoritative online rooms at <http://localhost:5173/online> (in-memory MVP; the same server process hosts rooms and SSE ticks).
 
 ### Commands
 
@@ -321,6 +323,9 @@ src/
         buckets.ts               saved difficulty buckets
         evolution-csv.ts         CSV round-trip
       net/protocol.ts            multiplayer wire protocol draft
+      net/online-protocol.ts     authoritative room/intent/baseline types
+      net/online-room.ts         multi-human room lifecycle + intent validation
+  lib/server/online.ts         in-memory rooms, 10 Hz ticker, SSE subscribers
       render/
         camera.ts                pan / zoom / free overscroll camera
         camera-bridge.ts         imperative bridge for Svelte controls
@@ -350,6 +355,7 @@ AGENTS.md                        orientation for future coding agents
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
 - Match setup chooses states/map/difficulty/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
+- Online rooms are an in-memory MVP: up to four humans, bots fill empty seats, HTTP commands, and SSE snapshots. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
 - The main game still runs on the main thread; only the Evolution Lab uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.
@@ -360,20 +366,20 @@ AGENTS.md                        orientation for future coding agents
 
 ## Documentation index
 
-| Document                                               | Read it for                                         |
-| ------------------------------------------------------ | --------------------------------------------------- |
-| [CHANGELOG.md](CHANGELOG.md)                           | Release highlights and version history              |
-| [docs/SPEC.md](docs/SPEC.md)                           | The canonical game and technical specification      |
-| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)             | Retired EXP-001 history, findings, and exit plan    |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)           | Code map, data flow, extension points               |
-| [docs/DETERMINISM.md](docs/DETERMINISM.md)             | Rules that keep simulation runs deterministic       |
-| [docs/RENDERING.md](docs/RENDERING.md)                 | WebGPU pipeline, texture layout, upload batching    |
-| [docs/NETWORKING.md](docs/NETWORKING.md)               | Authoritative server, protocol, latency, anti-cheat |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)             | Budgets, benchmarks, profiling playbook             |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                     | Phased plan and acceptance criteria                 |
-| [docs/DECISIONS.md](docs/DECISIONS.md)                 | Why the stack and engine work this way              |
-| [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md)         | Implemented Frontage v1 combat design               |
-| [docs/ALLIANCES.md](docs/ALLIANCES.md)                 | Implemented alliance mechanic and rules             |
-| [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release verification runbook                        |
-| [docs/AI_BALANCE.md](docs/AI_BALANCE.md)               | Headless AI behavior balance results                |
-| [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md)     | Evolution selection/fitness audit                   |
+| Document                                               | Read it for                                             |
+| ------------------------------------------------------ | ------------------------------------------------------- |
+| [CHANGELOG.md](CHANGELOG.md)                           | Release highlights and version history                  |
+| [docs/SPEC.md](docs/SPEC.md)                           | The canonical game and technical specification          |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)             | Retired EXP-001 history, findings, and exit plan        |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)           | Code map, data flow, extension points                   |
+| [docs/DETERMINISM.md](docs/DETERMINISM.md)             | Rules that keep simulation runs deterministic           |
+| [docs/RENDERING.md](docs/RENDERING.md)                 | WebGPU pipeline, texture layout, upload batching        |
+| [docs/NETWORKING.md](docs/NETWORKING.md)               | Implemented online MVP plus authoritative-server target |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md)             | Budgets, benchmarks, profiling playbook                 |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                     | Phased plan and acceptance criteria                     |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                 | Why the stack and engine work this way                  |
+| [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md)         | Implemented Frontage v1 combat design                   |
+| [docs/ALLIANCES.md](docs/ALLIANCES.md)                 | Implemented alliance mechanic and rules                 |
+| [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release verification runbook                            |
+| [docs/AI_BALANCE.md](docs/AI_BALANCE.md)               | Headless AI behavior balance results                    |
+| [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md)     | Evolution selection/fitness audit                       |

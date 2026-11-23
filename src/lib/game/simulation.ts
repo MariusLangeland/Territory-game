@@ -551,6 +551,8 @@ export interface SimulationOptions {
 	botGenomes?: readonly (BotGenome | null)[];
 	/** Evolution/spectator mode: make every seat, including the human seat, a bot. */
 	allPlayersBots?: boolean;
+	/** Player ids controlled by humans. Defaults to [1] unless allPlayersBots is set. */
+	humanPlayerIds?: readonly number[];
 	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
 	teamIds?: readonly number[];
 	/** Optional starting Command Post stacks granted to every AI seat. */
@@ -590,7 +592,11 @@ export class TerritorySimulation {
 	readonly playerCount: number;
 	readonly map: GeneratedMap;
 	readonly botDifficulty: BotDifficulty;
-	private readonly allPlayersBots: boolean;
+	readonly humanPlayerIds: readonly number[];
+	private readonly humanSeat: Uint8Array;
+	private readonly humanGold: Uint32Array;
+	private readonly humanGoldAccrual: Uint16Array;
+	private readonly humanHands = new Map<number, Card[]>();
 	readonly matchDurationTicks: number;
 	readonly owners: Uint16Array;
 	/** Attack id that most recently captured each cell; 0 for starting land. */
@@ -611,11 +617,35 @@ export class TerritorySimulation {
 	winnerId: number | null = null;
 	ended = false;
 	growthMode: GrowthMode;
-	gold = STARTING_GOLD;
-	hand: Card[] = [];
+
+	/** Player 1's supply, retained as a public compatibility accessor. */
+	get gold(): number {
+		return this.humanGold[HUMAN_PLAYER_ID - 1] ?? 0;
+	}
+
+	set gold(value: number) {
+		this.humanGold[HUMAN_PLAYER_ID - 1] = Math.max(0, Math.trunc(value));
+	}
+
+	/** Player 1's card hand, retained as a public compatibility accessor. */
+	get hand(): Card[] {
+		return this.humanHands.get(HUMAN_PLAYER_ID) ?? [];
+	}
+
+	set hand(cards: Card[]) {
+		this.humanHands.set(HUMAN_PLAYER_ID, cards);
+	}
+
+	/** Player 1's income-accrual remainder, retained for existing tests. */
+	private get goldAccrual(): number {
+		return this.humanGoldAccrual[HUMAN_PLAYER_ID - 1] ?? 0;
+	}
+
+	private set goldAccrual(value: number) {
+		this.humanGoldAccrual[HUMAN_PLAYER_ID - 1] = value;
+	}
 
 	private pendingGrowthMode: GrowthMode | null = null;
-	private goldAccrual = 0;
 	private attackOrders: number[] = [];
 	private artilleryShells: ArtilleryShell[] = [];
 	private nextShellId = 1;
@@ -749,12 +779,30 @@ export class TerritorySimulation {
 
 	constructor(options: SimulationOptions) {
 		this.seed = options.seed >>> 0;
-		this.allPlayersBots = options.allPlayersBots === true;
 		const playerCount = Math.trunc(options.playerCount ?? PLAYER_COUNT);
 		if (playerCount < 2 || playerCount > MAX_PLAYER_COUNT) {
 			throw new Error(`playerCount must be between 2 and ${MAX_PLAYER_COUNT}.`);
 		}
 		this.playerCount = playerCount;
+		const requestedHumans =
+			options.allPlayersBots === true
+				? []
+				: options.humanPlayerIds && options.humanPlayerIds.length > 0
+					? options.humanPlayerIds
+					: [HUMAN_PLAYER_ID];
+		const humanIds = [
+			...new Set(
+				requestedHumans.map((id) => Math.trunc(id)).filter((id) => id >= 1 && id <= playerCount)
+			)
+		].sort((a, b) => a - b);
+		if (humanIds.length === 0 && options.allPlayersBots !== true) {
+			throw new Error('At least one humanPlayerIds entry must be a valid seat.');
+		}
+		this.humanPlayerIds = humanIds;
+		this.humanSeat = new Uint8Array(this.playerCount + 1);
+		for (const id of this.humanPlayerIds) this.humanSeat[id] = 1;
+		this.humanGold = new Uint32Array(this.playerCount);
+		this.humanGoldAccrual = new Uint16Array(this.playerCount);
 		this.botDifficulty = options.botDifficulty ?? 'standard';
 		this.matchDurationTicks =
 			options.matchDurationTicks === undefined
@@ -798,7 +846,7 @@ export class TerritorySimulation {
 		this.players = Array.from({ length: this.playerCount }, (_, i) => ({
 			id: i + 1,
 			name: PLAYER_NAMES[i] ?? `State ${i + 1}`,
-			isBot: options.allPlayersBots === true || i !== HUMAN_PLAYER_ID - 1,
+			isBot: this.humanSeat[i + 1] !== 1,
 			alive: true,
 			territory: 0,
 			teamId: Math.max(0, Math.trunc(options.teamIds?.[i] ?? 0)),
@@ -909,9 +957,14 @@ export class TerritorySimulation {
 		}
 		this.rebuildDistricts();
 		this.rebuildAuraDefense();
-		this.hand = BUILDABLE_STRUCTURE_TYPES.map((type, index) => ({ id: index + 1, type }));
+		for (const id of this.humanPlayerIds) {
+			this.humanHands.set(
+				id,
+				BUILDABLE_STRUCTURE_TYPES.map((type, index) => ({ id: index + 1, type }))
+			);
+			this.setSupply(id, STARTING_GOLD);
+		}
 		this.attackOrders = new Array<number>(this.playerCount).fill(0);
-		this.setSupply(HUMAN_PLAYER_ID, STARTING_GOLD);
 		for (const player of this.players) {
 			if (player.isBot) this.setSupply(player.id, BOT_STARTING_GOLD);
 		}
@@ -1033,14 +1086,26 @@ export class TerritorySimulation {
 		return cap;
 	}
 
+	isHumanControlled(playerId: number): boolean {
+		return this.humanSeat[playerId] === 1;
+	}
+
+	handFor(playerId: number): Card[] {
+		return this.humanHands.get(playerId) ?? [];
+	}
+
+	private defaultViewerId(): number {
+		return this.humanPlayerIds[0] ?? 0;
+	}
+
 	private supplyOf(playerId: number): number {
-		if (playerId === HUMAN_PLAYER_ID && !this.allPlayersBots) return this.gold;
+		if (this.humanSeat[playerId] === 1) return this.humanGold[playerId - 1] ?? 0;
 		return this.botGold[playerId - 1] ?? 0;
 	}
 
 	private setSupply(playerId: number, value: number): void {
 		const clamped = Math.max(0, Math.min(this.supplyCap(playerId), value));
-		if (playerId === HUMAN_PLAYER_ID && !this.allPlayersBots) this.gold = clamped;
+		if (this.humanSeat[playerId] === 1) this.humanGold[playerId - 1] = clamped;
 		else this.botGold[playerId - 1] = clamped;
 	}
 
@@ -1097,12 +1162,14 @@ export class TerritorySimulation {
 	 * Rates are per second and converted with an integer remainder at 10 Hz.
 	 */
 	private accrueResources(): void {
-		if (!this.allPlayersBots) {
-			this.goldAccrual += this.income * TICK_RATE;
-			const earnedGold = Math.floor(this.goldAccrual / INCOME_INTERVAL_TICKS);
-			if (earnedGold > 0) {
-				this.creditSupply(HUMAN_PLAYER_ID, earnedGold);
-				this.goldAccrual -= earnedGold * INCOME_INTERVAL_TICKS;
+		for (const id of this.humanPlayerIds) {
+			const slot = id - 1;
+			const rate = this.supplyIncomeFor(id);
+			this.humanGoldAccrual[slot] += rate * TICK_RATE;
+			const earned = Math.floor(this.humanGoldAccrual[slot] / INCOME_INTERVAL_TICKS);
+			if (earned > 0) {
+				this.creditSupply(id, earned);
+				this.humanGoldAccrual[slot] -= earned * INCOME_INTERVAL_TICKS;
 			}
 		}
 
@@ -1582,7 +1649,7 @@ export class TerritorySimulation {
 				shellsFired++;
 			}
 		}
-		if (playerId === HUMAN_PLAYER_ID) {
+		if (this.isHumanControlled(playerId)) {
 			this.pushEvent(
 				'artillery',
 				`Artillery fired ${shellsFired} ${shellsFired === 1 ? 'shell' : 'shells'} from ${batteries.length} ${
@@ -1785,10 +1852,10 @@ export class TerritorySimulation {
 		if (!player?.alive) {
 			return { ok: false, reason: 'eliminated', message: 'Your state has been eliminated.' };
 		}
-		if (playerId !== HUMAN_PLAYER_ID) {
+		if (player.isBot) {
 			return { ok: false, reason: 'invalid', message: 'Only the human commander builds cards.' };
 		}
-		const card = this.hand.find((entry) => entry.id === cardId);
+		const card = this.handFor(playerId).find((entry) => entry.id === cardId);
 		if (!card) return { ok: false, reason: 'no-card', message: 'That card is no longer in hand.' };
 		const baseCost = STRUCTURE_DEFINITIONS[card.type].cost;
 		const roundedX = Math.floor(x);
@@ -1931,7 +1998,7 @@ export class TerritorySimulation {
 		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
 		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
-		if (playerId !== HUMAN_PLAYER_ID) {
+		if (player.isBot) {
 			return fail('invalid', 'Only the human commander upgrades districts.');
 		}
 		const target = this.resolveUpgradeTarget(playerId, x, y);
@@ -2153,8 +2220,11 @@ export class TerritorySimulation {
 		};
 	}
 
-	getSnapshot(): GameSnapshot {
-		return this.lastSnapshot ?? (this.lastSnapshot = this.buildSnapshot());
+	getSnapshot(viewerPlayerId = this.defaultViewerId()): GameSnapshot {
+		if (viewerPlayerId === this.defaultViewerId()) {
+			return this.lastSnapshot ?? (this.lastSnapshot = this.buildSnapshot(viewerPlayerId));
+		}
+		return this.buildSnapshot(viewerPlayerId);
 	}
 
 	getOwner(x: number, y: number): number {
@@ -2252,8 +2322,8 @@ export class TerritorySimulation {
 			mix(transfer.from);
 			mix(transfer.to);
 		}
-		mix(this.gold);
-		mix(this.goldAccrual);
+		for (const humanGold of this.humanGold) mix(humanGold);
+		for (const humanAccrual of this.humanGoldAccrual) mix(humanAccrual);
 		for (const botGold of this.botGold) mix(botGold);
 		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
 		for (const grievance of this.botGrievance) mix(grievance);
@@ -2382,7 +2452,7 @@ export class TerritorySimulation {
 					command.y
 				);
 				if (!validation.ok) continue;
-				const card = this.hand.find((entry) => entry.id === command.cardId);
+				const card = this.handFor(command.playerId).find((entry) => entry.id === command.cardId);
 				if (!card) continue;
 				const targetX = validation.targetX ?? command.x;
 				const targetY = validation.targetY ?? command.y;
@@ -5602,7 +5672,8 @@ export class TerritorySimulation {
 		this.pushEvent('victory', `${alive[0].name} controls the world.`, alive[0].id);
 	}
 
-	private buildSnapshot(): GameSnapshot {
+	private buildSnapshot(viewerPlayerId = this.defaultViewerId()): GameSnapshot {
+		const viewer = this.humanSeat[viewerPlayerId] === 1 ? viewerPlayerId : 0;
 		let claimedLand = 0;
 		const players: PublicPlayer[] = this.players.map((player) => {
 			claimedLand += player.territory;
@@ -5614,10 +5685,7 @@ export class TerritorySimulation {
 				territory: player.territory,
 				landShare: this.landCount === 0 ? 0 : player.territory / this.landCount,
 				supply: this.supplyOf(player.id),
-				attacksAffordable: this.affordableAttackCount(
-					player.id,
-					this.allPlayersBots ? 0 : HUMAN_PLAYER_ID
-				)
+				attacksAffordable: this.affordableAttackCount(player.id, viewer)
 			};
 		});
 
@@ -5633,17 +5701,17 @@ export class TerritorySimulation {
 			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
 			navalLandings: this.navalLandings.map((landing) => this.toPublicNavalLanding(landing)),
 			structures: this.structures.all.map((structure) => this.toPublicStructure(structure)),
-			gold: this.supplyOf(HUMAN_PLAYER_ID),
-			income: this.supplyIncomeFor(HUMAN_PLAYER_ID),
-			supply: this.supplyOf(HUMAN_PLAYER_ID),
-			supplyCap: this.supplyCap(HUMAN_PLAYER_ID),
-			supplyIncome: this.supplyIncomeFor(HUMAN_PLAYER_ID),
-			hand: this.hand.map((card) => ({ id: card.id, type: card.type })),
+			gold: viewer > 0 ? this.supplyOf(viewer) : 0,
+			income: viewer > 0 ? this.supplyIncomeFor(viewer) : 0,
+			supply: viewer > 0 ? this.supplyOf(viewer) : 0,
+			supplyCap: viewer > 0 ? this.supplyCap(viewer) : 0,
+			supplyIncome: viewer > 0 ? this.supplyIncomeFor(viewer) : 0,
+			hand: this.handFor(viewer).map((card) => ({ id: card.id, type: card.type })),
 			attackOrders: 0,
 			attackOrderCap: 0,
 			winnerId: this.winnerId,
 			ended: this.ended,
-			humanId: this.allPlayersBots ? 0 : HUMAN_PLAYER_ID,
+			humanId: viewer,
 			growthMode: this.growthMode
 		};
 	}

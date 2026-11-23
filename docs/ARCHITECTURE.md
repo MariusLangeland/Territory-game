@@ -53,7 +53,11 @@ Territory is a client-rendered SvelteKit application with a pure TypeScript simu
 | `src/lib/game/growth/`                      | Core      | Pluggable frontier selection: circular heap, smooth radial bands, organic random pool | `GrowthLayer`, factory       |
 | `src/lib/game/integrity.ts`                 | Core      | Component labeling, detached-territory annexation, neutral-pocket cleanup             | `TerritoryIntegrity`         |
 | `src/lib/game/Structures/`                  | Core      | Per-type structure definitions, shared types, registry, and effects                   | `StructureRegistry`, cards   |
-| `src/lib/game/net/protocol.ts`              | Contract  | Future wire message shapes                                                            | message types, guard         |
+| `src/lib/game/net/protocol.ts`              | Contract  | Wire version and legacy message shapes                                                | message types, guard         |
+| `src/lib/game/net/online-protocol.ts`       | Contract  | Online room/intent/baseline/tick types and owner RLE                                  | room, intent, baseline       |
+| `src/lib/game/net/online-room.ts`           | Core      | Multi-human seats, host start, intent validation, viewer snapshots                    | OnlineRoom                   |
+| `src/lib/server/online.ts`                  | Server    | In-memory rooms, 10 Hz ticker, SSE subscribers, idle cleanup                          | room manager                 |
+| `src/routes/online/+page.svelte`            | UI        | Online lobby/live match client                                                        | online screen                |
 | `src/lib/game/render/camera.ts`             | Render    | Camera state and coordinate transforms                                                | `MapCamera`                  |
 | `src/lib/game/render/camera-bridge.ts`      | UI/Render | Imperative camera actions without component exports                                   | `GameCameraBridge`           |
 | `src/lib/game/render/territory.wgsl.ts`     | Render    | Vertex and fragment shader source                                                     | `TERRITORY_SHADER`           |

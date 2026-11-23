@@ -1786,6 +1786,9 @@
 				>
 					<span>?</span>
 				</button>
+				<button class="action-button" type="button" onclick={() => goto('/online')}>
+					ONLINE
+				</button>
 				<button class="action-button" type="button" onclick={() => goto('/evolution')}>
 					AI LAB
 				</button>
