@@ -329,6 +329,10 @@ src/
       net/online-protocol.ts     authoritative room/intent/baseline types
       net/online-room.ts         multi-human room lifecycle + intent validation
       simulation-view.ts         read-only contract shared by all renderers
+      session/
+        game-session.ts          worker match lifecycle + command facade
+        seed.ts                  URL seed parsing/random seed formatting
+        onboarding.ts            onboarding completion persistence
       worker/
         protocol.ts              shared worker init/visual payloads
         view.ts                  shared read-only match mirror

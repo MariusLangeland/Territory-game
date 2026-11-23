@@ -141,6 +141,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/worker/local-simulation.worker.ts` — local match worker entry and 10 Hz loop.
 - `src/lib/game/worker/local-simulation.ts` — main-thread local mirror + async command facade.
 - `src/lib/game/simulation-view.ts` — read-only contract shared by simulation and mirrors.
+- `src/lib/game/session/game-session.ts` — worker match lifecycle, bot roster loading, commands.
+- `src/lib/game/session/seed.ts` — URL seed parsing, random seeds, hex formatting.
+- `src/lib/game/session/onboarding.ts` — onboarding completion persistence.
 - `src/lib/server/online.ts` — in-memory room manager, 10 Hz ticker, SSE subscribers.
 - `src/routes/online/+page.svelte` — online lobby/live match client.
 - `src/routes/api/online/rooms/` — create/join/start/intent/events HTTP surface.

@@ -5,7 +5,7 @@
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import GameCanvas from '#lib/components/GameCanvas.svelte';
-	import { formatSupply } from '#lib/format';
+	import { formatClock, formatCompact, formatShare, formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
 	import {
 		ARTILLERY_SUPPLY_COST_PER_LEVEL,
@@ -14,7 +14,9 @@
 		TICK_RATE,
 		colorForPlayer
 	} from '#lib/game/constants';
-	import { DEFAULT_GROWTH_MODE } from '#lib/game/growth';
+	import { GameSession } from '#lib/game/session/game-session';
+	import { loadOnboardingDone, saveOnboardingDone } from '#lib/game/session/onboarding';
+	import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 	import { type GameSnapshot, type SimEvent } from '#lib/game/simulation';
 	import { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
 	import type { LocalWorkerVisual } from '#lib/game/worker/local-protocol';
@@ -39,8 +41,6 @@
 		type PublicCard
 	} from '#lib/game/Structures';
 	import { GameCameraBridge, type CameraView } from '#lib/game/render/camera-bridge';
-	import { difficultyGenomes, loadEvolutionBuckets } from '#lib/game/ai/buckets';
-	import { loadGauntletSurvivors } from '#lib/game/ai/gauntlet-survivors';
 	import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 
 	interface HoverState {
@@ -86,7 +86,12 @@
 	let workerVisualRevision = 0;
 	let lastWorkerUiTick = -100;
 	let workerTelemetryVersion = $state(0);
-	let worldGeneration = 0;
+	const gameSession = new GameSession({
+		onReady: handleSessionReady,
+		onVisual: handleWorkerVisual,
+		onTelemetry: () => workerTelemetryVersion++,
+		onError: handleError
+	});
 	let phase = $state<'loading' | 'ready' | 'error'>('loading');
 	let errorMessage = $state('');
 	let rendererReady = $state(false);
@@ -172,8 +177,6 @@
 
 	const RANK_ROW_HEIGHT = 28;
 	const RANK_OVERSCAN = 3;
-
-	let worldTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const cameraBridge = new GameCameraBridge();
 	cameraBridge.onView = (view) => {
@@ -493,25 +496,6 @@
 		cameraView ? `${Math.round(100 / cameraView.scale)} px / 100 px` : '—'
 	);
 
-	function formatCompact(value: number): string {
-		if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-		if (value >= 10_000) return `${Math.round(value / 1000)}K`;
-		if (value >= 1_000) return `${(value / 1000).toFixed(1)}K`;
-		return String(Math.max(0, Math.round(value)));
-	}
-
-	function formatShare(share: number): string {
-		const percent = share * 100;
-		return percent >= 10 ? percent.toFixed(1) : percent.toFixed(2);
-	}
-
-	function formatClock(totalSeconds: number): string {
-		const seconds = Math.max(0, Math.floor(totalSeconds));
-		return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-	}
-
-	const ONBOARDING_KEY = 'territory.onboarding.v1';
-
 	function beginOnboarding(): void {
 		if (onboardingDone) return;
 		onboardingStep = 1;
@@ -524,42 +508,7 @@
 	function finishOnboarding(): void {
 		onboardingDone = true;
 		onboardingStep = null;
-		try {
-			window.localStorage.setItem(ONBOARDING_KEY, 'done');
-		} catch {
-			// Storage can be unavailable in private/sandboxed contexts; the
-			// current match still gets the hints, they just reappear next time.
-		}
-	}
-
-	function randomSeed(): number {
-		if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
-			const buffer = new Uint32Array(1);
-			crypto.getRandomValues(buffer);
-			return buffer[0] || 1;
-		}
-		return (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0 || 1;
-	}
-
-	function parseSeed(raw: string): number | null {
-		const cleaned = raw.trim().replace(/^0x/i, '');
-		if (!/^[0-9a-f]{1,8}$/i.test(cleaned)) return null;
-		return Number.parseInt(cleaned, 16) >>> 0;
-	}
-
-	function readSeedFromLocation(): number {
-		try {
-			const raw = new URLSearchParams(window.location.search).get('seed');
-			if (raw) {
-				const parsed = Number.parseInt(raw, 10);
-				if (Number.isFinite(parsed) && parsed >= 0) return parsed >>> 0;
-				const hex = parseSeed(raw);
-				if (hex !== null) return hex;
-			}
-		} catch {
-			// URL parsing is best-effort; a random world is a valid fallback.
-		}
-		return randomSeed();
+		saveOnboardingDone();
 	}
 
 	function persistMatchSettings(): void {
@@ -590,18 +539,15 @@
 		const normalized = normalizeMatchSettings(settings);
 		matchSettings = { ...normalized };
 		appliedMatchSettings = { ...normalized };
-		clearTimeout(worldTimer);
 		phase = 'loading';
 		errorMessage = '';
 		rendererReady = false;
 		artilleryTargeting = false;
-		sim?.dispose();
 		sim = null;
 		snapshot = null;
 		workerVisuals = [];
 		workerVisualRevision = 0;
 		lastWorkerUiTick = -100;
-		const generation = ++worldGeneration;
 		gameStarted = false;
 		showIntro = true;
 		showHelp = false;
@@ -617,64 +563,7 @@
 		eventFeed = [];
 		currentSeed = seed >>> 0;
 		seedInput = seedHexFor(seed);
-
-		// Yield once so the loading screen paints before the CPU builds the map.
-		worldTimer = setTimeout(async () => {
-			try {
-				const survivorPool = await loadGauntletSurvivors();
-				const evolvedPool = difficultyGenomes(loadEvolutionBuckets(), normalized.difficulty);
-				const botPool = [...survivorPool, ...evolvedPool];
-				const botGenomes =
-					botPool.length > 0
-						? Array.from({ length: normalized.states }, (_, index) =>
-								index === 0 ? null : botPool[(seed + index) % botPool.length]
-							)
-						: undefined;
-				const next = await WorkerLocalSimulation.create(
-					{
-						seed: seed >>> 0,
-						playerCount: normalized.states,
-						width: normalized.mapWidth,
-						height: normalized.mapHeight,
-						growthMode: DEFAULT_GROWTH_MODE,
-						botDifficulty: normalized.difficulty,
-						matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
-						botGenomes,
-						botCommandPostStacks: normalized.botCommandPostStacks
-					},
-					{
-						onVisual: (visual) => {
-							if (generation !== worldGeneration) return;
-							handleWorkerVisual(visual);
-						},
-						onTelemetry: () => {
-							if (generation === worldGeneration) workerTelemetryVersion++;
-						},
-						onError: (error) => {
-							if (generation === worldGeneration) handleError(error);
-						}
-					}
-				);
-				if (generation !== worldGeneration) {
-					next.dispose();
-					return;
-				}
-				sim = next;
-				next.pause();
-				snapshot = next.getSnapshot();
-				phase = 'ready';
-				const url = new URL(window.location.href);
-				url.searchParams.set('seed', String(seed >>> 0));
-				void goto(url, { replace: true, reset: false, state: {} });
-			} catch (error) {
-				errorMessage = error instanceof Error ? error.message : String(error);
-				phase = 'error';
-			}
-		}, 40);
-	}
-
-	function seedHexFor(seed: number): string {
-		return (seed >>> 0).toString(16).toUpperCase().padStart(8, '0');
+		gameSession.start(seed, normalized);
 	}
 
 	function deploy(): void {
@@ -683,15 +572,15 @@
 		gameStarted = true;
 		artilleryTargeting = false;
 		paused = false;
-		sim?.resume();
+		gameSession.resume();
 		beginOnboarding();
 	}
 
 	function togglePause(): void {
 		if (!gameStarted || showResult || defeatOpen) return;
 		paused = !paused;
-		if (paused) sim?.pause();
-		else sim?.resume();
+		if (paused) gameSession.pause();
+		else gameSession.resume();
 	}
 
 	function newWorld(): void {
@@ -729,6 +618,15 @@
 	 * existing command feedback paths until they get inline HUD treatment.
 	 */
 	function showToast(_message: string, _tone: 'success' | 'error' | 'warn' = 'success'): void {}
+
+	function handleSessionReady(next: WorkerLocalSimulation, seed: number): void {
+		sim = next;
+		snapshot = next.getSnapshot();
+		phase = 'ready';
+		const url = new URL(window.location.href);
+		url.searchParams.set('seed', String(seed >>> 0));
+		void goto(url, { replace: true, reset: false, state: {} });
+	}
 
 	function handleWorkerVisual(visual: LocalWorkerVisual): void {
 		if (!sim) return;
@@ -809,7 +707,7 @@
 			defeatHandled = true;
 			defeatOpen = true;
 			paused = true;
-			sim?.pause();
+			gameSession.pause();
 		}
 		if (next.ended) {
 			paused = true;
@@ -829,7 +727,7 @@
 			return;
 		}
 		if (artilleryTargeting) {
-			const barrage = await sim.command('artillery', { x, y });
+			const barrage = await gameSession.command('artillery', { x, y });
 			showToast(
 				barrage.ok ? 'Artillery barrage queued.' : barrage.message,
 				barrage.ok ? 'success' : 'error'
@@ -838,7 +736,7 @@
 			return;
 		}
 		if (sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID) {
-			const upgrade = await sim.command('upgrade', {
+			const upgrade = await gameSession.command('upgrade', {
 				x,
 				y,
 				levels: shiftHeld ? 5 : 1,
@@ -848,9 +746,9 @@
 			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
 			return;
 		}
-		const result = await sim.command('attack', { x, y });
+		const result = await gameSession.command('attack', { x, y });
 		if (!result.ok && result.reason === 'no-shared-border') {
-			const naval = await sim.command('naval', { x, y });
+			const naval = await gameSession.command('naval', { x, y });
 			if (naval.ok) {
 				showToast(naval.message, 'success');
 				return;
@@ -885,7 +783,7 @@
 
 	async function cancelLatestFront(): Promise<void> {
 		if (!sim) return;
-		const result = await sim.command('cancel-attack');
+		const result = await gameSession.command('cancel-attack');
 		showToast(result.message, result.ok ? 'success' : 'warn');
 	}
 
@@ -998,7 +896,7 @@
 			showToast('Resume the simulation before building.', 'warn');
 			return;
 		}
-		const result = await sim.command('build', {
+		const result = await gameSession.command('build', {
 			cardId: draggingCard.id,
 			x: Math.floor(x),
 			y: Math.floor(y)
@@ -1254,7 +1152,7 @@
 			showToast('Resume the simulation before demolishing.', 'warn');
 			return;
 		}
-		const result = await sim.command('demolish', { structureId: menu.structureId });
+		const result = await gameSession.command('demolish', { structureId: menu.structureId });
 		showToast(result.message, result.ok ? 'success' : 'error');
 	}
 
@@ -1266,7 +1164,7 @@
 			showToast('Resume the simulation before requesting an alliance.', 'warn');
 			return;
 		}
-		const result = await sim.command('alliance-request', {
+		const result = await gameSession.command('alliance-request', {
 			targetPlayerId: menu.allianceOwnerId
 		});
 		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
@@ -1282,7 +1180,7 @@
 			showToast('Resume the simulation before breaking an alliance.', 'warn');
 			return;
 		}
-		const result = await sim.command('alliance-break', {
+		const result = await gameSession.command('alliance-break', {
 			targetPlayerId: menu.allianceOwnerId
 		});
 		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
@@ -1358,7 +1256,7 @@
 			cameraView.centerY +
 			(screenY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
 
-		const result = await sim.command('build', {
+		const result = await gameSession.command('build', {
 			cardId,
 			x: Math.floor(mapX),
 			y: Math.floor(mapY)
@@ -1412,7 +1310,7 @@
 	function spectate(): void {
 		defeatOpen = false;
 		paused = false;
-		sim?.resume();
+		gameSession.resume();
 	}
 
 	function reload(): void {
@@ -1567,11 +1465,7 @@
 		window.addEventListener('keyup', handleKeyup);
 		window.addEventListener('pointermove', handleWindowPointerMove);
 		window.addEventListener('pointerdown', handleWindowPointerDown);
-		try {
-			onboardingDone = window.localStorage.getItem(ONBOARDING_KEY) === 'done';
-		} catch {
-			onboardingDone = false;
-		}
+		onboardingDone = loadOnboardingDone();
 		matchSettings = loadMatchSettings();
 		createWorld(readSeedFromLocation(), matchSettings);
 
@@ -1580,9 +1474,8 @@
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('pointermove', handleWindowPointerMove);
 			window.removeEventListener('pointerdown', handleWindowPointerDown);
-			clearTimeout(worldTimer);
 			if (diplomacyToastTimer) clearTimeout(diplomacyToastTimer);
-			sim?.dispose();
+			gameSession.dispose();
 			cameraBridge.onView = undefined;
 		};
 	});

@@ -16,6 +16,12 @@
 - Extracted the main game's 3,096-line scoped stylesheet into
   `src/routes/game-page.css`, scoped under `.game-shell`, cutting `+page.svelte`
   from 5,773 to ~2,500 lines.
+- Added `session/game-session.ts`; the page no longer loads bot rosters, creates
+  workers, tracks generations, timers, or disposes workers directly.
+- Added `session/seed.ts` and `session/onboarding.ts`; URL seed parsing and
+  onboarding persistence no longer live in the page.
+- Moved HUD formatting helpers into `lib/format.ts`; page commands and
+  pause/resume now go through the session facade.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23
