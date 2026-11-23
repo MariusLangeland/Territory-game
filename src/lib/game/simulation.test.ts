@@ -315,6 +315,41 @@ describe('deterministic simulation', () => {
 	});
 });
 
+describe('elimination rewards', () => {
+	it('grants the eliminating player a permanent +10 supply/s', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const internals = sim as unknown as {
+			lastAttackerOf: Uint16Array;
+			updateEliminations(): void;
+		};
+		const killer = 2;
+		const victim = 3;
+		internals.lastAttackerOf[victim - 1] = killer;
+		sim.players[victim - 1].territory = 0;
+		const before = sim.incomeOf(killer);
+		internals.updateEliminations();
+		expect(sim.players[victim - 1].alive).toBe(false);
+		expect(sim.incomeOf(killer)).toBe(before + 10);
+		expect(sim.incomeOf(killer)).toBeGreaterThan(0);
+		sim.step();
+		expect(sim.incomeOf(killer)).toBeGreaterThanOrEqual(before + 10);
+	});
+
+	it('shows the human elimination reward in the HUD income', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const internals = sim as unknown as {
+			lastAttackerOf: Uint16Array;
+			updateEliminations(): void;
+		};
+		internals.lastAttackerOf[1] = HUMAN_PLAYER_ID;
+		sim.players[1].territory = 0;
+		const before = sim.incomeOf(HUMAN_PLAYER_ID);
+		internals.updateEliminations();
+		sim.step();
+		expect(sim.getSnapshot().supplyIncome).toBe(before + 10);
+	});
+});
+
 describe('structure demolition', () => {
 	it('demolishes only owned buildable structures', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });

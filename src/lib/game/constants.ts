@@ -94,6 +94,8 @@ export const DISTRICT_NOISE_MARGIN = 4;
 /** Single resource: supply pays for cards, upgrades, and front launches. */
 export const STARTING_GOLD = 90;
 export const BASE_GOLD_INCOME = 3;
+/** Permanent supply/s awarded to the player who erases another state. */
+export const ELIMINATION_SUPPLY_INCOME_BONUS = 10;
 export const INCOME_INTERVAL_TICKS = TICK_RATE * 10;
 export const SUPPLY_CAP_BASE = 120;
 export const SUPPLY_CAP_TERRITORY_DIVISOR = 1000;

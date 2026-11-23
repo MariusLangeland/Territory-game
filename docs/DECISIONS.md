@@ -2843,3 +2843,35 @@ so it had no structure-level actions.
 - Mistakes are recoverable, at the cost of the original purchase.
 - State protection remains stable by construction.
 - Demolition is command-driven and deterministic, not a direct UI mutation.
+
+---
+
+## ADR-089 — Permanent elimination income reward
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+Eliminating a rival removed a competitor but gave the finishing player no lasting
+economic benefit. Late-game snowballing was driven only by captured territory and
+structures, and the final capture of a weak state had little immediate payoff.
+
+### Decision
+
+- Credit the player recorded as the victim's last attacker with a permanent
+  **+10 supply/s** when the victim reaches zero territory.
+- The reward stacks once per eliminated state and is additive with territory
+  income, Command Post income, and all other income sources.
+- Only a living attacker receives the reward; an elimination with no valid living
+  killer does not create income.
+- Include the per-player elimination-income stack count in checksums and expose
+  the resulting income through the existing snapshot/HUD income value.
+
+### Consequences
+
+- Eliminations create a durable economic advantage and reward finishing a
+  weakened neighbor.
+- The reward cannot be lost and remains after the eliminated state is gone.
+- A player behind on land can catch up through targeted eliminations, while an
+  already-large leader gains the same reward.

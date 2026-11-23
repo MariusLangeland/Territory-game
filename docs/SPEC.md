@@ -185,6 +185,7 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 ### 4.7 Eliminations and victory
 
 - After attacks resolve, a state with zero owned land is eliminated.
+- The player credited with the final capture gains a permanent **+10 supply/s** reward. Rewards stack for every state eliminated.
 - Its frontier is cleared and its active attacks are dropped.
 - A state holding at least **70% of land** wins immediately; otherwise the last living state wins. The tick loop stops advancing.
 - If the human is eliminated, the UI pauses and offers spectate/rematch/new world. Spectating resumes the simulation.
@@ -382,7 +383,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
 - Start with **90 supply** and **all seven buildable cards** always available in the hand.
-- Supply income is `3 + floor(territory/3000) + income structures` per second, with **no income cap**. This is +1/s per 3,000 owned pixels, plus Command Post stacks at **+1/s** each.
+- Supply income is `3 + floor(territory/3000) + income structures + 10 × eliminations` per second, with **no income cap**. This is +1/s per 3,000 owned pixels, plus Command Post stacks at **+1/s** each, plus a permanent **+10/s per state eliminated**.
 - Supply cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
 - Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 15 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.

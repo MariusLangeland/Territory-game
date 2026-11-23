@@ -21,6 +21,7 @@ import {
 	ATTACK_SUPPLY_COST_BONUS,
 	BASE_DEFENSE_OFFSET,
 	BASE_GOLD_INCOME,
+	ELIMINATION_SUPPLY_INCOME_BONUS,
 	BOT_ACTION_MAX_PER_INTERVAL,
 	BOT_ACTION_NOVELTY_BONUS,
 	BOT_ACTION_REPEAT_PENALTY,
@@ -603,6 +604,8 @@ export class TerritorySimulation {
 	private readonly botLastAttacker: Uint16Array;
 	/** Last player to capture one of this player's cells, for elimination credit. */
 	private readonly lastAttackerOf: Uint16Array;
+	/** Permanent elimination rewards, one stack per state erased. */
+	private readonly eliminationIncomeStacks: Uint32Array;
 	private readonly botPlayerMetrics: BotPlayerBehaviorMetrics[];
 	/** Grievance total each bot held at the previous threat refresh. */
 	private readonly botGrievanceMark: Uint32Array;
@@ -748,6 +751,7 @@ export class TerritorySimulation {
 		this.botTargetOpportunity = new Uint8Array(this.playerCount + 1);
 		this.botLastAttacker = new Uint16Array(this.playerCount);
 		this.lastAttackerOf = new Uint16Array(this.playerCount);
+		this.eliminationIncomeStacks = new Uint32Array(this.playerCount);
 		this.botPlayerMetrics = Array.from({ length: this.playerCount }, () => ({
 			attacksLaunched: 0,
 			supportedAttacks: 0,
@@ -842,7 +846,10 @@ export class TerritorySimulation {
 	private supplyIncomeFor(playerId: number): number {
 		const player = this.players[playerId - 1];
 		if (!player) return 0;
-		let income = BASE_GOLD_INCOME + Math.floor(player.territory / SUPPLY_INCOME_TERRITORY_DIVISOR);
+		let income =
+			BASE_GOLD_INCOME +
+			Math.floor(player.territory / SUPPLY_INCOME_TERRITORY_DIVISOR) +
+			this.eliminationIncomeStacks[playerId - 1] * ELIMINATION_SUPPLY_INCOME_BONUS;
 		for (const type of STRUCTURE_TYPES) {
 			const stacks = this.stacksOfType(playerId, type);
 			if (stacks === 0) continue;
@@ -2063,6 +2070,7 @@ export class TerritorySimulation {
 		for (const botGold of this.botGold) mix(botGold);
 		for (const botAccrual of this.botGoldAccrual) mix(botAccrual);
 		for (const grievance of this.botGrievance) mix(grievance);
+		for (const stacks of this.eliminationIncomeStacks) mix(stacks);
 		for (const threat of this.botThreat) mix(threat);
 		for (const defensive of this.botDefensive) mix(defensive);
 		for (const reserve of this.botReserve) mix(reserve);
@@ -4982,11 +4990,21 @@ export class TerritorySimulation {
 			player.alive = false;
 			player.border.clear();
 			const killer = this.lastAttackerOf[player.id - 1];
+			const killerPlayer = killer > 0 ? this.players[killer - 1] : undefined;
+			let rewardText = '';
 			if (killer > 0 && killer !== player.id) {
 				const killerMetrics = this.botPlayerMetrics[killer - 1];
 				if (killerMetrics) killerMetrics.statesEliminated++;
+				if (killerPlayer?.alive) {
+					this.eliminationIncomeStacks[killer - 1]++;
+					rewardText = ` ${killerPlayer.name} gains +${ELIMINATION_SUPPLY_INCOME_BONUS} supply/s.`;
+				}
 			}
-			this.pushEvent('elimination', `${player.name} has been erased from the map.`, player.id);
+			this.pushEvent(
+				'elimination',
+				`${player.name} has been erased from the map.${rewardText}`,
+				player.id
+			);
 		}
 
 		this.attacks = this.attacks.filter((attack) => {
