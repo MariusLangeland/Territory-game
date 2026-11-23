@@ -177,13 +177,25 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 
 	override getAuraDefense(x?: number, y?: number): number {
 		if (x === undefined || y === undefined) return 0;
+		let maxAura = 0;
+		let additiveAura = 0;
 		for (const structure of this.snapshot.structures) {
-			if (structure.type !== 'state') continue;
 			const dx = structure.x - x;
 			const dy = structure.y - y;
-			if (dx * dx + dy * dy <= 16 * 16) return 20;
+			if (structure.type === 'state') {
+				if (dx * dx + dy * dy <= 16 * 16) maxAura = Math.max(maxAura, 20);
+				continue;
+			}
+			for (const effect of STRUCTURE_DEFINITIONS[structure.type].effects) {
+				if (effect.kind !== 'defense-aura') continue;
+				const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+				if (dx * dx + dy * dy > range * range) continue;
+				const amount = effect.defense * structure.stacks;
+				if (effect.stacking === 'max') maxAura = Math.max(maxAura, amount);
+				else additiveAura += amount;
+			}
 		}
-		return 0;
+		return maxAura + additiveAura;
 	}
 
 	override getDefense(x: number, y: number): number {
@@ -323,6 +335,35 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 		if (!card) return { ok: false, reason: 'no-card', message: 'That card is no longer in hand.' };
 		const cellX = Math.floor(x);
 		const cellY = Math.floor(y);
+		const definition = STRUCTURE_DEFINITIONS[card.type];
+		if (card.type === 'port') {
+			const shore = this.nearestOwnShore(cellX, cellY, 24);
+			if (shore === null) {
+				return {
+					ok: false,
+					reason: 'not-shore',
+					message: 'Ports need owned shoreline within 24 px.'
+				};
+			}
+			const shoreX = shore % this.width;
+			const shoreY = (shore - shoreX) / this.width;
+			if (this.structureAtCell(shoreX, shoreY)) {
+				return {
+					ok: false,
+					reason: 'occupied',
+					message: 'A structure already occupies that cell.'
+				};
+			}
+			if ((this.snapshot?.supply ?? 0) < definition.cost) {
+				return { ok: false, reason: 'no-gold', message: `Need ${definition.cost} supply.` };
+			}
+			return {
+				ok: true,
+				message: 'Ready to build.',
+				targetX: shoreX,
+				targetY: shoreY
+			};
+		}
 		if (!this.isLand(cellX, cellY)) {
 			return { ok: false, reason: 'ocean', message: 'Structures need land.' };
 		}
@@ -342,7 +383,6 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 				if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type === 'state') continue;
 				const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 				if (
-					card.type !== 'port' &&
 					structure.type !== card.type &&
 					Math.abs(structure.x - cellX) <= range &&
 					Math.abs(structure.y - cellY) <= range
@@ -360,7 +400,6 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 				}
 			}
 		}
-		const definition = STRUCTURE_DEFINITIONS[card.type];
 		if ((this.snapshot?.supply ?? 0) < definition.cost) {
 			return { ok: false, reason: 'no-gold', message: `Need ${definition.cost} supply.` };
 		}
@@ -389,10 +428,29 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 				structureCount: 0
 			};
 		}
+		const group =
+			_merged && this.mergedDistricts.length > 0
+				? (this.mergedDistricts
+						.find((entry) => entry.structureIds.includes(structure.id))
+						?.structureIds.map((id) => this.snapshot.structures.find((entry) => entry.id === id))
+						.filter((entry): entry is PublicStructure => entry !== undefined) ?? [structure])
+				: [structure];
+		const projected = group.map((entry) => entry.stacks);
+		const currentLevel = Math.min(...projected);
 		const baseCost = STRUCTURE_DEFINITIONS[structure.type].cost;
 		let cost = 0;
 		for (let level = 0; level < count; level++) {
-			cost += baseCost + UPGRADE_LEVEL_COST_STEP * (structure.stacks + level);
+			let selected = 0;
+			for (let index = 1; index < group.length; index++) {
+				if (
+					projected[index] < projected[selected] ||
+					(projected[index] === projected[selected] && group[index].id < group[selected].id)
+				) {
+					selected = index;
+				}
+			}
+			cost += baseCost + projected[selected] * UPGRADE_LEVEL_COST_STEP;
+			projected[selected]++;
 		}
 		if ((this.snapshot?.supply ?? 0) < cost) {
 			return {
@@ -401,10 +459,10 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 				message: `Need ${cost} supply.`,
 				levels: count,
 				cost,
-				currentLevel: structure.stacks,
-				projectedLevel: structure.stacks,
-				merged: false,
-				structureCount: 1
+				currentLevel,
+				projectedLevel: Math.min(...projected),
+				merged: group.length > 1,
+				structureCount: group.length
 			};
 		}
 		return {
@@ -412,11 +470,42 @@ export class WorkerLocalSimulation extends RemoteEvolutionSimulation {
 			message: 'Upgrade ready.',
 			levels: count,
 			cost,
-			currentLevel: structure.stacks,
-			projectedLevel: structure.stacks + count,
-			merged: false,
-			structureCount: 1
+			currentLevel,
+			projectedLevel: Math.min(...projected),
+			merged: group.length > 1,
+			structureCount: group.length
 		};
+	}
+
+	private nearestOwnShore(x: number, y: number, radius: number): number | null {
+		let best: number | null = null;
+		let bestDistance = Number.POSITIVE_INFINITY;
+		for (
+			let scanY = Math.max(0, y - radius);
+			scanY <= Math.min(this.height - 1, y + radius);
+			scanY++
+		) {
+			for (
+				let scanX = Math.max(0, x - radius);
+				scanX <= Math.min(this.width - 1, x + radius);
+				scanX++
+			) {
+				if (this.getOwner(scanX, scanY) !== HUMAN_PLAYER_ID) continue;
+				const dx = scanX - x;
+				const dy = scanY - y;
+				const distance = dx * dx + dy * dy;
+				if (distance > radius * radius || distance >= bestDistance) continue;
+				const shore =
+					!this.isLand(scanX - 1, scanY) ||
+					!this.isLand(scanX + 1, scanY) ||
+					!this.isLand(scanX, scanY - 1) ||
+					!this.isLand(scanX, scanY + 1);
+				if (!shore) continue;
+				best = scanY * this.width + scanX;
+				bestDistance = distance;
+			}
+		}
+		return best;
 	}
 
 	private structureAtCell(x: number, y: number): PublicStructure | undefined {
