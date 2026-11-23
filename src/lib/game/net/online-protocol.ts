@@ -4,6 +4,9 @@ export interface OnlineRoomConfig {
 	totalStates: number;
 	maxHumans: number;
 	seed: number;
+	/** Online rooms default to a compact arena to keep many rooms in memory. */
+	mapWidth?: number;
+	mapHeight?: number;
 	botDifficulty: BotDifficulty;
 	timerMinutes: number;
 	botCommandPostStacks: number;

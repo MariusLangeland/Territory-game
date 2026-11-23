@@ -5,7 +5,7 @@
 	import { RemoteEvolutionSimulation } from '#lib/game/ai/evolution-view';
 	import type { WorkerMatchInit } from '#lib/game/ai/evolution-worker-protocol';
 	import { generateMap } from '#lib/game/map';
-	import { MAP_HEIGHT, MAP_WIDTH, TICK_RATE, colorForPlayer } from '#lib/game/constants';
+	import { TICK_RATE, colorForPlayer } from '#lib/game/constants';
 	import { STRUCTURE_DEFINITIONS, type BuildableStructureType } from '#lib/game/Structures';
 	import type { GameSnapshot, TerritorySimulation } from '#lib/game/simulation';
 	import {
@@ -30,7 +30,7 @@
 
 	const DEFAULT_CONFIG = {
 		totalStates: 8,
-		maxHumans: 4,
+		maxHumans: 8,
 		seed: 0,
 		botDifficulty: 'standard' as const,
 		timerMinutes: 0,
@@ -283,8 +283,8 @@
 		playerId = baseline.playerId;
 		const map = generateMap(baseline.config.seed, {
 			playerCount: baseline.config.totalStates,
-			width: MAP_WIDTH,
-			height: MAP_HEIGHT
+			width: baseline.config.mapWidth ?? 1280,
+			height: baseline.config.mapHeight ?? 720
 		});
 		const owners = decodeOwnerRuns(baseline.ownerRuns, map.width * map.height);
 		const districtColorCodes = decodeByteRuns(baseline.districtColorRuns, map.width * map.height);
@@ -484,7 +484,7 @@
 					<label>
 						<span>STATES</span>
 						<select bind:value={config.totalStates}>
-							{#each [4, 6, 8, 12, 16] as count}
+							{#each [8, 12, 16, 24, 32] as count}
 								<option value={count}>{count}</option>
 							{/each}
 						</select>
@@ -492,7 +492,7 @@
 					<label>
 						<span>HUMAN SEATS</span>
 						<select bind:value={config.maxHumans}>
-							{#each [2, 3, 4] as count}
+							{#each [2, 4, 6, 8] as count}
 								<option value={count}>{count}</option>
 							{/each}
 						</select>

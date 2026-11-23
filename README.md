@@ -34,7 +34,7 @@
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                               |
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions |
 | Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                             |
-| Online rooms    | `/online`: up to four human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline                                                             |
+| Online rooms    | `/online`: up to eight human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline, 200-player/25-room caps                                   |
 | Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                             |
@@ -77,6 +77,7 @@ pnpm test       # full deterministic, stress, economy, and AI-evolution suite
 pnpm test:fast  # fast suite; excludes the long simulation/evolution stress files
 pnpm test:stress # only simulation + evolution stress tests
 pnpm bench      # map/tick/checksum benchmark
+pnpm bench:online # enforce the 200-player online capacity target
 pnpm telemetry  # headless multi-seed match telemetry
 pnpm balance    # personality/ramp/structure balance sweep
 pnpm soak       # 10k-tick deterministic soak test
@@ -355,7 +356,7 @@ AGENTS.md                        orientation for future coding agents
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
 - Match setup chooses states/map/difficulty/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
-- Online rooms are an in-memory MVP: up to four humans, bots fill empty seats, HTTP commands, and SSE snapshots. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
+- Online rooms are an in-memory MVP: up to eight humans, bots fill empty seats, HTTP commands, and SSE snapshots. The single-process support target is 200 concurrent players at 10 Hz (25 rooms × 8 humans), enforced by `pnpm bench:online`. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
 - The main game still runs on the main thread; only the Evolution Lab uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.

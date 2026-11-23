@@ -374,6 +374,7 @@ Before merging a performance-sensitive change:
 - [ ] 51 leaderboard rows remain usable.
 - [ ] Drag-pan under ~200 fronts stays free of recurring 10 Hz hitches.
 - [ ] All three growth layers were sampled in `pnpm bench`.
+- [ ] `pnpm bench:online` passes the 200-player target (25 rooms × 8 humans, p95 ≤ 50 ms, p99 ≤ 300 ms, RSS ≤ 1.5 GiB).
 - [ ] Organic run with active conflicts: p99 frame 7.1 ms, max 13.8 ms, 1/1008 frames >10 ms.
 
 ---

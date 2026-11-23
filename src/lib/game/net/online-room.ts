@@ -67,6 +67,18 @@ export class OnlineRoom {
 			throw new Error('maxHumans cannot exceed totalStates.');
 		}
 		if (!Number.isFinite(config.seed)) throw new Error('seed must be finite.');
+		if (
+			config.mapWidth !== undefined &&
+			(!Number.isSafeInteger(config.mapWidth) || config.mapWidth < 512)
+		) {
+			throw new Error('mapWidth must be an integer of at least 512.');
+		}
+		if (
+			config.mapHeight !== undefined &&
+			(!Number.isSafeInteger(config.mapHeight) || config.mapHeight < 256)
+		) {
+			throw new Error('mapHeight must be an integer of at least 256.');
+		}
 		if (!Number.isSafeInteger(config.timerMinutes) || config.timerMinutes < 0) {
 			throw new Error('timerMinutes must be a non-negative integer.');
 		}
@@ -121,6 +133,8 @@ export class OnlineRoom {
 		const humanPlayerIds = this.seats.map((seat) => seat.playerId);
 		this.simulation = new TerritorySimulation({
 			seed: this.config.seed,
+			width: this.config.mapWidth ?? 1280,
+			height: this.config.mapHeight ?? 720,
 			playerCount: this.config.totalStates,
 			humanPlayerIds,
 			botDifficulty: this.config.botDifficulty,

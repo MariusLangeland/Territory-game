@@ -32,9 +32,13 @@ describe('online room', () => {
 		expect(baseline.playerId).toBe(2);
 		expect(baseline.snapshot.humanId).toBe(2);
 		expect(baseline.snapshot.hand).toHaveLength(7);
-		const owners = decodeOwnerRuns(baseline.ownerRuns, 2048 * 1024);
-		expect(owners).toHaveLength(2048 * 1024);
-		const sim = (match as unknown as { simulation: { owners: Uint16Array } }).simulation;
+		const sim = (
+			match as unknown as {
+				simulation: { owners: Uint16Array; width: number; height: number };
+			}
+		).simulation;
+		const owners = decodeOwnerRuns(baseline.ownerRuns, sim.width * sim.height);
+		expect(owners).toHaveLength(sim.width * sim.height);
 		expect(owners).toEqual(sim.owners);
 	});
 

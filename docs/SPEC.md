@@ -248,6 +248,7 @@ The `/online` route hosts authoritative rooms over HTTP + Server-Sent Events.
 - The server advances the simulation at 10 Hz, validates every intent (attack, artillery, naval, build, upgrade, demolish, cancel, alliance request/break), enforces monotonic client sequences and a per-tick rate limit, and owns winners/checksums.
 - Clients send intents; they never submit player ids or mutate simulation state. Authoritative owner changes and snapshots stream back as tick events.
 - Reconnect uses the same session token and receives a mid-match owner baseline plus viewer snapshot. Late join after start is rejected in the MVP.
+- Support target: **200 concurrent human players at 10 Hz** on one server process, packed as 25 rooms × 8 humans × 8 states on the compact 1280×720 arena. Admission caps are 25 rooms / 200 human seats; `/api/online/metrics` reports live capacity. `pnpm bench:online` enforces p95 ≤ 50 ms, p99 ≤ 300 ms, and RSS ≤ 1.5 GiB for the reference packing.
 - MVP limitations: in-memory rooms are lost on server restart; no accounts, matchmaking, chat, persistence, or WebSocket/binary transport yet.
 
 ### 4.8a Alliances

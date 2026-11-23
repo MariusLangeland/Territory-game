@@ -1,12 +1,14 @@
-﻿import { json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createRoom, listRooms } from '#lib/server/online';
 import type { OnlineRoomConfig } from '#lib/game/net/online-protocol';
 
 const DEFAULT_CONFIG: OnlineRoomConfig = {
 	totalStates: 8,
-	maxHumans: 4,
+	maxHumans: 8,
 	seed: 0,
+	mapWidth: 1280,
+	mapHeight: 720,
 	botDifficulty: 'standard',
 	timerMinutes: 0,
 	botCommandPostStacks: 0
@@ -23,6 +25,8 @@ function parseConfig(value: unknown): OnlineRoomConfig {
 		totalStates: Number(input.totalStates ?? DEFAULT_CONFIG.totalStates),
 		maxHumans: Number(input.maxHumans ?? DEFAULT_CONFIG.maxHumans),
 		seed,
+		mapWidth: Number(input.mapWidth ?? DEFAULT_CONFIG.mapWidth),
+		mapHeight: Number(input.mapHeight ?? DEFAULT_CONFIG.mapHeight),
 		botDifficulty:
 			input.botDifficulty === 'relaxed' ||
 			input.botDifficulty === 'ruthless' ||

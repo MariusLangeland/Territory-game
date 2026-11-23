@@ -13,6 +13,12 @@ import type {
 
 const TICK_INTERVAL_MS = 100;
 const ROOM_IDLE_MS = 30 * 60 * 1000;
+/**
+ * Supported single-process target: 200 concurrent humans at 10 Hz.
+ * The natural packing is 25 rooms x 8 humans on the compact arena.
+ */
+export const MAX_ONLINE_PLAYERS = 200;
+export const MAX_ONLINE_ROOMS = 25;
 
 export type OnlineServerEvent =
 	| { type: 'room'; room: OnlineRoomView }
@@ -34,6 +40,29 @@ interface ManagedRoom {
 
 const rooms = new Map<string, ManagedRoom>();
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+
+export function onlineMetrics(): {
+	rooms: number;
+	runningRooms: number;
+	humans: number;
+	maxPlayers: number;
+	maxRooms: number;
+} {
+	let humans = 0;
+	let runningRooms = 0;
+	for (const managed of rooms.values()) {
+		const view = managed.room.view();
+		humans += view.seats.length;
+		if (view.phase === 'running') runningRooms++;
+	}
+	return {
+		rooms: rooms.size,
+		runningRooms,
+		humans,
+		maxPlayers: MAX_ONLINE_PLAYERS,
+		maxRooms: MAX_ONLINE_ROOMS
+	};
+}
 
 function roomId(): string {
 	for (let attempt = 0; attempt < 20; attempt++) {
@@ -95,6 +124,12 @@ function broadcastRoom(managed: ManagedRoom): void {
 }
 
 export function createRoom(displayName: string, config: OnlineRoomConfig): OnlineJoinResponse {
+	if (rooms.size >= MAX_ONLINE_ROOMS) {
+		throw new Error('The server is at its 25-room capacity. Try again shortly.');
+	}
+	if (onlineMetrics().humans >= MAX_ONLINE_PLAYERS) {
+		throw new Error('The server is at its 200-player capacity. Try again shortly.');
+	}
 	const id = roomId();
 	const room = new OnlineRoom(id, config);
 	const token = randomUUID();
@@ -111,6 +146,9 @@ export function createRoom(displayName: string, config: OnlineRoomConfig): Onlin
 }
 
 export function joinRoom(roomIdValue: string, displayName: string): OnlineJoinResponse {
+	if (onlineMetrics().humans >= MAX_ONLINE_PLAYERS) {
+		throw new Error('The server is at its 200-player capacity. Try again shortly.');
+	}
 	const managed = rooms.get(roomIdValue);
 	if (!managed) throw new Error('Match not found.');
 	const token = randomUUID();

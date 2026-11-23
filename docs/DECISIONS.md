@@ -3154,3 +3154,44 @@ without disturbing local play.
   join, and WebSocket/binary transport remain future work.
 - Online clients render authoritative deltas; they do not predict or mutate
   simulation state.
+
+---
+
+## ADR-098 — 200-player single-process online capacity target
+
+**Status:** accepted; measured and gated  
+**Date:** 2026-11-23
+
+### Context
+
+The first online rooms used the full 2048×1024 arena in every room. A 200-player
+load (25 rooms × 8 humans) consumed roughly 1.9 GiB and produced long GC tails;
+a 50-room × 4-human packing consumed about 3.8 GiB. Neither is a credible
+single-process support target.
+
+### Decision
+
+- Target **200 concurrent human players at 10 Hz on one server process**.
+- Reference packing: **25 rooms × 8 humans × 8 states** on the compact
+  **1280×720** online arena.
+- Hard-cap admission at 25 rooms / 200 human seats.
+- Expose live capacity through /api/online/metrics.
+- Gate the target with pnpm bench:online:
+  p95 tick ≤ 50 ms, p99 tick ≤ 300 ms, RSS ≤ 1.5 GiB.
+- Coalesce SSE tick writes so slow clients cannot build unbounded queues.
+- Keep local matches on their existing map dimensions; only online rooms default
+  to the compact arena.
+
+### Measured result
+
+At 25 rooms × 8 humans, 300 measured ticks after warm-up: average 5.3 ms, p95
+1.6 ms, p99 ~177 ms, RSS ~969 MiB, outbound ~5.8 MiB/s, ~189 ticks/s continuous
+headroom. The target passes. The p99 tail is GC-driven; worker-sharded rooms are
+the next scale step beyond this target.
+
+### Consequences
+
+- A single process can support the target with headroom on tick average.
+- Memory is bounded enough for a modest host; room map choice is part of the
+  support contract.
+- 200 is a validated ceiling, not an invitation to unbounded room creation.

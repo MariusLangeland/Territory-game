@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.74.1 — 2026-11-23
+
+### Online capacity
+
+- Set a single-process support target of **200 concurrent human players at
+  10 Hz**, packed as 25 rooms × 8 humans on the compact 1280×720 online arena.
+- Added 25-room / 200-player admission caps and `/api/online/metrics`.
+- Added `pnpm bench:online`, which gates p95 ≤ 50 ms, p99 ≤ 300 ms, and RSS
+  ≤ 1.5 GiB.
+- Online rooms now default to the compact arena to sharply reduce per-room
+  memory; reference result is ~969 MiB and 5.8 MiB/s outbound for 200 players.
+- Coalesced SSE ticks so a slow client delays one frame instead of accumulating
+  an unbounded queue.
+
 ## 0.74.0 — 2026-11-23
 
 ### Online multiplayer MVP

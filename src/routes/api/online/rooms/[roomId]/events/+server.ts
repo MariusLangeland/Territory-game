@@ -25,8 +25,31 @@ export const GET: RequestHandler = ({ params, request, url }) => {
 					// Already closed by the client.
 				}
 			};
+			// Coalesce tick snapshots so a slow client delays one write instead of
+			// accumulating an unbounded queue of authoritative frames.
+			let pendingTick: OnlineServerEvent | null = null;
+			let flushScheduled = false;
+			const flushTick = () => {
+				flushScheduled = false;
+				if (closed || !pendingTick) return;
+				const event = pendingTick;
+				pendingTick = null;
+				try {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+				} catch {
+					close();
+				}
+			};
 			const write = (event: OnlineServerEvent) => {
 				if (closed) return;
+				if (event.type === 'tick') {
+					pendingTick = event;
+					if (!flushScheduled) {
+						flushScheduled = true;
+						setTimeout(flushTick, 0);
+					}
+					return;
+				}
 				try {
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 				} catch {

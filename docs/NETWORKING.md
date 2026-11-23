@@ -22,6 +22,31 @@
   (same-token reconnect works), no accounts/chat/matchmaking, session tokens are
   held in `sessionStorage`, and no server snapshot compression beyond owner RLE.
 
+### Support target: 200 concurrent players
+
+**Target:** 200 concurrent human players at 10 Hz on one server process.
+
+Reference packing: **25 rooms × 8 humans × 8 states** on the compact
+**1280×720** online arena. Admission is hard-capped at 25 rooms / 200 human
+seats (`MAX_ONLINE_ROOMS`, `MAX_ONLINE_PLAYERS`) and `/api/online/metrics`
+reports live capacity.
+
+Acceptance thresholds for the single-process target:
+
+| Metric                 |     Target |
+| ---------------------- | ---------: |
+| Tick p95               |    ≤ 50 ms |
+| Tick p99               |   ≤ 300 ms |
+| Resident memory        |  ≤ 1.5 GiB |
+| Outbound JSON at 10 Hz | ≤ 10 MiB/s |
+| Tick rate              |      10 Hz |
+
+Current measured result (`pnpm bench:online`, 25×8 compact rooms, 300 measured
+ticks): average **5.28 ms**, p95 **1.57 ms**, p99 **176.95 ms**, RSS **969 MiB**,
+outbound **5.84 MiB/s**, and roughly **189 ticks/s** of continuous headroom. The
+target passes with these thresholds; the p99 tail is dominated by GC, so worker
+sharding is the next scale step beyond one process.
+
 ---
 
 ## 1. Goals

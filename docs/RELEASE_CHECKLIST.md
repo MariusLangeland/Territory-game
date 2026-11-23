@@ -18,6 +18,7 @@ pnpm check
 pnpm test:fast
 pnpm test:stress
 pnpm test
+pnpm bench:online
 pnpm build
 ```
 
