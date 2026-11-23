@@ -124,6 +124,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/LoadingOverlay.svelte`, `ErrorModal.svelte`, `ResultModal.svelte`, `DefeatModal.svelte`, `HelpOverlay.svelte` — screen states.
 - `src/lib/components/OnboardingHint.svelte`, `KeyboardCursor.svelte` — first-match and keyboard accessibility overlays.
 - `src/lib/components/StructureMenu.svelte` — structure/diplomacy context menu presentation.
+- `src/routes/game-page.css` — page shell/shared overlay primitives only; component-specific CSS belongs in each component's scoped `<style>` block.
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.

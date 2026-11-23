@@ -34,3 +34,42 @@
 		</div>
 	</article>
 </div>
+
+<style>
+	.error-modal::before {
+		content: '';
+		position: absolute;
+		top: -1px;
+		left: -1px;
+		width: 18px;
+		height: 18px;
+		border-top: 1px solid var(--signal);
+		border-left: 1px solid var(--signal);
+	}
+	.error-modal {
+		max-width: 590px;
+	}
+	.error-modal h2 {
+		color: var(--danger);
+	}
+	.error-modal h2 em {
+		-webkit-text-stroke-color: rgba(255, 120, 103, 0.8);
+	}
+	.error-modal pre {
+		padding: 13px;
+		border: 1px solid rgba(255, 120, 103, 0.22);
+		background: rgba(255, 120, 103, 0.055);
+		white-space: pre-wrap;
+		font-family: var(--font-mono);
+		font-size: 10px;
+		line-height: 1.5;
+		color: #ffb3a5;
+	}
+	.error-hint {
+		font-size: 11px !important;
+		color: var(--ink-faint) !important;
+	}
+	.error-hint a {
+		color: var(--signal);
+	}
+</style>

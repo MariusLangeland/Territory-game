@@ -167,3 +167,136 @@
 		</button>
 	{/if}
 </div>
+
+<style>
+	.context-menu {
+		position: fixed;
+		z-index: 140;
+		width: 264px;
+		max-height: calc(100vh - 16px);
+		overflow-y: auto;
+		padding: 6px;
+		border: 1px solid var(--line-strong);
+		background: rgba(4, 12, 16, 0.97);
+		box-shadow:
+			0 18px 42px rgba(0, 0, 0, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		font-family: var(--font-mono);
+		backdrop-filter: blur(12px);
+	}
+	.context-item {
+		display: grid;
+		gap: 3px;
+		width: 100%;
+		padding: 9px 10px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--ink-dim);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-align: left;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+	.context-item:hover:not(:disabled) {
+		border-color: rgba(220, 233, 149, 0.35);
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--ink);
+		outline: none;
+	}
+	.context-item:focus-visible:not(:disabled) {
+		border-color: rgba(220, 233, 149, 0.35);
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--ink);
+		outline: none;
+	}
+	.context-item:focus:not(:disabled) {
+		border-color: rgba(220, 233, 149, 0.35);
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--ink);
+		outline: none;
+	}
+	.context-item:disabled {
+		cursor: not-allowed;
+		opacity: 0.42;
+	}
+	.context-item small {
+		font-size: 7px;
+		font-weight: 500;
+		letter-spacing: 0.05em;
+		color: var(--ink-faint);
+	}
+	.context-info {
+		display: grid;
+		gap: 2px;
+		padding: 8px 10px 9px;
+		margin-bottom: 2px;
+		border-bottom: 1px solid var(--line-soft);
+		pointer-events: none;
+	}
+	.context-info span {
+		font-size: 8.5px;
+		font-weight: 700;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	.context-info small {
+		font-size: 7px;
+		font-weight: 500;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+	.context-info-warning span {
+		color: #ffb09f;
+	}
+	.context-info-warning small {
+		color: rgba(255, 176, 159, 0.72);
+	}
+	.context-confirm:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.42);
+		background: rgba(255, 120, 103, 0.14);
+		color: #ffd0c7;
+	}
+	.context-demolish:not(:disabled) {
+		color: #ffb09f;
+	}
+	.context-demolish:hover:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.45);
+		background: rgba(255, 120, 103, 0.11);
+		color: #ffd0c7;
+	}
+	.context-demolish:focus-visible:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.45);
+		background: rgba(255, 120, 103, 0.11);
+		color: #ffd0c7;
+	}
+	.context-demolish:focus:not(:disabled) {
+		border-color: rgba(255, 120, 103, 0.45);
+		background: rgba(255, 120, 103, 0.11);
+		color: #ffd0c7;
+	}
+	.context-alliance:hover {
+		border-color: rgba(124, 224, 190, 0.42);
+		background: rgba(124, 224, 190, 0.1);
+		color: #c6ffe9;
+	}
+	.context-alliance:focus-visible {
+		border-color: rgba(124, 224, 190, 0.42);
+		background: rgba(124, 224, 190, 0.1);
+		color: #c6ffe9;
+	}
+	.context-alliance:focus {
+		border-color: rgba(124, 224, 190, 0.42);
+		background: rgba(124, 224, 190, 0.1);
+		color: #c6ffe9;
+	}
+	.context-divider {
+		height: 1px;
+		margin: 5px 4px;
+		background: var(--line-soft);
+	}
+</style>

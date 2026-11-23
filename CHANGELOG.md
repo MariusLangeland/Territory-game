@@ -39,6 +39,9 @@
 - Split that layer into `game-page-state.svelte.ts`, `match-controller.svelte.ts`,
   `interaction-controller.svelte.ts`, `overlay-controller.svelte.ts`, and a
   descriptor-preserving proxy facade in `game-page.svelte.ts`.
+- Distributed component-specific styles from the 2,676-line shared stylesheet
+  into each extracted component; the remaining global page CSS is ~318 lines
+  (page shell, shared overlays/buttons, keyframes).
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

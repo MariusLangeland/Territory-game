@@ -36,3 +36,55 @@
 	</i>
 	{#if !tooltip.ok}<em>INSUFFICIENT SUPPLY</em>{/if}
 </div>
+
+<style>
+	.upgrade-tooltip {
+		position: fixed;
+		z-index: 130;
+		transform: translate(-50%, calc(-100% - 14px));
+		display: grid;
+		gap: 2px;
+		min-width: 132px;
+		padding: 7px 10px 8px;
+		border: 1px solid rgba(255, 214, 144, 0.4);
+		background: rgba(5, 14, 18, 0.94);
+		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+		font-family: var(--font-mono);
+		font-size: 6.5px;
+		letter-spacing: 0.08em;
+		color: var(--ink-faint);
+		pointer-events: none;
+		backdrop-filter: blur(12px);
+	}
+	.upgrade-tooltip span {
+		color: var(--ink-dim);
+	}
+	.upgrade-tooltip strong {
+		font-family: var(--font-display);
+		font-size: 18px;
+		line-height: 1;
+		letter-spacing: 0.02em;
+		color: #ffd690;
+	}
+	.upgrade-tooltip strong small {
+		margin-left: 3px;
+		font-family: var(--font-mono);
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--ink-faint);
+	}
+	.upgrade-tooltip i {
+		font-style: normal;
+		font-size: 6px;
+		color: var(--ink-dim);
+	}
+	.upgrade-tooltip em {
+		font-style: normal;
+		font-size: 5.5px;
+		letter-spacing: 0.1em;
+		color: var(--danger);
+	}
+	.upgrade-tooltip.insufficient {
+		border-color: rgba(255, 120, 103, 0.5);
+	}
+</style>
