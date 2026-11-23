@@ -13,6 +13,9 @@
 - Added `SimulationView` as the read-only renderer/UI contract. `GameCanvas` and
   `Minimap` no longer cast worker mirrors through `TerritorySimulation`.
 - Moved the built-worker smoke test into CI after the production build.
+- Extracted the main game's 3,096-line scoped stylesheet into
+  `src/routes/game-page.css`, scoped under `.game-shell`, cutting `+page.svelte`
+  from 5,773 to ~2,500 lines.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23
