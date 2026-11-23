@@ -13,6 +13,10 @@
   and full worker disposal on world rebuild/unmount.
 - HUD updates remain throttled to 5 Hz while territory rendering continues at
   10 Hz.
+- Worker visuals carry per-capture district palette bytes and full owner/district
+  arrays on overflow, so district rendering tracks captures live.
+- Hover attack-cost previews use the same 34 px border search radius as
+  authoritative attack validation.
 - Added worker host tests covering init, stepping, pause/resume, commands, and
   deterministic checksums, plus `pnpm test:worker`, which boots the built worker
   bundle and verifies init transfer, visual deltas, commands, and paused ticks.
