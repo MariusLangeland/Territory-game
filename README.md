@@ -311,6 +311,14 @@ src/
       CardTray.svelte            card hand and drag-source cards
       MapTools.svelte            camera controls and frame stats
       DragOverlay.svelte         card landing preview and drag arrow
+      IntroOverlay.svelte        intro + match setup
+      LoadingOverlay.svelte      loading screen
+      ErrorModal.svelte          WebGPU/error recovery modal
+      ResultModal.svelte         victory/defeat result screen
+      DefeatModal.svelte         eliminated-state screen
+      HelpOverlay.svelte         field manual
+      OnboardingHint.svelte      first-match hint
+      KeyboardCursor.svelte      keyboard cursor + live status
       StructureMenu.svelte       structure/diplomacy context menu
       DiplomacyToast.svelte      diplomacy status toast
       UpgradeTooltip.svelte      upgrade cost/supply tooltip

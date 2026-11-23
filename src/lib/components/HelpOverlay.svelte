@@ -1,0 +1,94 @@
+<script lang="ts">
+	import { TICK_RATE } from '#lib/game/constants';
+
+	interface Props {
+		stateCount: number;
+		mapWidth: number;
+		mapHeight: number;
+		onClose: () => void;
+	}
+	let { stateCount, mapWidth, mapHeight, onClose }: Props = $props();
+</script>
+
+<div class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
+	<article class="modal help-modal">
+		<header class="help-head">
+			<div>
+				<p class="overlay-kicker">FIELD MANUAL / FRONTAGE V1</p>
+				<h2 id="help-title">HOW TO<br /><em>ATTACK.</em></h2>
+			</div>
+			<button
+				class="square-button close-manual"
+				type="button"
+				onclick={onClose}
+				aria-label="Close field manual"
+			>
+				×
+			</button>
+		</header>
+
+		<div class="manual-grid">
+			<section>
+				<span class="manual-index">01 / THE MODEL</span>
+				<h3>One supply. Durable fronts.</h3>
+				<p>
+					Supply is the only resource. It accrues from territory and structures, pays for cards,
+					upgrades, and front launches, and has no global maximum; territory and War Academies raise
+					the cap. Command Posts add supply income; Artillery is an active siege structure.
+					Fortifications add district defense. Jammers project a global aura that subtracts one
+					effective Barracks level from every enemy attacking you, without raising pixel defense.
+					Cards are permanent. Click a district, or drop its matching card inside it, to upgrade;
+					cost is the card price plus 5 × current level. Shift-click queues five upgrades
+					atomically, and the cursor tooltip shows the total cost. Each capture spends both per-tick
+					power and durable strength. Hold 70% of the land to win immediately.
+				</p>
+			</section>
+			<section>
+				<span class="manual-index">02 / FRONTS</span>
+				<h3>Buy strength. Cancel for a refund.</h3>
+				<p>
+					Click neutral ground or a rival's border near your territory to launch a front. A launch
+					costs 30 supply plus 15 per effective Barracks level. Barracks add attack strength
+					linearly, while speed and defense piercing grow by floor(log2(levels + 1)) — infinite
+					scaling with diminishing returns. Repeated clicks create separate fronts. When mutual
+					fronts touch, both sides lose strength simultaneously; a front at zero dies and the
+					survivor holds the contact line. Use CANCEL LAST or press X to refund the remaining
+					strength share. Each State structure anchors its mainland and adds 20 defense. Artillery
+					costs 1000 supply, needs 16 px of district-free ground, and covers a 64 px district. <kbd>
+						A
+					</kbd> or FIRE, then click an aim point in range. Each level fires one inaccurate shell at 300
+					supply per level; shells damage structures but cannot destroy a State.
+				</p>
+			</section>
+			<section>
+				<span class="manual-index">03 / CAMERA</span>
+				<h3>Read the whole atlas.</h3>
+				<p>
+					Drag to pan, scroll to zoom at the pointer, or use <kbd>F</kbd> to fit the world and
+					<kbd>C</kbd> to return to your frontier. Click the minimap to jump anywhere. On touch,
+					pinch with two fingers. Arrow keys move a keyboard cursor; <kbd>Enter</kbd> attacks or
+					upgrades under it, <kbd>Shift</kbd> moves faster, and <kbd>Esc</kbd> clears it.
+				</p>
+			</section>
+			<section>
+				<span class="manual-index">04 / STRESS TEST</span>
+				<h3>{stateCount} states, one tick.</h3>
+				<p>
+					{TICK_RATE} fixed ticks per second, {stateCount - 1} free-attacking AI states, and a seeded
+					PRNG. The {(mapWidth * mapHeight).toLocaleString('en-US')} pixel atlas is rendered from a GPU
+					control texture with only dirty tiles uploaded. Every second, land cut off from every live State
+					structure is annexed by an adjacent protected mainland with the largest shared border. Capture
+					a State structure to remove that state's annexation protection.
+				</p>
+			</section>
+		</div>
+
+		<div class="manual-footer">
+			<span><kbd>SPACE</kbd> PAUSE / RESUME</span>
+			<span><kbd>1</kbd>–<kbd>7</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
+			<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
+			<span><kbd>H</kbd> FIELD MANUAL</span>
+			<span>WEBGPU / DETERMINISTIC CORE</span>
+		</div>
+	</article>
+</div>

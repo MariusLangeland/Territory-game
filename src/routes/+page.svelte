@@ -11,6 +11,14 @@
 	import SupplyPanel from '#lib/components/SupplyPanel.svelte';
 	import MapTools from '#lib/components/MapTools.svelte';
 	import DragOverlay from '#lib/components/DragOverlay.svelte';
+	import IntroOverlay from '#lib/components/IntroOverlay.svelte';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import ErrorModal from '#lib/components/ErrorModal.svelte';
+	import ResultModal from '#lib/components/ResultModal.svelte';
+	import DefeatModal from '#lib/components/DefeatModal.svelte';
+	import HelpOverlay from '#lib/components/HelpOverlay.svelte';
+	import OnboardingHint from '#lib/components/OnboardingHint.svelte';
+	import KeyboardCursor from '#lib/components/KeyboardCursor.svelte';
 	import UpgradeTooltip from '#lib/components/UpgradeTooltip.svelte';
 	import { formatClock, formatCompact, formatShare, formatSupply } from '#lib/format';
 	import Minimap from '#lib/components/Minimap.svelte';
@@ -1311,16 +1319,11 @@
 				onPerf={handlePerf}
 			/>
 			{#if keyboardCursorScreen && keyboardCursor}
-				<div
-					class="keyboard-cursor"
-					class:allied={keyboardCursorAllied}
-					style:left={`${keyboardCursorScreen.x}px`}
-					style:top={`${keyboardCursorScreen.y}px`}
-					aria-hidden="true"
-				>
-					<span></span>
-				</div>
-				<p class="visually-hidden" aria-live="polite">{keyboardCursorStatus}</p>
+				<KeyboardCursor
+					position={keyboardCursorScreen}
+					allied={keyboardCursorAllied}
+					status={keyboardCursorStatus}
+				/>
 			{/if}
 		{/key}
 	{/if}
@@ -1348,16 +1351,7 @@
 		/>
 
 		{#if onboardingVisible && onboardingCopy}
-			<aside class="onboarding-hint hud" aria-live="polite">
-				<div class="onboarding-meta">
-					<span>FIRST MATCH / {onboardingCopy.index}</span>
-					<button type="button" onclick={finishOnboarding} aria-label="Skip first-match hints">
-						SKIP
-					</button>
-				</div>
-				<h2>{onboardingCopy.title}</h2>
-				<p>{onboardingCopy.body}</p>
-			</aside>
+			<OnboardingHint copy={onboardingCopy} onSkip={finishOnboarding} />
 		{/if}
 
 		<WorldRail
@@ -1428,449 +1422,66 @@
 	{/if}
 
 	{#if phase === 'loading'}
-		<div class="overlay loading-overlay" role="status" aria-live="polite">
-			<div class="loader-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-			<p class="overlay-kicker">CARTOGRAPHY IN PROGRESS</p>
-			<h2>SURVEYING THE<br />FRONTIER.</h2>
-			<p class="loading-copy">
-				Generating {mapWidth.toLocaleString('en-US')} × {mapHeight.toLocaleString('en-US')} terrain cells
-				and deploying {stateCount} states.
-			</p>
-		</div>
+		<LoadingOverlay {mapWidth} {mapHeight} {stateCount} />
 	{/if}
 
 	{#if showIntro && phase === 'ready' && snapshot}
-		<div
-			class="overlay intro-overlay"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="intro-title"
-		>
-			<div class="intro-rail">
-				<span>LAT 61.22 N</span>
-				<span>LON 08.44 E</span>
-				<span>WORLD {seedHex}</span>
-			</div>
-
-			<div class="intro-content">
-				<div class="intro-copy">
-					<p class="overlay-kicker">
-						<span class="kicker-line"></span>FRONTAGE SYSTEM / SUPPLY WAR
-					</p>
-					<h2 id="intro-title">DRAW THE<br /><em>FRONTIER.</em></h2>
-					<p class="intro-lede">
-						Durable fronts spend supply, strength, and terrain defense against
-						{stateCount} deterministic states fighting over the same pixel atlas.
-					</p>
-
-					<div class="spec-strip">
-						<div><strong>{mapWidth} × {mapHeight}</strong><span>PIXEL ATLAS</span></div>
-						<div><strong>{TICK_RATE} HZ</strong><span>FIXED SIMULATION</span></div>
-						<div><strong>WEBGPU</strong><span>DIRTY-TILE RENDER</span></div>
-						<div><strong>{stateCount}</strong><span>STATES DEPLOYED</span></div>
-					</div>
-
-					<div class="intro-actions">
-						<button class="deploy-button" type="button" onclick={deploy} disabled={!canDeploy}>
-							<span>{deployLabel}</span>
-							<svg viewBox="0 0 16 16" aria-hidden="true">
-								<path d="M2 8h11M9 3.5 13.5 8 9 12.5" />
-							</svg>
-						</button>
-						<div class="seed-loader">
-							<label for="seed-input">WORLD SEED / HEX</label>
-							<div>
-								<input
-									id="seed-input"
-									bind:value={seedInput}
-									spellcheck="false"
-									autocomplete="off"
-									maxlength="10"
-									inputmode="text"
-								/>
-								<button type="button" onclick={applySeed} disabled={!rendererReady}>LOAD</button>
-							</div>
-						</div>
-					</div>
-
-					<p class="intro-footnote">
-						Frontage prototype: {stateCount - 1} AI states fight for 70% of the land while you build with
-						a single supply economy. Fronts cost supply, trade strength on contact, and can be cancelled.
-						Share a seed to replay the same test.
-					</p>
-				</div>
-
-				<aside class="intro-brief">
-					<div class="brief-head">
-						<span>FIELD BRIEF / 01</span>
-						<span class="brief-status"><i></i>{rendererReady ? 'READY' : 'LINKING'}</span>
-					</div>
-					<h3>SUPPLY IS<br />THE ONLY VERB.</h3>
-					<ol>
-						<li>
-							<span>01</span>
-							<p>Click any land touching your frontier to buy a front with supply.</p>
-						</li>
-						<li>
-							<span>02</span>
-							<p>
-								Each front buys durable strength. Barracks add attack strength and logarithmic speed
-								and piercing; fronts spend strength on captures and mutual attrition.
-							</p>
-						</li>
-						<li>
-							<span>03</span>
-							<p>Take 70% of the land to win. Build cards and terrain defense shape the front.</p>
-						</li>
-					</ol>
-					<div class="match-setup">
-						<div class="setup-head">
-							<span>MATCH SETUP</span>
-							<span class:dirty={settingsDirty}>{settingsDirty ? 'CHANGED' : 'READY'}</span>
-						</div>
-						<label>
-							<span>STATES</span>
-							<select bind:value={matchSettings.states} onchange={persistMatchSettings}>
-								{#each STATE_COUNT_OPTIONS as count (count)}
-									<option value={count}>{count} STATES</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>MAP SIZE</span>
-							<select bind:value={matchSettings.mapPreset} onchange={applyMapPreset}>
-								{#each MAP_PRESETS as preset (preset.id)}
-									<option value={preset.id}>{preset.label}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>WIDTH</span>
-							<input
-								type="number"
-								min="512"
-								max="8192"
-								step="16"
-								bind:value={matchSettings.mapWidth}
-								onchange={persistMatchSettings}
-							/>
-						</label>
-						<label>
-							<span>HEIGHT</span>
-							<input
-								type="number"
-								min="256"
-								max="8192"
-								step="16"
-								bind:value={matchSettings.mapHeight}
-								onchange={persistMatchSettings}
-							/>
-						</label>
-						<label>
-							<span>BOT DIFFICULTY</span>
-							<select bind:value={matchSettings.difficulty} onchange={persistMatchSettings}>
-								{#each BOT_DIFFICULTY_OPTIONS as option (option.id)}
-									<option value={option.id}>{option.label}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>MATCH TIMER</span>
-							<select bind:value={matchSettings.timerMinutes} onchange={persistMatchSettings}>
-								{#each TIMER_OPTIONS as minutes (minutes)}
-									<option value={minutes}>{minutes === 0 ? 'NO TIMER' : `${minutes} MIN`}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>BOT COMMAND POSTS</span>
-							<select
-								bind:value={matchSettings.botCommandPostStacks}
-								onchange={persistMatchSettings}
-								title="Grants every AI commander a starting Command Post with this many stacks"
-							>
-								{#each BOT_COMMAND_POST_STACK_OPTIONS as stacks (stacks)}
-									<option value={stacks}>
-										{stacks === 0 ? 'STANDARD' : `${stacks}-STACK SURGE`}
-									</option>
-								{/each}
-							</select>
-						</label>
-						<div class="seed-presets">
-							<span>QUICK SEED</span>
-							<div>
-								<button type="button" onclick={() => applySeedPreset(1234)}>1234</button>
-								<button type="button" onclick={() => applySeedPreset(0xbeef)}>BEEF</button>
-								<button type="button" onclick={() => applySeedPreset(randomSeed())}>RANDOM</button>
-							</div>
-						</div>
-						<p class="setup-victory">
-							VICTORY: 70% OF LAND, LAST STATE STANDING{matchSettings.timerMinutes > 0
-								? ', OR TIMER LEADER'
-								: ''}
-						</p>
-						<button
-							class="setup-apply"
-							type="button"
-							onclick={applyMatchSettings}
-							disabled={!settingsDirty && phase === 'ready'}
-						>
-							{settingsDirty ? 'REBUILD MATCH' : 'SETTINGS APPLIED'}
-						</button>
-					</div>
-					<div class="brief-footer">
-						<span>MAP SEED</span>
-						<strong>{seedHex}</strong>
-					</div>
-				</aside>
-			</div>
-
-			<div class="intro-footbar">
-				<span>BUILD {__APP_VERSION__} / PROTOCOL 38</span>
-				<span>WEBGPU RENDERER REQUIRED</span>
-				<span>DRAG TO PAN · SCROLL TO ZOOM</span>
-			</div>
-		</div>
+		<IntroOverlay
+			{phase}
+			{stateCount}
+			{mapWidth}
+			{mapHeight}
+			{seedHex}
+			{rendererReady}
+			{canDeploy}
+			{deployLabel}
+			bind:seedInput
+			bind:matchSettings
+			{settingsDirty}
+			onDeploy={deploy}
+			onApplySeed={applySeed}
+			onPersistSettings={persistMatchSettings}
+			onApplyMapPreset={applyMapPreset}
+			onApplySeedPreset={applySeedPreset}
+			onApplyMatchSettings={applyMatchSettings}
+		/>
 	{/if}
-
 	{#if phase === 'error'}
-		<div
-			class="overlay error-overlay"
-			role="alertdialog"
-			aria-modal="true"
-			aria-labelledby="error-title"
-		>
-			<article class="modal error-modal">
-				<p class="overlay-kicker">RENDERER OFFLINE</p>
-				<h2 id="error-title">WEBGPU<br /><em>UNAVAILABLE.</em></h2>
-				<p>
-					This prototype draws its territory map directly with WebGPU. The browser could not start a
-					compatible graphics device.
-				</p>
-				<pre>{errorMessage}</pre>
-				<p class="error-hint">
-					Try a current Chromium-based browser with hardware acceleration enabled, or check <a
-						href="https://caniuse.com/webgpu"
-						target="_blank"
-						rel="noreferrer"
-					>
-						WebGPU support
-					</a>.
-				</p>
-				<div class="modal-actions">
-					<button class="deploy-button" type="button" onclick={reload}><span>RELOAD</span></button>
-				</div>
-			</article>
-		</div>
+		<ErrorModal message={errorMessage} onReload={reload} />
 	{/if}
 
 	{#if showResult && snapshot}
-		<div
-			class="overlay result-overlay"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="result-title"
-		>
-			<article class="modal result-modal">
-				<p class="overlay-kicker">
-					{winner?.id === snapshot.humanId
-						? 'CAMPAIGN COMPLETE / VICTORY'
-						: 'CAMPAIGN COMPLETE / DEFEAT'}
-				</p>
-				<h2 id="result-title">
-					{#if winner?.id === snapshot.humanId}
-						THE ATLAS<br /><em>IS YOURS.</em>
-					{:else}
-						{winner?.name ?? 'A RIVAL'}<br /><em>TAKES THE WORLD.</em>
-					{/if}
-				</h2>
-				<p class="result-lede">
-					{#if winner?.id === snapshot.humanId}
-						You hold 70% of the land. The frontier is closed.
-					{:else}
-						Your command has ended. The map remembers who held the last pixel.
-					{/if}
-				</p>
-
-				<div class="result-stats">
-					<div><span>WAR CLOCK</span><strong>{matchClock}</strong></div>
-					<div><span>WORLD CLAIMED</span><strong>{worldClaim.toFixed(1)}%</strong></div>
-					<div><span>COMMANDER RANK</span><strong>#{humanRank || '—'}</strong></div>
-					<div><span>SEED</span><strong>{seedHex}</strong></div>
-				</div>
-
-				{#if aiPostMatch}
-					<div class="result-ai">
-						<div>
-							<span>AI FORTS UNDER THREAT</span><strong>
-								{aiPostMatch.threatenedFortificationBuilds} built / {aiPostMatch.threatenedFortificationUpgrades}
-								upgraded
-							</strong>
-						</div>
-						<div>
-							<span>DETERRENCE POSTURES</span><strong>{aiPostMatch.deterrencePostures}</strong>
-						</div>
-						<div>
-							<span>INCOME-GAP CP / WA</span><strong>
-								{aiPostMatch.incomeGapCommandPosts} / {aiPostMatch.incomeGapWarAcademies}
-							</strong>
-						</div>
-						<div>
-							<span>SUPPLY OPPORTUNITIES</span><strong>{aiPostMatch.opportunityAttacks}</strong>
-						</div>
-						<div>
-							<span>BOT PORTS / LANDINGS</span><strong>
-								{aiPostMatch.botPortBuilds} / {aiPostMatch.botNavalLandings}
-							</strong>
-						</div>
-						<div>
-							<span>STRATEGIC OPTIONS</span><strong>{aiOptionSummary}</strong>
-						</div>
-					</div>
-				{/if}
-
-				<ol class="result-standings">
-					{#each ranked.slice(0, 4) as player, index (player.id)}
-						<li
-							class:is-human={player.id === snapshot.humanId}
-							style={`--player-color:${colorForPlayer(player.id).hex}`}
-						>
-							<span>{String(index + 1).padStart(2, '0')}</span>
-							<i></i>
-							<b>{player.name}</b>
-							<em>{(player.landShare * 100).toFixed(1)}%</em>
-						</li>
-					{/each}
-				</ol>
-
-				<div class="modal-actions">
-					<button class="deploy-button" type="button" onclick={rematch}>
-						<span>REMATCH SAME SEED</span>
-					</button>
-					<button class="ghost-button" type="button" onclick={copySeed}>COPY SEED</button>
-					<button class="ghost-button" type="button" onclick={newWorld}>NEW WORLD</button>
-					<button class="ghost-button" type="button" onclick={() => (showHelp = true)}>
-						FIELD MANUAL
-					</button>
-				</div>
-			</article>
-		</div>
+		<ResultModal
+			humanId={snapshot.humanId}
+			{winner}
+			{humanRank}
+			{worldClaim}
+			{matchClock}
+			{seedHex}
+			{ranked}
+			{aiPostMatch}
+			{aiOptionSummary}
+			onRematch={rematch}
+			onCopySeed={copySeed}
+			onNewWorld={newWorld}
+			onOpenHelp={() => (showHelp = true)}
+		/>
 	{/if}
 
 	{#if defeatOpen && !showResult && human && snapshot}
-		<div
-			class="overlay result-overlay defeat-overlay"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="defeat-title"
-		>
-			<article class="modal result-modal defeat-modal">
-				<p class="overlay-kicker">STATE TERMINATED / NO TERRITORY</p>
-				<h2 id="defeat-title">YOUR FLAG<br /><em>FALLS.</em></h2>
-				<p class="result-lede">
-					{human.name} no longer holds a single pixel. The simulation is paused at tick {snapshot.tick}.
-				</p>
-				<div class="result-stats">
-					<div><span>SURVIVED</span><strong>{matchClock}</strong></div>
-					<div><span>FINAL RANK</span><strong>#{humanRank}</strong></div>
-					<div>
-						<span>WORLD CLAIMED</span><strong>{(human.landShare * 100).toFixed(1)}%</strong>
-					</div>
-					<div><span>ALIVE STATES</span><strong>{aliveCount}</strong></div>
-				</div>
-				<div class="modal-actions">
-					<button class="deploy-button" type="button" onclick={spectate}>
-						<span>SPECTATE THE END</span>
-					</button>
-					<button class="ghost-button" type="button" onclick={rematch}>REMATCH</button>
-					<button class="ghost-button" type="button" onclick={newWorld}>NEW WORLD</button>
-				</div>
-			</article>
-		</div>
+		<DefeatModal
+			{human}
+			tick={snapshot.tick}
+			{matchClock}
+			{humanRank}
+			{aliveCount}
+			onSpectate={spectate}
+			onRematch={rematch}
+			onNewWorld={newWorld}
+		/>
 	{/if}
 
 	{#if showHelp}
-		<div class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
-			<article class="modal help-modal">
-				<header class="help-head">
-					<div>
-						<p class="overlay-kicker">FIELD MANUAL / FRONTAGE V1</p>
-						<h2 id="help-title">HOW TO<br /><em>ATTACK.</em></h2>
-					</div>
-					<button
-						class="square-button close-manual"
-						type="button"
-						onclick={() => (showHelp = false)}
-						aria-label="Close field manual"
-					>
-						×
-					</button>
-				</header>
-
-				<div class="manual-grid">
-					<section>
-						<span class="manual-index">01 / THE MODEL</span>
-						<h3>One supply. Durable fronts.</h3>
-						<p>
-							Supply is the only resource. It accrues from territory and structures, pays for cards,
-							upgrades, and front launches, and has no global maximum; territory and War Academies
-							raise the cap. Command Posts add supply income; Artillery is an active siege
-							structure. Fortifications add district defense. Jammers project a global aura that
-							subtracts one effective Barracks level from every enemy attacking you, without raising
-							pixel defense. Cards are permanent. Click a district, or drop its matching card inside
-							it, to upgrade; cost is the card price plus 5 × current level. Shift-click queues five
-							upgrades atomically, and the cursor tooltip shows the total cost. Each capture spends
-							both per-tick power and durable strength. Hold 70% of the land to win immediately.
-						</p>
-					</section>
-					<section>
-						<span class="manual-index">02 / FRONTS</span>
-						<h3>Buy strength. Cancel for a refund.</h3>
-						<p>
-							Click neutral ground or a rival's border near your territory to launch a front. A
-							launch costs 30 supply plus 15 per effective Barracks level. Barracks add attack
-							strength linearly, while speed and defense piercing grow by floor(log2(levels + 1)) —
-							infinite scaling with diminishing returns. Repeated clicks create separate fronts.
-							When mutual fronts touch, both sides lose strength simultaneously; a front at zero
-							dies and the survivor holds the contact line. Use CANCEL LAST or press X to refund the
-							remaining strength share. Each State structure anchors its mainland and adds 20
-							defense. Artillery costs 1000 supply, needs 16 px of district-free ground, and covers
-							a 64 px district. <kbd>A</kbd> or FIRE, then click an aim point in range. Each level fires
-							one inaccurate shell at 300 supply per level; shells damage structures but cannot destroy
-							a State.
-						</p>
-					</section>
-					<section>
-						<span class="manual-index">03 / CAMERA</span>
-						<h3>Read the whole atlas.</h3>
-						<p>
-							Drag to pan, scroll to zoom at the pointer, or use <kbd>F</kbd> to fit the world and
-							<kbd>C</kbd> to return to your frontier. Click the minimap to jump anywhere. On touch,
-							pinch with two fingers. Arrow keys move a keyboard cursor; <kbd>Enter</kbd>
-							attacks or upgrades under it, <kbd>Shift</kbd> moves faster, and <kbd>Esc</kbd> clears it.
-						</p>
-					</section>
-					<section>
-						<span class="manual-index">04 / STRESS TEST</span>
-						<h3>{stateCount} states, one tick.</h3>
-						<p>
-							{TICK_RATE} fixed ticks per second, {stateCount - 1} free-attacking AI states, and a seeded
-							PRNG. The {(mapWidth * mapHeight).toLocaleString('en-US')} pixel atlas is rendered from
-							a GPU control texture with only dirty tiles uploaded. Every second, land cut off from every
-							live State structure is annexed by an adjacent protected mainland with the largest shared
-							border. Capture a State structure to remove that state's annexation protection.
-						</p>
-					</section>
-				</div>
-
-				<div class="manual-footer">
-					<span><kbd>SPACE</kbd> PAUSE / RESUME</span>
-					<span><kbd>1</kbd>–<kbd>7</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
-					<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
-					<span><kbd>H</kbd> FIELD MANUAL</span>
-					<span>WEBGPU / DETERMINISTIC CORE</span>
-				</div>
-			</article>
-		</div>
+		<HelpOverlay {stateCount} {mapWidth} {mapHeight} onClose={() => (showHelp = false)} />
 	{/if}
 </main>

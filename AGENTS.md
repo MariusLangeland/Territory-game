@@ -120,6 +120,9 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/components/CardTray.svelte` — permanent hand and drag-source cards.
 - `src/lib/components/MapTools.svelte` — camera controls and renderer stats.
 - `src/lib/components/DragOverlay.svelte` — card landing preview and drag arrow.
+- `src/lib/components/IntroOverlay.svelte` — intro and match-setup overlay.
+- `src/lib/components/LoadingOverlay.svelte`, `ErrorModal.svelte`, `ResultModal.svelte`, `DefeatModal.svelte`, `HelpOverlay.svelte` — screen states.
+- `src/lib/components/OnboardingHint.svelte`, `KeyboardCursor.svelte` — first-match and keyboard accessibility overlays.
 - `src/lib/components/StructureMenu.svelte` — structure/diplomacy context menu presentation.
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.

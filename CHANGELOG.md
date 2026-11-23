@@ -32,7 +32,9 @@
   drag-source cards) components.
 - Extracted `MapTools` (camera controls/perf) and `DragOverlay` (card landing
   preview/arrow) components.
-- `+page.svelte` is now ~1,780 lines, down from 5,773 before the restructure.
+- Extracted `IntroOverlay`, `LoadingOverlay`, `ErrorModal`, `ResultModal`,
+  `DefeatModal`, `HelpOverlay`, `OnboardingHint`, and `KeyboardCursor`.
+- `+page.svelte` is now ~1,400 lines, down from 5,773 before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.
 
 ## 0.76.0 — 2026-11-23
