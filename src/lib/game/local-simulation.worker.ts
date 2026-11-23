@@ -70,11 +70,17 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 	if (!host) return;
 	if (message.type === 'pause') {
 		host.setPaused(true);
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
+		accumulator = 0;
 		return;
 	}
 	if (message.type === 'resume') {
 		host.setPaused(false);
 		lastTickAt = 0;
+		accumulator = 0;
 		schedule();
 		return;
 	}
