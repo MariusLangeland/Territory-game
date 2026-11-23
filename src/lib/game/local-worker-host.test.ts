@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LocalWorkerHost } from './local-worker-host';
 import type { LocalWorkerInitConfig } from './local-worker-protocol';
+import { TerritorySimulation } from './simulation';
 
 const CONFIG: LocalWorkerInitConfig = {
 	seed: 1234,
@@ -38,6 +39,26 @@ describe('local worker host', () => {
 		expect(host.tick).toBe(0);
 		host.setPaused(false);
 		expect(host.step()?.tick).toBe(1);
+	});
+
+	it('matches a direct simulation checksum across the worker tick loop', () => {
+		const host = new LocalWorkerHost(CONFIG);
+		const direct = new TerritorySimulation({
+			seed: CONFIG.seed,
+			width: CONFIG.width,
+			height: CONFIG.height,
+			playerCount: CONFIG.playerCount,
+			growthMode: CONFIG.growthMode,
+			botDifficulty: CONFIG.botDifficulty,
+			matchDurationTicks: CONFIG.matchDurationTicks,
+			botCommandPostStacks: CONFIG.botCommandPostStacks
+		});
+		for (let tick = 0; tick < 120; tick++) {
+			host.step();
+			direct.step();
+		}
+		expect(host.simulation.checksum()).toBe(direct.checksum());
+		expect(host.simulation.getSnapshot().tick).toBe(120);
 	});
 
 	it('validates commands through the worker-owned simulation', () => {
