@@ -354,6 +354,8 @@ src/
         actions.ts               player command dispatch
         keyboard.ts              keyboard shortcuts + cursor navigation
         structure-menu.ts        structure/diplomacy popup + focus handling
+      page/
+        game-page.svelte.ts      main game page state, derived values, lifecycle
       worker/
         protocol.ts              shared worker init/visual payloads
         view.ts                  shared read-only match mirror
