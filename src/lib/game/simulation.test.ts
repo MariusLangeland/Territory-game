@@ -350,6 +350,27 @@ describe('elimination rewards', () => {
 	});
 });
 
+describe('bot command-post modifier', () => {
+	it('grants every AI seat a 500-stack starting Command Post', () => {
+		const sim = new TerritorySimulation({
+			seed: 1234,
+			playerCount: 8,
+			botCommandPostStacks: 500
+		});
+		for (const player of sim.players) {
+			const posts = sim.structures
+				.forOwner(player.id)
+				.filter((structure) => structure.type === 'command-post');
+			if (player.isBot) {
+				expect(posts).toHaveLength(1);
+				expect(posts[0]?.stacks).toBe(500);
+			} else {
+				expect(posts).toHaveLength(0);
+			}
+		}
+	});
+});
+
 describe('bot offensive investment', () => {
 	it('builds Barracks early and reaches Artillery in a normal match', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });

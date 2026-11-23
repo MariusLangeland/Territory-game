@@ -507,6 +507,8 @@ export interface SimulationOptions {
 	allPlayersBots?: boolean;
 	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
 	teamIds?: readonly number[];
+	/** Optional starting Command Post stacks granted to every AI seat. */
+	botCommandPostStacks?: number;
 }
 
 const CHANGE_BUFFER_SIZE = 16_384;
@@ -645,6 +647,7 @@ export class TerritorySimulation {
 		number,
 		{ ownerId: number; reachesState: boolean }
 	>();
+	private readonly botCommandPostStacks: number;
 	private navalLandings: NavalLanding[] = [];
 	private nextNavalId = 1;
 	private attacks: AttackState[] = [];
@@ -746,6 +749,7 @@ export class TerritorySimulation {
 		}));
 
 		this.rng = new DeterministicRng((this.seed ^ 0x6a09e667) >>> 0);
+		this.botCommandPostStacks = Math.max(0, Math.trunc(options.botCommandPostStacks ?? 0));
 		this.botGold = new Array<number>(this.playerCount).fill(0);
 		this.buildSiteCache = new Int32Array(this.playerCount * BUILDABLE_STRUCTURE_TYPES.length).fill(
 			-2
@@ -814,6 +818,36 @@ export class TerritorySimulation {
 		for (let i = 0; i < this.map.starts.length; i++) {
 			const start = this.map.starts[i];
 			this.structures.create('state', i + 1, start.x, start.y, this.width);
+		}
+		if (this.botCommandPostStacks > 1) {
+			for (const player of this.players) {
+				if (!player.isBot) continue;
+				const start = this.map.starts[player.id - 1];
+				let fallback = -1;
+				let cell = -1;
+				for (let index = 0; index < this.owners.length; index++) {
+					if (this.owners[index] !== player.id || this.structures.at(index)) continue;
+					if (fallback < 0) fallback = index;
+					const x = index % this.width;
+					const y = (index - x) / this.width;
+					const dx = x - start.x;
+					const dy = y - start.y;
+					if (dx * dx + dy * dy >= STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) {
+						cell = index;
+						break;
+					}
+				}
+				if (cell < 0) cell = fallback;
+				if (cell < 0) continue;
+				const structure = this.structures.create(
+					'command-post',
+					player.id,
+					cell % this.width,
+					Math.floor(cell / this.width),
+					this.width
+				);
+				this.structures.setStacks(structure, this.botCommandPostStacks);
+			}
 		}
 		this.rebuildDistricts();
 		this.rebuildAuraDefense();

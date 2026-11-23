@@ -4,6 +4,10 @@
 
 ### Gameplay
 
+- New match modifier: **500-STACK SURGE** gives every AI commander a starting
+  500-stack Command Post for high-economy stress matches. It is saved with match
+  defaults and leaves the human commander unchanged in standard matches.
+
 - Ports snap to the nearest valid owned shoreline within 24 px and may be placed
   inside unrelated districts without joining or upgrading them.
 - Eliminating a state now grants the credited attacker a permanent **+10

@@ -3009,3 +3009,37 @@ even after bot decisions were staggered.
 - Annexation can finish a few ticks after the scan, and some stale cells are
   skipped safely.
 - Direct unit-test annexation remains synchronous through the non-queued path.
+
+---
+
+## ADR-094 — Player-facing bot Command Post surge modifier
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+The 500-stack Command Post stress scenario was useful for saturation testing, but
+it was only reachable through a custom script. Expose it as a normal match-setup
+modifier so players can deliberately create the same high-economy stress match.
+
+### Decision
+
+- Add a saved match setting otCommandPostStacks with supported values 0
+  (standard) and 500.
+- At world creation, every AI seat receives one starting Command Post on its
+  owned territory with the selected stack count.
+- The human commander is unaffected in a normal match; in all-bot/spectator
+  matches every seat is a bot and receives one.
+- The modifier is chosen on the intro alongside state count, map, difficulty,
+  growth layer, and timer; it participates in dirty-settings detection and saved
+  defaults.
+- The initial structure is placed before district/aura rebuilds so its effects
+  are active from tick 0.
+
+### Consequences
+
+- Players can launch the same heavily saturated economy used for stress testing.
+- The modifier does not change normal defaults or match outcomes unless selected.
+- As with any starting structure, captured/razed Command Posts stop providing
+  income; the modifier is not a permanent income buff.

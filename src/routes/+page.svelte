@@ -22,6 +22,7 @@
 	} from '#lib/game/growth';
 	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
 	import {
+		BOT_COMMAND_POST_STACK_OPTIONS,
 		BOT_DIFFICULTY_OPTIONS,
 		DEFAULT_MATCH_SETTINGS,
 		MAP_PRESETS,
@@ -550,7 +551,8 @@
 					growthMode: normalized.growthMode,
 					botDifficulty: normalized.difficulty,
 					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
-					botGenomes
+					botGenomes,
+					botCommandPostStacks: normalized.botCommandPostStacks
 				});
 				sim = next;
 				snapshot = next.getSnapshot();
@@ -2081,6 +2083,20 @@
 							<select bind:value={matchSettings.timerMinutes} onchange={persistMatchSettings}>
 								{#each TIMER_OPTIONS as minutes (minutes)}
 									<option value={minutes}>{minutes === 0 ? 'NO TIMER' : `${minutes} MIN`}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>BOT COMMAND POSTS</span>
+							<select
+								bind:value={matchSettings.botCommandPostStacks}
+								onchange={persistMatchSettings}
+								title="Grants every AI commander a starting Command Post with this many stacks"
+							>
+								{#each BOT_COMMAND_POST_STACK_OPTIONS as stacks (stacks)}
+									<option value={stacks}>
+										{stacks === 0 ? 'STANDARD' : `${stacks}-STACK SURGE`}
+									</option>
 								{/each}
 							</select>
 						</label>

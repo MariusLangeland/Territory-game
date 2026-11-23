@@ -41,7 +41,7 @@
 | AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                              |
 | AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                      |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                          |
-| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, saved defaults                                                                                                   |
+| Match setup     | State count, three map presets, bot difficulty, growth layer, optional timer, 500-stack bot Command Post surge, saved defaults                                                                 |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                            |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                       |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                    |
@@ -353,7 +353,7 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
-- Match setup chooses states/map/difficulty/growth/timer, but there is no server lobby yet.
+- Match setup chooses states/map/difficulty/growth/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
 - The main game still runs on the main thread; only the Evolution Lab uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.

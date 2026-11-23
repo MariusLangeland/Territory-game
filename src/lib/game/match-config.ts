@@ -30,12 +30,16 @@ export const BOT_DIFFICULTY_OPTIONS: readonly {
 
 export const TIMER_OPTIONS = [0, 10, 20, 30] as const;
 
+/** Optional starting Command Post stack grant for every AI seat. */
+export const BOT_COMMAND_POST_STACK_OPTIONS = [0, 500] as const;
+
 export interface MatchSettings {
 	states: number;
 	mapPreset: MapPresetId;
 	difficulty: BotDifficulty;
 	growthMode: GrowthMode;
 	timerMinutes: number;
+	botCommandPostStacks: number;
 }
 
 export const DEFAULT_MATCH_SETTINGS: MatchSettings = {
@@ -43,7 +47,8 @@ export const DEFAULT_MATCH_SETTINGS: MatchSettings = {
 	mapPreset: 'standard',
 	difficulty: 'standard',
 	growthMode: DEFAULT_GROWTH_MODE,
-	timerMinutes: 0
+	timerMinutes: 0,
+	botCommandPostStacks: 0
 };
 
 const STORAGE_KEY = 'territory.match-settings.v1';
@@ -69,7 +74,19 @@ export function normalizeMatchSettings(value: Partial<MatchSettings> | null): Ma
 	const timerMinutes = TIMER_OPTIONS.includes(value?.timerMinutes as (typeof TIMER_OPTIONS)[number])
 		? (value?.timerMinutes ?? DEFAULT_MATCH_SETTINGS.timerMinutes)
 		: DEFAULT_MATCH_SETTINGS.timerMinutes;
-	return { states, mapPreset: mapPresetId, difficulty, growthMode, timerMinutes };
+	const botCommandPostStacks = BOT_COMMAND_POST_STACK_OPTIONS.includes(
+		value?.botCommandPostStacks as (typeof BOT_COMMAND_POST_STACK_OPTIONS)[number]
+	)
+		? (value?.botCommandPostStacks ?? DEFAULT_MATCH_SETTINGS.botCommandPostStacks)
+		: DEFAULT_MATCH_SETTINGS.botCommandPostStacks;
+	return {
+		states,
+		mapPreset: mapPresetId,
+		difficulty,
+		growthMode,
+		timerMinutes,
+		botCommandPostStacks
+	};
 }
 
 export function loadMatchSettings(): MatchSettings {
@@ -95,6 +112,7 @@ export function matchSettingsEqual(left: MatchSettings, right: MatchSettings): b
 		left.mapPreset === right.mapPreset &&
 		left.difficulty === right.difficulty &&
 		left.growthMode === right.growthMode &&
-		left.timerMinutes === right.timerMinutes
+		left.timerMinutes === right.timerMinutes &&
+		left.botCommandPostStacks === right.botCommandPostStacks
 	);
 }

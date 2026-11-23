@@ -31,4 +31,13 @@ describe('match settings', () => {
 		expect(matchSettingsEqual(DEFAULT_MATCH_SETTINGS, changed)).toBe(false);
 		expect(matchSettingsEqual(DEFAULT_MATCH_SETTINGS, { ...DEFAULT_MATCH_SETTINGS })).toBe(true);
 	});
+
+	it('normalizes and compares the bot command-post modifier', () => {
+		const surged = normalizeMatchSettings({ botCommandPostStacks: 500 });
+		expect(surged.botCommandPostStacks).toBe(500);
+		expect(
+			normalizeMatchSettings({ botCommandPostStacks: 123 as never }).botCommandPostStacks
+		).toBe(0);
+		expect(matchSettingsEqual(DEFAULT_MATCH_SETTINGS, surged)).toBe(false);
+	});
 });

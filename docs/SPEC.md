@@ -384,6 +384,7 @@ State is the permanent anchor structure. Artillery, Barracks, Fortifications, Ja
 
 Supply is the only resource for the human and bots. Cards and upgrades consume supply directly; bots build their focus structure without cards.
 
+- The **500-STACK SURGE** modifier gives every AI commander one starting Command Post with 500 stacks, adding +500 supply/s until that structure is destroyed. It does not affect the human commander in a normal match, and it is saved with match defaults.
 - Start with **90 supply** and **all seven buildable cards** always available in the hand.
 - Supply income is `3 + floor(territory/3000) + income structures + 10 × eliminations` per second, with **no income cap**. This is +1/s per 3,000 owned pixels, plus Command Post stacks at **+1/s** each, plus a permanent **+10/s per state eliminated**.
 - Supply cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**.
@@ -469,7 +470,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 ### 5.1 Screen flow
 
 1. **Boot/loading:** map, starts, and WebGPU initialisation.
-2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), growth layer, optional 10/20/30-minute timer, victory summary, saved defaults, rebuild, deploy. Simulation paused.
+2. **Intro / match setup:** seed load, state count (8/16/24/32/51), map preset (standard/compact/clash), bot difficulty (relaxed/standard/ruthless), growth layer, optional 10/20/30-minute timer, optional **500-stack bot Command Post surge**, victory summary, saved defaults, rebuild, deploy. Simulation paused.
 3. **Live match:** state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
 5. **Defeat:** human has no territory; spectate/rematch/new world.
