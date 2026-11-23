@@ -216,6 +216,25 @@ export interface BotPlayerBehaviorMetrics {
 	defenseDamage: number;
 }
 
+export interface PublicAlliance {
+	id: number;
+	playerA: number;
+	playerB: number;
+	startedAtTick: number;
+	expiresAtTick: number;
+}
+
+export interface PublicAllianceProposal {
+	id: number;
+	fromPlayerId: number;
+	toPlayerId: number;
+	createdAtTick: number;
+	expiresAtTick: number;
+}
+
+interface Alliance extends PublicAlliance {}
+interface AllianceProposal extends PublicAllianceProposal {}
+
 export interface PublicPlayer {
 	id: number;
 	name: string;
@@ -318,6 +337,8 @@ export interface GameSnapshot {
 	landCount: number;
 	claimedLand: number;
 	players: PublicPlayer[];
+	alliances: PublicAlliance[];
+	allianceProposals: PublicAllianceProposal[];
 	attacks: PublicAttack[];
 	shells: PublicArtilleryShell[];
 	navalLandings: PublicNavalLanding[];
@@ -339,7 +360,15 @@ export interface GameSnapshot {
 }
 
 export type SimEventKind =
-	'elimination' | 'victory' | 'structure' | 'build' | 'attack' | 'artillery' | 'naval' | 'system';
+	| 'elimination'
+	| 'victory'
+	| 'structure'
+	| 'build'
+	| 'attack'
+	| 'artillery'
+	| 'naval'
+	| 'alliance'
+	| 'system';
 
 export interface SimEvent {
 	id: number;
@@ -365,7 +394,8 @@ export type AttackFailure =
 	| 'no-port'
 	| 'not-shore'
 	| 'no-sea-path'
-	| 'friendly-shore';
+	| 'friendly-shore'
+	| 'allied';
 
 export interface AttackOrderResult {
 	ok: boolean;
@@ -425,13 +455,29 @@ export interface DemolishCommand {
 	sequence: number;
 }
 
+export interface AllianceRequestCommand {
+	type: 'alliance-request';
+	playerId: number;
+	targetPlayerId: number;
+	sequence: number;
+}
+
+export interface AllianceBreakCommand {
+	type: 'alliance-break';
+	playerId: number;
+	targetPlayerId: number;
+	sequence: number;
+}
+
 export type GameCommand =
 	| AttackCommand
 	| ArtilleryFireCommand
 	| NavalCommand
 	| BuildCommand
 	| UpgradeCommand
-	| DemolishCommand;
+	| DemolishCommand
+	| AllianceRequestCommand
+	| AllianceBreakCommand;
 
 export type BuildFailure =
 	| 'ended'
@@ -522,6 +568,12 @@ interface AnnexTransfer {
 	from: number;
 	to: number;
 }
+
+/** Diplomacy timing is tick-based; no wall clock enters the simulation. */
+const ALLIANCE_PROPOSAL_TICKS = TICK_RATE * 30;
+const ALLIANCE_DURATION_TICKS = TICK_RATE * 180;
+const ALLIANCE_BREAK_COOLDOWN_TICKS = TICK_RATE * 60;
+const ALLIANCE_ACCEPT_SCORE = 10;
 
 function indexToX(index: number, width: number): number {
 	return index % width;
@@ -648,6 +700,11 @@ export class TerritorySimulation {
 		{ ownerId: number; reachesState: boolean }
 	>();
 	private readonly botCommandPostStacks: number;
+	private alliances: Alliance[] = [];
+	private allianceProposals: AllianceProposal[] = [];
+	private nextAllianceId = 1;
+	private nextAllianceProposalId = 1;
+	private readonly allianceCooldownUntil: Uint32Array;
 	private navalLandings: NavalLanding[] = [];
 	private nextNavalId = 1;
 	private attacks: AttackState[] = [];
@@ -776,6 +833,7 @@ export class TerritorySimulation {
 		this.botExpansionTick = new Uint32Array(this.playerCount);
 		this.botDecisionEpoch = new Uint32Array(this.playerCount);
 		this.botStrengthCache = new Uint32Array(this.playerCount);
+		this.allianceCooldownUntil = new Uint32Array(this.playerCount * this.playerCount);
 		this.botTargetScoreStamp = new Uint32Array(this.playerCount + 1);
 		this.botTargetScore = new Int32Array(this.playerCount + 1);
 		this.botTargetOpportunity = new Uint8Array(this.playerCount + 1);
@@ -1131,6 +1189,50 @@ export class TerritorySimulation {
 		return { ok: true, message: 'Demolition ordered.' };
 	}
 
+	/** Queue an alliance request from the human to an AI state. */
+	requestAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+		if (this.ended) return fail('ended', 'The conflict is over.');
+		const player = this.players[playerId - 1];
+		const target = this.players[targetPlayerId - 1];
+		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
+		if (!target?.alive) return fail('invalid', 'That state is no longer available.');
+		if (playerId === targetPlayerId) return fail('invalid', 'You cannot ally with yourself.');
+		if (!target.isBot) return fail('invalid', 'Alliance requests currently target AI states only.');
+		if (this.hasDiplomaticCommitment(playerId)) {
+			return fail('invalid', 'You already have an active alliance or pending request.');
+		}
+		if (this.hasDiplomaticCommitment(targetPlayerId)) {
+			return fail('invalid', 'That state already has an active alliance or pending request.');
+		}
+		if (this.allianceCooldown(playerId, targetPlayerId) > this.tick) {
+			return fail('invalid', 'That pair is cooling down after a broken alliance.');
+		}
+		this.pendingCommands.push({
+			type: 'alliance-request',
+			playerId,
+			targetPlayerId,
+			sequence: this.nextCommandSequence++
+		});
+		return { ok: true, message: `Alliance request sent to ${target.name}.` };
+	}
+
+	/** Queue breaking an active alliance from the human side. */
+	breakAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+		if (this.ended) return fail('ended', 'The conflict is over.');
+		const player = this.players[playerId - 1];
+		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
+		if (!this.areAllied(playerId, targetPlayerId)) {
+			return fail('invalid', 'You are not allied with that state.');
+		}
+		this.pendingCommands.push({
+			type: 'alliance-break',
+			playerId,
+			targetPlayerId,
+			sequence: this.nextCommandSequence++
+		});
+		return { ok: true, message: 'Alliance broken.' };
+	}
+
 	/** Cancel the most recently launched active front for a player. */
 	cancelLatestAttack(playerId: number): AttackOrderResult {
 		let latest: AttackState | null = null;
@@ -1168,7 +1270,9 @@ export class TerritorySimulation {
 		let best: Structure | null = null;
 		let bestDistance = radiusSq + 1;
 		for (const structure of this.structures.all) {
-			if (structure.ownerId === playerId) continue;
+			if (structure.ownerId === playerId || this.areAllied(playerId, structure.ownerId)) {
+				continue;
+			}
 			const dx = structure.x - x;
 			const dy = structure.y - y;
 			const distance = dx * dx + dy * dy;
@@ -1275,6 +1379,9 @@ export class TerritorySimulation {
 		}
 		const targetOwner = this.owners[index];
 		if (targetOwner === playerId) return fail('friendly-shore', 'That shore is already friendly.');
+		if (this.areAllied(playerId, targetOwner)) {
+			return fail('allied', 'That shore belongs to your ally.');
+		}
 		if (this.structures.at(index)) {
 			return fail('invalid', 'A structure occupies that shore.');
 		}
@@ -1506,6 +1613,7 @@ export class TerritorySimulation {
 		let bestDistance = radiusSq + 1;
 		for (const structure of this.structures.all) {
 			if (structure.ownerId === shell.ownerId) continue;
+			if (this.areAllied(shell.ownerId, structure.ownerId)) continue;
 			if (structure.type === 'state') continue;
 			const dx = structure.x - shell.targetX;
 			const dy = structure.y - shell.targetY;
@@ -1590,6 +1698,9 @@ export class TerritorySimulation {
 			return fail('own-territory', 'That territory is already yours.');
 		}
 		const target = this.owners[index];
+		if (target > 0 && this.areAllied(playerId, target)) {
+			return fail('allied', 'That state is your ally.');
+		}
 		const cost = this.attackSupplyCost(playerId, target);
 		const reserved = this.pendingAttackSupply(playerId);
 		if (this.supplyOf(playerId) - reserved < cost) {
@@ -2004,6 +2115,7 @@ export class TerritorySimulation {
 			this.runBotNaval();
 			this.runBotDecisions();
 			this.runBotArtillery();
+			this.updateAlliances();
 			this.processArtilleryShells();
 			this.processNavalLandings();
 			this.processAttacks();
@@ -2147,6 +2259,23 @@ export class TerritorySimulation {
 		for (const grievance of this.botGrievance) mix(grievance);
 		for (const stacks of this.eliminationIncomeStacks) mix(stacks);
 		for (const epoch of this.botDecisionEpoch) mix(epoch);
+		mix(this.nextAllianceId);
+		mix(this.nextAllianceProposalId);
+		for (const proposal of this.allianceProposals) {
+			mix(proposal.id);
+			mix(proposal.fromPlayerId);
+			mix(proposal.toPlayerId);
+			mix(proposal.createdAtTick);
+			mix(proposal.expiresAtTick);
+		}
+		for (const alliance of this.alliances) {
+			mix(alliance.id);
+			mix(alliance.playerA);
+			mix(alliance.playerB);
+			mix(alliance.startedAtTick);
+			mix(alliance.expiresAtTick);
+		}
+		for (const cooldown of this.allianceCooldownUntil) mix(cooldown);
 		for (const threat of this.botThreat) mix(threat);
 		for (const defensive of this.botDefensive) mix(defensive);
 		for (const reserve of this.botReserve) mix(reserve);
@@ -2311,6 +2440,36 @@ export class TerritorySimulation {
 					`${STRUCTURE_DEFINITIONS[target.structure.type].label} upgraded to Lv.${stacks} for ${cost} supply.`,
 					command.playerId
 				);
+				continue;
+			}
+
+			if (command.type === 'alliance-request') {
+				const target = this.players[command.targetPlayerId - 1];
+				if (
+					target?.alive &&
+					target.isBot &&
+					!this.hasDiplomaticCommitment(command.playerId) &&
+					!this.hasDiplomaticCommitment(command.targetPlayerId)
+				) {
+					const proposal = {
+						id: this.nextAllianceProposalId++,
+						fromPlayerId: command.playerId,
+						toPlayerId: command.targetPlayerId,
+						createdAtTick: this.tick,
+						expiresAtTick: this.tick + ALLIANCE_PROPOSAL_TICKS
+					};
+					this.allianceProposals.push(proposal);
+					this.pushEvent(
+						'alliance',
+						`${this.players[command.playerId - 1]?.name ?? 'A state'} requests an alliance with ${target.name}.`,
+						command.playerId
+					);
+				}
+				continue;
+			}
+
+			if (command.type === 'alliance-break') {
+				this.breakAllianceNow(command.playerId, command.targetPlayerId);
 				continue;
 			}
 
@@ -4445,6 +4604,7 @@ export class TerritorySimulation {
 			const index = this.shoreIndices[salt % this.shoreIndices.length];
 			const owner = this.owners[index];
 			if (owner === player.id || this.structures.at(index)) continue;
+			if (owner > 0 && this.areAllied(player.id, owner)) continue;
 			if (owner > 0 && player.teamId !== 0 && this.players[owner - 1]?.teamId === player.teamId) {
 				continue;
 			}
@@ -4905,6 +5065,7 @@ export class TerritorySimulation {
 			let bestScore = Number.NEGATIVE_INFINITY;
 			for (const structure of this.structures.all) {
 				if (structure.ownerId === player.id) continue;
+				if (this.areAllied(player.id, structure.ownerId)) continue;
 				if (player.teamId !== 0 && this.players[structure.ownerId - 1]?.teamId === player.teamId) {
 					continue;
 				}
@@ -4979,6 +5140,7 @@ export class TerritorySimulation {
 				if (index < 0 || !this.land[index]) continue;
 				const defenderId = this.owners[index];
 				if (defenderId === player.id) continue;
+				if (this.areAllied(player.id, defenderId)) continue;
 				if (
 					defenderId > 0 &&
 					player.teamId !== 0 &&
@@ -5051,6 +5213,9 @@ export class TerritorySimulation {
 			};
 		}
 		if (defenderId === attackerId) return { score: Number.NEGATIVE_INFINITY, opportunity: false };
+		if (this.areAllied(attackerId, defenderId)) {
+			return { score: Number.NEGATIVE_INFINITY, opportunity: false };
+		}
 		if (
 			this.players[attackerId - 1]?.teamId !== 0 &&
 			this.players[attackerId - 1]?.teamId === this.players[defenderId - 1]?.teamId
@@ -5131,11 +5296,12 @@ export class TerritorySimulation {
 	/** Team AI coordination: an ally already pressing this defender. */
 	private teammateAttacking(attackerId: number, defenderId: number): boolean {
 		const teamId = this.players[attackerId - 1]?.teamId ?? 0;
-		if (teamId === 0) return false;
+		const hasTeam = teamId !== 0;
 		for (const attack of this.attacks) {
 			if (attack.done || attack.defenderId !== defenderId) continue;
 			if (attack.attackerId === attackerId) continue;
-			if (this.players[attack.attackerId - 1]?.teamId === teamId) return true;
+			if (this.areAllied(attackerId, attack.attackerId)) return true;
+			if (hasTeam && this.players[attack.attackerId - 1]?.teamId === teamId) return true;
 		}
 		return false;
 	}
@@ -5200,6 +5366,168 @@ export class TerritorySimulation {
 				break;
 			}
 		}
+	}
+
+	private alliancePairKey(a: number, b: number): number {
+		const low = Math.min(a, b) - 1;
+		const high = Math.max(a, b) - 1;
+		return low * this.playerCount + high;
+	}
+
+	private allianceCooldown(a: number, b: number): number {
+		return this.allianceCooldownUntil[this.alliancePairKey(a, b)] ?? 0;
+	}
+
+	private hasDiplomaticCommitment(playerId: number): boolean {
+		return (
+			this.alliances.some(
+				(alliance) => alliance.playerA === playerId || alliance.playerB === playerId
+			) ||
+			this.allianceProposals.some(
+				(proposal) => proposal.fromPlayerId === playerId || proposal.toPlayerId === playerId
+			)
+		);
+	}
+
+	private areAllied(a: number, b: number): boolean {
+		if (a <= 0 || b <= 0) return false;
+		return this.alliances.some(
+			(alliance) =>
+				(alliance.playerA === a && alliance.playerB === b) ||
+				(alliance.playerA === b && alliance.playerB === a)
+		);
+	}
+
+	private updateAlliances(): void {
+		for (const proposal of [...this.allianceProposals]) {
+			const target = this.players[proposal.toPlayerId - 1];
+			const requester = this.players[proposal.fromPlayerId - 1];
+			if (
+				!target?.alive ||
+				!requester?.alive ||
+				!target.isBot ||
+				this.tick >= proposal.expiresAtTick
+			) {
+				this.allianceProposals = this.allianceProposals.filter((entry) => entry.id !== proposal.id);
+				if (this.tick >= proposal.expiresAtTick) {
+					this.pushEvent(
+						'alliance',
+						`Alliance request from ${requester?.name ?? 'a state'} to ${target?.name ?? 'a state'} expired.`
+					);
+				}
+				continue;
+			}
+			if (!this.botDecisionDue(target.id)) continue;
+			this.allianceProposals = this.allianceProposals.filter((entry) => entry.id !== proposal.id);
+			if (
+				this.evaluateAllianceProposal(proposal) &&
+				!this.hasDiplomaticCommitment(proposal.fromPlayerId) &&
+				!this.hasDiplomaticCommitment(proposal.toPlayerId)
+			) {
+				this.formAlliance(proposal.fromPlayerId, proposal.toPlayerId);
+			} else {
+				this.pushEvent(
+					'alliance',
+					`${target.name} declined an alliance with ${requester.name}.`,
+					target.id
+				);
+			}
+		}
+
+		for (const alliance of [...this.alliances]) {
+			if (this.tick < alliance.expiresAtTick) continue;
+			this.alliances = this.alliances.filter((entry) => entry.id !== alliance.id);
+			const a = this.players[alliance.playerA - 1];
+			const b = this.players[alliance.playerB - 1];
+			this.pushEvent(
+				'alliance',
+				`The alliance between ${a?.name ?? 'a state'} and ${b?.name ?? 'a state'} expired.`
+			);
+		}
+
+		// An eliminated state cannot keep diplomatic commitments.
+		this.alliances = this.alliances.filter((alliance) => {
+			const a = this.players[alliance.playerA - 1];
+			const b = this.players[alliance.playerB - 1];
+			return a?.alive === true && b?.alive === true;
+		});
+		this.allianceProposals = this.allianceProposals.filter((proposal) => {
+			const from = this.players[proposal.fromPlayerId - 1];
+			const to = this.players[proposal.toPlayerId - 1];
+			return from?.alive === true && to?.alive === true;
+		});
+	}
+
+	private evaluateAllianceProposal(proposal: AllianceProposal): boolean {
+		const target = this.players[proposal.toPlayerId - 1];
+		const requester = this.players[proposal.fromPlayerId - 1];
+		if (!target || !requester) return false;
+		const targetIndex = target.id - 1;
+		const requesterStrength = this.estimatePlayerStrength(requester.id);
+		const targetStrength = this.estimatePlayerStrength(target.id);
+		let score = 20;
+		if (requesterStrength > Math.floor(targetStrength * 1.1)) score += 10;
+		if (requesterStrength < Math.floor(targetStrength * 0.75)) score -= 8;
+		const grievance = this.botGrievance[targetIndex * this.playerCount + requester.id - 1];
+		score -= Math.min(40, grievance * 2);
+		if (this.botDefensive[targetIndex]) score += 8;
+		if (this.botLastAttacker[targetIndex] === requester.id) score -= 12;
+		score += Math.floor((this.botProfiles[targetIndex].conciliatory - 50) / 5);
+		score += hash32(proposal.id, target.id, this.seed ^ 0x51ed270b) % 5;
+		return score >= ALLIANCE_ACCEPT_SCORE;
+	}
+
+	private formAlliance(playerA: number, playerB: number): void {
+		const a = this.players[playerA - 1];
+		const b = this.players[playerB - 1];
+		if (!a?.alive || !b?.alive) return;
+		const alliance: Alliance = {
+			id: this.nextAllianceId++,
+			playerA,
+			playerB,
+			startedAtTick: this.tick,
+			expiresAtTick: this.tick + ALLIANCE_DURATION_TICKS
+		};
+		this.alliances.push(alliance);
+		this.pushEvent('alliance', `${a.name} and ${b.name} form an alliance.`, playerA);
+		for (const attack of [...this.attacks]) {
+			if (attack.done) continue;
+			if (this.areAllied(attack.attackerId, attack.defenderId)) {
+				this.cancelAttack(attack.attackerId, attack.id);
+			}
+		}
+		this.navalLandings = this.navalLandings.filter(
+			(landing) => !this.areAllied(landing.ownerId, this.owners[landing.targetIndex] ?? 0)
+		);
+		this.artilleryShells = this.artilleryShells.filter((shell) => {
+			const x = Math.floor(shell.targetX);
+			const y = Math.floor(shell.targetY);
+			const index = y * this.width + x;
+			return !this.areAllied(shell.ownerId, this.owners[index] ?? 0);
+		});
+	}
+
+	private breakAllianceNow(playerId: number, targetPlayerId: number): void {
+		const alliance = this.alliances.find(
+			(entry) =>
+				(entry.playerA === playerId && entry.playerB === targetPlayerId) ||
+				(entry.playerA === targetPlayerId && entry.playerB === playerId)
+		);
+		if (!alliance) return;
+		this.alliances = this.alliances.filter((entry) => entry.id !== alliance.id);
+		const cooldownUntil = this.tick + ALLIANCE_BREAK_COOLDOWN_TICKS;
+		this.allianceCooldownUntil[this.alliancePairKey(playerId, targetPlayerId)] = cooldownUntil;
+		const breaker = this.players[playerId - 1];
+		const other = this.players[targetPlayerId - 1];
+		if (other) {
+			const index = (targetPlayerId - 1) * this.playerCount + (playerId - 1);
+			this.botGrievance[index] = Math.min(0xffff, (this.botGrievance[index] ?? 0) + 20);
+		}
+		this.pushEvent(
+			'alliance',
+			`${breaker?.name ?? 'A state'} broke its alliance with ${other?.name ?? 'a state'}.`,
+			playerId
+		);
 	}
 
 	private updateEliminations(): void {
@@ -5299,6 +5627,8 @@ export class TerritorySimulation {
 			landCount: this.landCount,
 			claimedLand,
 			players,
+			alliances: this.alliances.map((alliance) => ({ ...alliance })),
+			allianceProposals: this.allianceProposals.map((proposal) => ({ ...proposal })),
 			attacks: this.attacks.map((attack) => this.toPublicAttack(attack)),
 			shells: this.artilleryShells.map((shell) => this.toPublicShell(shell)),
 			navalLandings: this.navalLandings.map((landing) => this.toPublicNavalLanding(landing)),

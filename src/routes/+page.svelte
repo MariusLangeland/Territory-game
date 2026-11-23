@@ -62,6 +62,7 @@
 		isState: boolean;
 		allianceOwnerId: number | null;
 		allianceName: string;
+		allianceStatus: 'none' | 'pending' | 'active' | 'busy';
 		confirmingDemolish: boolean;
 	}
 
@@ -168,6 +169,21 @@
 
 	let humanFronts = $derived(
 		snapshot?.attacks.filter((attack) => attack.attackerId === HUMAN_PLAYER_ID) ?? []
+	);
+	let humanAllyName = $derived.by(() => {
+		if (!snapshot) return null;
+		const alliance = snapshot.alliances.find(
+			(entry) => entry.playerA === HUMAN_PLAYER_ID || entry.playerB === HUMAN_PLAYER_ID
+		);
+		if (!alliance) return null;
+		const allyId = alliance.playerA === HUMAN_PLAYER_ID ? alliance.playerB : alliance.playerA;
+		return snapshot.players[allyId - 1]?.name ?? `STATE ${allyId}`;
+	});
+	let humanAlliancePending = $derived(
+		snapshot?.allianceProposals.some(
+			(proposal) =>
+				proposal.fromPlayerId === HUMAN_PLAYER_ID || proposal.toPlayerId === HUMAN_PLAYER_ID
+		) ?? false
 	);
 	let humanArtillery = $derived(
 		snapshot?.structures.filter(
@@ -983,6 +999,34 @@
 		const isOpponent = ownerId > 0 && ownerId !== snapshot.humanId;
 		if (!structure && !isOpponent) return;
 		const isOwn = ownerId === snapshot.humanId;
+		const humanId = snapshot.humanId;
+		let allianceStatus: StructureContextMenu['allianceStatus'] = 'none';
+		if (isOpponent && humanId > 0) {
+			const active = snapshot.alliances.some(
+				(alliance) =>
+					(alliance.playerA === humanId && alliance.playerB === ownerId) ||
+					(alliance.playerA === ownerId && alliance.playerB === humanId)
+			);
+			const pending = snapshot.allianceProposals.some(
+				(proposal) =>
+					(proposal.fromPlayerId === humanId && proposal.toPlayerId === ownerId) ||
+					(proposal.fromPlayerId === ownerId && proposal.toPlayerId === humanId)
+			);
+			const targetBusy =
+				snapshot.alliances.some(
+					(alliance) => alliance.playerA === ownerId || alliance.playerB === ownerId
+				) ||
+				snapshot.allianceProposals.some(
+					(proposal) => proposal.fromPlayerId === ownerId || proposal.toPlayerId === ownerId
+				) ||
+				snapshot.alliances.some(
+					(alliance) => alliance.playerA === humanId || alliance.playerB === humanId
+				) ||
+				snapshot.allianceProposals.some(
+					(proposal) => proposal.fromPlayerId === humanId || proposal.toPlayerId === humanId
+				);
+			allianceStatus = active ? 'active' : pending ? 'pending' : targetBusy ? 'busy' : 'none';
+		}
 		const menuWidth = 264;
 		const menuHeight = structure ? 236 : 168;
 		structureMenu = {
@@ -996,6 +1040,7 @@
 			isState: structure?.type === 'state',
 			allianceOwnerId: isOpponent ? ownerId : null,
 			allianceName: isOpponent ? (snapshot.players[ownerId - 1]?.name ?? `STATE ${ownerId}`) : '',
+			allianceStatus,
 			confirmingDemolish: false
 		};
 		structureMenuCameraView = cameraView;
@@ -1045,8 +1090,29 @@
 	}
 
 	function requestAlliance(): void {
-		// Placeholder: alliance mechanics are not implemented yet.
+		const menu = structureMenu;
 		closeStructureMenu();
+		if (!menu || !sim || menu.allianceOwnerId === null || menu.allianceStatus !== 'none') return;
+		if (paused) {
+			showToast('Resume the simulation before requesting an alliance.', 'warn');
+			return;
+		}
+		const result = sim.requestAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
+		showToast(result.message, result.ok ? 'success' : 'error');
+	}
+
+	function breakAlliance(): void {
+		const menu = structureMenu;
+		closeStructureMenu();
+		if (!menu || !sim || menu.allianceOwnerId === null || menu.allianceStatus !== 'active') {
+			return;
+		}
+		if (paused) {
+			showToast('Resume the simulation before breaking an alliance.', 'warn');
+			return;
+		}
+		const result = sim.breakAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
+		showToast(result.message, result.ok ? 'success' : 'error');
 	}
 
 	function transparentDragSource(): HTMLCanvasElement {
@@ -1449,17 +1515,51 @@
 					</div>
 				{/if}
 				{#if structureMenu.allianceOwnerId !== null}
-					<button
-						type="button"
-						class="context-item context-alliance"
-						role="menuitem"
-						aria-label={`Request alliance with ${structureMenu.allianceName}. Not implemented yet.`}
-						title="Alliance mechanics are not implemented yet."
-						onclick={requestAlliance}
-					>
-						<span>REQUEST ALLIANCE</span>
-						<small>{structureMenu.allianceName} · NOT IMPLEMENTED YET</small>
-					</button>
+					{#if structureMenu.allianceStatus === 'active'}
+						<button
+							type="button"
+							class="context-item context-alliance"
+							role="menuitem"
+							aria-label={`Break alliance with ${structureMenu.allianceName}`}
+							onclick={breakAlliance}
+						>
+							<span>BREAK ALLIANCE</span>
+							<small>{structureMenu.allianceName} · ACTIVE</small>
+						</button>
+					{:else if structureMenu.allianceStatus === 'pending'}
+						<button
+							type="button"
+							class="context-item context-alliance"
+							role="menuitem"
+							disabled
+							aria-label={`Alliance request with ${structureMenu.allianceName} pending`}
+						>
+							<span>ALLIANCE PENDING</span>
+							<small>{structureMenu.allianceName} · AWAITING RESPONSE</small>
+						</button>
+					{:else if structureMenu.allianceStatus === 'busy'}
+						<button
+							type="button"
+							class="context-item context-alliance"
+							role="menuitem"
+							disabled
+							aria-label={`Diplomatic commitment with ${structureMenu.allianceName} unavailable`}
+						>
+							<span>ALLIANCE UNAVAILABLE</span>
+							<small>{structureMenu.allianceName} · ALREADY COMMITTED</small>
+						</button>
+					{:else}
+						<button
+							type="button"
+							class="context-item context-alliance"
+							role="menuitem"
+							aria-label={`Request alliance with ${structureMenu.allianceName}`}
+							onclick={requestAlliance}
+						>
+							<span>REQUEST ALLIANCE</span>
+							<small>{structureMenu.allianceName} · SEND REQUEST</small>
+						</button>
+					{/if}
 				{/if}
 				<div class="context-divider"></div>
 				<button
@@ -1523,6 +1623,11 @@
 						<strong>{human.name}</strong>
 						<small class:lost={!humanStructure}>
 							{humanStructure ? 'COMMANDER / ANCHORED' : 'COMMANDER / NO ANCHOR'}
+							{humanAllyName
+								? ` · ALLIED ${humanAllyName}`
+								: humanAlliancePending
+									? ' · ALLIANCE PENDING'
+									: ''}
 						</small>
 					</span>
 				</div>

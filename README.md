@@ -33,6 +33,7 @@
 | State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                             |
 | Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                               |
 | Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions |
+| Diplomacy       | One active player-requested alliance; bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                                  |
 | Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                |
 | Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                        |
 | Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                             |
@@ -96,7 +97,7 @@ pnpm format     # Prettier write
 | Shift + click your district | Queue 5 upgrades at once                                        |
 | Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
 | Right-click a structure     | Open structure actions; first item demolishes it (no refund)    |
-| Right-click rival territory | Open rival actions; request alliance (not implemented yet)      |
+| Right-click rival territory | Request an alliance; active ally shows BREAK ALLIANCE           |
 | `1`–`7`                     | Start placing that card; left-click builds, right-click cancels |
 | Drag                        | Pan the map                                                     |
 | Scroll                      | Zoom at the pointer                                             |
@@ -347,7 +348,8 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
-- Match setup chooses states/map/difficulty/growth/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
+- Match setup chooses states/map/difficulty/timer and an optional 500-stack bot Command Post surge, but there is no server lobby yet.
+- Alliances are local-match diplomacy only: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown.
 - Online play, accounts, matchmaking, and server persistence remain specified but not implemented.
 - The main game still runs on the main thread; only the Evolution Lab uses a worker.
 - Match replay is seed replay plus post-match AI breakdown, not a full command-timeline viewer.
@@ -371,7 +373,7 @@ AGENTS.md                        orientation for future coding agents
 | [docs/ROADMAP.md](docs/ROADMAP.md)                     | Phased plan and acceptance criteria                 |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                 | Why the stack and engine work this way              |
 | [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md)         | Implemented Frontage v1 combat design               |
-| [docs/ALLIANCES.md](docs/ALLIANCES.md)                 | Alliance mechanic design proposal                   |
+| [docs/ALLIANCES.md](docs/ALLIANCES.md)                 | Implemented alliance mechanic and rules             |
 | [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release verification runbook                        |
 | [docs/AI_BALANCE.md](docs/AI_BALANCE.md)               | Headless AI behavior balance results                |
 | [docs/EVOLUTION_AUDIT.md](docs/EVOLUTION_AUDIT.md)     | Evolution selection/fitness audit                   |

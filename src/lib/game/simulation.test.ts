@@ -422,6 +422,88 @@ describe('bot offensive investment', () => {
 	}, 30_000);
 });
 
+describe('alliances', () => {
+	it('accepts a request, blocks allied attacks, and breaks with a cooldown', () => {
+		const sim = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		expect(sim.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		for (let tick = 0; tick < 30 && sim.getSnapshot().alliances.length === 0; tick++) {
+			sim.step();
+		}
+		const snapshot = sim.getSnapshot();
+		expect(snapshot.alliances).toHaveLength(1);
+		expect(snapshot.alliances[0]).toMatchObject({ playerA: HUMAN_PLAYER_ID, playerB: 2 });
+		const targetStart = sim.map.starts[1];
+		expect(sim.validateAttack(HUMAN_PLAYER_ID, targetStart.x, targetStart.y).reason).toBe('allied');
+		expect(sim.breakAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		sim.step();
+		expect(sim.getSnapshot().alliances).toHaveLength(0);
+		expect(sim.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(false);
+	});
+
+	it('cancels conflicting fronts when an alliance forms', () => {
+		const sim = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		const target = sim.map.starts[1];
+		const frontier = createGrowthLayer('organic', {
+			width: sim.width,
+			height: sim.height,
+			owners: sim.owners,
+			attackerId: HUMAN_PLAYER_ID,
+			anchorX: target.x - 2,
+			anchorY: target.y,
+			rngSeed: 1
+		});
+		const attack: AttackState = {
+			id: 900,
+			attackerId: HUMAN_PLAYER_ID,
+			defenderId: 2,
+			targetX: target.x,
+			targetY: target.y,
+			anchorX: target.x - 2,
+			anchorY: target.y,
+			growthMode: 'organic',
+			frontier,
+			createdAtTick: 0,
+			lifetimeTicks: 0,
+			orders: 1,
+			initialOrders: 1,
+			strength: 1500,
+			initialStrength: 1500,
+			supplyCost: 30,
+			power: 30,
+			pierce: 0,
+			idleTicks: 0,
+			captures: 0,
+			done: false
+		};
+		(sim as unknown as { attacks: AttackState[] }).attacks = [attack];
+		expect(sim.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		for (let tick = 0; tick < 30 && sim.getSnapshot().alliances.length === 0; tick++) {
+			sim.step();
+		}
+		expect(sim.getSnapshot().alliances).toHaveLength(1);
+		expect(
+			sim.activeAttacks.some(
+				(entry) =>
+					(entry.attackerId === HUMAN_PLAYER_ID && entry.defenderId === 2) ||
+					(entry.attackerId === 2 && entry.defenderId === HUMAN_PLAYER_ID)
+			)
+		).toBe(false);
+	});
+
+	it('produces identical alliance state for identical runs', () => {
+		const left = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		const right = new TerritorySimulation({ seed: 1234, playerCount: 8 });
+		expect(left.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		expect(right.requestAlliance(HUMAN_PLAYER_ID, 2).ok).toBe(true);
+		for (let tick = 0; tick < 20; tick++) {
+			left.step();
+			right.step();
+		}
+		expect(left.getSnapshot().alliances).toEqual(right.getSnapshot().alliances);
+		expect(left.checksum()).toBe(right.checksum());
+	});
+});
+
 describe('structure demolition', () => {
 	it('demolishes only owned buildable structures', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });

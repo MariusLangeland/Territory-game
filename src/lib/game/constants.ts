@@ -236,7 +236,7 @@ export const BOT_OPTION_MAX_TICKS = 90;
 export const BOT_OPTION_SWITCH_MARGIN = 18;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
 
-export const PROTOCOL_VERSION = 38;
+export const PROTOCOL_VERSION = 39;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

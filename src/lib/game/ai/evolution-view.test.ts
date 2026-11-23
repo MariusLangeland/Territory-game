@@ -10,6 +10,8 @@ function snapshotWith(structures: GameSnapshot['structures'] = []): GameSnapshot
 		landCount: 0,
 		claimedLand: 0,
 		players: [],
+		alliances: [],
+		allianceProposals: [],
 		attacks: [],
 		shells: [],
 		navalLandings: [],

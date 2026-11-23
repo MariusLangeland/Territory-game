@@ -3076,3 +3076,42 @@ documentation complexity for a choice that no longer served shipping play.
 - The benchmark can still compare all three layers without exposing them as
   product options.
 - Future growth-model changes require a deliberate determinism/protocol ADR.
+
+---
+
+## ADR-096 — Implement one-pair player-requested alliances
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+The right-click menu exposed an alliance placeholder while
+[ALLIANCES.md](ALLIANCES.md) defined a bounded diplomacy model. The remaining work
+was to make requests, acceptance, non-aggression, coordination, expiry, and
+betrayal real without adding shared resources or server-only concepts.
+
+### Decision
+
+- Add command-driven lliance-request and lliance-break intents.
+- Limit every player to one active alliance or pending proposal.
+- Pending proposals expire after 30 seconds and resolve on the target AI's
+  staggered decision phase using integer utility plus a deterministic seed
+  tie-break.
+- Active alliances last 3 minutes, block all hostile targeting between the pair,
+  cancel existing mutual fronts with proportional refunds, remove in-flight
+  allied shells/landings, and grant coordination credit against common enemies.
+- Breaking sets a 60-second pair cooldown and adds a betrayal grievance.
+- Include alliance/proposal ids, state, and cooldowns in checksums and snapshots;
+  bump protocol to 39.
+- Replace the context-menu placeholder with request/pending/active/busy states
+  and a HUD alliance status.
+
+### Consequences
+
+- Players can make one meaningful diplomatic commitment at a time.
+- Bots can decline; acceptance is deterministic and reproducible.
+- Alliances can reduce elimination pace, so future balance sweeps must include
+  them.
+- Multi-party alliances, renewal, bot-initiated requests, shared vision/supply,
+  and protocol delivery remain deferred.

@@ -2,7 +2,7 @@
 
 **Version:** see generated [REFERENCE.md](REFERENCE.md) / `package.json`  
 **Status:** Local Frontage implementation; online design target  
-**Last synchronized with:** map version 4, protocol draft 38  
+**Last synchronized with:** map version 4, protocol draft 39  
 **Generated rules:** [REFERENCE.md](REFERENCE.md) is authoritative for constants, costs, formulas, structures, and match presets. This document owns intent and behavior.
 
 This is the canonical description of what Territory is, what the current build does, and which technical contracts must hold. [ARCHITECTURE.md](ARCHITECTURE.md) explains the code; this document explains the intent and current rules. Temporary deviations are tracked in [EXPERIMENTS.md](EXPERIMENTS.md).
@@ -122,7 +122,7 @@ All numeric values come from `src/lib/game/constants.ts`. Outcome-affecting chan
 - Elevation is derived from land-height quantiles, colored from lowland through peaks, and drives base defense.
 - Ocean cannot be owned.
 - Map and starts are deterministic from the seed and versioned by `MAP_VERSION`.
-- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 34`.
+- `MAP_VERSION = 4`; `PROTOCOL_VERSION = 39`.
 
 ### 4.2 Starting positions
 
@@ -239,6 +239,21 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 - Bots use the same attack-order, structure, district, aura, and clash rules as the human.
 - Bots share one seeded PRNG for frontier sampling, processed in ascending player-id order; profiles, affinities, grievances, and utility decisions are deterministic. Behavior is replayable.
 
+### 4.8a Alliances
+
+The human commander can request one alliance at a time from an AI state using the rival context menu.
+
+- A pending proposal expires after **30 seconds**; the AI target accepts or rejects it on its next staggered decision phase.
+- Acceptance is deterministic integer utility: requester strength, target posture, grievances, and whether the requester was the last attacker. A living state can hold at most one active alliance or pending proposal.
+- An accepted alliance lasts **3 minutes**. While active:
+  - neither side may launch land, naval, or artillery attacks at the other;
+  - existing fronts between the pair are cancelled with the normal proportional refund;
+  - naval landings, in-flight shells, and bot target selection skip the ally;
+  - both sides gain the coordination bonus when attacking a common third party.
+- Either side may break an active alliance from the context menu. Breaking applies a **60-second pair cooldown** and adds a betrayal grievance.
+- Proposals and active alliances are removed when either state is eliminated.
+- Alliance state is deterministic, tick-based, and included in checksums and snapshots.
+
 ### 4.8b Evolution lab
 
 - **Genomes** combine eight personality traits (`aggression`, `economy`, `fortification`, `command`, `vengeance`, `caution`, `conciliation`, `opportunism`), per-type structure affinities, and six evolvable behaviour modules: income, defence, deterrence, opportunity, expansion, and retaliation.
@@ -264,13 +279,14 @@ Failure reasons: ocean, own territory, no shared border, not enough supply, elim
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
 3. Accrue supply continuously for this tick.
-4. Apply queued attack/build/upgrade commands sorted by `(sequence, playerId)`.
+4. Apply queued attack/build/upgrade/artillery/alliance commands sorted by `(sequence, playerId)`.
 5. On decision ticks, refresh bot threat/posture/reserves, then run bot economy/build decisions every 30 ticks and bot attack decisions every 10 ticks.
-6. Process active fronts in creation-id order.
-7. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Annex transfers are queued and applied across later ticks in deterministic cell order; a new scan waits until the queue drains. Every 100 ticks, fill small neutral pockets.
-8. Eliminate states with no territory and remove their fronts.
-9. Check 70% / last-standing victory.
-10. Build the public snapshot.
+6. Resolve pending alliance proposals on the target bot's staggered phase, expire old proposals/alliances, and remove diplomatic state for dead players.
+7. Process active fronts in creation-id order.
+8. Every 30 ticks (or immediately after a clash halts a front), annex detached territory into surrounding mainlands. Annex transfers are queued and applied across later ticks in deterministic cell order; a new scan waits until the queue drains. Every 100 ticks, fill small neutral pockets.
+9. Eliminate states with no territory and remove their fronts/diplomatic commitments.
+10. Check 70% / last-standing victory.
+11. Build the public snapshot.
 
 ### 4.10 Frontage caveats
 
@@ -489,7 +505,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center.
 - A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
-- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Right-clicking a structure opens a structure context menu whose first item is **DEMOLISH STRUCTURE**. Demolition is immediate on the next tick, removes the whole structure, and pays no supply refund; only the player's own non-State structures can be demolished. Rival and State structures show the action disabled. Right-clicking rival territory or a rival structure also shows **REQUEST ALLIANCE** with the rival's name; it is a UI placeholder only and does not implement alliances yet. Escape and selecting another number also cancel/replace placement.
+- Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Right-clicking a structure opens a structure context menu whose first item is **DEMOLISH STRUCTURE**. Demolition is immediate on the next tick, removes the whole structure, and pays no supply refund; only the player's own non-State structures can be demolished. Rival and State structures show the action disabled. Right-clicking rival territory or a rival structure also shows **REQUEST ALLIANCE** with the rival's name; once allied it becomes **BREAK ALLIANCE**. Escape and selecting another number also cancel/replace placement.
 - First-match onboarding shows three contextual hints: launch a front, drag a card into territory (or press its number then click), then click a district to upgrade. Hints advance on success, can be skipped, and completion is stored locally.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
 - The card hand sits above the bottom edge. When the pointer leaves it, the cards slide down to a semi-hidden peeking strip; moving the pointer back over that strip raises them again.
@@ -502,19 +518,19 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.3 Controls
 
-| Input                    | Action                                             |
-| ------------------------ | -------------------------------------------------- |
-| Left click/tap           | Issue a free attack if valid                       |
-| Left drag                | Pan; a drag does not fire an attack                |
-| Wheel                    | Zoom at pointer                                    |
-| Space                    | Pause/resume                                       |
-| `F`                      | Fit map                                            |
-| `C`                      | Focus human beachhead                              |
-| `+` / `−`                | Zoom                                               |
-| `H`                      | Field manual                                       |
-| Minimap click            | Center camera                                      |
-| Right-click structure    | Open structure actions; demolish (no refund)       |
-| Right-click rival region | Open rival actions; request alliance (placeholder) |
+| Input                    | Action                                       |
+| ------------------------ | -------------------------------------------- |
+| Left click/tap           | Issue a free attack if valid                 |
+| Left drag                | Pan; a drag does not fire an attack          |
+| Wheel                    | Zoom at pointer                              |
+| Space                    | Pause/resume                                 |
+| `F`                      | Fit map                                      |
+| `C`                      | Focus human beachhead                        |
+| `+` / `−`                | Zoom                                         |
+| `H`                      | Field manual                                 |
+| Minimap click            | Center camera                                |
+| Right-click structure    | Open structure actions; demolish (no refund) |
+| Right-click rival region | Open rival actions; request/break alliance   |
 
 ### 5.4 Camera
 

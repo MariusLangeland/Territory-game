@@ -1,13 +1,30 @@
-# Alliances — design proposal
+# Alliances
 
-**Status:** designed, not implemented. The right-click `REQUEST ALLIANCE` item is
-a placeholder only.
+**Status:** implemented in 0.72.0. The right-click `REQUEST ALLIANCE` item starts
+a real proposal and `BREAK ALLIANCE` ends an active pair.
 
 ## Goal
 
 Add a bounded, deterministic non-aggression/coordination mechanic that gives
 players a diplomatic alternative to permanent war without replacing the
 territory economy or front model.
+
+## Implemented version
+
+- The human can request an alliance with a living AI state from the rival
+  context menu.
+- A pending proposal resolves on that bot's next staggered decision phase and
+  expires after 30 seconds.
+- One active alliance or pending proposal per player.
+- Active alliances last 3 minutes, block all hostile targeting between the pair,
+  cancel existing fronts with the normal proportional refund, skip allies in
+  naval/artillery targeting, and grant coordination credit against common foes.
+- Either side can break an active alliance; breaking starts a 60-second pair
+  cooldown and adds a betrayal grievance.
+- Proposals/alliances are removed on expiry or elimination and are checksummed
+  and included in snapshots (protocol 39).
+- Bot-initiated requests, renewal, multi-party coalitions, shared vision/supply,
+  and alliance victory remain deferred.
 
 ## Non-goals for the first version
 
@@ -120,18 +137,16 @@ V1 effects are intentionally small:
 - Protocol snapshot shape change requires a protocol version bump when
   implemented.
 
-## Implementation plan
+## Implementation notes
 
-1. Add command types `request-alliance`, `respond-alliance`, `break-alliance`.
-2. Validate ownership, pending/active state, cooldowns, and self-targeting.
-3. Resolve proposals in the bot decision phase; deterministic acceptance score.
-4. Cancel conflicting fronts and block hostile target selection.
-5. Add snapshot/checksum fields and war-feed events.
-6. Replace the placeholder context item with real status/actions.
-7. Add tests for acceptance/rejection, expiry, betrayal, front cancellation,
-   ally targeting, elimination cleanup, and checksum determinism.
-8. Re-run balance sweeps; alliances can reduce elimination pace, so tune only
-   after observing them.
+- Commands: `alliance-request` and `alliance-break`; the bot response is
+  processed inside the simulation's staggered decision phase, not as a client
+  command.
+- Request/break validation is command-driven; no UI path mutates simulation state
+  directly.
+- Acceptance is integer utility plus a deterministic seeded tie-break.
+- Tests cover acceptance, allied attack rejection, front cancellation, break
+  cooldown, and identical checksums across identical request runs.
 
 ## Explicitly deferred
 
@@ -139,3 +154,4 @@ V1 effects are intentionally small:
 - Shared vision, supply, or territory.
 - Alliance victory conditions.
 - Server-authoritative proposal delivery.
+- Renewal and bot-initiated proposals.

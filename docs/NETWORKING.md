@@ -255,7 +255,7 @@ Player economy and cards:
 - the hand is the fixed six-card catalog; there are no draws, consumption, or reroll, and repeat purchases use the same fixed card id;
 - continuous supply income, uncapped cap growth, Artillery cooldowns/shells, Barracks/Jammer attack stats, and War Academy caps are server-authoritative; clients only display the snapshot;
 - a captured or shelled buildable is razed at the tick of destruction and its aura/income effect disappears immediately;
-- bots use the same supply economy; every public player payload includes current `supply` so clients can render rival supply banners. Protocol 38 adds Port/naval landing state and naval intents.
+- bots use the same supply economy; every public player payload includes current `supply` so clients can render rival supply banners. Protocol 38 adds Port/naval landing state and naval intents. Protocol 39 adds active alliances and pending alliance proposals; an online server must make request acceptance and expiry authoritative tick commands/state.
 
 - elevation tiers are deterministic map data gated by `MAP_VERSION`; they are not sent per tick;
 - defense is derived identically from elevation and current owner (`1 + elevation + occupied`);

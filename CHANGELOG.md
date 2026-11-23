@@ -24,6 +24,10 @@
   Port land-component walks are shared per component, removing the large
   late-game annex hitch.
 
+- Alliances are implemented: request an AI ally from the rival context menu,
+  wait for deterministic bot acceptance, gain non-aggression/coordination for
+  three minutes, and optionally break the pact with a betrayal cooldown.
+
 ### UI
 
 - Right-click structure context menu with **Demolish Structure** as its first

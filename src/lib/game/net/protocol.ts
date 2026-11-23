@@ -17,7 +17,7 @@ import type {
 } from '../simulation';
 import type { PublicCard, PublicStructure } from '../Structures';
 
-export const NET_PROTOCOL_VERSION = 38;
+export const NET_PROTOCOL_VERSION = 39;
 
 export type MatchId = string;
 export type PlayerId = number;
