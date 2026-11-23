@@ -1098,6 +1098,96 @@ describe('attack stress mode', () => {
 		expect(sim.owners[pocket]).toBe(1);
 	});
 
+	it('queues annex transfers and applies them within a fixed budget', () => {
+		const sim = new TerritorySimulation({ seed: 667788 });
+		const internals = sim as unknown as {
+			annexDisconnectedTerritory(queueTransfers?: boolean): void;
+			applyAnnexTransfers(budget: number): void;
+			annexTransferQueue: Array<{ index: number; from: number; to: number }>;
+			annexTransferIndex: number;
+		};
+		let pocket = -1;
+		for (let y = 1; y < sim.height - 1 && pocket < 0; y++) {
+			for (let x = 1; x < sim.width - 1; x++) {
+				const index = y * sim.width + x;
+				if (
+					sim.owners[index] === 1 &&
+					sim.owners[index - 1] === 1 &&
+					sim.owners[index + 1] === 1 &&
+					sim.owners[index - sim.width] === 1 &&
+					sim.owners[index + sim.width] === 1
+				) {
+					pocket = index;
+					break;
+				}
+			}
+		}
+		expect(pocket).toBeGreaterThan(-1);
+		if (pocket < 0) return;
+		sim.owners[pocket] = 2;
+		internals.annexDisconnectedTerritory(true);
+		expect(internals.annexTransferQueue.length).toBeGreaterThan(0);
+		expect(internals.annexTransferIndex).toBe(0);
+		expect(sim.owners[pocket]).toBe(2);
+
+		// Two one-cell transfers with a budget of one: the second must wait.
+		const targets: number[] = [];
+		for (let index = 0; index < sim.owners.length && targets.length < 2; index++) {
+			if (sim.owners[index] !== 1 || sim.structures.at(index)) continue;
+			targets.push(index);
+		}
+		expect(targets).toHaveLength(2);
+		internals.annexTransferQueue = targets.map((index) => ({ index, from: 2, to: 1 }));
+		internals.annexTransferIndex = 0;
+		for (const index of targets) sim.owners[index] = 2;
+		internals.applyAnnexTransfers(1);
+		expect(sim.owners[targets[0]]).toBe(1);
+		expect(sim.owners[targets[1]]).toBe(2);
+		expect(internals.annexTransferIndex).toBe(1);
+		internals.applyAnnexTransfers(1);
+		expect(sim.owners[targets[1]]).toBe(1);
+		expect(internals.annexTransferQueue).toHaveLength(0);
+	});
+
+	it('skips stale queued annex transfers whose owner changed', () => {
+		const sim = new TerritorySimulation({ seed: 667788 });
+		const internals = sim as unknown as {
+			annexTransferQueue: Array<{ index: number; from: number; to: number }>;
+			annexTransferIndex: number;
+			applyAnnexTransfers(budget: number): void;
+		};
+		let index = -1;
+		for (let candidate = 0; candidate < sim.owners.length; candidate++) {
+			if (sim.owners[candidate] === 1 && !sim.structures.at(candidate)) {
+				index = candidate;
+				break;
+			}
+		}
+		expect(index).toBeGreaterThan(-1);
+		if (index < 0) return;
+		internals.annexTransferQueue = [{ index, from: 2, to: 1 }];
+		internals.annexTransferIndex = 0;
+		sim.owners[index] = 3;
+		internals.applyAnnexTransfers(1);
+		expect(sim.owners[index]).toBe(3);
+		expect(internals.annexTransferQueue).toHaveLength(0);
+		expect(internals.annexTransferIndex).toBe(0);
+	});
+
+	it('includes pending annex transfers in the checksum', () => {
+		const left = new TerritorySimulation({ seed: 667788 });
+		const right = new TerritorySimulation({ seed: 667788 });
+		const leftInternals = left as unknown as { annexTransferQueue: Array<Record<string, number>> };
+		const rightInternals = right as unknown as {
+			annexTransferQueue: Array<Record<string, number>>;
+		};
+		leftInternals.annexTransferQueue = [{ index: 77, from: 2, to: 1 }];
+		rightInternals.annexTransferQueue = [{ index: 77, from: 2, to: 1 }];
+		expect(left.checksum()).toBe(right.checksum());
+		rightInternals.annexTransferQueue[0].to = 3;
+		expect(left.checksum()).not.toBe(right.checksum());
+	});
+
 	it('trades durable strength on mutual front contact', () => {
 		const sim = new TerritorySimulation({ seed: 554433 });
 		let candidate = -1;
