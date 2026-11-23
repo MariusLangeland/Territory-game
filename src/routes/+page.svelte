@@ -14,7 +14,9 @@
 		colorForPlayer
 	} from '#lib/game/constants';
 	import { DEFAULT_GROWTH_MODE } from '#lib/game/growth';
-	import { TerritorySimulation, type GameSnapshot, type SimEvent } from '#lib/game/simulation';
+	import { type GameSnapshot, type SimEvent, type TerritorySimulation } from '#lib/game/simulation';
+	import { WorkerLocalSimulation } from '#lib/game/local-worker-simulation';
+	import type { LocalWorkerVisual } from '#lib/game/local-worker-protocol';
 	import {
 		BOT_COMMAND_POST_STACK_OPTIONS,
 		BOT_DIFFICULTY_OPTIONS,
@@ -67,8 +69,22 @@
 		confirmingDemolish: boolean;
 	}
 
-	let sim = $state<TerritorySimulation | null>(null);
+	let sim = $state<WorkerLocalSimulation | null>(null);
 	let snapshot = $state<GameSnapshot | null>(null);
+	let workerVisuals = $state<
+		Array<{
+			revision: number;
+			tick: number;
+			snapshot: GameSnapshot;
+			changes: Uint32Array;
+			changeCount: number;
+			overflow: boolean;
+			districtTiles: number[];
+		}>
+	>([]);
+	let workerVisualRevision = 0;
+	let lastWorkerUiTick = -100;
+	let worldGeneration = 0;
 	let phase = $state<'loading' | 'ready' | 'error'>('loading');
 	let errorMessage = $state('');
 	let rendererReady = $state(false);
@@ -576,8 +592,13 @@
 		errorMessage = '';
 		rendererReady = false;
 		artilleryTargeting = false;
+		sim?.dispose();
 		sim = null;
 		snapshot = null;
+		workerVisuals = [];
+		workerVisualRevision = 0;
+		lastWorkerUiTick = -100;
+		const generation = ++worldGeneration;
 		gameStarted = false;
 		showIntro = true;
 		showHelp = false;
@@ -606,18 +627,34 @@
 								index === 0 ? null : botPool[(seed + index) % botPool.length]
 							)
 						: undefined;
-				const next = new TerritorySimulation({
-					seed: seed >>> 0,
-					playerCount: normalized.states,
-					width: normalized.mapWidth,
-					height: normalized.mapHeight,
-					growthMode: DEFAULT_GROWTH_MODE,
-					botDifficulty: normalized.difficulty,
-					matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
-					botGenomes,
-					botCommandPostStacks: normalized.botCommandPostStacks
-				});
+				const next = await WorkerLocalSimulation.create(
+					{
+						seed: seed >>> 0,
+						playerCount: normalized.states,
+						width: normalized.mapWidth,
+						height: normalized.mapHeight,
+						growthMode: DEFAULT_GROWTH_MODE,
+						botDifficulty: normalized.difficulty,
+						matchDurationTicks: normalized.timerMinutes * 60 * TICK_RATE,
+						botGenomes,
+						botCommandPostStacks: normalized.botCommandPostStacks
+					},
+					{
+						onVisual: (visual) => {
+							if (generation !== worldGeneration) return;
+							handleWorkerVisual(visual);
+						},
+						onError: (error) => {
+							if (generation === worldGeneration) handleError(error);
+						}
+					}
+				);
+				if (generation !== worldGeneration) {
+					next.dispose();
+					return;
+				}
 				sim = next;
+				next.pause();
 				snapshot = next.getSnapshot();
 				phase = 'ready';
 				const url = new URL(window.location.href);
@@ -640,12 +677,15 @@
 		gameStarted = true;
 		artilleryTargeting = false;
 		paused = false;
+		sim?.resume();
 		beginOnboarding();
 	}
 
 	function togglePause(): void {
 		if (!gameStarted || showResult || defeatOpen) return;
 		paused = !paused;
+		if (paused) sim?.pause();
+		else sim?.resume();
 	}
 
 	function newWorld(): void {
@@ -683,6 +723,31 @@
 	 * existing command feedback paths until they get inline HUD treatment.
 	 */
 	function showToast(_message: string, _tone: 'success' | 'error' | 'warn' = 'success'): void {}
+
+	function handleWorkerVisual(visual: LocalWorkerVisual): void {
+		if (!sim) return;
+		workerVisualRevision++;
+		workerVisuals = [
+			...workerVisuals,
+			{
+				revision: workerVisualRevision,
+				tick: visual.tick,
+				snapshot: visual.snapshot,
+				changes: visual.changes,
+				changeCount: visual.changes.length,
+				overflow: visual.changesOverflow,
+				districtTiles: visual.districtTiles
+			}
+		].slice(-8);
+		if (visual.tick - lastWorkerUiTick >= 2 || visual.events.length > 0 || visual.snapshot.ended) {
+			lastWorkerUiTick = visual.tick;
+			handleTick(visual.snapshot, visual.events);
+		}
+	}
+
+	function acknowledgeWorkerVisuals(lastRevision: number): void {
+		workerVisuals = workerVisuals.filter((visual) => visual.revision > lastRevision);
+	}
 
 	function handleTick(next: GameSnapshot, events: SimEvent[]): void {
 		const previous = snapshot;
@@ -738,6 +803,7 @@
 			defeatHandled = true;
 			defeatOpen = true;
 			paused = true;
+			sim?.pause();
 		}
 		if (next.ended) {
 			paused = true;
@@ -745,11 +811,11 @@
 		}
 	}
 
-	function handleAttack(x: number, y: number): void {
+	async function handleAttack(x: number, y: number): Promise<void> {
 		if (!sim || !snapshot || !gameStarted || showIntro) return;
 		if (snapshot.ended || defeatOpen) return;
 		if (keyboardPlacement) {
-			buildKeyboardPlacement(x, y);
+			await buildKeyboardPlacement(x, y);
 			return;
 		}
 		if (paused) {
@@ -757,7 +823,7 @@
 			return;
 		}
 		if (artilleryTargeting) {
-			const barrage = sim.enqueueArtillery(HUMAN_PLAYER_ID, x, y);
+			const barrage = await sim.command('artillery', { x, y });
 			showToast(
 				barrage.ok ? 'Artillery barrage queued.' : barrage.message,
 				barrage.ok ? 'success' : 'error'
@@ -765,18 +831,20 @@
 			if (barrage.ok) artilleryTargeting = false;
 			return;
 		}
-		if (
-			sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID &&
-			sim.getDistrictStructureId(Math.floor(x), Math.floor(y)) !== 0
-		) {
-			const upgrade = sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y, shiftHeld ? 5 : 1, !ctrlHeld);
+		if (sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID) {
+			const upgrade = await sim.command('upgrade', {
+				x,
+				y,
+				levels: shiftHeld ? 5 : 1,
+				merged: !ctrlHeld
+			});
 			showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
 			if (upgrade.ok && onboardingStep === 3) finishOnboarding();
 			return;
 		}
-		const result = sim.enqueueAttack(HUMAN_PLAYER_ID, x, y);
+		const result = await sim.command('attack', { x, y });
 		if (!result.ok && result.reason === 'no-shared-border') {
-			const naval = sim.enqueueNavalAttack(HUMAN_PLAYER_ID, x, y);
+			const naval = await sim.command('naval', { x, y });
 			if (naval.ok) {
 				showToast(naval.message, 'success');
 				return;
@@ -809,11 +877,10 @@
 		);
 	}
 
-	function cancelLatestFront(): void {
+	async function cancelLatestFront(): Promise<void> {
 		if (!sim) return;
-		const result = sim.cancelLatestAttack(HUMAN_PLAYER_ID);
+		const result = await sim.command('cancel-attack');
 		showToast(result.message, result.ok ? 'success' : 'warn');
-		snapshot = sim.getSnapshot();
 	}
 
 	function handleHover(next: HoverState | null): void {
@@ -919,13 +986,17 @@
 		if (notify) showToast('Build cancelled.', 'warn');
 	}
 
-	function buildKeyboardPlacement(x: number, y: number): void {
+	async function buildKeyboardPlacement(x: number, y: number): Promise<void> {
 		if (!sim || !snapshot || !draggingCard) return;
 		if (paused || defeatOpen || snapshot.ended) {
 			showToast('Resume the simulation before building.', 'warn');
 			return;
 		}
-		const result = sim.playCard(HUMAN_PLAYER_ID, draggingCard.id, Math.floor(x), Math.floor(y));
+		const result = await sim.command('build', {
+			cardId: draggingCard.id,
+			x: Math.floor(x),
+			y: Math.floor(y)
+		});
 		showToast(result.message, result.ok ? 'success' : 'error');
 		if (result.ok) {
 			advanceOnboarding(2, 3);
@@ -1168,7 +1239,7 @@
 		focusMenuAfterRender(0);
 	}
 
-	function demolishStructure(): void {
+	async function demolishStructure(): Promise<void> {
 		const menu = structureMenu;
 		if (!menu || !menu.confirmingDemolish) return;
 		closeStructureMenu();
@@ -1177,11 +1248,11 @@
 			showToast('Resume the simulation before demolishing.', 'warn');
 			return;
 		}
-		const result = sim.demolishStructure(HUMAN_PLAYER_ID, menu.structureId);
+		const result = await sim.command('demolish', { structureId: menu.structureId });
 		showToast(result.message, result.ok ? 'success' : 'error');
 	}
 
-	function requestAlliance(): void {
+	async function requestAlliance(): Promise<void> {
 		const menu = structureMenu;
 		closeStructureMenu();
 		if (!menu || !sim || menu.allianceOwnerId === null || menu.allianceStatus !== 'none') return;
@@ -1189,11 +1260,13 @@
 			showToast('Resume the simulation before requesting an alliance.', 'warn');
 			return;
 		}
-		const result = sim.requestAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
+		const result = await sim.command('alliance-request', {
+			targetPlayerId: menu.allianceOwnerId
+		});
 		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
 	}
 
-	function breakAlliance(): void {
+	async function breakAlliance(): Promise<void> {
 		const menu = structureMenu;
 		closeStructureMenu();
 		if (!menu || !sim || menu.allianceOwnerId === null || menu.allianceStatus !== 'active') {
@@ -1203,7 +1276,9 @@
 			showToast('Resume the simulation before breaking an alliance.', 'warn');
 			return;
 		}
-		const result = sim.breakAlliance(HUMAN_PLAYER_ID, menu.allianceOwnerId);
+		const result = await sim.command('alliance-break', {
+			targetPlayerId: menu.allianceOwnerId
+		});
 		showDiplomacyToast(result.message, result.ok ? 'success' : 'error');
 	}
 
@@ -1216,7 +1291,7 @@
 		return transparentDragImage;
 	}
 
-	function startCardDrag(event: DragEvent, card: PublicCard): void {
+	async function startCardDrag(event: DragEvent, card: PublicCard): Promise<void> {
 		keyboardPlacement = false;
 		draggingCardId = card.id;
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1255,7 +1330,7 @@
 		updateDragHover(event);
 	}
 
-	function handleCardDrop(event: DragEvent): void {
+	async function handleCardDrop(event: DragEvent): Promise<void> {
 		event.preventDefault();
 		const rawCardId = event.dataTransfer?.getData('text/plain');
 		const cardId = rawCardId ? Number(rawCardId) : draggingCardId;
@@ -1277,7 +1352,11 @@
 			cameraView.centerY +
 			(screenY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
 
-		const result = sim.playCard(HUMAN_PLAYER_ID, cardId, Math.floor(mapX), Math.floor(mapY));
+		const result = await sim.command('build', {
+			cardId,
+			x: Math.floor(mapX),
+			y: Math.floor(mapY)
+		});
 		showToast(result.message, result.ok ? 'success' : 'error');
 		if (result.ok) advanceOnboarding(2, 3);
 	}
@@ -1327,6 +1406,7 @@
 	function spectate(): void {
 		defeatOpen = false;
 		paused = false;
+		sim?.resume();
 	}
 
 	function reload(): void {
@@ -1496,6 +1576,7 @@
 			window.removeEventListener('pointerdown', handleWindowPointerDown);
 			clearTimeout(worldTimer);
 			if (diplomacyToastTimer) clearTimeout(diplomacyToastTimer);
+			sim?.dispose();
 			cameraBridge.onView = undefined;
 		};
 	});
@@ -1692,8 +1773,11 @@
 	{#if sim}
 		{#key sim}
 			<GameCanvas
-				simulation={sim}
+				simulation={sim as unknown as TerritorySimulation}
 				{paused}
+				simulate={false}
+				remoteVisuals={workerVisuals}
+				onRemoteVisualsApplied={acknowledgeWorkerVisuals}
 				targeting={artilleryTargeting}
 				allyTarget={hoverIsAlly}
 				mergeDistricts={!ctrlHeld}
@@ -1903,7 +1987,12 @@
 		</aside>
 
 		<div class="minimap-dock hud">
-			<Minimap simulation={sim} {snapshot} {cameraView} onNavigate={navigateFromMinimap} />
+			<Minimap
+				simulation={sim as unknown as TerritorySimulation}
+				{snapshot}
+				{cameraView}
+				onNavigate={navigateFromMinimap}
+			/>
 			<div class="minimap-meta">
 				<span>ATLAS / {mapWidth} × {mapHeight}</span>
 				<span>{scaleLegend}</span>

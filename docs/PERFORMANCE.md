@@ -84,8 +84,10 @@ tick is not the problem; the periodic integrity passes are:
 Those scans are synchronous main-thread work, so a large-map client can drop a
 frame every annex scan and a longer hitch every cleanup pass even though the
 steady tick is ~2 ms. This is the primary client-side cause of large-map
-stutter. The integrity planner needs time-slicing or worker offload to remove it
-without slowing annexation cadence.
+stutter. The local match now runs this work in a Web Worker; the main thread
+applies mirror deltas and renders independently. No integrity time-slicing is
+required for frame smoothness, though worker-side tick latency still grows with
+atlas area.
 
 Safe client mitigations already applied:
 

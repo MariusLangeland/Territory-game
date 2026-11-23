@@ -289,6 +289,12 @@ Diplomacy is player-only: the human commander can request one alliance at a time
 
 ### 4.9 Tick order
 
+Local matches run the authoritative tick loop in a Web Worker. The main thread
+owns the read-only render/query mirror, applies worker owner/district deltas, and
+forwards commands asynchronously. Pausing pauses the worker; rebuilding a world
+disposes the old worker before creating the next one. HUD snapshots remain
+throttled to 5 Hz while visual deltas arrive at 10 Hz.
+
 1. Increment `tick`.
 2. If a growth-mode switch is pending, apply it before any new attacks are created.
 3. Accrue supply continuously for this tick.

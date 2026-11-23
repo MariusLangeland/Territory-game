@@ -84,7 +84,7 @@ export class RemoteEvolutionSimulation {
 		return this.isLand(x, y) ? 1 + this.getElevation(x, y) : 0;
 	}
 
-	getAuraDefense(): number {
+	getAuraDefense(_x?: number, _y?: number): number {
 		return 0;
 	}
 

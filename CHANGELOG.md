@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.76.0 — 2026-11-23
+
+### Worker-owned local simulation
+
+- Moved local match stepping, bot decisions, and territory-integrity scans into a
+  dedicated Web Worker.
+- The main thread now renders from a read-only mirror and receives owner/render
+  deltas; it no longer runs `TerritorySimulation.step()`.
+- Commands are forwarded asynchronously to the worker and validated there.
+- Added worker pause/resume, deterministic command results, telemetry delivery,
+  and full worker disposal on world rebuild/unmount.
+- HUD updates remain throttled to 5 Hz while territory rendering continues at
+  10 Hz.
+- Added worker host tests covering init, stepping, pause/resume, and commands.
+
+Known parity notes for UI verification: hover/upgrade previews use mirror
+approximations, merged-district icon grouping is currently not recreated in the
+worker mirror, and the browser worker path has not been exercised by automated
+browser tests.
+
 ## 0.75.1 — 2026-11-23
 
 ### Client performance

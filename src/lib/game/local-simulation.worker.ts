@@ -14,6 +14,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let accumulator = 0;
 let lastTickAt = 0;
 let lastTelemetryAt = 0;
+let finalTelemetrySent = false;
 
 function postVisual(): void {
 	if (!host) return;
@@ -43,7 +44,10 @@ function schedule(): void {
 			if (host.ended) break;
 		}
 		if (accumulator > TICK_MS * 4) accumulator = TICK_MS * 4;
-		if (current - lastTelemetryAt >= TELEMETRY_INTERVAL_MS) {
+		if (host.ended && !finalTelemetrySent) {
+			finalTelemetrySent = true;
+			scope.postMessage(host.telemetry());
+		} else if (current - lastTelemetryAt >= TELEMETRY_INTERVAL_MS) {
 			lastTelemetryAt = current;
 			scope.postMessage(host.telemetry());
 		}

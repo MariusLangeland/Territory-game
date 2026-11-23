@@ -3233,3 +3233,35 @@ map-version change.
 - The 8192-per-side and 2²⁶-cell ceilings are GPU/texture and packed-wire limits,
   not arbitrary constants; larger atlases would require a wider change packet
   format.
+
+---
+
+## ADR-100 — Worker-owned local simulation
+
+**Status:** accepted and implemented  
+**Date:** 2026-11-23
+
+### Context
+
+The 4096² client audit showed normal ticks at ~1.8 ms, but synchronous annex
+scans at ~41 ms and neutral-pocket cleanup at ~81 ms on the main render thread.
+Those scans caused repeatable frame hitches, and atlas area makes them worse.
+
+### Decision
+
+- Run TerritorySimulation.step(), bot decisions, and integrity scans inside a
+  dedicated Web Worker for local matches.
+- The main thread keeps a read-only RemoteEvolutionSimulation-style mirror and
+  applies worker owner/district deltas; it never steps the simulation.
+- Commands are forwarded to the worker as promises and validated there.
+- The worker supports pause/resume and sends telemetry/events.
+- HUD updates stay throttled to 5 Hz while territory visuals stream at 10 Hz.
+- World rebuilds and page unmount terminate the previous worker.
+
+### Consequences
+
+- Integrity spikes no longer block rendering or input.
+- UI validation/preview paths use mirror approximations; the worker result is
+  authoritative for every command.
+- Merged-district icon grouping is currently not mirrored.
+- Browser worker behavior still requires manual UI verification.
