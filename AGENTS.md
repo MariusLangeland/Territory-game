@@ -128,6 +128,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/routes/game-page.css` — page shell/shared overlay primitives only; component-specific CSS belongs in each component's scoped `<style>` block.
 - `src/app.css` — canonical design tokens: semantic colors, alpha surfaces, display type, and HUD type scale. Extend tokens rather than adding repeated literals.
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
+- `src/lib/components/ReplayViewer.svelte` — shared simulation viewport, playback controls, and replay timeline/ledger panel.
 - `src/lib/components/ReplayTimeline.svelte` and `LedgerViewer.svelte` — replay playback controls and tick-seeking block list.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.

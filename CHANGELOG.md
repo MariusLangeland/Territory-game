@@ -77,6 +77,10 @@
   exports a pretty-printed JSON text snapshot of the ledger, sealed blocks, and
   open block, and REPLAY LEDGER, which uploads that file and replays it in a
   read-only worker with a replay banner and no gameplay controls.
+- Unified viewer shell: the local match, replay, online match, and Evolution
+  spectator now render through one `ReplayViewer` component. The Evolution
+  custom spectator HUD was removed; its stats moved to the lab header and its
+  playback controls use the shared viewer bar.
 - Replay engine: timeline scrubbing, pause/play, −1/+1 tick stepping, 0.25×–16×
   speed, full-map resync on seek, and a virtualized ledger-block viewer whose
   rows seek directly to their tick. Live mode keeps the same ledger-backed

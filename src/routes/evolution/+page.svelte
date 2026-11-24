@@ -1,5 +1,5 @@
 <script lang="ts">
-	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import ReplayViewer from '#lib/components/ReplayViewer.svelte';
 	import FitnessWeightsEditor from '#lib/components/FitnessWeightsEditor.svelte';
 	import FitnessHistoryGraph from '#lib/components/FitnessHistoryGraph.svelte';
 	import MarkovGraph from '#lib/components/MarkovGraph.svelte';
@@ -24,6 +24,10 @@
 			<span class:live={lab.running} class="live-dot"></span>
 			<span>{lab.status}</span>
 			<span class="phase">{lab.phase.toUpperCase()}</span>
+			<span>{lab.config.mode === 'gauntlet' ? 'RUN' : 'GEN'} {lab.progress.generation || '—'}</span>
+			<span>MATCH {lab.progress.match || '—'}/{lab.progress.matches || '—'}</span>
+			<span>POP {lab.population.length || lab.config.populationSize}</span>
+			<span>RATE {lab.effectiveTps > 0 ? `${lab.effectiveTps}/s` : '—'}</span>
 			{#if lab.restoredSession}<span class="restored">RESTORED</span>{/if}
 		</div>
 	</header>
@@ -32,7 +36,7 @@
 		<section class="viewport">
 			{#if lab.remoteView}
 				{#key lab.matchKey}
-					<GameCanvas
+					<ReplayViewer
 						simulation={lab.remoteView}
 						paused={!lab.running}
 						simulate={false}
@@ -42,6 +46,16 @@
 						cameraFocus="map"
 						selectedOwnerId={lab.selectedOwnerId}
 						onSelectOwner={lab.selectOwner}
+						playback={{
+							playing: lab.running,
+							speed: lab.speed,
+							options: lab.speeds.map((option) => ({
+								label: option.label,
+								value: option.steps
+							})),
+							onToggle: lab.toggleRunning,
+							onSpeed: (speed) => lab.setSpeed(speed)
+						}}
 					/>
 				{/key}
 			{:else}
@@ -50,38 +64,6 @@
 					<p>Start a new evolution or continue the previous run.</p>
 				</div>
 			{/if}
-			<div class="spectator-hud">
-				<div class="stat">
-					<span>{lab.config.mode === 'gauntlet' ? 'RUN' : 'GEN'}</span><strong>
-						{lab.progress.generation || '—'}
-					</strong>
-				</div>
-				<div class="stat">
-					<span>MATCH</span><strong>
-						{lab.progress.match || '—'}/{lab.progress.matches || '—'}
-					</strong>
-				</div>
-				<div class="stat">
-					<span>POP</span><strong>{lab.population.length || lab.config.populationSize}</strong>
-				</div>
-				<div class="stat">
-					<span>RATE</span><strong>{lab.effectiveTps > 0 ? `${lab.effectiveTps}/s` : '—'}</strong>
-				</div>
-				<div class="speed-row">
-					{#each lab.speeds as option (option.steps)}
-						<button
-							class:active={lab.speed === option.steps}
-							type="button"
-							onclick={() => lab.setSpeed(option.steps)}
-						>
-							{option.label}
-						</button>
-					{/each}
-					<button class="play" type="button" onclick={lab.toggleRunning}>
-						{lab.running ? 'PAUSE' : 'PLAY'}
-					</button>
-				</div>
-			</div>
 		</section>
 
 		<aside class="context">
@@ -492,40 +474,6 @@
 		color: var(--bone-50);
 		font-size: var(--text-11);
 		letter-spacing: 0.14em;
-	}
-	.spectator-hud {
-		position: absolute;
-		left: 10px;
-		bottom: 10px;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		background: rgba(3, 8, 10, 0.82);
-		border: 1px solid rgba(247, 238, 208, 0.15);
-		padding: 8px 10px;
-		max-width: calc(100% - 20px);
-	}
-	.stat {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		font-size: var(--text-9);
-		color: var(--bone-50);
-	}
-	.stat strong {
-		font-size: var(--text-13);
-		color: var(--accent-bone);
-	}
-	.speed-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-left: 10px;
-	}
-	.speed-row button.active,
-	.play {
-		border-color: var(--accent-gold);
-		color: var(--accent-gold);
 	}
 	.context {
 		display: flex;

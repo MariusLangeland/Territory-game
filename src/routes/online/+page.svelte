@@ -1,5 +1,5 @@
 <script lang="ts">
-	import GameCanvas from '#lib/components/GameCanvas.svelte';
+	import ReplayViewer from '#lib/components/ReplayViewer.svelte';
 	import { colorForPlayer } from '#lib/game/constants';
 	import { createOnlinePage } from '#lib/game/online/page/online-page.svelte';
 
@@ -141,7 +141,7 @@
 			<div class="canvas-wrap">
 				{#if online.remoteView}
 					{#key online.remoteView}
-						<GameCanvas
+						<ReplayViewer
 							simulation={online.remoteView}
 							paused={!online.running}
 							simulate={false}
