@@ -557,3 +557,13 @@ move ledger:
 
 Current scope is a replay/verification primitive and room export method. It does
 not yet change the client from state replication to lockstep input exchange.
+
+### Offline ledger authority
+
+Offline play now routes every player command through `LedgerAgent` inside the
+match worker. The agent accepts a transaction, validates it with the same
+`applyOnlineIntent` mapping used by online rooms, appends it to the ledger, and
+returns the open ledger block. When the worker advances a tick it seals the
+block with the post-step checksum and sends that sealed block with the visual.
+The simulation is a derived cache; the append-only ledger remains authoritative.
+The agent can be moved to a server without changing the transaction contract.

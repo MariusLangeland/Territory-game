@@ -29,6 +29,7 @@ interface CommandResult {
 	ok: boolean;
 	reason?: string;
 	message: string;
+	ledgerBlock?: import('../ledger/agent').LedgerBlock | null;
 }
 
 interface UpgradeQuote {
@@ -115,7 +116,11 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		this.mergedDistricts = init.mergedDistricts;
 	}
 
+	/** Latest sealed ledger block delivered by the authoritative worker. */
+	lastLedgerBlock: import('../ledger/agent').LedgerBlock | null = null;
+
 	applyWorkerVisual(visual: LocalWorkerVisual): void {
+		this.lastLedgerBlock = visual.ledgerBlock;
 		const districtTiles = visual.districtTiles;
 		this.applyVisual({
 			matchId: 1,

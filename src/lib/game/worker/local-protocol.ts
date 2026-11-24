@@ -2,6 +2,7 @@ import type { BotGenome } from '../ai/genome';
 import type { StartPoint } from '../map';
 import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from '../simulation';
 import type { GrowthMode } from '../growth';
+import type { LedgerBlock } from '../ledger/agent';
 
 export interface LocalWorkerInitConfig {
 	seed: number;
@@ -82,6 +83,8 @@ export interface LocalWorkerVisual {
 	districtColorCodes: Uint8Array | null;
 	events: StepResult['events'];
 	mergedDistricts: MergedDistrictGroup[];
+	/** Sealed block for this tick when one or more transactions were accepted. */
+	ledgerBlock: LedgerBlock | null;
 }
 
 export interface LocalWorkerCommandResult {
@@ -91,6 +94,8 @@ export interface LocalWorkerCommandResult {
 	reason?: string;
 	message: string;
 	tick: number;
+	/** Open block containing the accepted transaction, if any. */
+	ledgerBlock: LedgerBlock | null;
 }
 
 export interface LocalWorkerTelemetry {

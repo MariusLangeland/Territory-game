@@ -1,3 +1,4 @@
+import type { LedgerBlock } from '../ledger/agent';
 import type {
 	LocalWorkerCommand,
 	LocalWorkerCommandType,
@@ -8,6 +9,13 @@ import type {
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
 } from './local-protocol';
+
+export interface LocalWorkerCommandPromiseResult {
+	ok: boolean;
+	reason?: string;
+	message: string;
+	ledgerBlock?: LedgerBlock | null;
+}
 
 interface LocalWorkerHandlers {
 	onInit: (init: LocalWorkerInit) => void;
@@ -26,7 +34,7 @@ export class LocalWorkerClient {
 	private nextCommandId = 1;
 	private readonly pending = new Map<
 		number,
-		{ resolve: (result: { ok: boolean; reason?: string; message: string }) => void }
+		{ resolve: (result: LocalWorkerCommandPromiseResult) => void }
 	>();
 	private disposed = false;
 
@@ -67,7 +75,8 @@ export class LocalWorkerClient {
 			pending.resolve({
 				ok: message.ok,
 				reason: message.reason,
-				message: message.message
+				message: message.message,
+				ledgerBlock: message.ledgerBlock
 			});
 		}
 	}
@@ -75,7 +84,7 @@ export class LocalWorkerClient {
 	command(
 		type: LocalWorkerCommandType,
 		args: Omit<LocalWorkerCommand['command'], 'type'> = {}
-	): Promise<{ ok: boolean; reason?: string; message: string }> {
+	): Promise<LocalWorkerCommandPromiseResult> {
 		if (this.disposed) {
 			return Promise.resolve({ ok: false, message: 'Match worker is disposed.' });
 		}

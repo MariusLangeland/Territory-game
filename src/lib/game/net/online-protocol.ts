@@ -37,7 +37,15 @@ export type OnlineIntent =
 	| { type: 'attack'; x: number; y: number }
 	| { type: 'artillery'; x: number; y: number }
 	| { type: 'naval'; x: number; y: number }
-	| { type: 'build'; cardId: number; x: number; y: number }
+	| {
+			type: 'build';
+			cardId: number;
+			x: number;
+			y: number;
+			/** Shift-build flags; online currently sends neither. */
+			newStructureOnly?: boolean;
+			allowTightSpacing?: boolean;
+	  }
 	| { type: 'upgrade'; x: number; y: number; levels: number; merged: boolean }
 	| { type: 'demolish'; structureId: number }
 	| { type: 'cancel-attack' }

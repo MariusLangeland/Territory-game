@@ -3405,3 +3405,35 @@ A deterministic simulation makes input-based lockstep possible, but switching th
 - A match can be exported/replayed without storing owner snapshots.
 - Ledger replay is a direct determinism test for the online path.
 - Full lockstep still needs command scheduling, input delay, desync recovery, late-join snapshots, and anti-cheat policy.
+
+---
+
+## ADR-106 — Offline play uses a local ledger agent
+
+**Status:** accepted and implemented on the Ledger branch
+**Date:** 2026-11-24
+
+### Context
+
+The accepted-move ledger existed as an export/replay primitive but the offline
+worker still let the UI call simulation command methods directly. That made the
+simulation mutable state, not the ledger, the practical source of truth.
+
+### Decision
+
+- Add `LedgerAgent` as the sole writer for offline play.
+- Player commands become transactions; the agent validates via the shared
+  intent mapping, appends accepted entries, and returns the open block.
+- `advance()` steps the derived simulation, seals the block with a checksum, and
+  emits it with visual state.
+- The local worker host no longer issues simulation command calls directly.
+- The same agent contract can be hosted server-side for a future online lockstep
+  mode; transport remains state replication for now.
+
+### Consequences
+
+- Offline commands have an auditable ledger chain and replayable checksums.
+- Open blocks are valid for inclusion but only sealed blocks carry a final
+  checksum.
+- Bot behavior is still implicit in seed/config/tick and is not placed on the
+  ledger.

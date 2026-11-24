@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LocalWorkerHost } from './local-host';
 import type { LocalWorkerInitConfig } from './local-protocol';
 import { TerritorySimulation } from '../simulation';
+import { replayMatchLedger } from '../net/match-ledger';
 
 const CONFIG: LocalWorkerInitConfig = {
 	seed: 1234,
@@ -101,5 +102,23 @@ describe('local worker host', () => {
 		expect(result.type).toBe('command-result');
 		expect(result.id).toBe(1);
 		expect(result.message.length).toBeGreaterThan(0);
+	});
+
+	it('routes commands through the ledger agent and sends sealed blocks', () => {
+		const host = new LocalWorkerHost(CONFIG);
+		const result = host.command({
+			type: 'command',
+			id: 2,
+			command: { type: 'alliance-request', targetPlayerId: 2 }
+		});
+		expect(result.ok).toBe(true);
+		expect(result.ledgerBlock?.checksum).toBeNull();
+		expect(result.ledgerBlock?.transactions).toHaveLength(1);
+		const visual = host.step();
+		expect(visual?.ledgerBlock?.checksum).not.toBeNull();
+		host.agent.sampleChecksum();
+		const replay = replayMatchLedger(host.agent.ledgerView);
+		expect(replay.checksum).toBe(host.simulation.checksum());
+		expect(replay.matches).toBe(true);
 	});
 });

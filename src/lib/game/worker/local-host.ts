@@ -1,5 +1,7 @@
 import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from '../constants';
-import { TerritorySimulation } from '../simulation';
+import { LedgerAgent } from '../ledger/agent';
+import type { TerritorySimulation } from '../simulation';
+import type { OnlineIntent } from '../net/online-protocol';
 import type {
 	LocalWorkerCommand,
 	LocalWorkerCommandResult,
@@ -14,13 +16,14 @@ import type {
  * render deltas; it never steps the simulation or runs integrity scans.
  */
 export class LocalWorkerHost {
+	readonly agent: LedgerAgent;
 	readonly simulation: TerritorySimulation;
 	readonly config: LocalWorkerInitConfig;
 	private paused = false;
 
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
-		this.simulation = new TerritorySimulation({
+		this.agent = new LedgerAgent({
 			seed: config.seed,
 			width: config.width,
 			height: config.height,
@@ -31,6 +34,7 @@ export class LocalWorkerHost {
 			botGenomes: config.botGenomes,
 			botCommandPostStacks: config.botCommandPostStacks
 		});
+		this.simulation = this.agent.simulation;
 	}
 
 	initMessage(): LocalWorkerInit {
@@ -69,7 +73,8 @@ export class LocalWorkerHost {
 
 	step(): LocalWorkerVisual | null {
 		if (this.paused || this.simulation.ended) return null;
-		const result = this.simulation.step();
+		const advance = this.agent.advance();
+		const result = advance.step;
 		return {
 			type: 'visual',
 			tick: result.tick,
@@ -84,7 +89,8 @@ export class LocalWorkerHost {
 				? this.simulation.districtColorCodes.slice()
 				: null,
 			events: result.events,
-			mergedDistricts: [...this.simulation.getMergedDistricts()]
+			mergedDistricts: [...this.simulation.getMergedDistricts()],
+			ledgerBlock: advance.block
 		};
 	}
 
@@ -126,57 +132,53 @@ export class LocalWorkerHost {
 
 	command(message: LocalWorkerCommand): LocalWorkerCommandResult {
 		const command = message.command;
-		let result: { ok: boolean; reason?: string; message: string };
-		switch (command.type) {
-			case 'attack':
-				result = this.simulation.enqueueAttack(1, command.x ?? 0, command.y ?? 0);
-				break;
-			case 'artillery':
-				result = this.simulation.enqueueArtillery(1, command.x ?? 0, command.y ?? 0);
-				break;
-			case 'naval':
-				result = this.simulation.enqueueNavalAttack(1, command.x ?? 0, command.y ?? 0);
-				break;
-			case 'build':
-				result = this.simulation.playCard(
-					1,
-					command.cardId ?? 0,
-					command.x ?? 0,
-					command.y ?? 0,
-					command.newStructureOnly === true,
-					command.allowTightSpacing === true
-				);
-				break;
-			case 'upgrade':
-				result = this.simulation.upgradeDistrict(
-					1,
-					command.x ?? 0,
-					command.y ?? 0,
-					command.levels ?? 1,
-					command.merged ?? true
-				);
-				break;
-			case 'demolish':
-				result = this.simulation.demolishStructure(1, command.structureId ?? 0);
-				break;
-			case 'cancel-attack':
-				result = this.simulation.cancelLatestAttack(1);
-				break;
-			case 'alliance-request':
-				result = this.simulation.requestAlliance(1, command.targetPlayerId ?? 0);
-				break;
-			case 'alliance-break':
-				result = this.simulation.breakAlliance(1, command.targetPlayerId ?? 0);
-				break;
-		}
+		const intent = this.toIntent(command);
+		const result = this.agent.submit(1, intent);
 		return {
 			type: 'command-result',
 			id: message.id,
 			ok: result.ok,
 			reason: result.reason,
 			message: result.message,
-			tick: this.simulation.tick
+			tick: this.simulation.tick,
+			ledgerBlock: result.block ?? null
 		};
+	}
+
+	private toIntent(command: LocalWorkerCommand['command']): OnlineIntent {
+		switch (command.type) {
+			case 'attack':
+				return { type: 'attack', x: command.x ?? 0, y: command.y ?? 0 };
+			case 'artillery':
+				return { type: 'artillery', x: command.x ?? 0, y: command.y ?? 0 };
+			case 'naval':
+				return { type: 'naval', x: command.x ?? 0, y: command.y ?? 0 };
+			case 'build':
+				return {
+					type: 'build',
+					cardId: command.cardId ?? 0,
+					x: command.x ?? 0,
+					y: command.y ?? 0,
+					newStructureOnly: command.newStructureOnly === true,
+					allowTightSpacing: command.allowTightSpacing === true
+				};
+			case 'upgrade':
+				return {
+					type: 'upgrade',
+					x: command.x ?? 0,
+					y: command.y ?? 0,
+					levels: command.levels ?? 1,
+					merged: command.merged ?? true
+				};
+			case 'demolish':
+				return { type: 'demolish', structureId: command.structureId ?? 0 };
+			case 'cancel-attack':
+				return { type: 'cancel-attack' };
+			case 'alliance-request':
+				return { type: 'alliance-request', targetPlayerId: command.targetPlayerId ?? 0 };
+			case 'alliance-break':
+				return { type: 'alliance-break', targetPlayerId: command.targetPlayerId ?? 0 };
+		}
 	}
 
 	telemetry(): LocalWorkerTelemetry {

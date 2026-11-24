@@ -150,6 +150,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/net/online-protocol.ts` — online room/intent/baseline/tick types and owner RLE.
 - `src/lib/game/net/online-intent.ts` — shared authoritative intent-to-simulation mapping.
 - `src/lib/game/net/match-ledger.ts` — accepted-move ledger encode/decode/replay for deterministic lockstep groundwork.
+- `src/lib/game/ledger/agent.ts` — sole authoritative offline ledger writer: validates/appends transactions, seals blocks, projects state.
 - `src/lib/game/net/online-room.ts` — authoritative room core; multi-human seats, intents, snapshots.
 - `src/lib/game/worker/view.ts` — read-only main-thread worker visual/query mirror.
 - `src/lib/game/worker/protocol.ts` — shared worker init/visual payloads.

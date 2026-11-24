@@ -25,7 +25,14 @@ export function applyOnlineIntent(
 		case 'naval':
 			return sim.enqueueNavalAttack(playerId, intent.x, intent.y);
 		case 'build':
-			return sim.playCard(playerId, intent.cardId, intent.x, intent.y);
+			return sim.playCard(
+				playerId,
+				intent.cardId,
+				intent.x,
+				intent.y,
+				intent.newStructureOnly === true,
+				intent.allowTightSpacing === true
+			);
 		case 'upgrade':
 			return sim.upgradeDistrict(playerId, intent.x, intent.y, intent.levels, intent.merged);
 		case 'demolish':
