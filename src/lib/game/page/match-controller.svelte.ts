@@ -63,6 +63,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	}
 
 	function createWorld(seed: number, settings: MatchSettings = state.matchSettings): void {
+		cancelReplaySeek();
 		const normalized = normalizeMatchSettings(settings);
 		state.matchSettings = { ...normalized };
 		state.appliedMatchSettings = { ...normalized };
@@ -116,6 +117,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	}
 
 	function resetForReplay(ledger: MatchLedger, name: string, blocks: LedgerBlock[]): void {
+		cancelReplaySeek();
 		state.replayMode = true;
 		state.replayName = name;
 		state.replayComplete = false;
@@ -171,20 +173,55 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		else gameSession.resume();
 	}
 
+	let replaySeekTimer: ReturnType<typeof setTimeout> | null = null;
+	let pendingReplaySeek: number | null = null;
+
 	function toggleReplayPlay(): void {
 		if (!state.replayMode) return;
+		flushReplaySeek();
 		gameSession.replayControl({ action: state.replayPlaying ? 'pause' : 'play' });
 	}
 
+	/**
+	 * Scrub events can arrive for every pixel/step. Keep only the latest target
+	 * and send it after the pointer settles; otherwise the worker queues a long
+	 * prefix replay for every intermediate position.
+	 */
 	function seekReplay(tick: number): void {
 		if (!state.replayMode) return;
 		const target = Math.max(0, Math.min(state.replayMaxTick, Math.round(tick)));
 		state.replayTick = target;
-		gameSession.replayControl({ action: 'seek', tick: target });
+		pendingReplaySeek = target;
+		if (replaySeekTimer) clearTimeout(replaySeekTimer);
+		replaySeekTimer = setTimeout(() => {
+			replaySeekTimer = null;
+			const pending = pendingReplaySeek;
+			pendingReplaySeek = null;
+			if (pending !== null) gameSession.replayControl({ action: 'seek', tick: pending });
+		}, 90);
+	}
+
+	function flushReplaySeek(): void {
+		if (replaySeekTimer) {
+			clearTimeout(replaySeekTimer);
+			replaySeekTimer = null;
+		}
+		if (pendingReplaySeek !== null) {
+			const target = pendingReplaySeek;
+			pendingReplaySeek = null;
+			gameSession.replayControl({ action: 'seek', tick: target });
+		}
+	}
+
+	function cancelReplaySeek(): void {
+		if (replaySeekTimer) clearTimeout(replaySeekTimer);
+		replaySeekTimer = null;
+		pendingReplaySeek = null;
 	}
 
 	function stepReplay(delta: number): void {
 		if (!state.replayMode) return;
+		flushReplaySeek();
 		gameSession.replayControl({ action: 'step', delta });
 	}
 
