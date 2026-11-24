@@ -2,18 +2,29 @@ import { HUMAN_PLAYER_ID } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import { STRUCTURE_ACCENTS } from '#lib/game/structures';
+import type { StructureContextMenu } from '#lib/game/ui/structure-menu';
 import type { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
+import type { HoverState } from './types';
 
 /** State cells the interaction selectors read. Values must stay as getters while passed in. */
 export interface InteractionSelectorsDeps {
 	readonly sim: WorkerLocalSimulation | null;
 	readonly snapshot: GameSnapshot | null;
 	readonly cameraView: CameraView | null;
+	readonly hover: HoverState | null;
 	readonly keyboardCursor: { x: number; y: number } | null;
 	readonly draggingCardId: number | null;
 	readonly dragOrigin: { x: number; y: number } | null;
 	readonly dragPointer: { x: number; y: number } | null;
+	readonly dragLanding: { x: number; y: number; radius: number; ok: boolean } | null;
 	readonly artilleryTargeting: boolean;
+	readonly keyboardPlacement: boolean;
+	readonly paused: boolean;
+	readonly gameStarted: boolean;
+	readonly showIntro: boolean;
+	readonly defeatOpen: boolean;
+	readonly showHelp: boolean;
+	readonly structureMenu: StructureContextMenu | null;
 }
 
 /**
@@ -22,6 +33,13 @@ export interface InteractionSelectorsDeps {
  * from `createGamePageState`.
  */
 export function createInteractionSelectors(deps: InteractionSelectorsDeps) {
+	function isHumanAlly(snapshot: GameSnapshot, humanId: number, ownerId: number): boolean {
+		return snapshot.alliances.some(
+			(alliance) =>
+				(alliance.playerA === humanId && alliance.playerB === ownerId) ||
+				(alliance.playerB === humanId && alliance.playerA === ownerId)
+		);
+	}
 	let keyboardCursorScreen = $derived.by(() => {
 		const cursor = deps.keyboardCursor;
 		const cameraView = deps.cameraView;
@@ -62,6 +80,57 @@ export function createInteractionSelectors(deps: InteractionSelectorsDeps) {
 					: 'Enter attacks';
 		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;
 	});
+	/**
+	 * Naval snap preview. It mirrors the worker's target resolution (nearest
+	 * non-friendly, non-allied, unoccupied shore within 32 px) from the mirror
+	 * snapshot, but only when a click there could route to the naval fallback:
+	 * the human owns a Port and the hovered cell is not friendly. Sea-route,
+	 * supply and alive checks stay worker-authoritative at click time.
+	 */
+	let navalTarget = $derived.by(() => {
+		const sim = deps.sim;
+		const snapshot = deps.snapshot;
+		const hover = deps.hover;
+		if (!sim || !snapshot || !hover) return null;
+		if (
+			!deps.gameStarted ||
+			deps.showIntro ||
+			deps.defeatOpen ||
+			deps.showHelp ||
+			deps.paused ||
+			deps.keyboardPlacement ||
+			deps.draggingCardId !== null ||
+			deps.artilleryTargeting ||
+			deps.structureMenu !== null ||
+			snapshot.ended
+		) {
+			return null;
+		}
+		const humanId = snapshot.humanId;
+		if (humanId <= 0) return null;
+		if (hover.owner === humanId) return null;
+		if (hover.owner > 0 && isHumanAlly(snapshot, humanId, hover.owner)) return null;
+		const hasPort = snapshot.structures.some(
+			(structure) => structure.ownerId === humanId && structure.type === 'port'
+		);
+		if (!hasPort) return null;
+		// Mirror the click routing: a land attack that can be launched takes
+		// priority, and only an ocean/no-border failure falls back to naval.
+		const attack = sim.validateAttack(humanId, hover.x, hover.y);
+		if (attack.ok || (attack.reason !== 'no-shared-border' && attack.reason !== 'ocean')) {
+			return null;
+		}
+		return sim.resolveNavalTarget(humanId, hover.x, hover.y);
+	});
+	let navalPreviewScreen = $derived.by(() => {
+		const target = navalTarget;
+		const cameraView = deps.cameraView;
+		if (!target || !cameraView) return null;
+		return {
+			x: cameraView.viewportWidth / 2 + (target.x + 0.5 - cameraView.centerX) * cameraView.scale,
+			y: cameraView.viewportHeight / 2 + (target.y + 0.5 - cameraView.centerY) * cameraView.scale
+		};
+	});
 	let draggingCard = $derived(
 		deps.draggingCardId === null
 			? null
@@ -74,8 +143,10 @@ export function createInteractionSelectors(deps: InteractionSelectorsDeps) {
 		if (!origin || !pointer) return null;
 		const startX = origin.x;
 		const startY = origin.y;
-		const endX = pointer.x;
-		const endY = pointer.y;
+		// End the arrow on the landing circle when one is known: normal placement
+		// and the shift snap both point the card at the cell it will build.
+		const endX = deps.dragLanding?.x ?? pointer.x;
+		const endY = deps.dragLanding?.y ?? pointer.y;
 		const dx = endX - startX;
 		const dy = endY - startY;
 		const length = Math.max(1, Math.hypot(dx, dy));
@@ -132,6 +203,18 @@ export function createInteractionSelectors(deps: InteractionSelectorsDeps) {
 		},
 		set dragArrow(value) {
 			dragArrow = value;
+		},
+		get navalTarget() {
+			return navalTarget;
+		},
+		set navalTarget(value) {
+			navalTarget = value;
+		},
+		get navalPreviewScreen() {
+			return navalPreviewScreen;
+		},
+		set navalPreviewScreen(value) {
+			navalPreviewScreen = value;
 		}
 	};
 }

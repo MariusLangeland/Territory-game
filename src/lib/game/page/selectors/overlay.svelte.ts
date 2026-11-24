@@ -61,7 +61,7 @@ export function createOverlaySelectors(deps: OverlaySelectorsDeps) {
 				return {
 					index: '03 / 03',
 					title: 'UPGRADE A DISTRICT',
-					body: 'Click anywhere inside one of your built districts to raise its structure. Each level costs more supply.'
+					body: 'Choose 1/5/10/25 above the supply bar, then click a built district to raise it. Shift while placing a card builds a new structure on the nearest valid site.'
 				};
 			default:
 				return null;

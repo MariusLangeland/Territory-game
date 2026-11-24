@@ -38,9 +38,12 @@
 					Fortifications add district defense. Jammers project a global aura that subtracts one
 					effective Barracks level from every enemy attacking you, without raising pixel defense.
 					Cards are permanent. Click a district, or drop its matching card inside it, to upgrade;
-					cost is the card price plus 5 × current level. Shift-click queues five upgrades
-					atomically, and the cursor tooltip shows the total cost. Each capture spends both per-tick
-					power and durable strength. Hold 70% of the land to win immediately.
+					cost is the card price plus 15 × current level. The 1 / 5 / 10 / 25 buttons above the
+					supply bar choose an atomic upgrade batch, and the cursor tooltip shows the total cost.
+					While placing a card, hold Shift to build a new structure on the closest valid
+					outside-district cell within 160 px; placement stays armed for repeated builds. Naval
+					clicks snap to the nearest hostile/neutral shore within 32 px. Each capture spends both
+					per-tick power and durable strength. Hold 70% of the land to win immediately.
 				</p>
 			</section>
 			<section>
@@ -67,7 +70,8 @@
 					Drag to pan, scroll to zoom at the pointer, or use <kbd>F</kbd> to fit the world and
 					<kbd>C</kbd> to return to your frontier. Click the minimap to jump anywhere. On touch,
 					pinch with two fingers. Arrow keys move a keyboard cursor; <kbd>Enter</kbd> attacks or
-					upgrades under it, <kbd>Shift</kbd> moves faster, and <kbd>Esc</kbd> clears it.
+					applies the selected upgrade batch, <kbd>Shift</kbd> moves faster and Shift+Enter
+					shift-builds an armed card, and <kbd>Esc</kbd> clears it.
 				</p>
 			</section>
 			<section>

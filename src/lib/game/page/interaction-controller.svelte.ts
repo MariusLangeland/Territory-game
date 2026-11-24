@@ -1,12 +1,9 @@
 import { tick } from 'svelte';
-import {
-	HUMAN_PLAYER_ID,
-	SHIFT_BUILD_SNAP_RADIUS,
-	STRUCTURE_MIN_SPACING
-} from '#lib/game/constants';
+import { HUMAN_PLAYER_ID, STRUCTURE_MIN_SPACING } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import type { PublicCard } from '#lib/game/structures';
+import { findNearestNewStructureSite } from '#lib/game/ui/build-search';
 import {
 	buildStructureMenu,
 	clampContextMenu,
@@ -30,7 +27,23 @@ export interface InteractionDeps {
  * setters so Svelte keeps tracking the values from the facade proxy.
  */
 export function createInteractionController(state: GamePageState, deps: InteractionDeps) {
+	/** Shift-build re-scans up to 160 px, so preview recomputes are throttled. */
+	const SHIFT_PREVIEW_THROTTLE_MS = 60;
+	let shiftPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+	let shiftPreviewLastScan = 0;
+	let shiftPreviewPoint: { x: number; y: number } | null = null;
+	/** Touch pointers never carry a Shift modifier; hide Shift-only previews for them. */
+	let pointerIsTouch = false;
+
+	function clearShiftPreviewTimer(): void {
+		if (shiftPreviewTimer === null) return;
+		clearTimeout(shiftPreviewTimer);
+		shiftPreviewTimer = null;
+	}
+
 	function clearDragState(): void {
+		clearShiftPreviewTimer();
+		shiftPreviewPoint = null;
 		state.draggingCardId = null;
 		state.keyboardPlacement = false;
 		state.dragOrigin = null;
@@ -38,27 +51,105 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		state.dragLanding = null;
 	}
 
-	function dragLandingAt(clientX: number, clientY: number, card: PublicCard) {
-		const sim = state.sim;
+	function pointerCell(clientX: number, clientY: number): { x: number; y: number } | null {
 		const cameraView = state.cameraView;
-		if (!sim || !cameraView) return null;
+		if (!cameraView) return null;
 		const mapX =
 			cameraView.centerX +
 			(clientX - cameraView.viewportWidth / 2) / Math.max(0.0001, cameraView.scale);
 		const mapY =
 			cameraView.centerY +
 			(clientY - cameraView.viewportHeight / 2) / Math.max(0.0001, cameraView.scale);
-		const cellX = Math.floor(mapX);
-		const cellY = Math.floor(mapY);
-		const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
-		const targetX = validation.targetX ?? cellX;
-		const targetY = validation.targetY ?? cellY;
+		return { x: Math.floor(mapX), y: Math.floor(mapY) };
+	}
+
+	function landingAtCell(cameraView: CameraView, cellX: number, cellY: number, ok: boolean) {
 		return {
-			x: cameraView.viewportWidth / 2 + (targetX + 0.5 - cameraView.centerX) * cameraView.scale,
-			y: cameraView.viewportHeight / 2 + (targetY + 0.5 - cameraView.centerY) * cameraView.scale,
+			x: cameraView.viewportWidth / 2 + (cellX + 0.5 - cameraView.centerX) * cameraView.scale,
+			y: cameraView.viewportHeight / 2 + (cellY + 0.5 - cameraView.centerY) * cameraView.scale,
 			radius: STRUCTURE_MIN_SPACING * cameraView.scale,
-			ok: validation.ok
+			ok
 		};
+	}
+
+	function dragLandingAt(clientX: number, clientY: number, card: PublicCard) {
+		const sim = state.sim;
+		const cameraView = state.cameraView;
+		if (!sim || !cameraView) return null;
+		const cell = pointerCell(clientX, clientY);
+		if (!cell) return null;
+		const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cell.x, cell.y);
+		const targetX = validation.targetX ?? cell.x;
+		const targetY = validation.targetY ?? cell.y;
+		return landingAtCell(cameraView, targetX, targetY, validation.ok);
+	}
+
+	/**
+	 * Shift-build preview: the exact same nearest-new-structure search the click
+	 * path uses, projected back to screen space. Ports keep their own shoreline
+	 * snap. When nothing is legal the exact-cell red ring is shown instead.
+	 */
+	function shiftLandingAt(clientX: number, clientY: number, card: PublicCard) {
+		const sim = state.sim;
+		const cameraView = state.cameraView;
+		if (!sim || !cameraView) return null;
+		const cell = pointerCell(clientX, clientY);
+		if (!cell) return null;
+		const target = findNearestNewStructureSite(sim, card, cell.x, cell.y);
+		if (!target) return dragLandingAt(clientX, clientY, card);
+		return landingAtCell(cameraView, target.x, target.y, true);
+	}
+
+	function runShiftPreview(): void {
+		const point = shiftPreviewPoint;
+		const card = state.draggingCard;
+		if (!point || !card || !state.keyboardPlacement) return;
+		shiftPreviewLastScan = performance.now();
+		state.dragLanding = shiftLandingAt(point.x, point.y, card);
+	}
+
+	function scheduleShiftPreview(point: { x: number; y: number }): void {
+		shiftPreviewPoint = point;
+		const remaining = SHIFT_PREVIEW_THROTTLE_MS - (performance.now() - shiftPreviewLastScan);
+		if (remaining <= 0) {
+			clearShiftPreviewTimer();
+			runShiftPreview();
+			return;
+		}
+		if (shiftPreviewTimer !== null) return;
+		shiftPreviewTimer = setTimeout(() => {
+			shiftPreviewTimer = null;
+			runShiftPreview();
+		}, remaining);
+	}
+
+	/**
+	 * Recompute the armed-card landing preview. Unshifted placement stays exact
+	 * and unthrottled; Shift-build scans are throttled and trailing (the last
+	 * pointer position still resolves after the window closes).
+	 */
+	function refreshPointerPreviews(force = false): void {
+		const card = state.draggingCard;
+		if (!state.keyboardPlacement || !card) {
+			clearShiftPreviewTimer();
+			shiftPreviewPoint = null;
+			return;
+		}
+		const pointer = state.pointerScreen ?? state.dragPointer;
+		if (!pointer) return;
+		if (!state.shiftHeld || pointerIsTouch) {
+			clearShiftPreviewTimer();
+			shiftPreviewPoint = null;
+			state.dragLanding = dragLandingAt(pointer.x, pointer.y, card);
+			return;
+		}
+		shiftPreviewPoint = pointer;
+		if (force) {
+			clearShiftPreviewTimer();
+			runShiftPreview();
+		} else {
+			scheduleShiftPreview(pointer);
+		}
 	}
 
 	function beginKeyboardPlacement(index: number): void {
@@ -88,8 +179,8 @@ export function createInteractionController(state: GamePageState, deps: Interact
 			y: window.innerHeight / 2
 		};
 		state.dragPointer = pointer;
-		state.dragLanding = dragLandingAt(pointer.x, pointer.y, card);
 		state.handRaised = true;
+		refreshPointerPreviews(true);
 	}
 
 	function cancelKeyboardPlacement(notify = true): void {
@@ -97,76 +188,6 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		clearDragState();
 		state.handRaised = false;
 		if (notify) deps.match.showToast('Build cancelled.', 'warn');
-	}
-
-	/**
-	 * Shift-build snaps to the nearest legal cell. Port placement already snaps
-	 * internally; other cards search outward from the cursor.
-	 */
-	function nearestBuildCell(card: PublicCard, cellX: number, cellY: number) {
-		const sim = state.sim;
-		if (!sim) return null;
-		// Shift-build must create a new structure, not stack onto an existing
-		// district. Ports are point anchors and intentionally may overlap.
-		const isNewStructureSite = (x: number, y: number) =>
-			card.type === 'port' || sim.getDistrictStructureId(x, y) === 0;
-		const evaluate = (x: number, y: number, tight: boolean) => {
-			if (!isNewStructureSite(x, y)) return null;
-			const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y, tight);
-			if (!validation.ok) return null;
-			return {
-				x: validation.targetX ?? x,
-				y: validation.targetY ?? y,
-				tight
-			};
-		};
-
-		const origin = evaluate(cellX, cellY, false);
-		if (origin) return origin;
-		if (card.type === 'port') return null;
-
-		const search = () => {
-			let best: { x: number; y: number; tight: boolean } | null = null;
-			let bestDistance = Number.POSITIVE_INFINITY;
-			for (let radius = 1; radius <= SHIFT_BUILD_SNAP_RADIUS; radius++) {
-				const minX = cellX - radius;
-				const maxX = cellX + radius;
-				const minY = cellY - radius;
-				const maxY = cellY + radius;
-				const consider = (x: number, y: number) => {
-					if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) return;
-					if (!sim.isLand(x, y)) return;
-					const candidate = evaluate(x, y, false) ?? evaluate(x, y, true);
-					if (!candidate) return;
-					const dx = candidate.x - cellX;
-					const dy = candidate.y - cellY;
-					const distance = dx * dx + dy * dy;
-					if (
-						distance < bestDistance ||
-						(distance === bestDistance &&
-							(best === null ||
-								(candidate.tight === false && best.tight === true) ||
-								(candidate.tight === best.tight &&
-									(candidate.y < best.y || (candidate.y === best.y && candidate.x < best.x)))))
-					) {
-						best = candidate;
-						bestDistance = distance;
-					}
-				};
-				for (let x = minX; x <= maxX; x++) {
-					consider(x, minY);
-					if (maxY !== minY) consider(x, maxY);
-				}
-				for (let y = minY + 1; y < maxY; y++) {
-					consider(minX, y);
-					if (maxX !== minX) consider(maxX, y);
-				}
-				if (best) return best;
-			}
-			return null;
-		};
-
-		return search();
 	}
 
 	async function buildKeyboardPlacement(x: number, y: number): Promise<void> {
@@ -181,7 +202,7 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		const cellX = Math.floor(x);
 		const cellY = Math.floor(y);
 		const target = shifted
-			? nearestBuildCell(draggingCard, cellX, cellY)
+			? findNearestNewStructureSite(state.sim, draggingCard, cellX, cellY)
 			: { x: cellX, y: cellY, tight: false };
 		if (!target) {
 			deps.match.showToast('No valid build site near the cursor.', 'warn');
@@ -208,7 +229,7 @@ export function createInteractionController(state: GamePageState, deps: Interact
 			y: window.innerHeight / 2
 		};
 		state.dragPointer = pointer;
-		state.dragLanding = dragLandingAt(pointer.x, pointer.y, draggingCard);
+		refreshPointerPreviews(true);
 	}
 
 	function structureAtScreen(clientX: number, clientY: number) {
@@ -487,6 +508,8 @@ export function createInteractionController(state: GamePageState, deps: Interact
 
 	function handleWindowPointerMove(event: PointerEvent): void {
 		state.pointerScreen = { x: event.clientX, y: event.clientY };
+		pointerIsTouch = event.pointerType === 'touch';
+		const shiftChanged = state.shiftHeld !== event.shiftKey;
 		state.shiftHeld = event.shiftKey;
 		state.ctrlHeld = event.ctrlKey;
 		if (!state.gameStarted || state.showIntro) return;
@@ -494,7 +517,9 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		if (state.keyboardPlacement) {
 			if (draggingCard) {
 				state.dragPointer = { x: event.clientX, y: event.clientY };
-				state.dragLanding = dragLandingAt(event.clientX, event.clientY, draggingCard);
+				// The shift scan is throttled; a Shift press/release mid-move
+				// forces an immediate refresh so the preview never lags the key.
+				refreshPointerPreviews(shiftChanged);
 			}
 			state.handRaised = true;
 			return;
@@ -523,6 +548,7 @@ export function createInteractionController(state: GamePageState, deps: Interact
 	return {
 		clearDragState,
 		dragLandingAt,
+		refreshPointerPreviews,
 		beginKeyboardPlacement,
 		cancelKeyboardPlacement,
 		buildKeyboardPlacement,

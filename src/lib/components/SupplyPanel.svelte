@@ -25,10 +25,8 @@
 		readyArtilleryShells: number;
 		artilleryVolleyCost: number;
 		artilleryTargeting: boolean;
-		upgradeBatch: 1 | 5 | 10 | 25;
 		onCancelFront: () => void;
 		onToggleArtillery: () => void;
-		onSetUpgradeBatch: (batch: 1 | 5 | 10 | 25) => void;
 	}
 	let {
 		snapshot,
@@ -40,12 +38,9 @@
 		readyArtilleryShells,
 		artilleryVolleyCost,
 		artilleryTargeting,
-		upgradeBatch,
 		onCancelFront,
-		onToggleArtillery,
-		onSetUpgradeBatch
+		onToggleArtillery
 	}: Props = $props();
-	const upgradeBatches = [1, 5, 10, 25] as const;
 </script>
 
 <div
@@ -54,20 +49,6 @@
 	class:short={supplyPreview ? !supplyPreview.affordable : false}
 	aria-label="Supply"
 >
-	<div class="upgrade-batch" aria-label="Upgrade quantity">
-		<span>UPGRADE</span>
-		{#each upgradeBatches as batch}
-			<button
-				type="button"
-				class:active={upgradeBatch === batch}
-				aria-pressed={upgradeBatch === batch}
-				title={`Upgrade ${batch} level${batch === 1 ? '' : 's'} per district click`}
-				onclick={() => onSetUpgradeBatch(batch)}
-			>
-				{batch}
-			</button>
-		{/each}
-	</div>
 	<div class="supply-row">
 		<div class="supply-edge supply-now">
 			<span>SUPPLY</span>
@@ -157,39 +138,6 @@
 		pointer-events: auto;
 	}
 
-	.upgrade-batch {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 3px;
-		margin-bottom: 1px;
-		font-family: var(--font-mono);
-		font-size: var(--text-6);
-		letter-spacing: 0.12em;
-		color: var(--ink-faint);
-	}
-	.upgrade-batch span {
-		margin-right: 3px;
-	}
-	.upgrade-batch button {
-		min-width: 22px;
-		padding: 1px 4px;
-		border: 1px solid var(--line-soft);
-		background: var(--bg-raised);
-		color: var(--ink-dim);
-		font-family: var(--font-mono);
-		font-size: var(--text-7);
-		cursor: pointer;
-	}
-	.upgrade-batch button:hover {
-		border-color: var(--signal-35);
-		color: var(--ink);
-	}
-	.upgrade-batch button.active {
-		border-color: var(--signal-55);
-		background: color-mix(in srgb, var(--signal) 14%, transparent);
-		color: var(--signal-strong);
-	}
 	.supply-row {
 		display: flex;
 		align-items: center;

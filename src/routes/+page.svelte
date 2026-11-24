@@ -7,6 +7,8 @@
 	import DiplomacyToast from '#lib/components/DiplomacyToast.svelte';
 	import StructureMenu from '#lib/components/StructureMenu.svelte';
 	import SupplyPanel from '#lib/components/SupplyPanel.svelte';
+	import UpgradeBatchStrip from '#lib/components/UpgradeBatchStrip.svelte';
+	import NavalTargetPreview from '#lib/components/NavalTargetPreview.svelte';
 	import MapTools from '#lib/components/MapTools.svelte';
 	import DragOverlay from '#lib/components/DragOverlay.svelte';
 	import IntroOverlay from '#lib/components/IntroOverlay.svelte';
@@ -133,8 +135,8 @@
 				onNavigate={game.navigateFromMinimap}
 			/>
 			<div class="minimap-meta">
-				<span>ATLAS / mapWidth={game.mapWidth} × mapHeight={game.mapHeight}</span>
-				<span>scaleLegend={game.scaleLegend}</span>
+				<span>ATLAS / {game.mapWidth} × {game.mapHeight}</span>
+				<span>{game.scaleLegend}</span>
 			</div>
 		</div>
 
@@ -156,11 +158,15 @@
 			readyArtilleryShells={game.readyArtilleryShells}
 			artilleryVolleyCost={game.artilleryVolleyCost}
 			artilleryTargeting={game.artilleryTargeting}
-			upgradeBatch={game.upgradeBatch}
 			onCancelFront={game.actions.cancelLatestFront}
 			onToggleArtillery={game.actions.toggleArtilleryTargeting}
-			onSetUpgradeBatch={(batch) => (game.upgradeBatch = batch)}
 		/>
+		{#if !game.showResult && !game.defeatOpen && !game.showHelp}
+			<UpgradeBatchStrip
+				upgradeBatch={game.upgradeBatch}
+				onSetUpgradeBatch={(batch) => (game.upgradeBatch = batch)}
+			/>
+		{/if}
 		<CardTray
 			snapshot={game.snapshot}
 			handRaised={game.handRaised}
@@ -179,8 +185,11 @@
 				accent={game.dragAccent}
 			/>
 		{/if}
+		{#if game.navalPreviewScreen}
+			<NavalTargetPreview x={game.navalPreviewScreen.x} y={game.navalPreviewScreen.y} />
+		{/if}
 		{#if game.paused && !game.showResult}
-			<div class="game.paused-flag hud">SIMULATION PAUSED <span>SPACE TO RESUME</span></div>
+			<div class="paused-flag hud">SIMULATION PAUSED <span>SPACE TO RESUME</span></div>
 		{/if}
 	{/if}
 

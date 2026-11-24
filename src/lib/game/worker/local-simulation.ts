@@ -7,9 +7,11 @@ import {
 	ATTACK_SUPPLY_COST_BONUS,
 	HUMAN_PLAYER_ID,
 	MAX_UPGRADE_BATCH,
+	NAVAL_TARGET_SNAP_RADIUS,
 	STRUCTURE_MIN_SPACING,
 	UPGRADE_LEVEL_COST_STEP
 } from '../constants';
+import { isShoreIndex } from '../naval';
 import { RemoteSimulationView } from './view';
 import type { WorkerMatchInit } from './protocol';
 import type { MergedDistrictGroup } from '../simulation';
@@ -486,6 +488,53 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 			merged: group.length > 1,
 			structureCount: group.length
 		};
+	}
+
+	/**
+	 * Mirror of the worker's naval click resolution: the closest shore within
+	 * `NAVAL_TARGET_SNAP_RADIUS` that is not friendly, not allied, and not
+	 * occupied by a structure (ties break by map index). This only powers the
+	 * hover preview; the worker re-resolves and validates port authority, supply,
+	 * and the sea route when the naval command actually arrives.
+	 */
+	resolveNavalTarget(playerId: number, x: number, y: number): { x: number; y: number } | null {
+		const cellX = Math.floor(x);
+		const cellY = Math.floor(y);
+		const radius = NAVAL_TARGET_SNAP_RADIUS;
+		const minX = Math.max(0, cellX - radius);
+		const maxX = Math.min(this.width - 1, cellX + radius);
+		const minY = Math.max(0, cellY - radius);
+		const maxY = Math.min(this.height - 1, cellY + radius);
+		let best = -1;
+		let bestDistance = Number.POSITIVE_INFINITY;
+		for (let scanY = minY; scanY <= maxY; scanY++) {
+			for (let scanX = minX; scanX <= maxX; scanX++) {
+				const index = scanY * this.width + scanX;
+				if (!isShoreIndex(this.terrain, this.width, this.height, index)) continue;
+				const owner = this.getOwner(scanX, scanY);
+				if (owner === playerId) continue;
+				if (owner > 0 && this.isAllied(playerId, owner)) continue;
+				if (this.structureAtCell(scanX, scanY)) continue;
+				const dx = scanX - cellX;
+				const dy = scanY - cellY;
+				const distance = dx * dx + dy * dy;
+				if (distance < bestDistance || (distance === bestDistance && index < best)) {
+					best = index;
+					bestDistance = distance;
+				}
+			}
+		}
+		if (best < 0) return null;
+		const targetX = best % this.width;
+		return { x: targetX, y: (best - targetX) / this.width };
+	}
+
+	private isAllied(playerA: number, playerB: number): boolean {
+		return this.snapshot.alliances.some(
+			(alliance) =>
+				(alliance.playerA === playerA && alliance.playerB === playerB) ||
+				(alliance.playerA === playerB && alliance.playerB === playerA)
+		);
 	}
 
 	private nearestOwnShore(x: number, y: number, radius: number): number | null {

@@ -205,7 +205,11 @@ export function createGamePage(): GamePageApi {
 			state.showHelp = value;
 		},
 		setShiftHeld(value) {
+			if (state.shiftHeld === value) return;
 			state.shiftHeld = value;
+			// Shift keydown/keyup must refresh the armed-card preview immediately;
+			// the throttled pointer scan would otherwise wait for the next move.
+			interaction.refreshPointerPreviews(true);
 		},
 		setCtrlHeld(value) {
 			state.ctrlHeld = value;

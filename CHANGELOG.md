@@ -73,6 +73,11 @@
   falls back to tight spacing for one-pixel pockets. Fixed 10/25 batches being
   silently capped at 5 and non-State demolitions showing the State-destruction
   annexation hint.
+- QoL polish: the 1/5/10/25 batch strip is a separate fixed layer above the
+  raised hand; Shift-build shows a throttled snap preview; naval targeting shows
+  a shore-snap preview when a Port exists; added unit tests for build search and
+  mirror naval resolution. Fixed corrupted paused/minimap text and help/onboarding
+  copy.
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.
