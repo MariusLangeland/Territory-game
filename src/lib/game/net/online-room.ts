@@ -1,6 +1,8 @@
 import { TICK_RATE } from '../constants';
 import { TerritorySimulation } from '../simulation';
 import { NET_PROTOCOL_VERSION } from './protocol';
+import { createMatchLedger, recordMatchLedgerEntry, type MatchLedger } from './match-ledger';
+import { applyOnlineIntent, type OnlineIntentApplication } from './online-intent';
 import {
 	encodeByteRuns,
 	encodeOwnerRuns,
@@ -47,6 +49,7 @@ export class OnlineRoom {
 	private lastChangesOverflow = false;
 	private lastDistrictTiles: number[] = [];
 	private lastDistrictTileColors: number[] = [];
+	private ledger: MatchLedger | null = null;
 
 	constructor(roomId: string, config: OnlineRoomConfig) {
 		if (!/^[a-z0-9-]{4,40}$/i.test(roomId)) throw new Error('Invalid room id.');
@@ -131,7 +134,7 @@ export class OnlineRoom {
 		if (!host?.host) return { ok: false, message: 'Only the host can start the match.' };
 		if (this.seats.length === 0) return { ok: false, message: 'No players in the room.' };
 		const humanPlayerIds = this.seats.map((seat) => seat.playerId);
-		this.simulation = new TerritorySimulation({
+		const options = {
 			seed: this.config.seed,
 			width: this.config.mapWidth ?? 1280,
 			height: this.config.mapHeight ?? 720,
@@ -140,7 +143,12 @@ export class OnlineRoom {
 			botDifficulty: this.config.botDifficulty,
 			matchDurationTicks: this.config.timerMinutes * 60 * TICK_RATE,
 			botCommandPostStacks: this.config.botCommandPostStacks
-		});
+		};
+		this.simulation = new TerritorySimulation(options);
+		this.ledger = createMatchLedger(options);
+		this.ledger.finalTick = this.simulation.tick;
+		this.ledger.checksumTick = this.simulation.tick;
+		this.ledger.finalChecksum = this.simulation.checksum();
 		this.phase = 'running';
 		this.checksumValue = this.simulation.checksum();
 		return { ok: true, message: 'Match started.' };
@@ -158,6 +166,11 @@ export class OnlineRoom {
 			checksum: this.checksumValue,
 			winnerId: this.winnerId
 		};
+	}
+
+	/** Accepted-move ledger for deterministic replay. Null before the match starts. */
+	matchLedger(): MatchLedger | null {
+		return this.ledger ? (JSON.parse(JSON.stringify(this.ledger)) as MatchLedger) : null;
 	}
 
 	baselineFor(token: string): OnlineBaseline {
@@ -204,6 +217,9 @@ export class OnlineRoom {
 		this.lastSequence.set(seat.playerId, envelope.sequence);
 		this.intentsThisTick[seat.playerId]++;
 		const result = this.applyIntent(seat.playerId, envelope.intent);
+		if (result.ok && this.ledger) {
+			recordMatchLedgerEntry(this.ledger, this.simulation.tick + 1, seat.playerId, envelope.intent);
+		}
 		return {
 			ok: result.ok,
 			sequence: envelope.sequence,
@@ -213,34 +229,10 @@ export class OnlineRoom {
 		};
 	}
 
-	private applyIntent(
-		playerId: number,
-		intent: OnlineIntent
-	): { ok: boolean; reason?: string; message: string } {
+	private applyIntent(playerId: number, intent: OnlineIntent): OnlineIntentApplication {
 		const sim = this.simulation;
 		if (!sim) return { ok: false, message: 'The match is not running.' };
-		switch (intent.type) {
-			case 'attack':
-				return sim.enqueueAttack(playerId, intent.x, intent.y);
-			case 'artillery':
-				return sim.enqueueArtillery(playerId, intent.x, intent.y);
-			case 'naval':
-				return sim.enqueueNavalAttack(playerId, intent.x, intent.y);
-			case 'build':
-				return sim.playCard(playerId, intent.cardId, intent.x, intent.y);
-			case 'upgrade':
-				return sim.upgradeDistrict(playerId, intent.x, intent.y, intent.levels, intent.merged);
-			case 'demolish':
-				return sim.demolishStructure(playerId, intent.structureId);
-			case 'cancel-attack':
-				return sim.cancelLatestAttack(playerId);
-			case 'alliance-request':
-				return sim.requestAlliance(playerId, intent.targetPlayerId);
-			case 'alliance-break':
-				return sim.breakAlliance(playerId, intent.targetPlayerId);
-			default:
-				return { ok: false, message: 'Unknown command.' };
-		}
+		return applyOnlineIntent(sim, playerId, intent);
 	}
 
 	/** Advance exactly one authoritative tick. Returns null while waiting. */
@@ -250,6 +242,13 @@ export class OnlineRoom {
 		const step = this.simulation.step();
 		if (this.simulation.ended || step.tick % 50 === 0) {
 			this.checksumValue = this.simulation.checksum();
+		}
+		if (this.ledger) {
+			this.ledger.finalTick = step.tick;
+			if (this.simulation.ended || step.tick % 50 === 0) {
+				this.ledger.checksumTick = step.tick;
+				this.ledger.finalChecksum = this.checksumValue;
+			}
 		}
 		this.lastEvents = step.events.map((event) => ({
 			tick: step.tick,

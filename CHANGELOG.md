@@ -73,6 +73,10 @@
   falls back to tight spacing for one-pixel pockets. Fixed 10/25 batches being
   silently capped at 5 and non-State demolitions showing the State-destruction
   annexation hint.
+- Deterministic lockstep groundwork: added an accepted-move `MatchLedger`
+  (seed/config + tick-stamped intents), shared authoritative intent mapping,
+  JSON encode/decode, and checksum-verified replay. `OnlineRoom` records its
+  accepted moves and exposes `matchLedger()`; bots replay from the seed/config.
 - QoL polish: the 1/5/10/25 batch strip is a separate fixed layer above the
   raised hand; Shift-build shows a throttled snap preview; naval targeting shows
   a shore-snap preview when a Port exists; added unit tests for build search and

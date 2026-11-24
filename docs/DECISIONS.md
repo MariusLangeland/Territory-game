@@ -3380,3 +3380,28 @@ A 32 px shift-build search often missed the nearest usable site, especially when
 - Shift-build can fill a one-pixel gap with a new structure.
 - Worst-case UI scan is O(160²) but measured ~9–10 ms on the target machine.
 - Structures may be placed closer than the normal 8 px guard when explicitly shift-built.
+
+---
+
+## ADR-105 — Accepted-move ledger before lockstep
+
+**Status:** accepted and implemented as a foundational primitive
+**Date:** 2026-11-24
+
+### Context
+
+A deterministic simulation makes input-based lockstep possible, but switching the online transport in one step would combine authority, reconciliation, late-join, and desync handling. A smaller first step is a replayable move ledger: record the accepted moves, reconstruct the match from seed/config, and verify checksums.
+
+### Decision
+
+- Add `MatchLedger` with seed/config options, ordered accepted intents, target tick, and checksum samples.
+- Share `applyOnlineIntent` between `OnlineRoom` and the ledger replayer so command semantics cannot drift.
+- Record only intents that the authoritative room accepted.
+- Do not record bot commands; regenerate them deterministically from the same options and tick schedule.
+- Keep server-authoritative state replication as the live online path for now.
+
+### Consequences
+
+- A match can be exported/replayed without storing owner snapshots.
+- Ledger replay is a direct determinism test for the online path.
+- Full lockstep still needs command scheduling, input delay, desync recovery, late-join snapshots, and anti-cheat policy.

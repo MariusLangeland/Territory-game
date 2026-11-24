@@ -537,3 +537,23 @@ A room's simulation is small (~0.1 ms/tick measured). Do not create one OS proce
 - Matchmaking and accounts as a separate product track.
 
 See [ROADMAP.md](ROADMAP.md) for sequencing and acceptance criteria.
+
+---
+
+## 15. Deterministic move ledger (first lockstep step)
+
+The authoritative room records every accepted human intent in an append-only
+move ledger:
+
+```ts
+{ version, options, entries: [{ tick, playerId, intent }], finalTick, checksumTick, finalChecksum }
+```
+
+- `tick` is the tick during which the command is applied (the next step).
+- Bots are not recorded. They regenerate from the seed/config and prior moves.
+- Rejected intents are not recorded; they have no state effect.
+- Replay constructs a fresh `TerritorySimulation` from `options`, applies entries at their target ticks through the shared `applyOnlineIntent`, and compares checksum at `checksumTick`.
+- The ledger is intentionally chess-like: a serialized JSON move list, not a state snapshot. Compression/binary encoding can be layered on later.
+
+Current scope is a replay/verification primitive and room export method. It does
+not yet change the client from state replication to lockstep input exchange.
