@@ -261,6 +261,8 @@ export interface BuildCommand {
 	cardId: number;
 	x: number;
 	y: number;
+	/** Shift-build: reject district stacking and require a new structure site. */
+	newStructureOnly?: boolean;
 	sequence: number;
 }
 

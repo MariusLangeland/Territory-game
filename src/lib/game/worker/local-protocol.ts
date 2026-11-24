@@ -51,6 +51,7 @@ export interface LocalWorkerCommand {
 		cardId?: number;
 		levels?: number;
 		merged?: boolean;
+		newStructureOnly?: boolean;
 		structureId?: number;
 		targetPlayerId?: number;
 	};

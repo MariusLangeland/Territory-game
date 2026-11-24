@@ -1546,7 +1546,13 @@ export class TerritorySimulation {
 	}
 
 	/** Validate a card drop for immediate UI feedback. */
-	validateBuild(playerId: number, cardId: number, x: number, y: number): BuildOrderResult {
+	validateBuild(
+		playerId: number,
+		cardId: number,
+		x: number,
+		y: number,
+		newStructureOnly = false
+	): BuildOrderResult {
 		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
 		const player = this.players[playerId - 1];
 		if (!player?.alive) {
@@ -1591,6 +1597,13 @@ export class TerritorySimulation {
 			}
 		}
 		const districtId = card.type === 'port' ? 0 : this.districtStructureIds[index];
+		if (newStructureOnly && districtId !== 0) {
+			return {
+				ok: false,
+				reason: 'inside-district',
+				message: 'Shift-build needs a cell outside every district.'
+			};
+		}
 		if (districtId !== 0) {
 			const districtStructure = this.structures.byId(districtId);
 			if (districtStructure?.ownerId === playerId && districtStructure.type === card.type) {
@@ -1657,8 +1670,14 @@ export class TerritorySimulation {
 	}
 
 	/** Queue a card build. Applied at the next tick. */
-	playCard(playerId: number, cardId: number, x: number, y: number): BuildOrderResult {
-		const validation = this.validateBuild(playerId, cardId, x, y);
+	playCard(
+		playerId: number,
+		cardId: number,
+		x: number,
+		y: number,
+		newStructureOnly = false
+	): BuildOrderResult {
+		const validation = this.validateBuild(playerId, cardId, x, y, newStructureOnly);
 		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'build',
@@ -1666,6 +1685,7 @@ export class TerritorySimulation {
 			cardId,
 			x: Math.floor(x),
 			y: Math.floor(y),
+			newStructureOnly,
 			sequence: this.nextCommandSequence++
 		});
 		return validation;
@@ -2095,7 +2115,8 @@ export class TerritorySimulation {
 					command.playerId,
 					command.cardId,
 					command.x,
-					command.y
+					command.y,
+					command.newStructureOnly === true
 				);
 				if (!validation.ok) continue;
 				const card = this.handFor(command.playerId).find((entry) => entry.id === command.cardId);

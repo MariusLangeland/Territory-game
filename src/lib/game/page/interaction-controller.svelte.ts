@@ -167,7 +167,8 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		const result = await deps.match.gameSession.command('build', {
 			cardId: draggingCard.id,
 			x: target.x,
-			y: target.y
+			y: target.y,
+			newStructureOnly: shifted
 		});
 		deps.match.showToast(result.message, result.ok ? 'success' : 'error');
 		if (!result.ok) return;

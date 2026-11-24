@@ -138,7 +138,13 @@ export class LocalWorkerHost {
 				result = this.simulation.enqueueNavalAttack(1, command.x ?? 0, command.y ?? 0);
 				break;
 			case 'build':
-				result = this.simulation.playCard(1, command.cardId ?? 0, command.x ?? 0, command.y ?? 0);
+				result = this.simulation.playCard(
+					1,
+					command.cardId ?? 0,
+					command.x ?? 0,
+					command.y ?? 0,
+					command.newStructureOnly === true
+				);
 				break;
 			case 'upgrade':
 				result = this.simulation.upgradeDistrict(

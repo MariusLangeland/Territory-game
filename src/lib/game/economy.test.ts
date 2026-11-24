@@ -186,6 +186,25 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBeGreaterThanOrEqual(30);
 	});
 
+	it('rejects shift-build stacking inside an existing district', () => {
+		const sim = new TerritorySimulation({ seed: 246817 });
+		const { index } = buildCard(sim, 'fortification');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		raiseSupplyCap(sim);
+		sim.gold = 1000;
+		const x = target % sim.width;
+		const y = Math.floor(target / sim.width);
+		const fortificationCard = sim.hand.find((card) => card.type === 'fortification');
+		expect(fortificationCard).toBeDefined();
+		if (!fortificationCard) return;
+		const result = sim.playCard(HUMAN_PLAYER_ID, fortificationCard.id, x, y, true);
+		expect(result.ok).toBe(false);
+		expect(result.reason).toBe('inside-district');
+		expect(sim.structures.at(index)?.stacks).toBe(1);
+	});
+
 	it('supports 10- and 25-level upgrade batches', () => {
 		const sim = new TerritorySimulation({ seed: 246816 });
 		buildCard(sim, 'fortification');
