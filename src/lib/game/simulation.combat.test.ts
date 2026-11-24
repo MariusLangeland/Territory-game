@@ -389,7 +389,11 @@ describe('fronts and combat', () => {
 			pop() {
 				return entries.pop();
 			},
-			mixState() {}
+			mixState() {},
+			snapshot() {
+				return { mode: 'organic' as const, entries: [] as number[], rngState: 0 };
+			},
+			restore() {}
 		};
 		frontier.push(low);
 		frontier.push(high);

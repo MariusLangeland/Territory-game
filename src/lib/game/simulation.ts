@@ -168,6 +168,8 @@ import {
 	toPublicShell,
 	toPublicStructure
 } from './simulation/snapshot';
+import type { GrowthLayerState } from './growth';
+import type { StructureRegistrySnapshot } from './structures/registry';
 import type {
 	ArtilleryShell,
 	AttackFailure,
@@ -265,6 +267,13 @@ const ALLIANCE_PROPOSAL_TICKS = TICK_RATE * 30;
 const ALLIANCE_DURATION_TICKS = TICK_RATE * 180;
 const ALLIANCE_BREAK_COOLDOWN_TICKS = TICK_RATE * 60;
 const ALLIANCE_ACCEPT_SCORE = 10;
+
+/** Versioned replay checkpoint payload. The data shape is private to this class. */
+export interface SimulationSnapshot {
+	tick: number;
+	checksum: number;
+	data: unknown;
+}
 
 export class TerritorySimulation {
 	readonly seed: number;
@@ -2023,6 +2032,256 @@ export class TerritorySimulation {
 	 * FNV-1a over all authoritative state. Use on replay boundaries and in tests;
 	 * it is intentionally too expensive to run every tick in production.
 	 */
+	/**
+	 * Capture an authoritative replay checkpoint. `tick` must equal the current
+	 * simulation tick; the caller stores snapshots and uses restoreSnapshot to
+	 * return to the closest earlier one.
+	 */
+	captureSnapshot(tick: number = this.tick): SimulationSnapshot {
+		if (tick !== this.tick) {
+			throw new Error(`Cannot capture tick ${tick}; simulation is at tick ${this.tick}.`);
+		}
+		const data: Record<string, unknown> = {
+			owners: this.owners.slice(),
+			claimedBy: this.claimedBy.slice(),
+			auraDefense: this.auraDefense.slice(),
+			districtTypes: this.districtTypes.slice(),
+			districtStructureIds: this.districtStructureIds.slice(),
+			districtColorCodes: this.districtColorCodes.slice(),
+			humanGold: this.humanGold.slice(),
+			humanGoldAccrual: this.humanGoldAccrual.slice(),
+			humanHands: [...this.humanHands.entries()].map(([id, cards]) => [
+				id,
+				cards.map((card) => ({ ...card }))
+			]),
+			players: this.players.map((player) => ({
+				...player,
+				border: [...player.border]
+			})),
+			tick: this.tick,
+			winnerId: this.winnerId,
+			ended: this.ended,
+			growthMode: this.growthMode,
+			pendingGrowthMode: this.pendingGrowthMode,
+			attackOrders: [...this.attackOrders],
+			artilleryShells: this.artilleryShells.map((shell) => ({ ...shell })),
+			nextShellId: this.nextShellId,
+			artilleryCooldownUntil: [...this.artilleryCooldownUntil.entries()],
+			botGold: [...this.botGold],
+			botGoldAccrual: this.botGoldAccrual.slice(),
+			botGrievance: this.botGrievance.slice(),
+			botPressure: this.botPressure.slice(),
+			botThreat: this.botThreat.slice(),
+			botDefensive: this.botDefensive.slice(),
+			botReserve: this.botReserve.slice(),
+			botDefenseStall: this.botDefenseStall.slice(),
+			botIncomeGap: this.botIncomeGap.slice(),
+			botDeterrence: this.botDeterrence.slice(),
+			botOption: this.botOption.slice(),
+			botOptionUntil: this.botOptionUntil.slice(),
+			botOptionTarget: this.botOptionTarget.slice(),
+			botMarkovState: this.botMarkovState.slice(),
+			botMarkovEntry: this.botMarkovEntry.slice(),
+			botMarkovBias: this.botMarkovBias.slice(),
+			botExpansionCached: this.botExpansionCached.slice(),
+			botExpansionTick: this.botExpansionTick.slice(),
+			botDecisionEpoch: this.botDecisionEpoch.slice(),
+			botStrengthCache: this.botStrengthCache.slice(),
+			botTargetScoreStamp: this.botTargetScoreStamp.slice(),
+			botTargetScore: this.botTargetScore.slice(),
+			botTargetOpportunity: this.botTargetOpportunity.slice(),
+			botLastAttacker: this.botLastAttacker.slice(),
+			lastAttackerOf: this.lastAttackerOf.slice(),
+			eliminationIncomeStacks: this.eliminationIncomeStacks.slice(),
+			botGrievanceMark: this.botGrievanceMark.slice(),
+			botAttackers: this.botAttackers.slice(),
+			botStrengthCacheReady: this.botStrengthCacheReady,
+			botTargetStamp: this.botTargetStamp,
+			rngState: this.rng.getState(),
+			structures: this.structures.snapshot(),
+			attacks: this.attacks.map((attack) => ({
+				...attack,
+				frontier: undefined,
+				frontierState: attack.frontier.snapshot()
+			})),
+			navalLandings: this.navalLandings.map((landing) => ({ ...landing, path: [...landing.path] })),
+			nextNavalId: this.nextNavalId,
+			nextAttackId: this.nextAttackId,
+			alliances: this.alliances.map((alliance) => ({ ...alliance })),
+			allianceProposals: this.allianceProposals.map((proposal) => ({ ...proposal })),
+			nextAllianceId: this.nextAllianceId,
+			nextAllianceProposalId: this.nextAllianceProposalId,
+			allianceCooldownUntil: this.allianceCooldownUntil.slice(),
+			pendingCommands: this.pendingCommands.map((command) => ({ ...command })),
+			nextCommandSequence: this.nextCommandSequence,
+			nextEventId: this.nextEventId,
+			annexRequested: this.annexRequested,
+			lastAnnexTick: this.lastAnnexTick,
+			ownershipChangedSinceAnnex: this.ownershipChangedSinceAnnex,
+			ownershipChangedSinceCleanup: this.ownershipChangedSinceCleanup,
+			ownershipVersion: this.ownershipVersion,
+			cleanupDirtyIndices: this.cleanupDirtyIndices.slice(),
+			cleanupDirtyCount: this.cleanupDirtyCount,
+			cleanupDirtyOverflow: this.cleanupDirtyOverflow,
+			cleanupNeedsFullScan: this.cleanupNeedsFullScan,
+			buildSiteCache: this.buildSiteCache.slice(),
+			needsExpansionCache: this.needsExpansionCache.slice(),
+			needsExpansionCacheOwnershipVersion: this.needsExpansionCacheOwnershipVersion,
+			needsExpansionCacheStructureVersion: this.needsExpansionCacheStructureVersion,
+			needsExpansionCacheLayoutVersion: this.needsExpansionCacheLayoutVersion,
+			buildSiteCacheTick: this.buildSiteCacheTick,
+			buildSiteCacheLayoutVersion: this.buildSiteCacheLayoutVersion,
+			stableBuildSiteCache: this.stableBuildSiteCache.slice(),
+			stableBuildSiteTick: this.stableBuildSiteTick.slice(),
+			stableBuildSiteLayoutVersion: this.stableBuildSiteLayoutVersion,
+			stableBuildSitesNeedReset: this.stableBuildSitesNeedReset,
+			landCount: this.landCount
+		};
+		return { tick: this.tick, checksum: this.checksum(), data };
+	}
+
+	/** Restore a checkpoint captured by captureSnapshot. */
+	restoreSnapshot(snapshot: SimulationSnapshot): void {
+		const data = snapshot.data as Record<string, unknown>;
+		this.owners.set(data.owners as Uint16Array);
+		this.claimedBy.set(data.claimedBy as Uint32Array);
+		this.auraDefense.set(data.auraDefense as Uint16Array);
+		this.districtTypes.set(data.districtTypes as Uint8Array);
+		this.districtStructureIds.set(data.districtStructureIds as Uint32Array);
+		this.districtColorCodes.set(data.districtColorCodes as Uint8Array);
+		this.humanGold.set(data.humanGold as Uint32Array);
+		this.humanGoldAccrual.set(data.humanGoldAccrual as Uint16Array);
+		this.humanHands.clear();
+		for (const [id, cards] of data.humanHands as Array<[number, Card[]]>) {
+			this.humanHands.set(
+				id,
+				cards.map((card) => ({ ...card }))
+			);
+		}
+		this.players.length = 0;
+		for (const player of data.players as Array<PlayerState & { border: number[] }>) {
+			this.players.push({ ...player, border: new Set(player.border) });
+		}
+		this.tick = data.tick as number;
+		this.winnerId = data.winnerId as number | null;
+		this.ended = data.ended as boolean;
+		this.growthMode = data.growthMode as GrowthMode;
+		this.pendingGrowthMode = data.pendingGrowthMode as GrowthMode | null;
+		this.attackOrders = [...(data.attackOrders as number[])];
+		this.artilleryShells = (data.artilleryShells as ArtilleryShell[]).map((shell) => ({
+			...shell
+		}));
+		this.nextShellId = data.nextShellId as number;
+		this.artilleryCooldownUntil.clear();
+		for (const [id, tick] of data.artilleryCooldownUntil as Array<[number, number]>) {
+			this.artilleryCooldownUntil.set(id, tick);
+		}
+		this.botGold.length = 0;
+		this.botGold.push(...(data.botGold as number[]));
+		this.botGoldAccrual.set(data.botGoldAccrual as Uint16Array);
+		this.botGrievance.set(data.botGrievance as Uint16Array);
+		this.botPressure.set(data.botPressure as Uint16Array);
+		this.botThreat.set(data.botThreat as Uint16Array);
+		this.botDefensive.set(data.botDefensive as Uint8Array);
+		this.botReserve.set(data.botReserve as Uint8Array);
+		this.botDefenseStall.set(data.botDefenseStall as Uint8Array);
+		this.botIncomeGap.set(data.botIncomeGap as Uint8Array);
+		this.botDeterrence.set(data.botDeterrence as Uint16Array);
+		this.botOption.set(data.botOption as Uint8Array);
+		this.botOptionUntil.set(data.botOptionUntil as Uint32Array);
+		this.botOptionTarget.set(data.botOptionTarget as Uint16Array);
+		this.botMarkovState.set(data.botMarkovState as Uint8Array);
+		this.botMarkovEntry.set(data.botMarkovEntry as Uint32Array);
+		this.botMarkovBias.set(data.botMarkovBias as Uint8Array);
+		this.botExpansionCached.set(data.botExpansionCached as Uint8Array);
+		this.botExpansionTick.set(data.botExpansionTick as Uint32Array);
+		this.botDecisionEpoch.set(data.botDecisionEpoch as Uint32Array);
+		this.botStrengthCache.set(data.botStrengthCache as Uint32Array);
+		this.botTargetScoreStamp.set(data.botTargetScoreStamp as Uint32Array);
+		this.botTargetScore.set(data.botTargetScore as Int32Array);
+		this.botTargetOpportunity.set(data.botTargetOpportunity as Uint8Array);
+		this.botLastAttacker.set(data.botLastAttacker as Uint16Array);
+		this.lastAttackerOf.set(data.lastAttackerOf as Uint16Array);
+		this.eliminationIncomeStacks.set(data.eliminationIncomeStacks as Uint32Array);
+		this.botGrievanceMark.set(data.botGrievanceMark as Uint32Array);
+		this.botAttackers.set(data.botAttackers as Uint8Array);
+		this.botStrengthCacheReady = data.botStrengthCacheReady as boolean;
+		this.botTargetStamp = data.botTargetStamp as number;
+		this.rng.setState(data.rngState as number);
+		this.structures.restore(data.structures as StructureRegistrySnapshot);
+		this.attacks = (data.attacks as Array<AttackState & { frontierState: GrowthLayerState }>).map(
+			(serialized) => {
+				const { ...attack } = serialized;
+				const { frontierState } = attack;
+				const frontier = createGrowthLayer(attack.growthMode, {
+					width: this.width,
+					height: this.height,
+					owners: this.owners,
+					attackerId: attack.attackerId,
+					anchorX: attack.anchorX,
+					anchorY: attack.anchorY,
+					rngSeed: 0
+				});
+				frontier.restore(frontierState as GrowthLayerState);
+				return { ...attack, frontier } as AttackState;
+			}
+		);
+		this.navalLandings = (data.navalLandings as NavalLanding[]).map((landing) => ({
+			...landing,
+			path: [...landing.path]
+		}));
+		this.nextNavalId = data.nextNavalId as number;
+		this.nextAttackId = data.nextAttackId as number;
+		this.alliances = (data.alliances as Alliance[]).map((alliance) => ({ ...alliance }));
+		this.allianceProposals = (data.allianceProposals as AllianceProposal[]).map((proposal) => ({
+			...proposal
+		}));
+		this.nextAllianceId = data.nextAllianceId as number;
+		this.nextAllianceProposalId = data.nextAllianceProposalId as number;
+		this.allianceCooldownUntil.set(data.allianceCooldownUntil as Uint32Array);
+		this.pendingCommands = (data.pendingCommands as GameCommand[]).map((command) => ({
+			...command
+		}));
+		this.nextCommandSequence = data.nextCommandSequence as number;
+		this.nextEventId = data.nextEventId as number;
+		this.events = [];
+		this.changes = new Uint32Array(CHANGE_BUFFER_SIZE);
+		this.changeCount = 0;
+		this.changesOverflow = false;
+		this.lastSnapshot = null;
+		this.annexRequested = data.annexRequested as boolean;
+		this.lastAnnexTick = data.lastAnnexTick as number;
+		this.ownershipChangedSinceAnnex = data.ownershipChangedSinceAnnex as boolean;
+		this.ownershipChangedSinceCleanup = data.ownershipChangedSinceCleanup as boolean;
+		this.ownershipVersion = data.ownershipVersion as number;
+		this.cleanupDirtyIndices.set(data.cleanupDirtyIndices as Uint32Array);
+		this.cleanupDirtyCount = data.cleanupDirtyCount as number;
+		this.cleanupDirtyOverflow = data.cleanupDirtyOverflow as boolean;
+		this.cleanupNeedsFullScan = data.cleanupNeedsFullScan as boolean;
+		this.buildSiteCache = (data.buildSiteCache as Int32Array).slice();
+		this.needsExpansionCache = (data.needsExpansionCache as Int8Array).slice();
+		this.needsExpansionCacheOwnershipVersion = data.needsExpansionCacheOwnershipVersion as number;
+		this.needsExpansionCacheStructureVersion = data.needsExpansionCacheStructureVersion as number;
+		this.needsExpansionCacheLayoutVersion = data.needsExpansionCacheLayoutVersion as number;
+		this.buildSiteCacheTick = data.buildSiteCacheTick as number;
+		this.buildSiteCacheLayoutVersion = data.buildSiteCacheLayoutVersion as number;
+		this.stableBuildSiteCache = (data.stableBuildSiteCache as Int32Array).slice();
+		this.stableBuildSiteTick = (data.stableBuildSiteTick as Uint32Array).slice();
+		this.stableBuildSiteLayoutVersion = data.stableBuildSiteLayoutVersion as number;
+		this.stableBuildSitesNeedReset = data.stableBuildSitesNeedReset as boolean;
+		this.landCount = data.landCount as number;
+		this.structureCacheVersion = -1;
+		this.mergedGroupsCache = [];
+		this.mergedGroupsLayoutVersion = -1;
+		this.mergedGroupsComputedTick = -1000;
+		this.districtsChanged = false;
+		this.districtDirtyTiles.clear();
+		this.portComponentOf = null;
+		this.portComponentQueue = null;
+		this.portComponentMeta.clear();
+		this.portVisitToken = 0;
+	}
+
 	checksum(): number {
 		const { mix, digest } = createChecksumMixer();
 

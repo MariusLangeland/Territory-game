@@ -1,4 +1,4 @@
-import type { GrowthContext, GrowthLayer, GrowthMode, MixFn } from './types';
+import type { GrowthContext, GrowthLayer, GrowthLayerState, GrowthMode, MixFn } from './types';
 
 /**
  * Euclidean-priority frontier.
@@ -73,5 +73,15 @@ export class CircularGrowthLayer implements GrowthLayer {
 			mix(packed % 0x1_0000_0000);
 			mix(Math.floor(packed / 0x1_0000_0000));
 		}
+	}
+
+	snapshot(): GrowthLayerState {
+		return { mode: 'circular', heap: [...this.heap] };
+	}
+
+	restore(state: GrowthLayerState): void {
+		if (state.mode !== 'circular') return;
+		this.heap.length = 0;
+		this.heap.push(...state.heap);
 	}
 }

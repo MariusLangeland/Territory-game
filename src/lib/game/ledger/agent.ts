@@ -1,4 +1,9 @@
-import { TerritorySimulation, type SimulationOptions, type StepResult } from '../simulation';
+import {
+	TerritorySimulation,
+	type SimulationOptions,
+	type SimulationSnapshot,
+	type StepResult
+} from '../simulation';
 import {
 	createMatchLedger,
 	recordMatchLedgerEntry,
@@ -49,6 +54,12 @@ export class LedgerAgent {
 	private readonly replayTargetTick: number;
 	private replayIndex = 0;
 	private lastReplayTick = 0;
+	private snapshots: SimulationSnapshot[] = [];
+
+	/** Replay keyframes are captured at this cadence while advancing. */
+	static readonly SNAPSHOT_INTERVAL = 100;
+	/** Keep memory bounded; keep the initial checkpoint plus recent keyframes. */
+	static readonly MAX_SNAPSHOTS = 8;
 
 	constructor(options: SimulationOptions, replay: MatchLedger | null = null) {
 		this.replay = replay;
@@ -67,6 +78,54 @@ export class LedgerAgent {
 			this.replayEntries = [];
 			this.replayTargetTick = 0;
 		}
+		if (replay) this.snapshots.push(this.simulation.captureSnapshot());
+	}
+
+	/**
+	 * Capture the current authoritative tick as a replay keyframe. Ticks are
+	 * unique: re-capturing an existing tick replaces that checkpoint.
+	 */
+	captureSnapshot(tick: number = this.simulation.tick): SimulationSnapshot {
+		const snapshot = this.simulation.captureSnapshot(tick);
+		const existing = this.snapshots.findIndex((entry) => entry.tick === tick);
+		if (existing >= 0) this.snapshots[existing] = snapshot;
+		else this.snapshots.push(snapshot);
+		this.snapshots.sort((a, b) => a.tick - b.tick);
+		while (this.snapshots.length > LedgerAgent.MAX_SNAPSHOTS) {
+			// Preserve tick 0 for early seeks; evict the next-oldest checkpoint.
+			const removeAt = this.snapshots[0]?.tick === 0 ? 1 : 0;
+			this.snapshots.splice(removeAt, 1);
+		}
+		return snapshot;
+	}
+
+	/** The closest stored keyframe at or before `tick`, without restoring it. */
+	closestSnapshot(tick: number): SimulationSnapshot | null {
+		let candidate: SimulationSnapshot | null = null;
+		for (const snapshot of this.snapshots) {
+			if (snapshot.tick > tick) break;
+			candidate = snapshot;
+		}
+		return candidate;
+	}
+
+	/**
+	 * Restore the closest keyframe at or before `tick` and return it. Returns
+	 * null when no keyframe exists before the requested tick.
+	 */
+	restoreSnapshot(tick: number): SimulationSnapshot | null {
+		const snapshot = this.closestSnapshot(tick);
+		if (!snapshot) return null;
+		this.simulation.restoreSnapshot(snapshot);
+		this.replayIndex = this.replay
+			? this.replayEntries.filter((entry) => entry.tick <= snapshot.tick).length
+			: 0;
+		this.lastReplayTick = snapshot.tick;
+		return snapshot;
+	}
+
+	get snapshotTicks(): readonly number[] {
+		return this.snapshots.map((snapshot) => snapshot.tick);
 	}
 
 	get replayComplete(): boolean {
@@ -110,10 +169,14 @@ export class LedgerAgent {
 	seek(tick: number): void {
 		if (!this.replay) throw new Error('Seek is only available in replay mode.');
 		const target = Math.max(0, Math.min(this.replayTargetTick, Math.trunc(tick)));
-		this.simulation = new TerritorySimulation(JSON.parse(JSON.stringify(this.replay.options)));
-		this.replayIndex = 0;
-		this.lastReplayTick = 0;
+		const restored = this.restoreSnapshot(target);
+		if (!restored) {
+			this.simulation = new TerritorySimulation(JSON.parse(JSON.stringify(this.replay.options)));
+			this.replayIndex = 0;
+			this.lastReplayTick = 0;
+		}
 		while (this.simulation.tick < target && !this.simulation.ended) this.advance();
+		this.captureSnapshot(this.simulation.tick);
 	}
 
 	/** Pretty plain-text ledger plus block chain for inspection/export. */
@@ -185,7 +248,12 @@ export class LedgerAgent {
 		this.openBlock = null;
 		const step = this.simulation.step();
 		this.lastReplayTick = step.tick;
-		if (this.replay) return { step, block: null };
+		if (this.replay) {
+			if (step.tick % LedgerAgent.SNAPSHOT_INTERVAL === 0 || this.replayComplete) {
+				this.captureSnapshot(step.tick);
+			}
+			return { step, block: null };
+		}
 		this.ledger.finalTick = step.tick;
 		if (block) {
 			block.checksum = this.simulation.checksum();

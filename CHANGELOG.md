@@ -263,3 +263,7 @@ transport is HTTP/SSE rather than WebSocket.
   deferred alliance mechanic.
 - Updated generated rules reference, SPEC, determinism notes, README, and
   release checklist coverage.
+- Replay keyframes: `TerritorySimulation.captureSnapshot` / `restoreSnapshot`
+  now serialize authoritative state; `LedgerAgent` keeps bounded keyframes,
+  captures every 100 replay ticks, and seeks by restoring the closest prior
+  snapshot before replaying the remainder instead of always starting at tick 0.

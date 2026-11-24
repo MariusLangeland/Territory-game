@@ -1,4 +1,4 @@
-import type { GrowthContext, GrowthLayer, GrowthMode, MixFn } from './types';
+import type { GrowthContext, GrowthLayer, GrowthLayerState, GrowthMode, MixFn } from './types';
 
 /** Squared-distance resolution: 16 px² is about 4 px of radius at r = 20. */
 const BAND_SHIFT = 4;
@@ -111,6 +111,23 @@ export class SmoothGrowthLayer implements GrowthLayer {
 			mix(bucket.length);
 			for (const index of bucket) mix(index);
 		}
+	}
+
+	snapshot(): GrowthLayerState {
+		return {
+			mode: 'smooth',
+			bands: [...this.bands.entries()].map(([band, bucket]) => [band, [...bucket]]),
+			minBand: this.minBand === Number.POSITIVE_INFINITY ? -1 : this.minBand,
+			count: this.count
+		};
+	}
+
+	restore(state: GrowthLayerState): void {
+		if (state.mode !== 'smooth') return;
+		this.bands.clear();
+		for (const [band, bucket] of state.bands) this.bands.set(band, [...bucket]);
+		this.minBand = state.minBand < 0 ? Number.POSITIVE_INFINITY : state.minBand;
+		this.count = state.count;
 	}
 
 	private distanceSq(index: number): number {

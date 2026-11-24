@@ -81,6 +81,24 @@ describe('LedgerAgent', () => {
 		expect(replay.replayChecksumMatches).toBe(true);
 	});
 
+	it('captures keyframes and restores the closest snapshot before a tick', () => {
+		const source = new LedgerAgent(OPTIONS);
+		for (let tick = 0; tick < 130; tick++) source.advance();
+		source.sampleChecksum();
+
+		const replay = new LedgerAgent(OPTIONS, source.ledgerView);
+		replay.seek(130);
+		expect(replay.snapshotTicks).toContain(0);
+		expect(replay.snapshotTicks).toContain(100);
+		expect(replay.snapshotTicks).toContain(130);
+
+		const closest = replay.restoreSnapshot(120);
+		expect(closest?.tick).toBe(100);
+		expect(replay.tick).toBe(100);
+		replay.seek(130);
+		expect(replay.tick).toBe(130);
+	});
+
 	it('rejects invalid transactions without writing a block', () => {
 		const agent = new LedgerAgent(OPTIONS);
 		const before = agent.ledger.entries.length;

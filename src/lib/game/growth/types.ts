@@ -42,6 +42,11 @@ export interface GrowthContext {
 
 export type MixFn = (value: number) => void;
 
+export type GrowthLayerState =
+	| { mode: 'organic'; entries: number[]; rngState: number }
+	| { mode: 'circular'; heap: number[] }
+	| { mode: 'smooth'; bands: Array<[number, number[]]>; minBand: number; count: number };
+
 export interface GrowthLayer {
 	readonly mode: GrowthMode;
 	readonly size: number;
@@ -49,4 +54,7 @@ export interface GrowthLayer {
 	pop(): number | undefined;
 	/** Mix pending frontier state into an on-demand checksum. */
 	mixState(mix: MixFn): void;
+	/** Serializable pending frontier state for replay checkpoints. */
+	snapshot(): GrowthLayerState;
+	restore(state: GrowthLayerState): void;
 }

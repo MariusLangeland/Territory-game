@@ -3468,3 +3468,33 @@ navigation without giving replay mode write access to the authoritative ledger.
 - Scrubbing correctness is deterministic; seek latency grows with tick count
   until snapshot keyframes are added.
 - Ledger blocks are navigation anchors; the timeline itself is tick-based.
+
+---
+
+## ADR-108 — Replay keyframes
+
+**Status:** accepted and implemented on the Ledger branch
+**Date:** 2026-11-25
+
+### Context
+
+Replay seek rebuilt state from tick 0 for every target. Timeline scrubbing near
+the end of a match therefore replayed the entire prefix each time.
+
+### Decision
+
+- Add explicit authoritative `captureSnapshot(tick)` / `restoreSnapshot(snapshot)`
+  methods to `TerritorySimulation`.
+- `LedgerAgent` owns a bounded keyframe store, captures every 100 replay ticks,
+  and exposes `captureSnapshot(tick)` / `restoreSnapshot(tick)`; the latter
+  restores and returns the closest keyframe at or before the requested tick.
+- `seek()` restores the nearest keyframe, replays only the remaining ticks, and
+  captures the target tick.
+- Keep only eight keyframes, retaining tick 0 and recent checkpoints.
+
+### Consequences
+
+- Repeated seeks near the tail are bounded by keyframe spacing, not match length.
+- Keyframes currently serialize authoritative pixel/entity arrays in worker
+  memory; this is correct but memory-heavy on the largest maps. Compression,
+  derived-array omission, and persistence remain follow-ups.

@@ -576,3 +576,11 @@ Seeks currently rebuild from the ledger seed and replay forward; there are no
 snapshot keyframes yet, so seek cost is O(targetTick). The main page keeps live
 controls hidden behind replay mode and exposes the timeline plus ledger-block
 viewer only for uploaded ledgers.
+
+### Replay keyframes
+
+Replay seeks use a bounded keyframe store. `LedgerAgent` captures authoritative
+simulation snapshots at tick 0 and every 100 replay ticks; `restoreSnapshot(tick)`
+restores and returns the closest checkpoint at or before the target, then replays
+only the remainder. Checkpoints currently live in worker memory and retain the
+eight most useful ticks.

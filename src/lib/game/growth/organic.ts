@@ -1,5 +1,5 @@
 import { DeterministicRng } from '../rng';
-import type { GrowthContext, GrowthLayer, GrowthMode, MixFn } from './types';
+import type { GrowthContext, GrowthLayer, GrowthLayerState, GrowthMode, MixFn } from './types';
 
 /**
  * Organic growth: pick a uniformly random frontier candidate each capture.
@@ -41,5 +41,16 @@ export class OrganicGrowthLayer implements GrowthLayer {
 		mix(this.rng.getState());
 		mix(this.entries.length);
 		for (const index of this.entries) mix(index);
+	}
+
+	snapshot(): GrowthLayerState {
+		return { mode: 'organic', entries: [...this.entries], rngState: this.rng.getState() };
+	}
+
+	restore(state: GrowthLayerState): void {
+		if (state.mode !== 'organic') return;
+		this.entries.length = 0;
+		this.entries.push(...state.entries);
+		this.rng.setState(state.rngState);
 	}
 }
