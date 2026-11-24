@@ -3331,3 +3331,27 @@ annexation plan was about to move, making the result depend on tick timing.
 - Annexation is deterministic and cannot race a new capture.
 - Large cleanups may do more work in one tick; benchmark before changing the
   cadence.
+
+---
+
+## ADR-103 — Snap naval targets and replace shift batch-upgrades
+
+**Status:** accepted and implemented
+**Date:** 2026-11-24
+
+### Context
+
+Naval landings required clicking an exact shoreline pixel even though Port placement already snapped nearby clicks. Shift-click was overloaded for five-level upgrades, leaving no quick way to place structures repeatedly at nearby legal cells.
+
+### Decision
+
+- Naval targeting resolves to the closest valid hostile/neutral, unoccupied shore within `NAVAL_TARGET_SNAP_RADIUS` (32 px); the click may be water, land, or shore.
+- Add 1/5/10/25 upgrade-batch buttons above the supply bar. Normal district clicks use the selected batch.
+- While a card is armed, Shift-click builds on the closest valid cell, never upgrades, and keeps placement armed after success.
+- Keyboard Shift+Enter follows the same armed-card build behavior.
+
+### Consequences
+
+- Port and naval targeting now share the forgiving nearby-click interaction.
+- The five-level Shift-click shortcut is retired; batch size is explicit in the HUD.
+- Shift-build can issue several structures quickly, so it intentionally retains card/placement state.

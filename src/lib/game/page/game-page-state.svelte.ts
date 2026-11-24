@@ -47,6 +47,7 @@ function createStateAccessors() {
 	let pointerScreen = $state<{ x: number; y: number } | null>(null);
 	let shiftHeld = $state(false);
 	let ctrlHeld = $state(false);
+	let upgradeBatch = $state<1 | 5 | 10 | 25>(1);
 	let cameraView = $state<CameraView | null>(null);
 	// Non-reactive anchor: the camera view captured when the popup opens, so the
 	// renderer's periodic view reports do not dismiss a freshly positioned menu.
@@ -223,6 +224,12 @@ function createStateAccessors() {
 		},
 		set ctrlHeld(value) {
 			ctrlHeld = value;
+		},
+		get upgradeBatch() {
+			return upgradeBatch;
+		},
+		set upgradeBatch(value) {
+			upgradeBatch = value;
 		},
 		get cameraView() {
 			return cameraView;

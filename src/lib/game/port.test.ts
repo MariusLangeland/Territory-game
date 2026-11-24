@@ -40,6 +40,50 @@ describe('ports and naval landings', () => {
 		expect(result.reason).toBe('no-port');
 	});
 
+	it('snaps a naval click from nearby water to a valid shore', () => {
+		const sim = new TerritorySimulation({ seed: 1234 });
+		const source = findShore(sim, 2);
+		expect(source).not.toBeNull();
+		if (!source) return;
+		sim.structures.create(
+			'port',
+			2,
+			source.index % sim.width,
+			Math.floor(source.index / sim.width),
+			sim.width
+		);
+		(sim as unknown as { botGold: number[] }).botGold[1] = 1000;
+
+		let target = -1;
+		for (let index = 0; index < sim.owners.length; index++) {
+			if (sim.owners[index] === 2 || sim.structures.at(index)) continue;
+			const x = index % sim.width;
+			const y = Math.floor(index / sim.width);
+			if (!sim.isShore(x, y)) continue;
+			if (!sim.validateNavalAttack(2, x, y).ok) continue;
+			const waters = [
+				[x - 1, y],
+				[x + 1, y],
+				[x, y - 1],
+				[x, y + 1]
+			].find(
+				([wx, wy]) => wx >= 0 && wy >= 0 && wx < sim.width && wy < sim.height && !sim.isLand(wx, wy)
+			);
+			if (!waters) continue;
+			target = index;
+			const queued = sim.enqueueNavalAttack(2, waters[0] as number, waters[1] as number);
+			expect(queued.ok).toBe(true);
+			const command = (
+				sim as unknown as { pendingCommands: Array<{ type: string; x: number; y: number }> }
+			).pendingCommands.find((entry) => entry.type === 'naval');
+			expect(command).toBeDefined();
+			expect(sim.isLand(command?.x ?? -1, command?.y ?? -1)).toBe(true);
+			expect(sim.isShore(command?.x ?? -1, command?.y ?? -1)).toBe(true);
+			break;
+		}
+		expect(target).toBeGreaterThan(-1);
+	});
+
 	it('lands a boat, claims a beachhead, and auto-builds a Port', () => {
 		const sim = new TerritorySimulation({ seed: 1234 });
 		const source = findShore(sim, 2);

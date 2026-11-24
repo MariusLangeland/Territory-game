@@ -1,5 +1,9 @@
 import { tick } from 'svelte';
-import { HUMAN_PLAYER_ID, STRUCTURE_MIN_SPACING } from '#lib/game/constants';
+import {
+	HUMAN_PLAYER_ID,
+	SHIFT_BUILD_SNAP_RADIUS,
+	STRUCTURE_MIN_SPACING
+} from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import type { PublicCard } from '#lib/game/structures';
@@ -95,6 +99,48 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		if (notify) deps.match.showToast('Build cancelled.', 'warn');
 	}
 
+	/**
+	 * Shift-build snaps to the nearest legal cell. Port placement already snaps
+	 * internally; other cards search outward from the cursor.
+	 */
+	function nearestBuildCell(card: PublicCard, cellX: number, cellY: number) {
+		const sim = state.sim;
+		if (!sim) return null;
+		const origin = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
+		if (origin.ok) {
+			return { x: origin.targetX ?? cellX, y: origin.targetY ?? cellY };
+		}
+		if (card.type === 'port') return null;
+		let bestX = -1;
+		let bestY = -1;
+		let bestDistance = Number.POSITIVE_INFINITY;
+		const minX = Math.max(0, cellX - SHIFT_BUILD_SNAP_RADIUS);
+		const maxX = Math.min(sim.width - 1, cellX + SHIFT_BUILD_SNAP_RADIUS);
+		const minY = Math.max(0, cellY - SHIFT_BUILD_SNAP_RADIUS);
+		const maxY = Math.min(sim.height - 1, cellY + SHIFT_BUILD_SNAP_RADIUS);
+		for (let y = minY; y <= maxY; y++) {
+			for (let x = minX; x <= maxX; x++) {
+				if (!sim.isLand(x, y)) continue;
+				const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y);
+				if (!validation.ok) continue;
+				const targetX = validation.targetX ?? x;
+				const targetY = validation.targetY ?? y;
+				const dx = targetX - cellX;
+				const dy = targetY - cellY;
+				const distance = dx * dx + dy * dy;
+				if (
+					distance < bestDistance ||
+					(distance === bestDistance && (bestY < 0 || y < bestY || (y === bestY && x < bestX)))
+				) {
+					bestX = targetX;
+					bestY = targetY;
+					bestDistance = distance;
+				}
+			}
+		}
+		return bestX >= 0 ? { x: bestX, y: bestY } : null;
+	}
+
 	async function buildKeyboardPlacement(x: number, y: number): Promise<void> {
 		const snapshot = state.snapshot;
 		const draggingCard = state.draggingCard;
@@ -103,16 +149,34 @@ export function createInteractionController(state: GamePageState, deps: Interact
 			deps.match.showToast('Resume the simulation before building.', 'warn');
 			return;
 		}
+		const shifted = state.shiftHeld;
+		const cellX = Math.floor(x);
+		const cellY = Math.floor(y);
+		const target = shifted ? nearestBuildCell(draggingCard, cellX, cellY) : { x: cellX, y: cellY };
+		if (!target) {
+			deps.match.showToast('No valid build site near the cursor.', 'warn');
+			return;
+		}
 		const result = await deps.match.gameSession.command('build', {
 			cardId: draggingCard.id,
-			x: Math.floor(x),
-			y: Math.floor(y)
+			x: target.x,
+			y: target.y
 		});
 		deps.match.showToast(result.message, result.ok ? 'success' : 'error');
-		if (result.ok) {
-			deps.overlay.advanceOnboarding(2, 3);
+		if (!result.ok) return;
+		deps.overlay.advanceOnboarding(2, 3);
+		if (!shifted) {
 			clearDragState();
+			return;
 		}
+		// Shift-build deliberately keeps the card armed for rapid placement.
+		state.handRaised = true;
+		const pointer = state.pointerScreen ?? {
+			x: window.innerWidth / 2,
+			y: window.innerHeight / 2
+		};
+		state.dragPointer = pointer;
+		state.dragLanding = dragLandingAt(pointer.x, pointer.y, draggingCard);
 	}
 
 	function structureAtScreen(clientX: number, clientY: number) {

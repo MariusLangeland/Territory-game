@@ -91,6 +91,7 @@ import {
 	MAX_PLAYER_COUNT,
 	PLAYER_COUNT,
 	PLAYER_NAMES,
+	NAVAL_TARGET_SNAP_RADIUS,
 	PORT_BUILD_SNAP_RADIUS,
 	RENDER_TILE_SIZE,
 	STARTING_GOLD,
@@ -1089,21 +1090,76 @@ export class TerritorySimulation {
 		return fail('out-of-range', 'No ready artillery can reach that point.');
 	}
 
-	/** Queue a naval landing from any friendly port to this shore. */
+	/**
+	 * Queue a naval landing from any friendly port. The click snaps to the
+	 * closest valid hostile/neutral shore within `NAVAL_TARGET_SNAP_RADIUS`,
+	 * matching the forgiving Port placement interaction.
+	 */
 	enqueueNavalAttack(playerId: number, x: number, y: number): AttackOrderResult {
-		const validation = this.validateNavalAttack(playerId, x, y);
+		const target = this.resolveNavalTargetCell(playerId, Math.floor(x), Math.floor(y));
+		if (target < 0) {
+			return {
+				ok: false,
+				reason: 'not-shore',
+				message: `Naval landings target a shore within ${NAVAL_TARGET_SNAP_RADIUS} px.`
+			};
+		}
+		const validation = this.validateNavalShore(playerId, target);
 		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'naval',
 			playerId,
-			x: Math.floor(x),
-			y: Math.floor(y),
+			x: target % this.width,
+			y: Math.floor(target / this.width),
 			sequence: this.nextCommandSequence++
 		});
 		return validation;
 	}
 
 	validateNavalAttack(playerId: number, x: number, y: number): AttackOrderResult {
+		const target = this.resolveNavalTargetCell(playerId, Math.floor(x), Math.floor(y));
+		if (target < 0) {
+			return {
+				ok: false,
+				reason: 'not-shore',
+				message: `Naval landings target a shore within ${NAVAL_TARGET_SNAP_RADIUS} px.`
+			};
+		}
+		return this.validateNavalShore(playerId, target);
+	}
+
+	/** Closest shore that can legally receive a landing, or -1. */
+	private resolveNavalTargetCell(playerId: number, cellX: number, cellY: number): number {
+		const radius = NAVAL_TARGET_SNAP_RADIUS;
+		const minX = Math.max(0, cellX - radius);
+		const maxX = Math.min(this.width - 1, cellX + radius);
+		const minY = Math.max(0, cellY - radius);
+		const maxY = Math.min(this.height - 1, cellY + radius);
+		let best = -1;
+		let bestDistance = Number.POSITIVE_INFINITY;
+		for (let y = minY; y <= maxY; y++) {
+			for (let x = minX; x <= maxX; x++) {
+				const index = y * this.width + x;
+				if (!this.land[index] || !isShoreIndex(this.land, this.width, this.height, index)) {
+					continue;
+				}
+				const owner = this.owners[index];
+				if (owner === playerId) continue;
+				if (owner > 0 && this.areAllied(playerId, owner)) continue;
+				if (this.structures.at(index)) continue;
+				const dx = x - cellX;
+				const dy = y - cellY;
+				const distance = dx * dx + dy * dy;
+				if (distance < bestDistance || (distance === bestDistance && index < best)) {
+					best = index;
+					bestDistance = distance;
+				}
+			}
+		}
+		return best;
+	}
+
+	private validateNavalShore(playerId: number, index: number): AttackOrderResult {
 		const fail = (reason: AttackFailure, message: string): AttackOrderResult => ({
 			ok: false,
 			reason,
@@ -1112,16 +1168,6 @@ export class TerritorySimulation {
 		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
 		if (!player || !player.alive) return fail('eliminated', 'Your state has been eliminated.');
-		const roundedX = Math.floor(x);
-		const roundedY = Math.floor(y);
-		if (roundedX < 0 || roundedY < 0 || roundedX >= this.width || roundedY >= this.height) {
-			return fail('invalid', 'Choose a shore inside the map.');
-		}
-		const index = roundedY * this.width + roundedX;
-		if (!this.land[index]) return fail('ocean', 'Naval landings target a shore.');
-		if (!isShoreIndex(this.land, this.width, this.height, index)) {
-			return fail('not-shore', 'Ports can only land on shoreline cells.');
-		}
 		const targetOwner = this.owners[index];
 		if (targetOwner === playerId) return fail('friendly-shore', 'That shore is already friendly.');
 		if (this.areAllied(playerId, targetOwner)) {

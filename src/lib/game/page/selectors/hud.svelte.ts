@@ -17,7 +17,7 @@ export interface HudSelectorsDeps {
 	readonly showHelp: boolean;
 	readonly defeatOpen: boolean;
 	readonly paused: boolean;
-	readonly shiftHeld: boolean;
+	readonly upgradeBatch: number;
 	readonly ctrlHeld: boolean;
 	readonly artilleryTargeting: boolean;
 }
@@ -100,16 +100,16 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 			}
 			if (hover.owner === HUMAN_PLAYER_ID) {
 				if (sim.getDistrictStructureId(x, y) === 0) return null;
-				const levels = deps.shiftHeld ? 5 : 1;
+				const levels = deps.upgradeBatch;
 				const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !deps.ctrlHeld);
 				if (quote.currentLevel === 0) return null;
 				return {
 					label: quote.merged
-						? levels === 5
-							? 'MERGED ×5'
+						? levels > 1
+							? `MERGED ×${levels}`
 							: 'MERGED'
-						: levels === 5
-							? 'UPGRADE ×5'
+						: levels > 1
+							? `UPGRADE ×${levels}`
 							: 'UPGRADE',
 					cost: quote.cost,
 					affordable: quote.ok
@@ -157,7 +157,7 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 		const y = hover.y;
 		if (sim.getOwner(x, y) !== HUMAN_PLAYER_ID) return null;
 		if (sim.getDistrictStructureId(x, y) === 0) return null;
-		const levels = deps.shiftHeld ? 5 : 1;
+		const levels = deps.upgradeBatch;
 		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !deps.ctrlHeld);
 		if (quote.currentLevel === 0) return null;
 		return {

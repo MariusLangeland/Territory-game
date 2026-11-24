@@ -417,10 +417,11 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Supply income is `3 + floor(territory/3000) + income structures + 10 × eliminations` per second, with **no income cap**. This is +1/s per 3,000 owned pixels, plus Command Post stacks at **+1/s** each, plus a permanent **+10/s per state eliminated**.
 - Supply cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**.
 - Accrual is continuous: per-tick integer remainder at 10 Hz. Gains clamp to the cap, and losing a War Academy clamps current supply.
-- Clicking any pixel of an owned buildable district queues a one-level upgrade costing `base cost + 15 × current level` (projected through queued upgrades). If the district is visually merged, the lowest projected level among its structures is upgraded first; five-level batches distribute across the lowest structures. Shift-click queues five levels atomically: the full total is quoted and charged before any command is queued. No card is consumed.
+- Clicking any pixel of an owned buildable district queues the selected upgrade batch (1/5/10/25) costing the projected total (`base cost + 15 × current level` per level). The batch buttons sit above the supply bar and each click charges atomically. If the district is visually merged, the lowest projected level among its structures is upgraded first; larger batches distribute across the lowest structures. No card is consumed.
 - Holding **Ctrl** hides merged districts: individual seams/icons return and the clicked structure is upgraded directly. Upgrade commands pinned to a merged structure survive its centre being assigned to a neighboring district cell.
-- Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for 1 level, or 5 levels while Shift is held.
+- Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for the selected batch.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
+- While a card is armed, holding **Shift** and clicking builds on the closest valid structure cell instead of the exact click. Shift disables upgrading and keeps placement mode active after a successful build, so repeated shift-clicks can place several structures.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
@@ -456,12 +457,12 @@ Every live Barracks level adds attack strength and launch cost linearly. Speed a
 ### 4.17c Ports and naval landings
 
 - **Port:** 200-supply card, no district, placement snaps to a valid owned shoreline cell within 24 px and is allowed inside unrelated districts. It still requires land with an orthogonally adjacent ocean pixel, no occupying structure, and 8 px spacing.
-- With at least one Port, clicking a non-friendly shore that normal land attacks cannot reach attempts a **naval landing**.
+- With at least one Port, clicking water, land, or a shore near a non-friendly shore attempts a **naval landing**; the target snaps to the closest valid non-friendly/neutral, unoccupied shore within 32 px, mirroring Port placement.
 - Validation: target must be a shore, not friendly, not occupied by a structure, and reachable by a 4-neighbour ocean path from a friendly Port.
 - The launch costs a normal front launch **plus the 200-supply Port cost**, paid up front. Supply is spent at launch; the boat carries the landing.
 - The boat follows the deterministic shortest sea route at **80 map px/s** and is rendered on the overlay with its owner color and wake.
 - On arrival the target shore becomes a friendly beachhead, a **new Port is automatically built there**, and a regular inward front is opened against the lowest-defense adjacent land. If the target is no longer valid, the landing is cancelled.
-- Ports anchor annexation protection when their friendly-owned land component reaches the owner's State, or when their sea component is shared with such a Port of the same owner.
+- Ports anchor annexation protection when their friendly-owned land component reaches the owner's State, or when their sea component is shared (transitively) with such a Port of the same owner.
 - Naval landing state includes route, launch/arrival ticks, and the target beachhead in checksums and snapshots.
 
 ### 4.18 Districts and structure stacking
@@ -521,10 +522,10 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Status console: hover coordinate/ownership and human active orders.
 - Zoom/fit/focus tools; FPS, uploaded pixels/second, and texture write calls/second.
 - Pointer drag pans and the wheel zooms. Touch supports one-finger pan/tap and two-finger pinch zoom anchored at the gesture midpoint; a pinch suppresses the follow-up tap.
-- Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates and makes Enter queue a five-level upgrade, Enter attacks or upgrades the cursor cell, and Escape clears it. A visually hidden live region announces owner, defense, and available action.
+- Keyboard navigation: arrow keys move a map cursor from the capital, Shift accelerates cursor movement, Enter attacks or applies the selected upgrade batch, and Escape clears it. Shift+Enter while a card is armed uses the closest-valid-cell shift-build behavior. A visually hidden live region announces owner, defense, and available action.
 - State and buildable structure markers on the map and minimap; anchored status in the commander readout; structure-destroyed war-feed event.
 - A free-floating CCG-style hand at the bottom center.
-- A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades (including Shift ×5), and artillery barrages. The bar's meta row hosts income, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
+- A horizontal supply bar fills from `supply / cap`, with the current supply label inline on the left and the max label inline on the right. It sits just above the collapsed hand's peeking strip and below the card tray in z-order, so raising/interacting with the cards covers it. Hovering a valid click shows the impending cost as a striped red segment on the fill, a `-cost` chip, and a `NEED` state when unaffordable. Valid click previews cover front launches, district upgrades for the selected batch, and artillery barrages. The bar's meta row hosts income, the 1/5/10/25 upgrade-batch buttons, FIRE, and CANCEL FRONT. The old supply/front/defense panel is removed.
 - Number keys `1`–`6` select the corresponding card and enter placement mode without dragging; the player's existing districts of that structure type are highlighted until placement ends. A left-click on the map queues that card at the clicked cell; right-click cancels placement and the main shell suppresses the browser context menu. Right-clicking a structure opens a structure context menu whose first item is **DEMOLISH STRUCTURE**. Demolition is immediate on the next tick, removes the whole structure, and pays no supply refund; only the player's own non-State structures can be demolished. Rival and State structures show the action disabled. Right-clicking rival territory or a rival structure also shows **REQUEST ALLIANCE** with the rival's name; once allied it becomes **BREAK ALLIANCE**. Escape and selecting another number also cancel/replace placement.
 - First-match onboarding shows three contextual hints: launch a front, drag a card into territory (or press its number then click), then click a district to upgrade. Hints advance on success, can be skipped, and completion is stored locally.
 - Cards have frame/art/rules layouts, animate in from below, lift on hover, and tilt/scale while dragged.
@@ -719,7 +720,7 @@ See [PERFORMANCE.md](PERFORMANCE.md) for measured results and method.
 - [x] Attacks sample the top frontier cells and prefer the cheapest local defense, flowing around strongpoints.
 - [x] Same-type cards stack onto the existing structure; different types are rejected inside a district.
 - [x] Command Posts accrue orders continuously, and War Academies raise the cap.
-- [x] Clicking an owned district upgrades its structure without consuming a card; Shift-click queues five levels and the cursor tooltip shows the total cost. Touching same-type districts merge visually, merged upgrades prioritize the lowest structure, and Ctrl disables merging.
+- [x] Clicking an owned district upgrades its structure by the selected 1/5/10/25 batch without consuming a card, and the cursor tooltip shows the total cost. Touching same-type districts merge visually, merged upgrades prioritize the lowest structure, and Ctrl disables merging. Shift while placing builds on the closest valid cell and keeps placement armed.
 - [x] HUD and leaderboard scale to 51 logical rows and active counts, with DOM virtualization.
 - [x] Panning stays smooth under full stress (p99 7.1 ms; isolated cleanup spikes only).
 - [x] 51-state browser run stays interactive at 1600 × 1000; 7 s organic run measured p99 7.1 ms and 1/1008 frames >10 ms.

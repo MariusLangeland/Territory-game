@@ -27,10 +27,13 @@ export interface MatchDeps {
  */
 export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	/**
-	 * The floating last-action box was removed. Keep this as a no-op sink for
-	 * existing command feedback paths until they get inline HUD treatment.
+	 * Successful commands stay silent; warnings/errors use the existing compact
+	 * HUD toast so shift-build and naval-snap guidance is visible to the player.
 	 */
-	function showToast(_message: string, _tone: 'success' | 'error' | 'warn' = 'success'): void {}
+	function showToast(message: string, tone: 'success' | 'error' | 'warn' = 'success'): void {
+		if (tone === 'success') return;
+		deps.overlay.showDiplomacyToast(message, tone);
+	}
 
 	function persistMatchSettings(): void {
 		saveMatchSettings(state.matchSettings);

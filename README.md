@@ -94,25 +94,25 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                          |
-| --------------------------- | --------------------------------------------------------------- |
-| Click / tap a shared border | Buy a durable front with supply                                 |
-| Click / tap your district   | Upgrade that district's structure with supply                   |
-| Shift + click your district | Queue 5 upgrades at once                                        |
-| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure           |
-| Right-click a structure     | Open structure actions; first item demolishes it (no refund)    |
-| Right-click rival territory | Request an alliance; active ally shows BREAK ALLIANCE           |
-| `1`–`7`                     | Start placing that card; left-click builds, right-click cancels |
-| Drag                        | Pan the map                                                     |
-| Scroll                      | Zoom at the pointer                                             |
-| Two-finger pinch            | Zoom on touch                                                   |
-| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade                        |
-| `X`                         | Cancel latest front                                             |
-| `A` / FIRE                  | Enter artillery targeting; click an aim point in range          |
-| `Space`                     | Pause / resume the simulation                                   |
-| `F` / `C`                   | Fit atlas / return to beachhead                                 |
-| `H`                         | Open the field manual                                           |
-| Minimap click               | Jump the camera                                                 |
+| Input                       | Action                                                           |
+| --------------------------- | ---------------------------------------------------------------- |
+| Click / tap a shared border | Buy a durable front with supply                                  |
+| Click / tap your district   | Upgrade by the selected batch (1/5/10/25 buttons over supply)    |
+| Shift + click while placing | Build the card on the closest valid cell; stay in placement mode |
+| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure            |
+| Right-click a structure     | Open structure actions; first item demolishes it (no refund)     |
+| Right-click rival territory | Request an alliance; active ally shows BREAK ALLIANCE            |
+| `1`–`7`                     | Start placing that card; left-click builds, right-click cancels  |
+| Drag                        | Pan the map                                                      |
+| Scroll                      | Zoom at the pointer                                              |
+| Two-finger pinch            | Zoom on touch                                                    |
+| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade                         |
+| `X`                         | Cancel latest front                                              |
+| `A` / FIRE                  | Enter artillery targeting; click an aim point in range           |
+| `Space`                     | Pause / resume the simulation                                    |
+| `F` / `C`                   | Fit atlas / return to beachhead                                  |
+| `H`                         | Open the field manual                                            |
+| Minimap click               | Jump the camera                                                  |
 
 | Drag a build card | Drop on controlled land to buy/build that structure |
 
@@ -177,7 +177,7 @@ State structures can be captured like any other land cell. The structure is dest
 
 Each rival state has a **map-anchored supply banner** at its capital showing its name, current supply, and how many fronts (`N ATK`) that supply could currently launch against you. Banners scale with territory but are capped by the state's on-screen footprint, so zooming out shrinks or hides them instead of covering the map. They use a dark, semi-transparent rounded background plate with no opaque border; larger states still get larger text. The human state is intentionally excluded because its supply is shown in the hand bar.
 
-The human commander starts with **90 supply** and **all seven build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures + 10 × eliminations` per second with **no income cap** (+1/s per 3,000 owned pixels, +10/s for every state you erase); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`7` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades one level for **base cost + 15 × current level**; Shift-click queues five levels atomically. A cursor tooltip shows the total cost (and updates to the five-level total while Shift is held):
+The human commander starts with **90 supply** and **all seven build cards** permanently available, sorted ascending by cost. Supply income is `3 + floor(territory/3000) + structures + 10 × eliminations` per second with **no income cap** (+1/s per 3,000 owned pixels, +10/s for every state you erase); cap is `120 + floor(territory/1000) + 80 × War Academy stacks`, with **no global maximum**. HUD amounts use three significant digits (`42,5k`). Drag any affordable card into your territory, or press its number key `1`–`7` and left-click the map; right-click cancels placement. Cards are never consumed. Clicking a district, or dropping a matching card inside it, upgrades by the selected batch for **base cost + 15 × current level**. The **1 / 5 / 10 / 25** buttons above the supply bar choose the batch atomically; a cursor tooltip shows the total cost. Shift is no longer used for upgrades: while placing a card, holding Shift builds on the closest valid cell and keeps placement mode active. Naval attacks now snap to the nearest valid hostile/neutral shore within 32 px, just like Port placement snaps to owned shoreline.
 
 | Card          | Effect                                                       |
 | ------------- | ------------------------------------------------------------ |
@@ -208,7 +208,7 @@ Every buildable structure claims a **district** from its owner's territory. Stat
 - dropping the same type outside all districts creates another structure/district;
 - a different type cannot be dropped inside any existing district, except Ports, which are point anchors and may overlap districts;
 - touching districts of the **same owner and type** merge visually: internal seams and fill variants disappear, and one combined-level icon replaces the individual icons;
-- clicking a merged district upgrades its **lowest-level structure first** (five-level batches spread across the lowest structures); holding **Ctrl** disables merging, restores individual borders/icons, and upgrades whichever structure is under the cursor.
+- clicking a merged district upgrades its **lowest-level structure first** (larger selected batches spread across the lowest structures); holding **Ctrl** disables merging, restores individual borders/icons, and upgrades whichever structure is under the cursor.
 
 | Structure     | District range | Stack effect               |
 | ------------- | -------------: | -------------------------- |

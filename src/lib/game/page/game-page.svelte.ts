@@ -130,6 +130,9 @@ export function createGamePage(): GamePageApi {
 		get shiftHeld() {
 			return state.shiftHeld;
 		},
+		get upgradeBatch() {
+			return state.upgradeBatch;
+		},
 		get ctrlHeld() {
 			return state.ctrlHeld;
 		},

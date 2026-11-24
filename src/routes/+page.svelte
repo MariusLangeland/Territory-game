@@ -156,8 +156,10 @@
 			readyArtilleryShells={game.readyArtilleryShells}
 			artilleryVolleyCost={game.artilleryVolleyCost}
 			artilleryTargeting={game.artilleryTargeting}
+			upgradeBatch={game.upgradeBatch}
 			onCancelFront={game.actions.cancelLatestFront}
 			onToggleArtillery={game.actions.toggleArtilleryTargeting}
+			onSetUpgradeBatch={(batch) => (game.upgradeBatch = batch)}
 		/>
 		<CardTray
 			snapshot={game.snapshot}

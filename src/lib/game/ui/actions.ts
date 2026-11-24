@@ -18,6 +18,7 @@ export interface ActionContext {
 	get keyboardPlacement(): boolean;
 	get shiftHeld(): boolean;
 	get ctrlHeld(): boolean;
+	get upgradeBatch(): number;
 	get humanArtillery(): readonly PublicStructure[];
 	get readyArtillery(): readonly PublicStructure[];
 	get artilleryVolleyCost(): number;
@@ -55,10 +56,14 @@ export function createActions(context: ActionContext) {
 			return;
 		}
 		if (sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID) {
+			if (context.shiftHeld) {
+				context.showToast('Select a card to shift-build at the nearest valid site.', 'warn');
+				return;
+			}
 			const upgrade = await context.session.command('upgrade', {
 				x,
 				y,
-				levels: context.shiftHeld ? 5 : 1,
+				levels: context.upgradeBatch,
 				merged: !context.ctrlHeld
 			});
 			context.showToast(upgrade.message, upgrade.ok ? 'success' : 'error');
@@ -66,12 +71,10 @@ export function createActions(context: ActionContext) {
 			return;
 		}
 		const result = await context.session.command('attack', { x, y });
-		if (!result.ok && result.reason === 'no-shared-border') {
+		if (!result.ok && (result.reason === 'no-shared-border' || result.reason === 'ocean')) {
 			const naval = await context.session.command('naval', { x, y });
-			if (naval.ok) {
-				context.showToast(naval.message, 'success');
-				return;
-			}
+			context.showToast(naval.message, naval.ok ? 'success' : 'error');
+			return;
 		}
 		context.showToast(result.message, result.ok ? 'success' : 'error');
 		if (result.ok) context.advanceOnboarding(1, 2);
