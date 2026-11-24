@@ -110,42 +110,63 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		// district. Ports are point anchors and intentionally may overlap.
 		const isNewStructureSite = (x: number, y: number) =>
 			card.type === 'port' || sim.getDistrictStructureId(x, y) === 0;
-		if (isNewStructureSite(cellX, cellY)) {
-			const origin = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
-			if (origin.ok) {
-				return { x: origin.targetX ?? cellX, y: origin.targetY ?? cellY };
-			}
-		}
+		const evaluate = (x: number, y: number, tight: boolean) => {
+			if (!isNewStructureSite(x, y)) return null;
+			const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y, tight);
+			if (!validation.ok) return null;
+			return {
+				x: validation.targetX ?? x,
+				y: validation.targetY ?? y,
+				tight
+			};
+		};
+
+		const origin = evaluate(cellX, cellY, false);
+		if (origin) return origin;
 		if (card.type === 'port') return null;
-		let bestX = -1;
-		let bestY = -1;
-		let bestDistance = Number.POSITIVE_INFINITY;
-		const minX = Math.max(0, cellX - SHIFT_BUILD_SNAP_RADIUS);
-		const maxX = Math.min(sim.width - 1, cellX + SHIFT_BUILD_SNAP_RADIUS);
-		const minY = Math.max(0, cellY - SHIFT_BUILD_SNAP_RADIUS);
-		const maxY = Math.min(sim.height - 1, cellY + SHIFT_BUILD_SNAP_RADIUS);
-		for (let y = minY; y <= maxY; y++) {
-			for (let x = minX; x <= maxX; x++) {
-				if (!sim.isLand(x, y)) continue;
-				if (!isNewStructureSite(x, y)) continue;
-				const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y);
-				if (!validation.ok) continue;
-				const targetX = validation.targetX ?? x;
-				const targetY = validation.targetY ?? y;
-				const dx = targetX - cellX;
-				const dy = targetY - cellY;
-				const distance = dx * dx + dy * dy;
-				if (
-					distance < bestDistance ||
-					(distance === bestDistance && (bestY < 0 || y < bestY || (y === bestY && x < bestX)))
-				) {
-					bestX = targetX;
-					bestY = targetY;
-					bestDistance = distance;
+
+		const search = () => {
+			let best: { x: number; y: number; tight: boolean } | null = null;
+			let bestDistance = Number.POSITIVE_INFINITY;
+			for (let radius = 1; radius <= SHIFT_BUILD_SNAP_RADIUS; radius++) {
+				const minX = cellX - radius;
+				const maxX = cellX + radius;
+				const minY = cellY - radius;
+				const maxY = cellY + radius;
+				const consider = (x: number, y: number) => {
+					if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) return;
+					if (!sim.isLand(x, y)) return;
+					const candidate = evaluate(x, y, false) ?? evaluate(x, y, true);
+					if (!candidate) return;
+					const dx = candidate.x - cellX;
+					const dy = candidate.y - cellY;
+					const distance = dx * dx + dy * dy;
+					if (
+						distance < bestDistance ||
+						(distance === bestDistance &&
+							(best === null ||
+								(candidate.tight === false && best.tight === true) ||
+								(candidate.tight === best.tight &&
+									(candidate.y < best.y || (candidate.y === best.y && candidate.x < best.x)))))
+					) {
+						best = candidate;
+						bestDistance = distance;
+					}
+				};
+				for (let x = minX; x <= maxX; x++) {
+					consider(x, minY);
+					if (maxY !== minY) consider(x, maxY);
 				}
+				for (let y = minY + 1; y < maxY; y++) {
+					consider(minX, y);
+					if (maxX !== minX) consider(maxX, y);
+				}
+				if (best) return best;
 			}
-		}
-		return bestX >= 0 ? { x: bestX, y: bestY } : null;
+			return null;
+		};
+
+		return search();
 	}
 
 	async function buildKeyboardPlacement(x: number, y: number): Promise<void> {
@@ -159,7 +180,9 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		const shifted = state.shiftHeld;
 		const cellX = Math.floor(x);
 		const cellY = Math.floor(y);
-		const target = shifted ? nearestBuildCell(draggingCard, cellX, cellY) : { x: cellX, y: cellY };
+		const target = shifted
+			? nearestBuildCell(draggingCard, cellX, cellY)
+			: { x: cellX, y: cellY, tight: false };
 		if (!target) {
 			deps.match.showToast('No valid build site near the cursor.', 'warn');
 			return;
@@ -168,7 +191,8 @@ export function createInteractionController(state: GamePageState, deps: Interact
 			cardId: draggingCard.id,
 			x: target.x,
 			y: target.y,
-			newStructureOnly: shifted
+			newStructureOnly: shifted,
+			allowTightSpacing: shifted && target.tight
 		});
 		deps.match.showToast(result.message, result.ok ? 'success' : 'error');
 		if (!result.ok) return;

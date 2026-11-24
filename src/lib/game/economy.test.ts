@@ -186,6 +186,40 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBeGreaterThanOrEqual(30);
 	});
 
+	it('allows shift-build tight-spacing fallback next to the State', () => {
+		const sim = new TerritorySimulation({ seed: 246818 });
+		const state = sim.structures.forOwnerType(HUMAN_PLAYER_ID, 'state');
+		expect(state).toBeDefined();
+		if (!state) return;
+		raiseSupplyCap(sim);
+		sim.gold = 1000;
+		const card = sim.hand.find((entry) => entry.type === 'fortification');
+		expect(card).toBeDefined();
+		if (!card) return;
+		const land = (sim as unknown as { land: Uint8Array }).land;
+		let target = -1;
+		for (let dy = -7; dy <= 7 && target < 0; dy++) {
+			for (let dx = -7; dx <= 7; dx++) {
+				if (dx === 0 && dy === 0) continue;
+				if (dx * dx + dy * dy > 49) continue;
+				const x = state.x + dx;
+				const y = state.y + dy;
+				if (x < 0 || y < 0 || x >= sim.width || y >= sim.height) continue;
+				const index = y * sim.width + x;
+				if (!land[index] || sim.owners[index] !== HUMAN_PLAYER_ID) continue;
+				if (sim.districtStructureIds[index] !== 0 || sim.structures.at(index)) continue;
+				target = index;
+				break;
+			}
+		}
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		const x = target % sim.width;
+		const y = Math.floor(target / sim.width);
+		expect(sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y, true, false).reason).toBe('too-close');
+		expect(sim.playCard(HUMAN_PLAYER_ID, card.id, x, y, true, true).ok).toBe(true);
+	});
+
 	it('rejects shift-build stacking inside an existing district', () => {
 		const sim = new TerritorySimulation({ seed: 246817 });
 		const { index } = buildCard(sim, 'fortification');

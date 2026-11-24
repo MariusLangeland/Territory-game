@@ -421,14 +421,14 @@ Supply is the only resource for the human and bots. Cards and upgrades consume s
 - Holding **Ctrl** hides merged districts: individual seams/icons return and the clicked structure is upgraded directly. Upgrade commands pinned to a merged structure survive its centre being assigned to a neighboring district cell.
 - Hovering an upgradable district shows a cursor tooltip above the pointer with the total cost for the selected batch.
 - Build and upgrade commands reserve supply against queued upgrades so rapid clicks cannot overspend.
-- While a card is armed, holding **Shift** and clicking builds a new structure on the closest valid cell outside every district instead of the exact click. Shift disables upgrading and keeps placement mode active after a successful build, so repeated shift-clicks can place several structures.
+- While a card is armed, holding **Shift** and clicking searches up to 160 px for the closest new-structure cell outside every district, including tight one-pixel gaps, instead of using the exact click. Shift disables upgrading and keeps placement mode active after a successful build, so repeated shift-clicks can place several structures.
 - Playing a card requires dragging it onto **controlled land** outside every existing district, with no structure and at least **8 px from every other structure**.
 - Dropping inside a same-type district upgrades that district's structure at `base cost + 15 × current level`; dropping the same type outside all districts creates another structure at its base cost.
 - Cards are permanent actions: any affordable card can be bought again. No draw, deck, consumption, or reroll. Hand order is ascending card cost.
 - Card costs and generated values live in [REFERENCE.md](REFERENCE.md).
 - Captured buildable structures are razed and their effects disappear.
 - **Defensive auras are friendly-only.** A Fortification or State aura modifies defense only on cells owned by the structure's owner. A Jammer never changes pixel defense.
-- Structure placement has an **8 px centre-to-centre exclusion radius**.
+- Normal structure placement has an **8 px centre-to-centre exclusion radius**. Shift-build's tight-spacing fallback is the exception: it can place a structure in a one-pixel gap after normal sites are exhausted.
 
 | Card          | Effect                                                             |
 | ------------- | ------------------------------------------------------------------ |

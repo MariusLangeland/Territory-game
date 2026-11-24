@@ -331,7 +331,8 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		_playerId: number,
 		cardId: number,
 		x: number,
-		y: number
+		y: number,
+		allowTightSpacing = false
 	): CommandResult & {
 		targetX?: number;
 		targetY?: number;
@@ -385,22 +386,27 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		});
 		if (!stackingStructure) {
 			for (const structure of this.snapshot.structures) {
-				if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type === 'state') continue;
-				const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
-				if (
-					structure.type !== card.type &&
-					Math.abs(structure.x - cellX) <= range &&
-					Math.abs(structure.y - cellY) <= range
-				) {
-					return {
-						ok: false,
-						reason: 'inside-district',
-						message: 'A different structure district occupies that ground.'
-					};
+				if (structure.ownerId !== HUMAN_PLAYER_ID) continue;
+				if (structure.type !== 'state') {
+					const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
+					if (
+						structure.type !== card.type &&
+						Math.abs(structure.x - cellX) <= range &&
+						Math.abs(structure.y - cellY) <= range
+					) {
+						return {
+							ok: false,
+							reason: 'inside-district',
+							message: 'A different structure district occupies that ground.'
+						};
+					}
 				}
 				const dx = structure.x - cellX;
 				const dy = structure.y - cellY;
-				if (dx * dx + dy * dy < STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING) {
+				if (
+					!allowTightSpacing &&
+					dx * dx + dy * dy < STRUCTURE_MIN_SPACING * STRUCTURE_MIN_SPACING
+				) {
 					return { ok: false, reason: 'too-close', message: 'Too close to another structure.' };
 				}
 			}

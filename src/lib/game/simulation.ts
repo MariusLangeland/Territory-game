@@ -1551,7 +1551,8 @@ export class TerritorySimulation {
 		cardId: number,
 		x: number,
 		y: number,
-		newStructureOnly = false
+		newStructureOnly = false,
+		allowTightSpacing = false
 	): BuildOrderResult {
 		if (this.ended) return { ok: false, reason: 'ended', message: 'The conflict is over.' };
 		const player = this.players[playerId - 1];
@@ -1645,7 +1646,10 @@ export class TerritorySimulation {
 		if (this.structures.at(index)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
 		}
-		if (this.structures.hasWithinRadius(targetX, targetY, STRUCTURE_MIN_SPACING)) {
+		if (
+			!allowTightSpacing &&
+			this.structures.hasWithinRadius(targetX, targetY, STRUCTURE_MIN_SPACING)
+		) {
 			return {
 				ok: false,
 				reason: 'too-close',
@@ -1675,9 +1679,17 @@ export class TerritorySimulation {
 		cardId: number,
 		x: number,
 		y: number,
-		newStructureOnly = false
+		newStructureOnly = false,
+		allowTightSpacing = false
 	): BuildOrderResult {
-		const validation = this.validateBuild(playerId, cardId, x, y, newStructureOnly);
+		const validation = this.validateBuild(
+			playerId,
+			cardId,
+			x,
+			y,
+			newStructureOnly,
+			allowTightSpacing
+		);
 		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'build',
@@ -1686,6 +1698,7 @@ export class TerritorySimulation {
 			x: Math.floor(x),
 			y: Math.floor(y),
 			newStructureOnly,
+			allowTightSpacing,
 			sequence: this.nextCommandSequence++
 		});
 		return validation;
@@ -2116,7 +2129,8 @@ export class TerritorySimulation {
 					command.cardId,
 					command.x,
 					command.y,
-					command.newStructureOnly === true
+					command.newStructureOnly === true,
+					command.allowTightSpacing === true
 				);
 				if (!validation.ok) continue;
 				const card = this.handFor(command.playerId).find((entry) => entry.id === command.cardId);

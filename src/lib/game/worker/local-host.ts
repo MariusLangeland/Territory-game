@@ -143,7 +143,8 @@ export class LocalWorkerHost {
 					command.cardId ?? 0,
 					command.x ?? 0,
 					command.y ?? 0,
-					command.newStructureOnly === true
+					command.newStructureOnly === true,
+					command.allowTightSpacing === true
 				);
 				break;
 			case 'upgrade':

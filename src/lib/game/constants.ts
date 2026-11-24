@@ -125,7 +125,7 @@ export const PORT_BUILD_SNAP_RADIUS = 24;
 /** Cursor-to-shore snapping radius for naval landing targeting. */
 export const NAVAL_TARGET_SNAP_RADIUS = 32;
 /** Shift-build searches this far for the closest valid structure cell. */
-export const SHIFT_BUILD_SNAP_RADIUS = 32;
+export const SHIFT_BUILD_SNAP_RADIUS = 160;
 /** Artillery needs this much district-free ground around its centre. */
 export const ARTILLERY_BUILD_CLEARANCE = 16;
 export const ARTILLERY_COOLDOWN_TICKS = TICK_RATE * 6;

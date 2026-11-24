@@ -3355,3 +3355,28 @@ Naval landings required clicking an exact shoreline pixel even though Port place
 - Port and naval targeting now share the forgiving nearby-click interaction.
 - The five-level Shift-click shortcut is retired; batch size is explicit in the HUD.
 - Shift-build can issue several structures quickly, so it intentionally retains card/placement state.
+
+---
+
+## ADR-104 — Wide, tight-capable shift-build search
+
+**Status:** accepted and implemented
+**Date:** 2026-11-24
+
+### Context
+
+A 32 px shift-build search often missed the nearest usable site, especially when only a one-pixel gap remained next to a State or at a district edge. The authoritative 8 px spacing guard also rejected tight pockets even when no normal site was available.
+
+### Decision
+
+- Raise the shift-build search radius to 160 px.
+- Search in expanding rings and accept the closest legal site, preferring normal-spacing sites at equal distance.
+- If no normal site exists, retry with `allowTightSpacing`; the worker bypasses only the 8 px spacing guard, never ownership/district/occupancy checks.
+- Carry `newStructureOnly` and `allowTightSpacing` through the worker build command.
+- Keep normal drag/click placement on the 8 px rule.
+
+### Consequences
+
+- Shift-build can fill a one-pixel gap with a new structure.
+- Worst-case UI scan is O(160²) but measured ~9–10 ms on the target machine.
+- Structures may be placed closer than the normal 8 px guard when explicitly shift-built.

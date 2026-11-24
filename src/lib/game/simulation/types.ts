@@ -263,6 +263,8 @@ export interface BuildCommand {
 	y: number;
 	/** Shift-build: reject district stacking and require a new structure site. */
 	newStructureOnly?: boolean;
+	/** Shift-build fallback: permit a structure in a one-pixel pocket. */
+	allowTightSpacing?: boolean;
 	sequence: number;
 }
 

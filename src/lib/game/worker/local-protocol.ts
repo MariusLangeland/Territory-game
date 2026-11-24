@@ -52,6 +52,7 @@ export interface LocalWorkerCommand {
 		levels?: number;
 		merged?: boolean;
 		newStructureOnly?: boolean;
+		allowTightSpacing?: boolean;
 		structureId?: number;
 		targetPlayerId?: number;
 	};
