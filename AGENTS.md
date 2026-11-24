@@ -128,6 +128,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/routes/game-page.css` — page shell/shared overlay primitives only; component-specific CSS belongs in each component's scoped `<style>` block.
 - `src/app.css` — canonical design tokens: semantic colors, alpha surfaces, display type, and HUD type scale. Extend tokens rather than adding repeated literals.
 - `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
+- `src/lib/components/ReplayTimeline.svelte` and `LedgerViewer.svelte` — replay playback controls and tick-seeking block list.
 - `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
 - `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.
 - `src/lib/game/simulation.ts` — authoritative simulation facade. Extracted helpers live in `src/lib/game/simulation/`; prefer focused edits and the split `simulation.*.test.ts` suites.
@@ -151,6 +152,7 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/net/online-intent.ts` — shared authoritative intent-to-simulation mapping.
 - `src/lib/game/net/match-ledger.ts` — accepted-move ledger encode/decode/replay for deterministic lockstep groundwork.
 - `src/lib/game/ledger/agent.ts` — sole authoritative offline ledger writer: validates/appends transactions, seals blocks, projects state.
+- `src/lib/game/ledger/document.ts` — downloaded ledger/block wrapper decoding for the replay viewer.
 - `src/lib/game/net/online-room.ts` — authoritative room core; multi-human seats, intents, snapshots.
 - `src/lib/game/worker/view.ts` — read-only main-thread worker visual/query mirror.
 - `src/lib/game/worker/protocol.ts` — shared worker init/visual payloads.

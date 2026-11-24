@@ -9,6 +9,8 @@
 	import SupplyPanel from '#lib/components/SupplyPanel.svelte';
 	import UpgradeBatchStrip from '#lib/components/UpgradeBatchStrip.svelte';
 	import NavalTargetPreview from '#lib/components/NavalTargetPreview.svelte';
+	import ReplayTimeline from '#lib/components/ReplayTimeline.svelte';
+	import LedgerViewer from '#lib/components/LedgerViewer.svelte';
 	import MapTools from '#lib/components/MapTools.svelte';
 	import DragOverlay from '#lib/components/DragOverlay.svelte';
 	import IntroOverlay from '#lib/components/IntroOverlay.svelte';
@@ -113,7 +115,25 @@
 				<span>LEDGER REPLAY</span>
 				<strong>{game.replayName}</strong>
 				{#if game.replayComplete}<em>COMPLETE</em>{/if}
-				<button type="button" onclick={game.togglePause}>{game.paused ? 'RESUME' : 'PAUSE'}</button>
+				<button type="button" onclick={game.rematch}>EXIT REPLAY</button>
+			</div>
+			<div class="replay-panel hud">
+				<ReplayTimeline
+					tick={game.replayTick}
+					maxTick={game.replayMaxTick}
+					playing={game.replayPlaying}
+					speed={game.replaySpeed}
+					complete={game.replayComplete}
+					onSeek={game.seekReplay}
+					onToggle={game.toggleReplayPlay}
+					onStep={game.stepReplay}
+					onSpeed={game.setReplaySpeed}
+				/>
+				<LedgerViewer
+					blocks={game.replayBlocks}
+					currentTick={game.replayTick}
+					onSeek={game.seekReplay}
+				/>
 			</div>
 		{/if}
 

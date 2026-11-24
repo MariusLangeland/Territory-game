@@ -567,3 +567,12 @@ returns the open ledger block. When the worker advances a tick it seals the
 block with the post-step checksum and sends that sealed block with the visual.
 The simulation is a derived cache; the append-only ledger remains authoritative.
 The agent can be moved to a server without changing the transaction contract.
+
+### Replay playback
+
+The replay worker accepts replay-control messages for play, pause, speed, seek,
+and single-tick stepping, and emits replay-status plus full-map resync visuals.
+Seeks currently rebuild from the ledger seed and replay forward; there are no
+snapshot keyframes yet, so seek cost is O(targetTick). The main page keeps live
+controls hidden behind replay mode and exposes the timeline plus ledger-block
+viewer only for uploaded ledgers.

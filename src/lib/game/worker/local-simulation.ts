@@ -60,6 +60,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		config: LocalWorkerInitConfig,
 		handlers: {
 			onVisual?: (visual: LocalWorkerVisual) => void;
+			onReplayStatus?: (status: import('./local-protocol').LocalWorkerReplayStatus) => void;
 			onTelemetry?: (telemetry: LocalWorkerTelemetry) => void;
 			onError?: (error: Error) => void;
 		} = {}
@@ -83,6 +84,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 				instance?.applyWorkerVisual(visual);
 				handlers.onVisual?.(visual);
 			},
+			onReplayStatus: (status) => handlers.onReplayStatus?.(status),
 			onTelemetry: (telemetry) => {
 				instance?.setTelemetry(telemetry.behavior);
 				handlers.onTelemetry?.(telemetry);
@@ -177,6 +179,10 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		args: Parameters<LocalWorkerClient['command']>[1] = {}
 	): Promise<CommandResult> {
 		return this.client.command(type, args);
+	}
+
+	replayControl(control: Omit<import('./local-protocol').LocalWorkerReplayControl, 'type'>): void {
+		this.client.replayControl(control);
 	}
 
 	pause(): void {

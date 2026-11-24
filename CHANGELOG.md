@@ -77,6 +77,10 @@
   exports a pretty-printed JSON text snapshot of the ledger, sealed blocks, and
   open block, and REPLAY LEDGER, which uploads that file and replays it in a
   read-only worker with a replay banner and no gameplay controls.
+- Replay engine: timeline scrubbing, pause/play, −1/+1 tick stepping, 0.25×–16×
+  speed, full-map resync on seek, and a virtualized ledger-block viewer whose
+  rows seek directly to their tick. Live mode keeps the same ledger-backed
+  worker while hiding replay controls.
 - Offline ledger authority (Ledger branch): local match commands now go through
   `LedgerAgent`; accepted transactions form open blocks, ticks seal blocks with a
   checksum, and the worker sends blocks with command results and visual deltas.

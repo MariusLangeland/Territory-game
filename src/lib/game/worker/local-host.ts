@@ -7,6 +7,7 @@ import type {
 	LocalWorkerCommandResult,
 	LocalWorkerInit,
 	LocalWorkerInitConfig,
+	LocalWorkerReplayStatus,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
 } from './local-protocol';
@@ -17,9 +18,9 @@ import type {
  */
 export class LocalWorkerHost {
 	readonly agent: LedgerAgent;
-	readonly simulation: TerritorySimulation;
 	readonly config: LocalWorkerInitConfig;
 	private paused = false;
+	private replaySpeed = 1;
 
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
@@ -37,7 +38,44 @@ export class LocalWorkerHost {
 			},
 			config.replay ?? null
 		);
-		this.simulation = this.agent.simulation;
+	}
+
+	get simulation(): TerritorySimulation {
+		return this.agent.simulation;
+	}
+
+	get speed(): number {
+		return this.replaySpeed;
+	}
+
+	setReplaySpeed(speed: number): void {
+		this.replaySpeed = Math.max(0.25, Math.min(16, speed));
+	}
+
+	/** Seek a replay and return a full-map visual for renderer resync. */
+	seekReplay(tick: number): LocalWorkerVisual {
+		this.agent.seek(tick);
+		return this.resyncVisual();
+	}
+
+	private resyncVisual(): LocalWorkerVisual {
+		const sim = this.simulation;
+		return {
+			type: 'visual',
+			tick: sim.tick,
+			snapshot: sim.getSnapshot(),
+			changes: new Uint32Array(),
+			changeDistrictColors: null,
+			changesOverflow: true,
+			owners: sim.owners.slice(),
+			districtTiles: [],
+			districtTileColors: null,
+			districtColorCodes: sim.districtColorCodes.slice(),
+			events: [],
+			mergedDistricts: [...sim.getMergedDistricts()],
+			ledgerBlock: null,
+			replayComplete: this.agent.replayComplete
+		};
 	}
 
 	initMessage(): LocalWorkerInit {
@@ -72,6 +110,17 @@ export class LocalWorkerHost {
 
 	get ended(): boolean {
 		return this.simulation.ended || this.agent.replayComplete;
+	}
+
+	replayStatus(): LocalWorkerReplayStatus {
+		return {
+			type: 'replay-status',
+			tick: this.simulation.tick,
+			maxTick: this.config.replay?.finalTick ?? this.simulation.tick,
+			playing: !this.paused && !this.ended,
+			speed: this.replaySpeed,
+			complete: this.agent.replayComplete
+		};
 	}
 
 	step(): LocalWorkerVisual | null {

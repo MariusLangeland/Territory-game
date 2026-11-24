@@ -104,6 +104,29 @@ describe('local worker host', () => {
 		expect(result.message.length).toBeGreaterThan(0);
 	});
 
+	it('seeks replay state and exposes playback status', () => {
+		const source = new LocalWorkerHost(CONFIG);
+		source.command({
+			type: 'command',
+			id: 1,
+			command: { type: 'alliance-request', targetPlayerId: 2 }
+		});
+		for (let tick = 0; tick < 20; tick++) source.step();
+		source.agent.sampleChecksum();
+
+		const replay = new LocalWorkerHost({ ...CONFIG, replay: source.agent.ledgerView });
+		expect(replay.replayStatus().maxTick).toBe(20);
+		replay.setReplaySpeed(4);
+		expect(replay.speed).toBe(4);
+		const visual = replay.seekReplay(7);
+		expect(visual.changesOverflow).toBe(true);
+		expect(visual.owners?.length).toBe(1024 * 512);
+		expect(replay.simulation.tick).toBe(7);
+		replay.seekReplay(20);
+		expect(replay.agent.replayComplete).toBe(true);
+		expect(replay.replayStatus().complete).toBe(true);
+	});
+
 	it('routes commands through the ledger agent and sends sealed blocks', () => {
 		const host = new LocalWorkerHost(CONFIG);
 		const result = host.command({

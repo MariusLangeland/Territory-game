@@ -16,16 +16,23 @@ let lastTickAt = 0;
 let lastTelemetryAt = 0;
 let finalTelemetrySent = false;
 
-function postVisual(): void {
-	if (!host) return;
-	const visual = host.step();
-	if (!visual) return;
+function postVisualMessage(visual: LocalWorkerOutbound | null): void {
+	if (!visual || visual.type !== 'visual') return;
 	const transfer: Transferable[] = [visual.changes.buffer];
 	if (visual.owners) transfer.push(visual.owners.buffer);
 	if (visual.changeDistrictColors) transfer.push(visual.changeDistrictColors.buffer);
 	if (visual.districtTileColors) transfer.push(visual.districtTileColors.buffer);
 	if (visual.districtColorCodes) transfer.push(visual.districtColorCodes.buffer);
 	scope.postMessage(visual, transfer);
+}
+
+function postVisual(): void {
+	if (!host) return;
+	postVisualMessage(host.step());
+}
+
+function postReplayStatus(): void {
+	if (host?.config.replay) scope.postMessage(host.replayStatus());
 }
 
 function schedule(): void {
@@ -39,16 +46,19 @@ function schedule(): void {
 		timer = null;
 		if (!host) return;
 		const current = performance.now();
+		const stepMs = TICK_MS / host.speed;
 		accumulator += current - lastTickAt;
 		lastTickAt = current;
 		let steps = 0;
-		while (accumulator >= TICK_MS && steps < 4) {
+		const maxSteps = host.config.replay ? 16 : 4;
+		while (accumulator >= stepMs && steps < maxSteps) {
 			postVisual();
-			accumulator -= TICK_MS;
+			accumulator -= stepMs;
 			steps++;
 			if (host.ended) break;
 		}
-		if (accumulator > TICK_MS * 4) accumulator = TICK_MS * 4;
+		if (accumulator > stepMs * maxSteps) accumulator = stepMs * maxSteps;
+		if (host.config.replay) postReplayStatus();
 		if (host.ended && !finalTelemetrySent) {
 			finalTelemetrySent = true;
 			scope.postMessage(host.telemetry());
@@ -69,10 +79,56 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		// Terrain arrays are still owned by the worker simulation; only the copied
 		// owners/district buffers are transferred.
 		scope.postMessage(init, [init.owners.buffer, init.districtColorCodes.buffer]);
+		if (host.config.replay) postReplayStatus();
 		schedule();
 		return;
 	}
 	if (!host) return;
+	if (message.type === 'replay-control') {
+		if (!host.config.replay) return;
+		switch (message.action) {
+			case 'play':
+				host.setPaused(false);
+				lastTickAt = 0;
+				accumulator = 0;
+				postReplayStatus();
+				schedule();
+				return;
+			case 'pause':
+				host.setPaused(true);
+				if (timer) {
+					clearTimeout(timer);
+					timer = null;
+				}
+				accumulator = 0;
+				postReplayStatus();
+				return;
+			case 'seek': {
+				const visual = host.seekReplay(message.tick ?? 0);
+				postVisualMessage(visual);
+				postReplayStatus();
+				if (!host.ended && !host.isPaused) {
+					lastTickAt = 0;
+					accumulator = 0;
+					schedule();
+				}
+				return;
+			}
+			case 'step': {
+				const target = host.tick + (message.delta ?? 1);
+				const visual = host.seekReplay(target);
+				postVisualMessage(visual);
+				postReplayStatus();
+				return;
+			}
+			case 'speed':
+				host.setReplaySpeed(message.speed ?? 1);
+				lastTickAt = 0;
+				accumulator = 0;
+				postReplayStatus();
+				return;
+		}
+	}
 	if (message.type === 'pause') {
 		host.setPaused(true);
 		if (timer) {
@@ -81,12 +137,14 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		}
 		accumulator = 0;
 		scope.postMessage({ type: 'paused' });
+		if (host.config.replay) postReplayStatus();
 		return;
 	}
 	if (message.type === 'resume') {
 		host.setPaused(false);
 		lastTickAt = 0;
 		accumulator = 0;
+		if (host.config.replay) postReplayStatus();
 		schedule();
 		return;
 	}

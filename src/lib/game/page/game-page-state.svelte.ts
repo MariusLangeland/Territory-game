@@ -4,6 +4,8 @@ import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import type { StructureContextMenu } from '#lib/game/ui/structure-menu';
 import type { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
+import type { LedgerBlock } from '#lib/game/ledger/agent';
+import type { MatchLedger } from '#lib/game/net/match-ledger';
 import { createHudSelectors } from './selectors/hud.svelte';
 import { createInteractionSelectors } from './selectors/interaction.svelte';
 import { createMatchSelectors } from './selectors/match.svelte';
@@ -40,6 +42,12 @@ function createStateAccessors() {
 	let replayMode = $state(false);
 	let replayName = $state('');
 	let replayComplete = $state(false);
+	let replayLedger = $state<MatchLedger | null>(null);
+	let replayBlocks = $state<LedgerBlock[]>([]);
+	let replayTick = $state(0);
+	let replayMaxTick = $state(0);
+	let replayPlaying = $state(false);
+	let replaySpeed = $state(1);
 	let onboardingStep = $state<OnboardingStep | null>(null);
 	let onboardingDone = $state(false);
 	let defeatOpen = $state(false);
@@ -179,6 +187,42 @@ function createStateAccessors() {
 		},
 		set replayComplete(value) {
 			replayComplete = value;
+		},
+		get replayLedger() {
+			return replayLedger;
+		},
+		set replayLedger(value) {
+			replayLedger = value;
+		},
+		get replayBlocks() {
+			return replayBlocks;
+		},
+		set replayBlocks(value) {
+			replayBlocks = value;
+		},
+		get replayTick() {
+			return replayTick;
+		},
+		set replayTick(value) {
+			replayTick = value;
+		},
+		get replayMaxTick() {
+			return replayMaxTick;
+		},
+		set replayMaxTick(value) {
+			replayMaxTick = value;
+		},
+		get replayPlaying() {
+			return replayPlaying;
+		},
+		set replayPlaying(value) {
+			replayPlaying = value;
+		},
+		get replaySpeed() {
+			return replaySpeed;
+		},
+		set replaySpeed(value) {
+			replaySpeed = value;
 		},
 		get showHelp() {
 			return showHelp;

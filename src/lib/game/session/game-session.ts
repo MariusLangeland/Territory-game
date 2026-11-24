@@ -5,12 +5,17 @@ import { difficultyGenomes, loadEvolutionBuckets } from '../ai/buckets';
 import { loadGauntletSurvivors } from '../ai/gauntlet-survivors';
 import type { BotGenome } from '../ai/genome';
 import { WorkerLocalSimulation } from '../worker/local-simulation';
-import type { LocalWorkerCommandType, LocalWorkerVisual } from '../worker/local-protocol';
+import type {
+	LocalWorkerCommandType,
+	LocalWorkerReplayControl,
+	LocalWorkerVisual
+} from '../worker/local-protocol';
 import type { MatchLedger } from '../net/match-ledger';
 
 interface GameSessionHandlers {
 	onReady: (simulation: WorkerLocalSimulation, seed: number) => void;
 	onVisual: (visual: LocalWorkerVisual) => void;
+	onReplayStatus: (status: import('../worker/local-protocol').LocalWorkerReplayStatus) => void;
 	onTelemetry: () => void;
 	onError: (error: Error) => void;
 }
@@ -75,6 +80,9 @@ export class GameSession {
 					onVisual: (visual) => {
 						if (generation === this.generation) this.handlers.onVisual(visual);
 					},
+					onReplayStatus: (status) => {
+						if (generation === this.generation) this.handlers.onReplayStatus(status);
+					},
 					onTelemetry: () => {
 						if (generation === this.generation) this.handlers.onTelemetry();
 					},
@@ -117,6 +125,9 @@ export class GameSession {
 					onVisual: (visual) => {
 						if (generation === this.generation) this.handlers.onVisual(visual);
 					},
+					onReplayStatus: (status) => {
+						if (generation === this.generation) this.handlers.onReplayStatus(status);
+					},
 					onTelemetry: () => {
 						if (generation === this.generation) this.handlers.onTelemetry();
 					},
@@ -149,6 +160,10 @@ export class GameSession {
 		return Array.from({ length: settings.states }, (_, index) =>
 			index === 0 ? null : botPool[(seed + index) % botPool.length]
 		);
+	}
+
+	replayControl(control: Omit<LocalWorkerReplayControl, 'type'>): void {
+		this.simulation?.replayControl(control);
 	}
 
 	pause(): void {

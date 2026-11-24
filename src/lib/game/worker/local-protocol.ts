@@ -67,12 +67,30 @@ export interface LocalWorkerPause {
 	type: 'pause' | 'resume';
 }
 
+export interface LocalWorkerReplayControl {
+	type: 'replay-control';
+	action: 'play' | 'pause' | 'seek' | 'step' | 'speed';
+	tick?: number;
+	delta?: number;
+	speed?: number;
+}
+
+export interface LocalWorkerReplayStatus {
+	type: 'replay-status';
+	tick: number;
+	maxTick: number;
+	playing: boolean;
+	speed: number;
+	complete: boolean;
+}
+
 export interface LocalWorkerInitMessage {
 	type: 'init';
 	config: LocalWorkerInitConfig;
 }
 
-export type LocalWorkerInbound = LocalWorkerCommand | LocalWorkerPause | LocalWorkerInitMessage;
+export type LocalWorkerInbound =
+	LocalWorkerCommand | LocalWorkerPause | LocalWorkerReplayControl | LocalWorkerInitMessage;
 
 export interface LocalWorkerVisual {
 	type: 'visual';
@@ -120,4 +138,5 @@ export type LocalWorkerOutbound =
 	| LocalWorkerVisual
 	| LocalWorkerCommandResult
 	| LocalWorkerTelemetry
-	| LocalWorkerPaused;
+	| LocalWorkerPaused
+	| LocalWorkerReplayStatus;

@@ -40,7 +40,7 @@ export interface LedgerAdvanceResult {
  * through submit(); the simulation is a derived cache of the ledger chain.
  */
 export class LedgerAgent {
-	readonly simulation: TerritorySimulation;
+	simulation: TerritorySimulation;
 	readonly ledger: MatchLedger;
 	private readonly blocks: LedgerBlock[] = [];
 	private openBlock: LedgerBlock | null = null;
@@ -101,6 +101,19 @@ export class LedgerAgent {
 
 	get ledgerView(): MatchLedger {
 		return JSON.parse(JSON.stringify(this.ledger)) as MatchLedger;
+	}
+
+	/**
+	 * Rebuild replay state at `tick`. Replays from the seed/config; the replay
+	 * worker currently has no snapshot keyframes, so long seeks are O(tick).
+	 */
+	seek(tick: number): void {
+		if (!this.replay) throw new Error('Seek is only available in replay mode.');
+		const target = Math.max(0, Math.min(this.replayTargetTick, Math.trunc(tick)));
+		this.simulation = new TerritorySimulation(JSON.parse(JSON.stringify(this.replay.options)));
+		this.replayIndex = 0;
+		this.lastReplayTick = 0;
+		while (this.simulation.tick < target && !this.simulation.ended) this.advance();
 	}
 
 	/** Pretty plain-text ledger plus block chain for inspection/export. */

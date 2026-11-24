@@ -3437,3 +3437,34 @@ simulation mutable state, not the ledger, the practical source of truth.
   checksum.
 - Bot behavior is still implicit in seed/config/tick and is not placed on the
   ledger.
+
+---
+
+## ADR-107 — Replay timeline and ledger navigation
+
+**Status:** accepted and implemented on the Ledger branch
+**Date:** 2026-11-24
+
+### Context
+
+The replay worker could reproduce a ledger but had no interactive playback. A
+useful replay needs pause/play, speed, stepping, scrubbing, and direct ledger
+navigation without giving replay mode write access to the authoritative ledger.
+
+### Decision
+
+- Add replay-control messages (play, pause, seek, step, speed) and replay-status
+  messages to the local worker protocol.
+- Seeking rebuilds the deterministic simulation from the ledger seed and replays
+  accepted transactions to the target tick, emitting a full-owner resync visual.
+- Expose a replay panel with timeline, speed controls, tick stepping, and a
+  ledger-block viewer; clicking a block seeks to its tick.
+- Keep live mode on the same ledger-backed worker but hide replay controls and
+  use a separate live pause path.
+
+### Consequences
+
+- Replay is read-only and cannot append transactions.
+- Scrubbing correctness is deterministic; seek latency grows with tick count
+  until snapshot keyframes are added.
+- Ledger blocks are navigation anchors; the timeline itself is tick-based.

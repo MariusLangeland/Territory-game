@@ -1,7 +1,9 @@
 import { goto } from '$app/navigation';
 import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 import { GameSession } from '#lib/game/session/game-session';
-import { decodeMatchLedger, type MatchLedger } from '#lib/game/net/match-ledger';
+import { decodeLedgerDocument } from '#lib/game/ledger/document';
+import type { MatchLedger } from '#lib/game/net/match-ledger';
+import type { LedgerBlock } from '#lib/game/ledger/agent';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import {
@@ -71,6 +73,12 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.replayMode = false;
 		state.replayName = '';
 		state.replayComplete = false;
+		state.replayLedger = null;
+		state.replayBlocks = [];
+		state.replayTick = 0;
+		state.replayMaxTick = 0;
+		state.replayPlaying = false;
+		state.replaySpeed = 1;
 		state.sim = null;
 		state.snapshot = null;
 		state.workerVisuals = [];
@@ -96,9 +104,9 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	async function startReplayFile(file: File): Promise<void> {
 		try {
-			const ledger = decodeMatchLedger(await file.text());
-			resetForReplay(ledger, file.name);
-			gameSession.startReplay(ledger);
+			const document = decodeLedgerDocument(await file.text());
+			resetForReplay(document.ledger, file.name, document.blocks);
+			gameSession.startReplay(document.ledger);
 		} catch (error) {
 			showToast(
 				error instanceof Error ? `Invalid ledger: ${error.message}` : 'Invalid ledger file.',
@@ -107,10 +115,17 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		}
 	}
 
-	function resetForReplay(ledger: MatchLedger, name: string): void {
+	function resetForReplay(ledger: MatchLedger, name: string, blocks: LedgerBlock[]): void {
 		state.replayMode = true;
 		state.replayName = name;
 		state.replayComplete = false;
+		state.replayLedger = ledger;
+		state.replayBlocks = blocks;
+		state.replayTick = 0;
+		state.replayMaxTick = ledger.finalTick ?? blocks.at(-1)?.tick ?? 0;
+		state.replayPlaying = true;
+		state.replaySpeed = 1;
+		state.onboardingStep = null;
 		state.phase = 'loading';
 		state.errorMessage = '';
 		state.rendererReady = false;
@@ -147,9 +162,47 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	function togglePause(): void {
 		if (!state.gameStarted || state.showResult || state.defeatOpen) return;
+		if (state.replayMode) {
+			toggleReplayPlay();
+			return;
+		}
 		state.paused = !state.paused;
 		if (state.paused) gameSession.pause();
 		else gameSession.resume();
+	}
+
+	function toggleReplayPlay(): void {
+		if (!state.replayMode) return;
+		gameSession.replayControl({ action: state.replayPlaying ? 'pause' : 'play' });
+	}
+
+	function seekReplay(tick: number): void {
+		if (!state.replayMode) return;
+		const target = Math.max(0, Math.min(state.replayMaxTick, Math.round(tick)));
+		state.replayTick = target;
+		gameSession.replayControl({ action: 'seek', tick: target });
+	}
+
+	function stepReplay(delta: number): void {
+		if (!state.replayMode) return;
+		gameSession.replayControl({ action: 'step', delta });
+	}
+
+	function setReplaySpeed(speed: number): void {
+		if (!state.replayMode) return;
+		state.replaySpeed = speed;
+		gameSession.replayControl({ action: 'speed', speed });
+	}
+
+	function handleReplayStatus(
+		status: import('#lib/game/worker/local-protocol').LocalWorkerReplayStatus
+	): void {
+		state.replayTick = status.tick;
+		state.replayMaxTick = status.maxTick;
+		state.replayPlaying = status.playing;
+		state.replaySpeed = status.speed;
+		state.replayComplete = status.complete;
+		if (status.complete) state.paused = true;
 	}
 
 	function newWorld(): void {
@@ -214,9 +267,12 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	function handleWorkerVisual(visual: LocalWorkerVisual): void {
 		if (!state.sim) return;
-		if (visual.replayComplete === true) {
-			state.replayComplete = true;
-			state.paused = true;
+		if (state.replayMode) {
+			state.replayTick = visual.tick;
+			if (visual.replayComplete === true) {
+				state.replayComplete = true;
+				state.paused = true;
+			}
 		}
 		state.workerVisualRevision++;
 		state.workerVisuals = [
@@ -340,6 +396,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	const gameSession = new GameSession({
 		onReady: handleSessionReady,
 		onVisual: handleWorkerVisual,
+		onReplayStatus: handleReplayStatus,
 		onTelemetry: () => state.workerTelemetryVersion++,
 		onError: handleError
 	});
@@ -355,6 +412,11 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		createWorld,
 		deploy,
 		togglePause,
+		toggleReplayPlay,
+		seekReplay,
+		stepReplay,
+		setReplaySpeed,
+		handleReplayStatus,
 		newWorld,
 		rematch,
 		copySeed,
