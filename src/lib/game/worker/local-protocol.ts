@@ -40,7 +40,8 @@ export type LocalWorkerCommandType =
 	| 'demolish'
 	| 'cancel-attack'
 	| 'alliance-request'
-	| 'alliance-break';
+	| 'alliance-break'
+	| 'ledger';
 
 export interface LocalWorkerCommand {
 	type: 'command';
@@ -96,6 +97,8 @@ export interface LocalWorkerCommandResult {
 	tick: number;
 	/** Open block containing the accepted transaction, if any. */
 	ledgerBlock: LedgerBlock | null;
+	/** Pretty plain-text ledger/block export for the debug download. */
+	ledgerText?: string;
 }
 
 export interface LocalWorkerTelemetry {

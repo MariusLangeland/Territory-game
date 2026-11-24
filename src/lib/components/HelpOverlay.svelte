@@ -6,8 +6,9 @@
 		mapWidth: number;
 		mapHeight: number;
 		onClose: () => void;
+		onExportLedger: () => void;
 	}
-	let { stateCount, mapWidth, mapHeight, onClose }: Props = $props();
+	let { stateCount, mapWidth, mapHeight, onClose, onExportLedger }: Props = $props();
 </script>
 
 <div class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
@@ -92,6 +93,9 @@
 			<span><kbd>1</kbd>–<kbd>7</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
 			<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
 			<span><kbd>H</kbd> FIELD MANUAL</span>
+			<button class="ledger-download" type="button" onclick={onExportLedger}>
+				DOWNLOAD LEDGER
+			</button>
 			<span>WEBGPU / DETERMINISTIC CORE</span>
 		</div>
 	</article>
@@ -198,6 +202,21 @@
 
 	.manual-footer span:last-child {
 		margin-left: auto;
+	}
+
+	.ledger-download {
+		padding: 2px 7px;
+		border: 1px solid var(--line-soft);
+		background: var(--bg-raised);
+		color: var(--ink-dim);
+		font: inherit;
+		letter-spacing: inherit;
+		cursor: pointer;
+	}
+
+	.ledger-download:hover {
+		border-color: var(--signal-55);
+		color: var(--signal-strong);
 	}
 
 	@media (max-width: 900px) {

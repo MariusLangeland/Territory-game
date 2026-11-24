@@ -132,6 +132,17 @@ export class LocalWorkerHost {
 
 	command(message: LocalWorkerCommand): LocalWorkerCommandResult {
 		const command = message.command;
+		if (command.type === 'ledger') {
+			return {
+				type: 'command-result',
+				id: message.id,
+				ok: true,
+				message: 'Ledger exported.',
+				tick: this.simulation.tick,
+				ledgerBlock: this.agent.openBlockView,
+				ledgerText: this.agent.exportText()
+			};
+		}
 		const intent = this.toIntent(command);
 		const result = this.agent.submit(1, intent);
 		return {
@@ -178,6 +189,8 @@ export class LocalWorkerHost {
 				return { type: 'alliance-request', targetPlayerId: command.targetPlayerId ?? 0 };
 			case 'alliance-break':
 				return { type: 'alliance-break', targetPlayerId: command.targetPlayerId ?? 0 };
+			case 'ledger':
+				throw new Error('Ledger export is not a gameplay transaction.');
 		}
 	}
 

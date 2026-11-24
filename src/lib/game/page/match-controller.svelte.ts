@@ -124,6 +124,21 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		}
 	}
 
+	async function exportLedger(): Promise<void> {
+		const text = await gameSession.exportLedger();
+		if (!text) {
+			showToast('Ledger export is unavailable until the match starts.', 'warn');
+			return;
+		}
+		const blob = new Blob([text], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = `territory-ledger-${seedHexFor(state.currentSeed)}.json`;
+		anchor.click();
+		URL.revokeObjectURL(url);
+	}
+
 	function applySeed(): void {
 		const parsed = parseSeed(state.seedInput);
 		if (parsed === null) {
@@ -288,6 +303,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		newWorld,
 		rematch,
 		copySeed,
+		exportLedger,
 		applySeed,
 		showToast,
 		handleSessionReady,

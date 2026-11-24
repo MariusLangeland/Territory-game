@@ -30,6 +30,7 @@ interface CommandResult {
 	reason?: string;
 	message: string;
 	ledgerBlock?: import('../ledger/agent').LedgerBlock | null;
+	ledgerText?: string;
 }
 
 interface UpgradeQuote {

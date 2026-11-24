@@ -108,11 +108,22 @@ export class GameSession {
 	command(
 		type: LocalWorkerCommandType,
 		args: Parameters<WorkerLocalSimulation['command']>[1] = {}
-	): Promise<{ ok: boolean; reason?: string; message: string }> {
+	): Promise<{
+		ok: boolean;
+		reason?: string;
+		message: string;
+		ledgerText?: string;
+	}> {
 		if (!this.simulation) {
 			return Promise.resolve({ ok: false, message: 'Match worker is not ready.' });
 		}
 		return this.simulation.command(type, args);
+	}
+
+	/** Downloadable plain-text ledger from the authoritative local worker. */
+	async exportLedger(): Promise<string> {
+		const result = await this.command('ledger');
+		return result.ledgerText ?? '';
 	}
 
 	dispose(): void {

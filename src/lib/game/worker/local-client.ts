@@ -15,6 +15,7 @@ export interface LocalWorkerCommandPromiseResult {
 	reason?: string;
 	message: string;
 	ledgerBlock?: LedgerBlock | null;
+	ledgerText?: string;
 }
 
 interface LocalWorkerHandlers {
@@ -76,7 +77,8 @@ export class LocalWorkerClient {
 				ok: message.ok,
 				reason: message.reason,
 				message: message.message,
-				ledgerBlock: message.ledgerBlock
+				ledgerBlock: message.ledgerBlock,
+				ledgerText: message.ledgerText
 			});
 		}
 	}

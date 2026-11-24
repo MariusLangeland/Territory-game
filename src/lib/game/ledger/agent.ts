@@ -73,6 +73,19 @@ export class LedgerAgent {
 		return JSON.parse(JSON.stringify(this.ledger)) as MatchLedger;
 	}
 
+	/** Pretty plain-text ledger plus block chain for inspection/export. */
+	exportText(): string {
+		return JSON.stringify(
+			{
+				ledger: this.ledgerView,
+				blocks: this.blocksView,
+				openBlock: this.openBlockView
+			},
+			null,
+			2
+		);
+	}
+
 	/** Sample the current checksum into the ledger tip for replay verification. */
 	sampleChecksum(): number {
 		const checksum = this.simulation.checksum();

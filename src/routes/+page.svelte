@@ -263,6 +263,7 @@
 			mapWidth={game.mapWidth}
 			mapHeight={game.mapHeight}
 			onClose={() => (game.showHelp = false)}
+			onExportLedger={() => void game.exportLedger()}
 		/>
 	{/if}
 </main>

@@ -120,5 +120,10 @@ describe('local worker host', () => {
 		const replay = replayMatchLedger(host.agent.ledgerView);
 		expect(replay.checksum).toBe(host.simulation.checksum());
 		expect(replay.matches).toBe(true);
+
+		const exported = host.command({ type: 'command', id: 3, command: { type: 'ledger' } });
+		expect(exported.ok).toBe(true);
+		expect(exported.ledgerText).toContain('"entries"');
+		expect(JSON.parse(exported.ledgerText ?? '{}').blocks).toHaveLength(1);
 	});
 });
