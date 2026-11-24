@@ -7,8 +7,17 @@
 		mapHeight: number;
 		onClose: () => void;
 		onExportLedger: () => void;
+		onUploadLedger: (file: File) => void;
 	}
-	let { stateCount, mapWidth, mapHeight, onClose, onExportLedger }: Props = $props();
+	let { stateCount, mapWidth, mapHeight, onClose, onExportLedger, onUploadLedger }: Props =
+		$props();
+
+	function handleLedgerFile(event: Event): void {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (file) onUploadLedger(file);
+		input.value = '';
+	}
 </script>
 
 <div class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
@@ -96,6 +105,10 @@
 			<button class="ledger-download" type="button" onclick={onExportLedger}>
 				DOWNLOAD LEDGER
 			</button>
+			<label class="ledger-download">
+				REPLAY LEDGER
+				<input type="file" accept=".json,application/json" onchange={handleLedgerFile} />
+			</label>
 			<span>WEBGPU / DETERMINISTIC CORE</span>
 		</div>
 	</article>
@@ -217,6 +230,10 @@
 	.ledger-download:hover {
 		border-color: var(--signal-55);
 		color: var(--signal-strong);
+	}
+
+	.ledger-download input {
+		display: none;
 	}
 
 	@media (max-width: 900px) {

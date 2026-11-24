@@ -3,6 +3,7 @@ import type { StartPoint } from '../map';
 import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from '../simulation';
 import type { GrowthMode } from '../growth';
 import type { LedgerBlock } from '../ledger/agent';
+import type { MatchLedger } from '../net/match-ledger';
 
 export interface LocalWorkerInitConfig {
 	seed: number;
@@ -14,6 +15,8 @@ export interface LocalWorkerInitConfig {
 	matchDurationTicks: number;
 	botGenomes?: readonly (BotGenome | null)[];
 	botCommandPostStacks: number;
+	/** Present for a read-only ledger replay match. */
+	replay?: MatchLedger;
 }
 
 export interface LocalWorkerInit {
@@ -86,6 +89,8 @@ export interface LocalWorkerVisual {
 	mergedDistricts: MergedDistrictGroup[];
 	/** Sealed block for this tick when one or more transactions were accepted. */
 	ledgerBlock: LedgerBlock | null;
+	/** True on the final visual of a ledger replay. */
+	replayComplete?: boolean;
 }
 
 export interface LocalWorkerCommandResult {

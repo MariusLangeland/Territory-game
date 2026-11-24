@@ -73,8 +73,10 @@
   falls back to tight spacing for one-pixel pockets. Fixed 10/25 batches being
   silently capped at 5 and non-State demolitions showing the State-destruction
   annexation hint.
-- Ledger inspection: the field manual now has DOWNLOAD LEDGER, which exports a
-  pretty-printed JSON text snapshot of the ledger, sealed blocks, and open block.
+- Ledger inspection/replay: the field manual now has DOWNLOAD LEDGER, which
+  exports a pretty-printed JSON text snapshot of the ledger, sealed blocks, and
+  open block, and REPLAY LEDGER, which uploads that file and replays it in a
+  read-only worker with a replay banner and no gameplay controls.
 - Offline ledger authority (Ledger branch): local match commands now go through
   `LedgerAgent`; accepted transactions form open blocks, ticks seal blocks with a
   checksum, and the worker sends blocks with command results and visual deltas.

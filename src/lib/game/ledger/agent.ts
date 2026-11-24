@@ -44,13 +44,43 @@ export class LedgerAgent {
 	readonly ledger: MatchLedger;
 	private readonly blocks: LedgerBlock[] = [];
 	private openBlock: LedgerBlock | null = null;
+	private readonly replay: MatchLedger | null;
+	private readonly replayEntries: MatchLedgerEntry[];
+	private readonly replayTargetTick: number;
+	private replayIndex = 0;
+	private lastReplayTick = 0;
 
-	constructor(options: SimulationOptions) {
-		this.simulation = new TerritorySimulation(options);
-		this.ledger = createMatchLedger(options);
-		this.ledger.finalTick = this.simulation.tick;
-		this.ledger.checksumTick = this.simulation.tick;
-		this.ledger.finalChecksum = this.simulation.checksum();
+	constructor(options: SimulationOptions, replay: MatchLedger | null = null) {
+		this.replay = replay;
+		const source = replay?.options ?? options;
+		this.simulation = new TerritorySimulation(JSON.parse(JSON.stringify(source)));
+		if (replay) {
+			this.ledger = replay;
+			this.replayEntries = [...replay.entries].sort((a, b) => a.tick - b.tick);
+			this.replayTargetTick =
+				replay.finalTick ?? this.replayEntries.at(-1)?.tick ?? this.simulation.tick;
+		} else {
+			this.ledger = createMatchLedger(options);
+			this.ledger.finalTick = this.simulation.tick;
+			this.ledger.checksumTick = this.simulation.tick;
+			this.ledger.finalChecksum = this.simulation.checksum();
+			this.replayEntries = [];
+			this.replayTargetTick = 0;
+		}
+	}
+
+	get replayComplete(): boolean {
+		return (
+			this.replay !== null &&
+			this.replayIndex >= this.replayEntries.length &&
+			this.lastReplayTick >= this.replayTargetTick
+		);
+	}
+
+	get replayChecksumMatches(): boolean | null {
+		if (!this.replayComplete || !this.replay) return null;
+		if (this.replay.checksumTick !== this.replayTargetTick) return null;
+		return this.replay.finalChecksum === this.simulation.checksum();
 	}
 
 	get tick(): number {
@@ -97,6 +127,9 @@ export class LedgerAgent {
 
 	/** Validate and append one player transaction for the next tick. */
 	submit(playerId: number, intent: OnlineIntent): LedgerSubmitResult {
+		if (this.replay) {
+			return { ok: false, reason: 'read-only', message: 'Ledger replay is read-only.' };
+		}
 		if (this.simulation.ended) {
 			return { ok: false, reason: 'ended', message: 'The conflict is over.' };
 		}
@@ -134,9 +167,12 @@ export class LedgerAgent {
 				block: null
 			};
 		}
+		if (this.replay) this.applyReplayEntries(this.simulation.tick + 1);
 		const block = this.openBlock;
 		this.openBlock = null;
 		const step = this.simulation.step();
+		this.lastReplayTick = step.tick;
+		if (this.replay) return { step, block: null };
 		this.ledger.finalTick = step.tick;
 		if (block) {
 			block.checksum = this.simulation.checksum();
@@ -145,6 +181,15 @@ export class LedgerAgent {
 			this.ledger.finalChecksum = block.checksum;
 		}
 		return { step, block: block ? cloneBlock(block) : null };
+	}
+
+	private applyReplayEntries(tick: number): void {
+		while (this.replayIndex < this.replayEntries.length) {
+			const entry = this.replayEntries[this.replayIndex];
+			if (!entry || entry.tick > tick) break;
+			if (entry.tick === tick) applyOnlineIntent(this.simulation, entry.playerId, entry.intent);
+			this.replayIndex++;
+		}
 	}
 
 	private previousChecksum(): number {

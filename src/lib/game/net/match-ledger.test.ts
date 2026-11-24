@@ -84,6 +84,11 @@ describe('match ledger', () => {
 		const replay = replayMatchLedger(decoded);
 		expect(replay.checksum).toBe(sim.checksum());
 		expect(replay.matches).toBe(true);
+
+		const wrapped = decodeMatchLedger(
+			JSON.stringify({ ledger: JSON.parse(encodeMatchLedger(ledger)), blocks: [], openBlock: null })
+		);
+		expect(wrapped.entries).toHaveLength(ledger.entries.length);
 	});
 
 	it('records accepted online-room moves and replays them', () => {

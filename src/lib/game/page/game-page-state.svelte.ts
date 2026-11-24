@@ -37,6 +37,9 @@ function createStateAccessors() {
 	let paused = $state(true);
 	let showIntro = $state(true);
 	let showHelp = $state(false);
+	let replayMode = $state(false);
+	let replayName = $state('');
+	let replayComplete = $state(false);
 	let onboardingStep = $state<OnboardingStep | null>(null);
 	let onboardingDone = $state(false);
 	let defeatOpen = $state(false);
@@ -158,6 +161,24 @@ function createStateAccessors() {
 		},
 		set showIntro(value) {
 			showIntro = value;
+		},
+		get replayMode() {
+			return replayMode;
+		},
+		set replayMode(value) {
+			replayMode = value;
+		},
+		get replayName() {
+			return replayName;
+		},
+		set replayName(value) {
+			replayName = value;
+		},
+		get replayComplete() {
+			return replayComplete;
+		},
+		set replayComplete(value) {
+			replayComplete = value;
 		},
 		get showHelp() {
 			return showHelp;

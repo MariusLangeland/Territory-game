@@ -23,17 +23,20 @@ export class LocalWorkerHost {
 
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
-		this.agent = new LedgerAgent({
-			seed: config.seed,
-			width: config.width,
-			height: config.height,
-			playerCount: config.playerCount,
-			growthMode: config.growthMode,
-			botDifficulty: config.botDifficulty,
-			matchDurationTicks: config.matchDurationTicks,
-			botGenomes: config.botGenomes,
-			botCommandPostStacks: config.botCommandPostStacks
-		});
+		this.agent = new LedgerAgent(
+			{
+				seed: config.seed,
+				width: config.width,
+				height: config.height,
+				playerCount: config.playerCount,
+				growthMode: config.growthMode,
+				botDifficulty: config.botDifficulty,
+				matchDurationTicks: config.matchDurationTicks,
+				botGenomes: config.botGenomes,
+				botCommandPostStacks: config.botCommandPostStacks
+			},
+			config.replay ?? null
+		);
 		this.simulation = this.agent.simulation;
 	}
 
@@ -41,7 +44,7 @@ export class LocalWorkerHost {
 		const sim = this.simulation;
 		return {
 			type: 'init',
-			config: this.config,
+			config: { ...this.config, replay: undefined },
 			width: sim.width,
 			height: sim.height,
 			starts: sim.map.starts,
@@ -68,7 +71,7 @@ export class LocalWorkerHost {
 	}
 
 	get ended(): boolean {
-		return this.simulation.ended;
+		return this.simulation.ended || this.agent.replayComplete;
 	}
 
 	step(): LocalWorkerVisual | null {
@@ -90,7 +93,8 @@ export class LocalWorkerHost {
 				: null,
 			events: result.events,
 			mergedDistricts: [...this.simulation.getMergedDistricts()],
-			ledgerBlock: advance.block
+			ledgerBlock: advance.block,
+			replayComplete: this.agent.replayComplete
 		};
 	}
 

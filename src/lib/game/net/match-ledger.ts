@@ -129,7 +129,11 @@ export function encodeMatchLedger(ledger: MatchLedger): string {
 }
 
 export function decodeMatchLedger(encoded: string): MatchLedger {
-	const parsed = JSON.parse(encoded) as Partial<MatchLedger>;
+	const root = JSON.parse(encoded) as Partial<MatchLedger> & { ledger?: Partial<MatchLedger> };
+	// Accept both a bare ledger and the inspection/download wrapper
+	// { ledger, blocks, openBlock } produced by LedgerAgent.exportText().
+	const parsed =
+		root.ledger && typeof root.ledger === 'object' ? root.ledger : (root as Partial<MatchLedger>);
 	if (parsed.version !== MATCH_LEDGER_VERSION) {
 		throw new Error(`Unsupported ledger version: ${String(parsed.version)}.`);
 	}

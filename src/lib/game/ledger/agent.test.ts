@@ -59,6 +59,28 @@ describe('LedgerAgent', () => {
 		expect(replay.matches).toBe(true);
 	});
 
+	it('replays a recorded ledger in read-only mode', () => {
+		const source = new LedgerAgent(OPTIONS);
+		const attack = firstAttack(source.simulation);
+		expect(attack).not.toBeNull();
+		if (!attack) return;
+		expect(source.submit(1, { type: 'attack', ...attack }).ok).toBe(true);
+		for (let tick = 0; tick < 25; tick++) source.advance();
+		source.sampleChecksum();
+
+		const replay = new LedgerAgent(OPTIONS, source.ledgerView);
+		expect(replay.submit(1, { type: 'attack', ...attack })).toMatchObject({
+			ok: false,
+			reason: 'read-only'
+		});
+		let guard = 0;
+		while (!replay.replayComplete && guard++ < 100) replay.advance();
+		expect(replay.replayComplete).toBe(true);
+		expect(replay.simulation.tick).toBe(source.simulation.tick);
+		expect(replay.simulation.checksum()).toBe(source.simulation.checksum());
+		expect(replay.replayChecksumMatches).toBe(true);
+	});
+
 	it('rejects invalid transactions without writing a block', () => {
 		const agent = new LedgerAgent(OPTIONS);
 		const before = agent.ledger.entries.length;

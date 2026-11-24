@@ -1,6 +1,7 @@
 import { goto } from '$app/navigation';
 import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 import { GameSession } from '#lib/game/session/game-session';
+import { decodeMatchLedger, type MatchLedger } from '#lib/game/net/match-ledger';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import {
@@ -67,6 +68,9 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.errorMessage = '';
 		state.rendererReady = false;
 		state.artilleryTargeting = false;
+		state.replayMode = false;
+		state.replayName = '';
+		state.replayComplete = false;
 		state.sim = null;
 		state.snapshot = null;
 		state.workerVisuals = [];
@@ -88,6 +92,47 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.currentSeed = seed >>> 0;
 		state.seedInput = seedHexFor(seed);
 		gameSession.start(seed, normalized);
+	}
+
+	async function startReplayFile(file: File): Promise<void> {
+		try {
+			const ledger = decodeMatchLedger(await file.text());
+			resetForReplay(ledger, file.name);
+			gameSession.startReplay(ledger);
+		} catch (error) {
+			showToast(
+				error instanceof Error ? `Invalid ledger: ${error.message}` : 'Invalid ledger file.',
+				'error'
+			);
+		}
+	}
+
+	function resetForReplay(ledger: MatchLedger, name: string): void {
+		state.replayMode = true;
+		state.replayName = name;
+		state.replayComplete = false;
+		state.phase = 'loading';
+		state.errorMessage = '';
+		state.rendererReady = false;
+		state.artilleryTargeting = false;
+		state.sim = null;
+		state.snapshot = null;
+		state.workerVisuals = [];
+		state.workerVisualRevision = 0;
+		state.lastWorkerUiTick = -100;
+		state.gameStarted = false;
+		state.showIntro = false;
+		state.showHelp = false;
+		state.defeatOpen = false;
+		state.defeatHandled = false;
+		state.paused = true;
+		state.hover = null;
+		deps.interaction.closeStructureMenu();
+		state.cameraView = null;
+		state.rankScrollTop = 0;
+		state.eventFeed = [];
+		state.currentSeed = ledger.options.seed >>> 0;
+		state.seedInput = seedHexFor(ledger.options.seed);
 	}
 
 	function deploy(): void {
@@ -159,10 +204,20 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		const url = new URL(window.location.href);
 		url.searchParams.set('seed', String(seed >>> 0));
 		void goto(url, { replace: true, reset: false, state: {} });
+		if (state.replayMode) {
+			state.gameStarted = true;
+			state.showIntro = false;
+			state.paused = false;
+			gameSession.resume();
+		}
 	}
 
 	function handleWorkerVisual(visual: LocalWorkerVisual): void {
 		if (!state.sim) return;
+		if (visual.replayComplete === true) {
+			state.replayComplete = true;
+			state.paused = true;
+		}
 		state.workerVisualRevision++;
 		state.workerVisuals = [
 			...state.workerVisuals,
@@ -304,6 +359,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		rematch,
 		copySeed,
 		exportLedger,
+		startReplayFile,
 		applySeed,
 		showToast,
 		handleSessionReady,

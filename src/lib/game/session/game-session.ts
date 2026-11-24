@@ -6,6 +6,7 @@ import { loadGauntletSurvivors } from '../ai/gauntlet-survivors';
 import type { BotGenome } from '../ai/genome';
 import { WorkerLocalSimulation } from '../worker/local-simulation';
 import type { LocalWorkerCommandType, LocalWorkerVisual } from '../worker/local-protocol';
+import type { MatchLedger } from '../net/match-ledger';
 
 interface GameSessionHandlers {
 	onReady: (simulation: WorkerLocalSimulation, seed: number) => void;
@@ -41,6 +42,59 @@ export class GameSession {
 		this.timer = setTimeout(() => {
 			void this.create(seed >>> 0, normalized, generation);
 		}, 40);
+	}
+
+	/** Start a read-only worker that replays an uploaded ledger. */
+	startReplay(ledger: MatchLedger): void {
+		const generation = ++this.generation;
+		this.clearTimer();
+		this.simulation?.dispose();
+		this.simulation = null;
+		this.timer = setTimeout(() => {
+			void this.createReplay(ledger, generation);
+		}, 40);
+	}
+
+	private async createReplay(ledger: MatchLedger, generation: number): Promise<void> {
+		try {
+			const options = ledger.options;
+			const next = await WorkerLocalSimulation.create(
+				{
+					seed: options.seed,
+					playerCount: options.playerCount ?? 8,
+					width: options.width ?? 1280,
+					height: options.height ?? 720,
+					growthMode: options.growthMode ?? DEFAULT_GROWTH_MODE,
+					botDifficulty: options.botDifficulty ?? 'standard',
+					matchDurationTicks: options.matchDurationTicks ?? 0,
+					botGenomes: options.botGenomes,
+					botCommandPostStacks: options.botCommandPostStacks ?? 0,
+					replay: ledger
+				},
+				{
+					onVisual: (visual) => {
+						if (generation === this.generation) this.handlers.onVisual(visual);
+					},
+					onTelemetry: () => {
+						if (generation === this.generation) this.handlers.onTelemetry();
+					},
+					onError: (error) => {
+						if (generation === this.generation) this.handlers.onError(error);
+					}
+				}
+			);
+			if (generation !== this.generation) {
+				next.dispose();
+				return;
+			}
+			this.simulation = next;
+			next.pause();
+			const seed = ledger.options.seed >>> 0;
+			this.handlers.onReady(next, seed);
+		} catch (error) {
+			if (generation !== this.generation) return;
+			this.handlers.onError(error instanceof Error ? error : new Error(String(error)));
+		}
 	}
 
 	private async create(seed: number, settings: MatchSettings, generation: number): Promise<void> {
