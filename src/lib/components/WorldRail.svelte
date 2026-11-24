@@ -100,7 +100,7 @@
 		<section class="panel feed" aria-label="War feed">
 			<div class="panel-head"><span>WAR FEED</span><span class="panel-meta">LIVE</span></div>
 			<ul>
-				{#each eventFeed as event (event.id)}
+				{#each eventFeed as event}
 					<li
 						class:elimination={event.kind === 'elimination'}
 						class:structure={event.kind === 'structure'}

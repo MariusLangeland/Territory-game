@@ -27,7 +27,7 @@
 		{#if blocks.length === 0}
 			<p class="ledger-empty">No transaction blocks in this ledger.</p>
 		{/if}
-		{#each blocks as block (block.index)}
+		{#each blocks as block}
 			<button
 				type="button"
 				class="ledger-row"
