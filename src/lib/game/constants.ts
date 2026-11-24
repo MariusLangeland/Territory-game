@@ -117,6 +117,8 @@ export const ATTACK_SEARCH_RADIUS = 34;
 /** Active artillery: one shell per structure level per volley. */
 export const ARTILLERY_SUPPLY_COST_PER_LEVEL = 300;
 export const UPGRADE_LEVEL_COST_STEP = 15;
+/** Largest atomic district upgrade batch exposed by the HUD. */
+export const MAX_UPGRADE_BATCH = 25;
 export const ARTILLERY_RANGE = 140;
 /** Cursor-to-shore snapping radius for Port placement. */
 export const PORT_BUILD_SNAP_RADIUS = 24;

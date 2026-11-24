@@ -106,9 +106,15 @@ export function createInteractionController(state: GamePageState, deps: Interact
 	function nearestBuildCell(card: PublicCard, cellX: number, cellY: number) {
 		const sim = state.sim;
 		if (!sim) return null;
-		const origin = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
-		if (origin.ok) {
-			return { x: origin.targetX ?? cellX, y: origin.targetY ?? cellY };
+		// Shift-build must create a new structure, not stack onto an existing
+		// district. Ports are point anchors and intentionally may overlap.
+		const isNewStructureSite = (x: number, y: number) =>
+			card.type === 'port' || sim.getDistrictStructureId(x, y) === 0;
+		if (isNewStructureSite(cellX, cellY)) {
+			const origin = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cellX, cellY);
+			if (origin.ok) {
+				return { x: origin.targetX ?? cellX, y: origin.targetY ?? cellY };
+			}
 		}
 		if (card.type === 'port') return null;
 		let bestX = -1;
@@ -121,6 +127,7 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		for (let y = minY; y <= maxY; y++) {
 			for (let x = minX; x <= maxX; x++) {
 				if (!sim.isLand(x, y)) continue;
+				if (!isNewStructureSite(x, y)) continue;
 				const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, x, y);
 				if (!validation.ok) continue;
 				const targetX = validation.targetX ?? x;

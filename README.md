@@ -94,25 +94,25 @@ pnpm format     # Prettier write
 
 ## Controls
 
-| Input                       | Action                                                           |
-| --------------------------- | ---------------------------------------------------------------- |
-| Click / tap a shared border | Buy a durable front with supply                                  |
-| Click / tap your district   | Upgrade by the selected batch (1/5/10/25 buttons over supply)    |
-| Shift + click while placing | Build the card on the closest valid cell; stay in placement mode |
-| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure            |
-| Right-click a structure     | Open structure actions; first item demolishes it (no refund)     |
-| Right-click rival territory | Request an alliance; active ally shows BREAK ALLIANCE            |
-| `1`–`7`                     | Start placing that card; left-click builds, right-click cancels  |
-| Drag                        | Pan the map                                                      |
-| Scroll                      | Zoom at the pointer                                              |
-| Two-finger pinch            | Zoom on touch                                                    |
-| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade                         |
-| `X`                         | Cancel latest front                                              |
-| `A` / FIRE                  | Enter artillery targeting; click an aim point in range           |
-| `Space`                     | Pause / resume the simulation                                    |
-| `F` / `C`                   | Fit atlas / return to beachhead                                  |
-| `H`                         | Open the field manual                                            |
-| Minimap click               | Jump the camera                                                  |
+| Input                       | Action                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| Click / tap a shared border | Buy a durable front with supply                                                           |
+| Click / tap your district   | Upgrade by the selected batch (1/5/10/25 buttons over supply)                             |
+| Shift + click while placing | Build a new structure on the closest valid cell outside districts; stay in placement mode |
+| Ctrl + click your district  | Disable visual merging; upgrade the clicked structure                                     |
+| Right-click a structure     | Open structure actions; first item demolishes it (no refund)                              |
+| Right-click rival territory | Request an alliance; active ally shows BREAK ALLIANCE                                     |
+| `1`–`7`                     | Start placing that card; left-click builds, right-click cancels                           |
+| Drag                        | Pan the map                                                                               |
+| Scroll                      | Zoom at the pointer                                                                       |
+| Two-finger pinch            | Zoom on touch                                                                             |
+| Arrow keys / `Enter`        | Move keyboard cursor / attack or upgrade                                                  |
+| `X`                         | Cancel latest front                                                                       |
+| `A` / FIRE                  | Enter artillery targeting; click an aim point in range                                    |
+| `Space`                     | Pause / resume the simulation                                                             |
+| `F` / `C`                   | Fit atlas / return to beachhead                                                           |
+| `H`                         | Open the field manual                                                                     |
+| Minimap click               | Jump the camera                                                                           |
 
 | Drag a build card | Drop on controlled land to buy/build that structure |
 

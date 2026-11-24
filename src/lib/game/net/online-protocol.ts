@@ -1,3 +1,4 @@
+import { MAX_UPGRADE_BATCH } from '../constants';
 import type { BotDifficulty, GameSnapshot, SimEventKind } from '../simulation';
 
 export interface OnlineRoomConfig {
@@ -195,7 +196,7 @@ export function isOnlineIntent(value: unknown): value is OnlineIntent {
 				Number.isFinite(candidate.y) &&
 				Number.isSafeInteger(candidate.levels) &&
 				(candidate.levels as number) >= 1 &&
-				(candidate.levels as number) <= 5 &&
+				(candidate.levels as number) <= MAX_UPGRADE_BATCH &&
 				typeof candidate.merged === 'boolean'
 			);
 		case 'demolish':

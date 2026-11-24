@@ -186,6 +186,24 @@ describe('player economy and cards', () => {
 		expect(sim.gold).toBeGreaterThanOrEqual(30);
 	});
 
+	it('supports 10- and 25-level upgrade batches', () => {
+		const sim = new TerritorySimulation({ seed: 246816 });
+		buildCard(sim, 'fortification');
+		const target = findDistrictCell(sim, STRUCTURE_TYPE_CODES.fortification);
+		expect(target).toBeGreaterThan(-1);
+		if (target < 0) return;
+		raiseSupplyCap(sim);
+		sim.gold = 20_000;
+		const x = target % sim.width;
+		const y = Math.floor(target / sim.width);
+		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, 25);
+		expect(quote.ok).toBe(true);
+		expect(quote.levels).toBe(25);
+		expect(quote.cost).toBe(STRUCTURE_DEFINITIONS.fortification.cost * 25 + 15 * 325);
+		expect(sim.upgradeDistrict(HUMAN_PLAYER_ID, x, y, 25).ok).toBe(true);
+		expect(sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, 10).levels).toBe(10);
+	});
+
 	it('quotes and queues five-level upgrades atomically', () => {
 		const sim = new TerritorySimulation({ seed: 246815 });
 		const { index } = buildCard(sim, 'fortification');

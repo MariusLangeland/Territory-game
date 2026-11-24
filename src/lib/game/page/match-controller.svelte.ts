@@ -218,7 +218,12 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		}
 		if (
 			state.gameStarted &&
-			events.some((event) => event.kind === 'structure' && event.playerId === next.humanId)
+			events.some(
+				(event) =>
+					event.kind === 'structure' &&
+					event.playerId === next.humanId &&
+					event.message.includes('State structure')
+			)
 		) {
 			showToast(
 				'Your State structure was destroyed. Territory is no longer protected from annexation.',

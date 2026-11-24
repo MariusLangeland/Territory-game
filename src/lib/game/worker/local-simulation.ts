@@ -6,6 +6,7 @@ import {
 	ATTACK_SUPPLY_COST_BASE,
 	ATTACK_SUPPLY_COST_BONUS,
 	HUMAN_PLAYER_ID,
+	MAX_UPGRADE_BATCH,
 	STRUCTURE_MIN_SPACING,
 	UPGRADE_LEVEL_COST_STEP
 } from '../constants';
@@ -417,7 +418,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		levels = 1,
 		_merged = false
 	): UpgradeQuote {
-		const count = Math.max(1, Math.min(5, Math.floor(levels)));
+		const count = Math.max(1, Math.min(MAX_UPGRADE_BATCH, Math.floor(levels)));
 		const structure = this.nearestOwnBuildable(x, y);
 		if (!structure) {
 			return {

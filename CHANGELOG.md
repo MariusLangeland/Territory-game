@@ -68,7 +68,9 @@
   memory sections plus a Chrome main-thread/renderer profile.
 - QoL: naval clicks now snap to the closest valid shore within 32 px; district
   upgrades use 1/5/10/25 buttons above the supply bar; Shift while placing a card
-  builds on the closest valid cell, disables upgrading, and keeps placement armed.
+  builds a NEW structure on the closest valid cell outside districts, disables
+  upgrading, and keeps placement armed. Fixed 10/25 batches being silently capped
+  at 5 and non-State demolitions showing the State-destruction annexation hint.
 - `+page.svelte` is now ~240 lines (markup + component imports), down from 5,773
   before the restructure.
 - No gameplay, protocol, or deterministic behavior changed.

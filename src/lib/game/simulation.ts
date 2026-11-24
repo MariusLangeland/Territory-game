@@ -101,6 +101,7 @@ import {
 	SUPPLY_INCOME_TERRITORY_DIVISOR,
 	SUPPLY_WIN_SHARE,
 	STRUCTURE_MIN_SPACING,
+	MAX_UPGRADE_BATCH,
 	UPGRADE_LEVEL_COST_STEP,
 	TICK_RATE,
 	UNCLAIMED_CLEANUP_INTERVAL_TICKS,
@@ -1682,7 +1683,7 @@ export class TerritorySimulation {
 		levels = 1,
 		merged = false
 	): UpgradeQuote {
-		const count = Math.max(1, Math.min(5, Math.floor(levels)));
+		const count = Math.max(1, Math.min(MAX_UPGRADE_BATCH, Math.floor(levels)));
 		const fail = (reason: BuildFailure, message: string): UpgradeQuote => ({
 			ok: false,
 			reason,
