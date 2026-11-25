@@ -4,6 +4,7 @@ import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } fro
 import type { GrowthMode } from '../growth';
 import type { LedgerBlock } from '../ledger/agent';
 import type { MatchLedger } from '../net/match-ledger';
+import type { OnlineIntent } from '../net/online-protocol';
 
 export interface LocalWorkerInitConfig {
 	seed: number;
@@ -15,6 +16,8 @@ export interface LocalWorkerInitConfig {
 	matchDurationTicks: number;
 	botGenomes?: readonly (BotGenome | null)[];
 	botCommandPostStacks: number;
+	/** When true, local commands are rejected and only Spacetime rows apply. */
+	authoritativeInput?: boolean;
 	/** Present for a read-only ledger replay match. */
 	replay?: MatchLedger;
 }
@@ -67,6 +70,12 @@ export interface LocalWorkerPause {
 	type: 'pause' | 'resume';
 }
 
+export interface LocalWorkerApplyIntent {
+	type: 'apply-intent';
+	playerId: number;
+	intent: OnlineIntent;
+}
+
 export interface LocalWorkerReplayControl {
 	type: 'replay-control';
 	action: 'play' | 'pause' | 'seek' | 'step' | 'speed';
@@ -90,7 +99,11 @@ export interface LocalWorkerInitMessage {
 }
 
 export type LocalWorkerInbound =
-	LocalWorkerCommand | LocalWorkerPause | LocalWorkerReplayControl | LocalWorkerInitMessage;
+	| LocalWorkerCommand
+	| LocalWorkerPause
+	| LocalWorkerApplyIntent
+	| LocalWorkerReplayControl
+	| LocalWorkerInitMessage;
 
 export interface LocalWorkerVisual {
 	type: 'visual';

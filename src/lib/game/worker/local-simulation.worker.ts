@@ -188,6 +188,10 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		schedule();
 		return;
 	}
+	if (message.type === 'apply-intent') {
+		host.applyIntent(message.playerId, message.intent);
+		return;
+	}
 	if (message.type === 'command') {
 		const result = host.command(message);
 		scope.postMessage(result);

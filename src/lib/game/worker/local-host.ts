@@ -1,7 +1,9 @@
 import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from '../constants';
 import { LedgerAgent } from '../ledger/agent';
 import type { TerritorySimulation } from '../simulation';
+import { applyOnlineIntent } from '../net/online-intent';
 import type { OnlineIntent } from '../net/online-protocol';
+import { workerCommandToIntent } from './intent';
 import type {
 	LocalWorkerCommand,
 	LocalWorkerCommandResult,
@@ -19,11 +21,13 @@ import type {
 export class LocalWorkerHost {
 	readonly agent: LedgerAgent;
 	readonly config: LocalWorkerInitConfig;
+	readonly authoritativeInput: boolean;
 	private paused = false;
 	private replaySpeed = 1;
 
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
+		this.authoritativeInput = config.authoritativeInput === true;
 		this.agent = new LedgerAgent(
 			{
 				seed: config.seed,
@@ -196,7 +200,18 @@ export class LocalWorkerHost {
 				ledgerText: this.agent.exportText()
 			};
 		}
-		const intent = this.toIntent(command);
+		if (this.authoritativeInput) {
+			return {
+				type: 'command-result',
+				id: message.id,
+				ok: false,
+				reason: 'authoritative-input',
+				message: 'Input is submitted through Spacetime.',
+				tick: this.simulation.tick,
+				ledgerBlock: null
+			};
+		}
+		const intent = workerCommandToIntent(command);
 		const result = this.agent.submit(1, intent);
 		return {
 			type: 'command-result',
@@ -209,42 +224,9 @@ export class LocalWorkerHost {
 		};
 	}
 
-	private toIntent(command: LocalWorkerCommand['command']): OnlineIntent {
-		switch (command.type) {
-			case 'attack':
-				return { type: 'attack', x: command.x ?? 0, y: command.y ?? 0 };
-			case 'artillery':
-				return { type: 'artillery', x: command.x ?? 0, y: command.y ?? 0 };
-			case 'naval':
-				return { type: 'naval', x: command.x ?? 0, y: command.y ?? 0 };
-			case 'build':
-				return {
-					type: 'build',
-					cardId: command.cardId ?? 0,
-					x: command.x ?? 0,
-					y: command.y ?? 0,
-					newStructureOnly: command.newStructureOnly === true,
-					allowTightSpacing: command.allowTightSpacing === true
-				};
-			case 'upgrade':
-				return {
-					type: 'upgrade',
-					x: command.x ?? 0,
-					y: command.y ?? 0,
-					levels: command.levels ?? 1,
-					merged: command.merged ?? true
-				};
-			case 'demolish':
-				return { type: 'demolish', structureId: command.structureId ?? 0 };
-			case 'cancel-attack':
-				return { type: 'cancel-attack' };
-			case 'alliance-request':
-				return { type: 'alliance-request', targetPlayerId: command.targetPlayerId ?? 0 };
-			case 'alliance-break':
-				return { type: 'alliance-break', targetPlayerId: command.targetPlayerId ?? 0 };
-			case 'ledger':
-				throw new Error('Ledger export is not a gameplay transaction.');
-		}
+	/** Apply an intent accepted by Spacetime, without writing the local ledger. */
+	applyIntent(playerId: number, intent: OnlineIntent): ReturnType<typeof applyOnlineIntent> {
+		return applyOnlineIntent(this.simulation, playerId, intent);
 	}
 
 	telemetry(): LocalWorkerTelemetry {

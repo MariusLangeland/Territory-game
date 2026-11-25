@@ -6,6 +6,7 @@ import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { RoomDefinition } from '#lib/spacetime/room-definition';
 import { connectRoomSession, type RoomSession } from '#lib/spacetime/room-session';
+import { workerCommandToIntent } from '#lib/game/worker/intent';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import {
@@ -112,6 +113,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		roomConnectionGeneration++;
 		roomSession?.disconnect();
 		roomSession = null;
+		gameSession.setCommandHandler(null);
+		gameSession.setAuthoritativeInput(false);
 		gameSession.dispose();
 		state.landing = true;
 		state.activeRoom = null;
@@ -148,13 +151,28 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.phase = 'loading';
 
 		try {
-			const session = await connectRoomSession({ room });
+			const session = await connectRoomSession({
+				room,
+				onTransaction: (transaction) => {
+					gameSession.applyRemoteIntent(transaction.playerId, transaction.intent);
+				}
+			});
 			if (generation !== roomConnectionGeneration) {
 				session.disconnect();
 				return;
 			}
 			roomSession?.disconnect();
 			roomSession = session;
+			gameSession.setAuthoritativeInput(true);
+			gameSession.setCommandHandler(async (type, args) => {
+				const intent = workerCommandToIntent({ type, ...args });
+				const result = await session.submitIntent(intent);
+				return {
+					ok: result.ok,
+					message: result.message,
+					reason: result.ok ? undefined : 'rejected'
+				};
+			});
 		} catch (error) {
 			if (generation !== roomConnectionGeneration) return;
 			state.phase = 'error';

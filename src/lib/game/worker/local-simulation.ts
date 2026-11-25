@@ -181,6 +181,10 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		return this.client.command(type, args);
 	}
 
+	applyRemoteIntent(playerId: number, intent: import('../net/online-protocol').OnlineIntent): void {
+		this.client.applyIntent(playerId, intent);
+	}
+
 	replayControl(control: Omit<import('./local-protocol').LocalWorkerReplayControl, 'type'>): void {
 		this.client.replayControl(control);
 	}

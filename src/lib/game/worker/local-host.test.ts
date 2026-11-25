@@ -104,6 +104,24 @@ describe('local worker host', () => {
 		expect(result.message.length).toBeGreaterThan(0);
 	});
 
+	it('rejects unsynchronized commands in authoritative-input mode', () => {
+		const host = new LocalWorkerHost({ ...CONFIG, authoritativeInput: true });
+		const result = host.command({
+			type: 'command',
+			id: 1,
+			command: { type: 'attack', x: 10, y: 10 }
+		});
+		expect(result.ok).toBe(false);
+		expect(result.reason).toBe('authoritative-input');
+	});
+
+	it('applies accepted intents without writing the local ledger', () => {
+		const host = new LocalWorkerHost({ ...CONFIG, authoritativeInput: true });
+		host.applyIntent(1, { type: 'alliance-request', targetPlayerId: 2 });
+		host.step();
+		expect(host.agent.ledgerView.entries).toHaveLength(0);
+	});
+
 	it('seeks replay state and exposes playback status', () => {
 		const source = new LocalWorkerHost(CONFIG);
 		source.command({

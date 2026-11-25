@@ -207,7 +207,12 @@ client submits transaction
 
 ## Phase 2 — Client simulation and timing
 
-- [ ] Create a Spacetime-backed online session distinct from state replication.
+- [x] Create a Spacetime-backed online session distinct from state replication.
+- [x] Submit player intents through `submit_transaction`.
+- [x] Reject local unsynchronized commands in the worker.
+- [x] Apply accepted intent rows to the local simulation.
+- [x] Do not write the local input ledger in an online room.
+- [ ] Map accepted rows to exact server ticks and safe frontier.
 - [ ] Start local simulation from seed/config or keyframe.
 - [ ] Estimate server clock and maintain offset.
 - [ ] Compute `targetTick = serverHeadTick - safeDeltaTicks`.

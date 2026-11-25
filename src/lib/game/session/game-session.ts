@@ -11,6 +11,7 @@ import type {
 	LocalWorkerVisual
 } from '../worker/local-protocol';
 import type { MatchLedger } from '../net/match-ledger';
+import type { OnlineIntent } from '../net/online-protocol';
 
 interface GameSessionHandlers {
 	onReady: (simulation: WorkerLocalSimulation, seed: number) => void;
@@ -29,6 +30,14 @@ export class GameSession {
 	private simulation: WorkerLocalSimulation | null = null;
 	private generation = 0;
 	private timer: ReturnType<typeof setTimeout> | null = null;
+	private authoritativeInput = false;
+	private commandHandler:
+		| ((
+				type: LocalWorkerCommandType,
+				args: Parameters<WorkerLocalSimulation['command']>[1]
+		  ) => Promise<{ ok: boolean; reason?: string; message: string; ledgerText?: string }>)
+		| null = null;
+	private readonly pendingRemoteIntents: { playerId: number; intent: OnlineIntent }[] = [];
 
 	constructor(private readonly handlers: GameSessionHandlers) {}
 
@@ -119,7 +128,8 @@ export class GameSession {
 					botDifficulty: settings.difficulty,
 					matchDurationTicks: settings.timerMinutes * 60 * TICK_RATE,
 					botGenomes,
-					botCommandPostStacks: settings.botCommandPostStacks
+					botCommandPostStacks: settings.botCommandPostStacks,
+					authoritativeInput: this.authoritativeInput
 				},
 				{
 					onVisual: (visual) => {
@@ -142,10 +152,18 @@ export class GameSession {
 			}
 			this.simulation = next;
 			next.pause();
+			this.flushPendingIntents();
 			this.handlers.onReady(next, seed);
 		} catch (error) {
 			if (generation !== this.generation) return;
 			this.handlers.onError(error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	private flushPendingIntents(): void {
+		if (!this.simulation) return;
+		for (const pending of this.pendingRemoteIntents.splice(0)) {
+			this.simulation.applyRemoteIntent(pending.playerId, pending.intent);
 		}
 	}
 
@@ -174,6 +192,29 @@ export class GameSession {
 		this.simulation?.resume();
 	}
 
+	setAuthoritativeInput(value: boolean): void {
+		this.authoritativeInput = value;
+	}
+
+	setCommandHandler(
+		handler:
+			| ((
+					type: LocalWorkerCommandType,
+					args: Parameters<WorkerLocalSimulation['command']>[1]
+			  ) => Promise<{ ok: boolean; reason?: string; message: string; ledgerText?: string }>)
+			| null
+	): void {
+		this.commandHandler = handler;
+	}
+
+	applyRemoteIntent(playerId: number, intent: OnlineIntent): void {
+		if (!this.simulation) {
+			this.pendingRemoteIntents.push({ playerId, intent });
+			return;
+		}
+		this.simulation.applyRemoteIntent(playerId, intent);
+	}
+
 	command(
 		type: LocalWorkerCommandType,
 		args: Parameters<WorkerLocalSimulation['command']>[1] = {}
@@ -183,6 +224,9 @@ export class GameSession {
 		message: string;
 		ledgerText?: string;
 	}> {
+		if (type !== 'ledger' && this.commandHandler) {
+			return this.commandHandler(type, args);
+		}
 		if (!this.simulation) {
 			return Promise.resolve({ ok: false, message: 'Match worker is not ready.' });
 		}
@@ -200,6 +244,7 @@ export class GameSession {
 		this.clearTimer();
 		this.simulation?.dispose();
 		this.simulation = null;
+		this.pendingRemoteIntents.length = 0;
 	}
 
 	private clearTimer(): void {

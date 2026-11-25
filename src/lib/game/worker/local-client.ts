@@ -1,4 +1,5 @@
 import type { LedgerBlock } from '../ledger/agent';
+import type { OnlineIntent } from '../net/online-protocol';
 import type {
 	LocalWorkerCommand,
 	LocalWorkerCommandType,
@@ -107,6 +108,15 @@ export class LocalWorkerClient {
 			};
 			this.worker.postMessage(message);
 		});
+	}
+
+	applyIntent(playerId: number, intent: OnlineIntent): void {
+		if (this.disposed) return;
+		this.worker.postMessage({
+			type: 'apply-intent',
+			playerId,
+			intent
+		} satisfies LocalWorkerInbound);
 	}
 
 	replayControl(control: Omit<LocalWorkerReplayControl, 'type'>): void {
