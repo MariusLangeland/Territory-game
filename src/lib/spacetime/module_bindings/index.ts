@@ -44,6 +44,7 @@ import SubmitTransactionReducer from './submit_transaction_reducer';
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import FirstTickEventRow from './first_tick_event_table';
 import LedgerTransactionsRow from './ledger_transactions_table';
 import NewTransactionEventRow from './new_transaction_event_table';
 import RoomsRow from './rooms_table';
@@ -53,6 +54,15 @@ import SeatsRow from './seats_table';
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+	firstTickEvent: __table(
+		{
+			name: 'first_tick_event',
+			indexes: [],
+			constraints: [],
+			event: true
+		},
+		FirstTickEventRow
+	),
 	ledgerTransactions: __table(
 		{
 			name: 'ledger_transactions',

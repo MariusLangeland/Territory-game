@@ -71,12 +71,22 @@ export const newTransactionEvent = table(
 	}
 );
 
+/** One-shot lifecycle broadcast that anchors the match at tick zero. */
+export const firstTickEvent = table(
+	{ name: 'first_tick_event', public: true, event: true },
+	{
+		tick: t.u64(),
+		startedAt: t.timestamp()
+	}
+);
+
 const spacetimedb = schema({
 	rooms,
 	seats,
 	ledgerTransactions,
 	heartbeatTimers,
-	newTransactionEvent
+	newTransactionEvent,
+	firstTickEvent
 });
 
 export default spacetimedb;

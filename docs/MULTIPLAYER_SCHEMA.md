@@ -243,6 +243,15 @@ export const newTransactionEvent = table(
 	}
 );
 
+/** One-shot match anchor broadcast when the room enters running state. */
+export const firstTickEvent = table(
+	{ name: 'first_tick_event', public: true, event: true },
+	{
+		tick: t.u64(),
+		startedAt: t.timestamp()
+	}
+);
+
 export const invalidationEvent = table(
 	{ name: 'invalidation_event', public: true, event: true },
 	{
@@ -278,6 +287,7 @@ export const spacetimedb = schema({
 	arbitrations,
 	keyframes,
 	newTransactionEvent,
+	firstTickEvent,
 	invalidationEvent,
 	arbitrationEvent
 });
@@ -287,7 +297,13 @@ export default spacetimedb;
 
 ## Reducer responsibilities
 
-- `create_room`, `join_room`, `leave_room`, `ready`, `start_match`.
+- `create_room`, `join_room`, `leave_room`, `ready`.
+- `start_match`:
+  - host-only;
+  - set `status = running` and `startedAt`;
+  - schedule liveness;
+  - broadcast `first_tick_event` with `tick = 0` and the same `startedAt`;
+  - clients treat the broadcast as the simulation start anchor.
 - `submit_transaction`:
   - authenticate the caller against a seat;
   - validate schema and rate/sequence;

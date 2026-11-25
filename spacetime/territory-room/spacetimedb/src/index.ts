@@ -1,6 +1,6 @@
 import { ScheduleAt } from 'spacetimedb';
 import { SenderError, t, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
-import spacetimedb, { heartbeatTimers } from './schema';
+import spacetimedb, { firstTickEvent, heartbeatTimers } from './schema';
 
 export { default } from './schema';
 
@@ -185,6 +185,10 @@ export const startMatch = spacetimedb.reducer((ctx) => {
 	ctx.db.heartbeatTimers.insert({
 		scheduledId: 0n,
 		scheduledAt: ScheduleAt.interval(1_000_000n)
+	});
+	ctx.db.firstTickEvent.insert({
+		tick: 0n,
+		startedAt: ctx.timestamp
 	});
 });
 

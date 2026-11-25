@@ -54,6 +54,10 @@ describe('room coordinator', () => {
 			moduleExports.setReady(ctx, { ready: true });
 			moduleExports.startMatch(ctx, {});
 		});
+		const startedRoom = [...test.db.rooms.iter()][0];
+		expect(startedRoom.status).toBe('running');
+		expect(startedRoom.startedAt).toBeDefined();
+		expect(startedRoom.headTick).toBe(0n);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
 			moduleExports.submitTransaction(ctx, {
 				clientSequence: 1n,

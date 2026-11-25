@@ -56,6 +56,10 @@ export function connectRoomSession({
 		let settled = false;
 		let identity: Identity | null = null;
 		let connection: DbConnection | null = null;
+		let resolveFirstTick!: () => void;
+		const firstTick = new Promise<void>((resolve) => {
+			resolveFirstTick = resolve;
+		});
 		const timeout = setTimeout(() => {
 			if (settled) return;
 			settled = true;
@@ -112,12 +116,16 @@ export function connectRoomSession({
 
 		let subscription: SubscriptionHandle | null = null;
 
+		next.db.firstTickEvent.onInsert((_ctx, event) => {
+			if (event.tick === 0n) resolveFirstTick();
+		});
+
 		subscription = next
 			.subscriptionBuilder()
 			.onApplied(() => {
 				void prepareRoom();
 			})
-			.subscribe([tables.rooms, tables.seats]);
+			.subscribe([tables.rooms, tables.seats, tables.firstTickEvent]);
 
 		async function prepareRoom(): Promise<void> {
 			if (settled) return;
@@ -138,6 +146,7 @@ export function connectRoomSession({
 					});
 					await next.reducers.setReady({ ready: true });
 					await next.reducers.startMatch({});
+					await firstTick;
 					succeed();
 					return;
 				}
@@ -150,6 +159,7 @@ export function connectRoomSession({
 					await next.reducers.setReady({ ready: true });
 					if (identity !== null && existing.host.isEqual(identity)) {
 						await next.reducers.startMatch({});
+						await firstTick;
 					}
 					succeed();
 					return;

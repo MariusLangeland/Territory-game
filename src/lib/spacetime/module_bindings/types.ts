@@ -10,6 +10,12 @@ import {
 	type Infer as __Infer
 } from 'spacetimedb';
 
+export const FirstTickEvent = __t.object('FirstTickEvent', {
+	tick: __t.u64(),
+	startedAt: __t.timestamp()
+});
+export type FirstTickEvent = __Infer<typeof FirstTickEvent>;
+
 export const HeartbeatTimers = __t.object('HeartbeatTimers', {
 	scheduledId: __t.u64(),
 	scheduledAt: __t.scheduleAt()

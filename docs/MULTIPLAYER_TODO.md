@@ -168,7 +168,12 @@ client submits transaction
 ### Reducers
 
 - [ ] `create_room`/provision database.
-- [ ] `join_room`, `leave_room`, `ready`, `start_match`.
+- [ ] `join_room`, `leave_room`, `ready`.
+- [ ] `start_match`:
+  - [ ] host-only;
+  - [ ] mark the room running and store `startedAt`;
+  - [ ] broadcast `first_tick_event` at tick `0`;
+  - [ ] clients wait for the first-tick broadcast before starting simulation.
 - [ ] `submit_transaction`:
   - [ ] authenticate seat;
   - [ ] validate schema/rate/sequence;
@@ -340,6 +345,7 @@ client submits transaction
 - [ ] Clients apply whole ticks; no variable-dt simulation.
 - [ ] Late rows cause pause/rollback, never silent divergence.
 - [ ] Public-room room lifecycle works through Spacetime.
+- [ ] Starting a room broadcasts a first-tick event and all clients anchor at tick 0.
 - [ ] Deliberate invalid rows can be flagged; quorum invalidates.
 - [ ] Arbiter decisions are final and applied identically by clients.
 - [ ] Rollback from keyframe produces the same canonical state/checksum.
