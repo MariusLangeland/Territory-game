@@ -33,6 +33,19 @@ const VersionFingerprint = t.object('VersionFingerprint', {
 	protocol: t.u32()
 });
 
+const DisputeStatus = t.enum('DisputeStatus', {
+	Open: t.unit(),
+	Arbitrating: t.unit(),
+	Resolved: t.unit(),
+	Dismissed: t.unit()
+});
+
+const ArbitrationDecision = t.enum('ArbitrationDecision', {
+	Invalid: t.unit(),
+	Valid: t.unit(),
+	Dismissed: t.unit()
+});
+
 // ---------------------------------------------------------------------------
 // Rooms and seats
 // ---------------------------------------------------------------------------
@@ -56,7 +69,9 @@ export const rooms = table(
 		endedAt: t.option(t.timestamp()),
 		// Tick closure watermark: transactions append only to openTick.
 		openTick: t.u64(),
-		sealedThrough: t.u64()
+		sealedThrough: t.u64(),
+		// Optional trusted arbitration for disputes.
+		arbiterRequired: t.bool()
 	}
 );
 
@@ -168,6 +183,54 @@ export const invalidations = table(
 // invalidation. The original row is never deleted.
 
 // ---------------------------------------------------------------------------
+// Optional trusted arbiter / admin
+// ---------------------------------------------------------------------------
+
+export const arbiters = table(
+	{ name: 'arbiters', public: true },
+	{
+		arbiterId: t.u64().primaryKey().autoInc(),
+		roomId: t.string().index('btree'),
+		identity: t.identity(),
+		label: t.string(),
+		active: t.bool(),
+		grantedBy: t.identity(),
+		grantedAt: t.timestamp()
+	}
+);
+
+export const disputes = table(
+	{ name: 'disputes', public: true },
+	{
+		disputeId: t.u64().primaryKey().autoInc(),
+		roomId: t.string().index('btree'),
+		rowIndex: t.u64().index('btree'),
+		tick: t.u64(),
+		status: DisputeStatus,
+		reason: t.string(),
+		createdAt: t.timestamp(),
+		resolvedAt: t.option(t.timestamp())
+	}
+);
+
+export const arbitrations = table(
+	{ name: 'arbitrations', public: true },
+	{
+		arbitrationId: t.u64().primaryKey().autoInc(),
+		disputeId: t.u64().index('btree'),
+		roomId: t.string().index('btree'),
+		arbiterIdentity: t.identity(),
+		decision: ArbitrationDecision,
+		stateRoot: t.u32(),
+		reason: t.string(),
+		createdAt: t.timestamp()
+	}
+);
+
+// An arbiter is a privileged identity, not a normal voter. Arbitration decisions
+// are append-only; the original transaction row remains in history.
+
+// ---------------------------------------------------------------------------
 // Optional per-tick state-root attestations
 // ---------------------------------------------------------------------------
 
@@ -255,6 +318,9 @@ export const spacetimedb = schema({
 	ledgerTransactions,
 	transactionFlags,
 	invalidations,
+	arbiters,
+	disputes,
+	arbitrations,
 	tickChecks,
 	keyframes,
 	newTransactionEvent,
@@ -282,11 +348,19 @@ export default spacetimedb;
   - authenticate seat;
   - reject stale-state flags;
   - insert a flag.
+- `open_dispute`, `arbitrate_dispute`:
+  - privileged arbiter only;
+  - replay/verify the disputed row;
+  - append an arbitration decision;
+  - optionally invalidate the row or publish a certified keyframe.
 - `invalidate_transaction`:
-  - verify quorum;
+  - verify quorum or arbiter decision;
   - append `invalidations`;
   - update transaction status;
   - emit `invalidation_event`.
+- `grant_arbiter`, `revoke_arbiter`:
+  - host/admin only;
+  - audit identity and timestamp.
 - `submit_keyframe`, optional `submit_tick_check`.
 
 ## Client read/apply model
@@ -314,6 +388,30 @@ late row for an already-applied tick is a resync/rollback condition.
 
 `rooms.openTick` is the only tick transactions may append to.
 `rooms.sealedThrough` is the client-visible seal watermark.
+
+## Optional arbiter authority
+
+An arbiter is a privileged fallback, not part of the normal transaction path.
+
+```text
+quorum flags
+  -> open dispute
+  -> arbiter fetches keyframe + rows
+  -> arbiter replays disputed tick
+  -> arbitrations row: valid | invalid | dismissed
+  -> optional invalidation / certified keyframe
+```
+
+Rules to define:
+
+- is the arbiter decision final or only a tie-breaker?
+- can the arbiter override a quorum?
+- does the arbiter continuously validate or only replay disputes?
+- what happens when the arbiter is offline?
+- can one player/admin be an arbiter in their own match?
+
+Clients must treat arbitration as an append-only ledger decision and apply the
+resulting canonical replay/reorg.
 
 ## Deliberate omissions
 

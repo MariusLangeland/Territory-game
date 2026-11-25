@@ -39,6 +39,36 @@ excluding invalidated rows.
 
 This prioritizes functionality and RTT over anti-cheat.
 
+### Optional trusted arbiter
+
+Add an optional privileged participant for disputed lobbies:
+
+```text
+normal path:
+  clients apply rows optimistically
+  clients flag illegal/divergent rows
+  quorum invalidates
+
+disputed path:
+  quorum flags create a dispute
+  a trusted arbiter (headless client or admin) replays the ledger
+  arbiter appends an arbitration decision and optional certified keyframe
+  clients apply the canonical decision/reorg
+```
+
+The arbiter is not part of the normal transaction path. It is a safety valve for
+lobbies with repeated flags, ambiguous flag majorities, single-human lobbies, or
+an admin responding to foul play.
+
+The arbiter runs the same deterministic simulation/version as clients. It may be:
+
+- a separate headless verifier process;
+- a server-side authoritative simulation used only for arbitration;
+- a trusted human/admin client with a privileged identity.
+
+It should still be auditable: append decisions to the ledger, never rewrite
+history in place.
+
 ## Phase 0 — Contracts and decisions
 
 - [ ] Lock the trust model:
@@ -82,6 +112,14 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] exclude bots/spectators/disconnected/stale clients;
   - [ ] threshold (majority of active in-sync humans);
   - [ ] single-human fallback.
+- [ ] Define optional arbiter policy:
+  - [ ] trusted/headless arbiter identity or role;
+  - [ ] when disputes are escalated to the arbiter;
+  - [ ] whether the arbiter’s decision overrides quorum or only resolves ties;
+  - [ ] behavior when the arbiter is offline;
+  - [ ] whether the arbiter continuously validates or only replays disputes;
+  - [ ] whether the arbiter publishes certified keyframes;
+  - [ ] single-human/no-quorum lobby behavior.
 - [ ] Define canonical replay:
   - [ ] order rows by `row_index`;
   - [ ] group by tick;
@@ -164,6 +202,25 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] reason;
   - [ ] flag count/threshold;
   - [ ] replacement head/tick.
+- [ ] `arbiters` / privileged roles:
+  - [ ] identity;
+  - [ ] room scope;
+  - [ ] permissions;
+  - [ ] active/revoked status.
+- [ ] `disputes`:
+  - [ ] room/row/tick;
+  - [ ] flag evidence;
+  - [ ] status (open, arbitrating, resolved, dismissed);
+  - [ ] assigned arbiter;
+  - [ ] decision reference.
+- [ ] `arbitrations`:
+  - [ ] dispute;
+  - [ ] arbiter identity;
+  - [ ] valid/invalid decision;
+  - [ ] state-root evidence;
+  - [ ] optional certified keyframe;
+  - [ ] reason;
+  - [ ] created tick/time.
 - [ ] `tick_checks` (optional but recommended):
   - [ ] room/tick;
   - [ ] player identity;
@@ -205,8 +262,17 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] skip/handle delayed ticks;
   - [ ] no game simulation.
 - [ ] `flag_transaction`.
-- [ ] `invalidate_transaction` (quorum path).
+- [ ] `open_dispute` (quorum/escalation path).
+- [ ] `arbitrate_dispute`:
+  - [ ] privileged arbiter only;
+  - [ ] append a decision, never rewrite the original row;
+  - [ ] mark invalid or dismiss the dispute;
+  - [ ] optionally publish a certified keyframe.
+- [ ] `invalidate_transaction` (quorum or arbiter decision).
 - [ ] `submit_keyframe`.
+- [ ] Arbiter role management:
+  - [ ] grant/revoke by room host/admin;
+  - [ ] record in the ledger/audit trail.
 - [ ] `submit_tick_check` (optional).
 - [ ] Reject/strip:
   - [ ] unauthenticated/non-seat identities;
@@ -323,6 +389,38 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] explain rollback territory changes.
 - [ ] Add a challenge window only if optimistic reorgs are too visible.
 
+### Arbiter arbitration path
+
+- [ ] Trigger conditions:
+  - [ ] repeated flags for the same row;
+  - [ ] conflicting flag state roots;
+  - [ ] quorum cannot be reached because clients disagree;
+  - [ ] single-human lobby or no valid quorum;
+  - [ ] explicit admin “review this match” action.
+- [ ] Arbiter replay:
+  - [ ] fetch nearest keyframe before the disputed tick;
+  - [ ] replay canonical rows through the disputed transaction;
+  - [ ] compare expected/observed state roots;
+  - [ ] decide valid/invalid with a recorded reason.
+- [ ] Authority rules:
+  - [ ] arbiter decision is final for the dispute;
+  - [ ] or arbiter only breaks ties/overrides quorum — decide explicitly;
+  - [ ] regular players cannot impersonate an arbiter;
+  - [ ] decisions are append-only and auditable.
+- [ ] Liveness:
+  - [ ] arbiter offline policy;
+  - [ ] timeout/fallback to quorum;
+  - [ ] rate-limit disputes;
+  - [ ] avoid freezing the whole match indefinitely.
+- [ ] Certified keyframes:
+  - [ ] arbiter may publish a trusted keyframe at the disputed tick;
+  - [ ] clients verify version/checksum;
+  - [ ] keyframe is a recovery convenience, not a replacement for ledger history.
+- [ ] UX:
+  - [ ] “dispute under review” state;
+  - [ ] no silent rollback;
+  - [ ] display whether a decision came from quorum or arbiter.
+
 ## Phase 4 — Snapshots and versioning
 
 - [ ] Define wire keyframe format:
@@ -394,6 +492,12 @@ This prioritizes functionality and RTT over anti-cheat.
 - [ ] Decide public/ranked policy separately:
   - [ ] authoritative validator; or
   - [ ] no public lockstep mode.
+- [ ] Arbiter trust:
+  - [ ] privileged identity/key protection;
+  - [ ] audit log of all decisions;
+  - [ ] revocation policy;
+  - [ ] decide whether an arbiter is trusted absolutely or only advisory;
+  - [ ] prevent normal clients from claiming arbiter privileges.
 
 ## Phase 7 — Testing and benchmarks
 
@@ -463,6 +567,9 @@ This prioritizes functionality and RTT over anti-cheat.
 - [ ] All clients reach identical tick checksums.
 - [ ] A deliberate illegal transaction can be flagged by an in-sync quorum.
 - [ ] Quorum invalidation triggers identical rollback/replay on all clients.
+- [ ] A disputed row can be escalated to a trusted arbiter.
+- [ ] The arbiter can replay from a keyframe and publish a final decision.
+- [ ] All clients apply the arbitration identically.
 - [ ] Dependent rows are revalidated during rollback.
 - [ ] Late join/reconnect uses keyframe + rows + tick seals.
 - [ ] No per-tick owner/pixel snapshot stream is required.
@@ -482,6 +589,10 @@ This prioritizes functionality and RTT over anti-cheat.
 - [ ] How are state roots attested/stored without a server simulation?
 - [ ] How many ticks of input delay are needed for usable responsiveness?
 - [ ] What exact quorum and single-human fallback?
+- [ ] Should the arbiter continuously validate, or only replay disputes?
+- [ ] Does an arbiter decision override quorum, or only break ties?
+- [ ] Can the host/admin grant arbiter privileges during a live match?
+- [ ] Should the arbiter be a separate process, a Spacetime module, or a trusted client?
 - [ ] Should transient flags be event-table rows or persistent table rows?
 - [ ] How long are transaction rows, flags, invalidations, and keyframes kept?
 - [ ] Do spectators receive delayed rows or a summarized feed?
