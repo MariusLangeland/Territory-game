@@ -19,6 +19,10 @@
 	const timer = $derived(
 		room.settings.timerMinutes > 0 ? `${room.settings.timerMinutes} MIN` : 'NONE'
 	);
+	const status = $derived(room.status ?? 'open');
+	const statusLabel = $derived(
+		status === 'running' ? 'LIVE' : status === 'closed' ? 'CLOSED' : 'OPEN'
+	);
 </script>
 
 <article class="room-card" style={`--room-accent:${room.accent}`}>
@@ -27,7 +31,7 @@
 			<p class="room-class">{room.classification}</p>
 			<h2>{room.name}</h2>
 		</div>
-		<span class="room-state"><i></i>OPEN</span>
+		<span class="room-state" class:live={status === 'running'}><i></i>{statusLabel}</span>
 	</header>
 
 	<p class="room-description">{room.description}</p>
@@ -141,6 +145,15 @@
 		border-radius: 50%;
 		background: var(--room-accent);
 		box-shadow: 0 0 8px var(--room-accent);
+	}
+
+	.room-state.live {
+		color: var(--signal);
+	}
+
+	.room-state.live i {
+		background: var(--signal);
+		box-shadow: 0 0 8px var(--signal);
 	}
 
 	.room-description {

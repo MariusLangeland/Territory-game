@@ -11,6 +11,9 @@ export interface LocalRoomDefinition {
 	/** Human seats reserved in this prototype. */
 	humans: number;
 	accent: string;
+	/** Present when the card came from the Spacetime room directory. */
+	databaseName?: string;
+	status?: 'open' | 'running' | 'closed';
 }
 
 export const LOCAL_ROOMS: readonly LocalRoomDefinition[] = [
