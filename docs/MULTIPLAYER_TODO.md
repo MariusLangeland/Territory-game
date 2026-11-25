@@ -3,597 +3,361 @@
 Branch: `Multiplayer`
 
 Schema: [MULTIPLAYER_SCHEMA.md](MULTIPLAYER_SCHEMA.md)
+Schema validation: [MULTIPLAYER_SCHEMA_VALIDATION.md](MULTIPLAYER_SCHEMA_VALIDATION.md)
+
+## Decisions already locked
+
+- **One Spacetime database per room.**
+- **No periodic tick sealing.** The server appends transaction rows only when
+  transactions exist. It does not write a heartbeat/row every 100 ms.
+- Server assigns a tick from server time:
+  `tick = floor((ctx.timestamp - startedAt) / 100ms)`.
+- Clients maintain a **safe time delta behind the estimated server clock**.
+- Transaction order is canonical: `tick ASC, rowIndex ASC`.
+- Same-tick conflicts are resolved by Spacetime transaction serialization and
+  row order.
+- Clients run their own deterministic simulation.
+- Clients optimistically apply rows and flag illegal/divergent rows.
+- A quorum appends an invalidation; clients roll back and replay.
+- A privileged **arbiter decision is final** for disputes.
+- **MVP scope is public rooms.**
+- Anti-cheat is not ignored, but is secondary to functionality; the arbiter and
+  quorum are the correction mechanisms.
 
 ## Chosen architecture
 
-Use **Spacetime (SpacetimeDB)** as the room and ledger coordinator.
-
-The server does **not** run the simulation. It timestamps and appends transaction
-rows, seals ticks, stores flags/invalidations/keyframes, and broadcasts changes.
-Connected clients run their own deterministic simulation.
-
 ```text
-Spacetime module:
-  identity/auth, rooms, seats, timer, transaction rows,
-  tick seals, flags, invalidations, keyframes, subscriptions
+Spacetime per-room database:
+  identity/auth, room, seats, transaction rows,
+  flags, disputes, invalidations, arbitrations, keyframes,
+  subscriptions/event notifications
 
 clients:
   local TerritorySimulation, transaction submission, optimistic apply,
-  validation, flags, rollback/replay, rendering
+  safe server-clock lag, validation, flags, rollback/replay, rendering
 ```
 
-Transaction ordering is simple:
+No blocks. No hash chain. No periodic seals. No server-side simulation.
+
+Normal flow:
 
 ```text
-row_index order = canonical transaction order
-tick            = server-assigned tick bucket
+client submits transaction
+  -> Spacetime appends ordered row with server tick
+  -> clients apply rows optimistically
+  -> illegal/divergent rows are flagged
+  -> quorum invalidates or arbiter makes final decision
+  -> clients restore keyframe and replay canonical rows
 ```
-
-Same-tick conflicts are resolved by Spacetime's serialized transactions and the
-resulting `row_index` order. There are no block rows and no hash chain.
-
-The server does not judge game legality. Clients optimistically apply the
-ordered rows. Illegal or divergent transactions are flagged; a quorum appends an
-invalidation, and clients roll back to a keyframe and replay the canonical ledger
-excluding invalidated rows.
-
-This prioritizes functionality and RTT over anti-cheat.
-
-### Optional trusted arbiter
-
-Add an optional privileged participant for disputed lobbies:
-
-```text
-normal path:
-  clients apply rows optimistically
-  clients flag illegal/divergent rows
-  quorum invalidates
-
-disputed path:
-  quorum flags create a dispute
-  a trusted arbiter (headless client or admin) replays the ledger
-  arbiter appends an arbitration decision and optional certified keyframe
-  clients apply the canonical decision/reorg
-```
-
-The arbiter is not part of the normal transaction path. It is a safety valve for
-lobbies with repeated flags, ambiguous flag majorities, single-human lobbies, or
-an admin responding to foul play.
-
-The arbiter runs the same deterministic simulation/version as clients. It may be:
-
-- a separate headless verifier process;
-- a server-side authoritative simulation used only for arbitration;
-- a trusted human/admin client with a privileged identity.
-
-It should still be auditable: append decisions to the ledger, never rewrite
-history in place.
 
 ## Phase 0 — Contracts and decisions
 
-- [ ] Lock the trust model:
-  - [ ] private/co-op is the primary target;
-  - [ ] cheating and majority collusion are accepted risks for now;
-  - [ ] public/ranked anti-cheat is out of scope for this phase.
-- [ ] Define the server tick:
-  - [ ] store `startedAt` when the match starts;
-  - [ ] server computes `tick = floor((receivedAt - startedAt) / 100ms)`;
-  - [ ] clients never derive ticks from their own wall clock;
-  - [ ] ticks are authoritative server-assigned buckets.
-- [ ] Define tick sealing:
-  - [ ] a scheduled 10 Hz reducer closes the open tick and inserts a
-        `room_ticks` row/heartbeat;
-  - [ ] room tracks an explicit `openTick` and `sealedThrough` watermark;
-  - [ ] transactions append only to `openTick`, never to an already sealed tick;
-  - [ ] define behavior when the scheduler skips/delays ticks;
-  - [ ] clients apply a tick only after its seal.
-- [ ] Define the client timing frontier:
+- [ ] Lock public-room trust model:
+  - [ ] server orders rows but does not validate game legality;
+  - [ ] clients and arbiter are the correctness mechanisms;
+  - [ ] document the remaining collusion/cheat surface.
+- [ ] Define server tick and head:
+  - [ ] store `startedAt` once;
+  - [ ] transaction tick is server-assigned from `ctx.timestamp`;
+  - [ ] `rooms.headTick` updates only when a transaction is appended;
+  - [ ] clients do not use their own wall clock as the authoritative tick.
+- [ ] Define client server-clock estimation:
+  - [ ] estimate server time from room start and Spacetime timestamps;
+  - [ ] maintain a server-clock offset;
+  - [ ] define behavior when the estimate is unavailable or jumps.
+- [ ] Define the client frontier:
+  - [ ] `serverHeadTick = floor((estimatedServerNow - startedAt) / 100ms)`;
+  - [ ] `targetTick = serverHeadTick - safeDeltaTicks`;
   - [ ] `confirmedTick` = last locally applied tick;
-  - [ ] `safeHead` = latest tick with a seal and all transaction rows;
-  - [ ] render at display rate; consume whole simulation ticks at whatever rate
-        data allows;
-  - [ ] never use variable-dt simulation;
-  - [ ] never simulate beyond `safeHead`;
-  - [ ] pause at the frontier unless optional prediction/rollback is enabled.
+  - [ ] never simulate beyond `targetTick`;
+  - [ ] choose initial `safeDeltaTicks` (start with 2–3 ticks);
+  - [ ] safe delta covers network, server processing, batching, and clock error.
+- [ ] No periodic tick seal:
+  - [ ] do not add `room_ticks` or a 10 Hz heartbeat table;
+  - [ ] transactions themselves carry the authoritative tick;
+  - [ ] clients may simulate idle ticks without rows.
+- [ ] Define late-row behavior:
+  - [ ] if a row arrives for `tick <= confirmedTick`, pause;
+  - [ ] either resync from keyframe or roll back to the row’s tick;
+  - [ ] never silently apply a late row to already-simulated state.
 - [ ] Define transaction identity:
-  - [ ] explicit `row_index`/sequence;
-  - [ ] room;
-  - [ ] tick;
-  - [ ] player/seat;
-  - [ ] type;
-  - [ ] data;
-  - [ ] optional client sequence/idempotency key.
+  - [ ] explicit `rowIndex`/sequence;
+  - [ ] tick, seat/player, type, data, client sequence.
 - [ ] Define state roots:
-  - [ ] checksum after applying each tick;
-  - [ ] how clients compare roots;
-  - [ ] whether clients periodically submit tick checksums.
+  - [ ] checksum after each applied tick;
+  - [ ] flags carry expected/observed roots;
+  - [ ] no periodic server-submitted tick checks in MVP.
 - [ ] Define flag/quorum policy:
   - [ ] active, connected, in-sync human seats only;
   - [ ] exclude bots/spectators/disconnected/stale clients;
-  - [ ] threshold (majority of active in-sync humans);
-  - [ ] single-human fallback.
-- [ ] Define optional arbiter policy:
-  - [ ] trusted/headless arbiter identity or role;
-  - [ ] when disputes are escalated to the arbiter;
-  - [ ] whether the arbiter’s decision overrides quorum or only resolves ties;
-  - [ ] behavior when the arbiter is offline;
-  - [ ] whether the arbiter continuously validates or only replays disputes;
-  - [ ] whether the arbiter publishes certified keyframes;
-  - [ ] single-human/no-quorum lobby behavior.
-- [ ] Define canonical replay:
-  - [ ] order rows by `row_index`;
-  - [ ] group by tick;
+  - [ ] threshold: majority of active in-sync humans;
+  - [ ] single-human/no-quorum fallback goes to arbiter.
+- [ ] Arbiter policy:
+  - [ ] privileged identity/role per room;
+  - [ ] decision is final for the disputed row;
+  - [ ] append-only decision, never rewrite history;
+  - [ ] offline arbiter behavior;
+  - [ ] whether arbiter runs continuously or only replays disputes.
+- [ ] Canonical replay:
+  - [ ] order by tick then `rowIndex`;
   - [ ] skip invalidated rows;
-  - [ ] revalidate dependent later rows.
-- [ ] Decide finality behavior:
-  - [ ] optimistic apply with later invalidation/rollback;
-  - [ ] or short provisional/challenge window.
-  - Optimistic finality is preferred for responsiveness.
-- [ ] Decide where matches live:
-  - [ ] one Spacetime database per room;
-  - [ ] or shared database with room-keyed tables.
+  - [ ] revalidate dependent later rows;
+  - [ ] recompute tick state roots.
 - [ ] Define version handshake:
-  - [ ] Spacetime module version;
-  - [ ] client SDK/generated bindings;
-  - [ ] ledger schema;
+  - [ ] module schema;
+  - [ ] client SDK/bindings;
   - [ ] simulation rules;
-  - [ ] map generation;
+  - [ ] map version;
   - [ ] bot policy/genome;
   - [ ] app/build fingerprint.
-- [ ] Decide bots:
-  - [ ] implicit deterministic participants from seed/config;
-  - [ ] or explicit ledger transactions.
-- [ ] Define late-join/reconnect baseline:
-  - [ ] latest keyframe + subsequent transaction rows;
+- [ ] Decide bots remain implicit deterministic participants.
+- [ ] Define join/reconnect baseline:
+  - [ ] latest keyframe + subsequent rows;
   - [ ] replay from genesis fallback.
-- [ ] Define input delay:
-  - [ ] client ticks wait for sealed ticks;
-  - [ ] no per-request validation round trip;
-  - [ ] buffer enough to survive normal jitter.
+- [ ] Define room database provisioning/discovery:
+  - [ ] one database per room;
+  - [ ] how room codes map to database names;
+  - [ ] how databases are created/retired;
+  - [ ] how clients discover a room.
+- [ ] Define input behavior:
+  - [ ] commands submitted to Spacetime at current server time;
+  - [ ] no server validation round trip;
+  - [ ] clients accept delayed feedback or add prediction later.
 
 ## Phase 1 — Spacetime coordinator
 
-### Module setup
+### Module and database lifecycle
 
-- [ ] Add Spacetime project/module scaffolding.
-- [ ] Pin CLI, module, and client SDK versions.
+- [ ] Add Spacetime project/module scaffolding when approved.
+- [ ] Pin CLI/module/client versions.
+- [ ] Define one-database-per-room naming/provisioning.
+- [ ] Define room discovery/listing mechanism.
 - [ ] Add local `spacetime start` development flow.
-- [ ] Document publish/migrate workflow for Maincloud/self-host.
-- [ ] Add CI for module build, publish dry run, and binding generation.
+- [ ] Add publish/migrate/retire workflow.
+- [ ] Add CI for module build and generated bindings.
 
 ### Schema
 
-- [ ] `rooms`:
-  - [ ] room id/code;
-  - [ ] status (`waiting`, `running`, `completed`);
-  - [ ] config/seed/map/bot identity;
-  - [ ] startedAt/end tick;
-  - [ ] version fingerprint.
-- [ ] `seats`:
-  - [ ] room;
-  - [ ] Spacetime `Identity`;
-  - [ ] player id;
-  - [ ] ready/connected status;
-  - [ ] host flag.
-- [ ] `ledger_transactions`:
-  - [ ] `rowIndex`/sequence, primary key;
-  - [ ] room;
-  - [ ] tick;
-  - [ ] player/seat;
-  - [ ] transaction type;
-  - [ ] transaction data;
-  - [ ] optional client sequence/idempotency key;
-  - [ ] status (`provisional`, `final`, `invalidated`).
-- [ ] `room_ticks`:
-  - [ ] room;
-  - [ ] tick;
-  - [ ] sealedAt;
-  - [ ] optional aggregate/state-root commitment.
-- [ ] `flags`:
-  - [ ] room;
-  - [ ] invalid row/tick;
-  - [ ] flagging identity;
-  - [ ] state root evidence;
-  - [ ] reason;
-  - [ ] timestamp.
-- [ ] `invalidations`:
-  - [ ] room;
-  - [ ] invalidated row;
-  - [ ] reason;
-  - [ ] flag count/threshold;
-  - [ ] replacement head/tick.
-- [ ] `arbiters` / privileged roles:
-  - [ ] identity;
-  - [ ] room scope;
-  - [ ] permissions;
-  - [ ] active/revoked status.
-- [ ] `disputes`:
-  - [ ] room/row/tick;
-  - [ ] flag evidence;
-  - [ ] status (open, arbitrating, resolved, dismissed);
-  - [ ] assigned arbiter;
-  - [ ] decision reference.
-- [ ] `arbitrations`:
-  - [ ] dispute;
-  - [ ] arbiter identity;
-  - [ ] valid/invalid decision;
-  - [ ] state-root evidence;
-  - [ ] optional certified keyframe;
-  - [ ] reason;
-  - [ ] created tick/time.
-- [ ] `tick_checks` (optional but recommended):
-  - [ ] room/tick;
-  - [ ] player identity;
-  - [ ] resulting state root.
-- [ ] `keyframes`:
-  - [ ] room/tick;
-  - [ ] checksum;
-  - [ ] version;
-  - [ ] RLE owner/claim/entity state;
-  - [ ] submitter identity.
-- [ ] Public views:
-  - [ ] room list;
-  - [ ] seat list;
-  - [ ] ordered transaction rows;
-  - [ ] tick seals;
-  - [ ] invalidations;
-  - [ ] current canonical head.
-- [ ] Event tables:
-  - [ ] `new_transaction`;
-  - [ ] `tick_sealed`;
-  - [ ] `new_flag`;
-  - [ ] `new_invalidation`.
-- [ ] Access rules:
-  - [ ] only seated identities submit transactions/flags;
-  - [ ] only host starts;
-  - [ ] private tables for internal state;
-  - [ ] public views expose only safe room/ledger data.
+- [ ] `rooms`: room identity/config/version/start/headTick/arbiter requirement.
+- [ ] `seats`: identity, player id, ready/connected/host.
+- [ ] `ledger_transactions`: rowIndex, tick, seat/player, sequence, type, data,
+      status.
+- [ ] `transaction_flags`: rowIndex/tick/seat/state root/reason.
+- [ ] `invalidations`: rowIndex, reason, quorum count, replacement tick.
+- [ ] `arbiters`, `disputes`, `arbitrations`.
+- [ ] `keyframes`: tick/root/version/RLE bytes/submitter.
+- [ ] Event tables: new transaction, invalidation, arbitration.
+- [ ] Public views for room/seat/ledger/invalidation/arbitration state.
+- [ ] Access rules: only seats submit; only arbiters arbitrate; only host grants.
+- [ ] Do **not** add `room_ticks`, tick timers, periodic heartbeat, or block
+      tables.
 
 ### Reducers
 
-- [ ] `create_room`, `join_room`, `leave_room`, `ready`, `start_match`.
+- [ ] `create_room`/provision database.
+- [ ] `join_room`, `leave_room`, `ready`, `start_match`.
 - [ ] `submit_transaction`:
   - [ ] authenticate seat;
   - [ ] validate schema/rate/sequence;
-  - [ ] compute current tick from server time;
-  - [ ] insert row; ordering is Spacetime transaction order.
-- [ ] `seal_tick` scheduled reducer:
-  - [ ] insert the next `room_ticks` row;
-  - [ ] skip/handle delayed ticks;
-  - [ ] no game simulation.
+  - [ ] compute server tick;
+  - [ ] insert ordered row;
+  - [ ] update `headTick`;
+  - [ ] emit transaction event.
 - [ ] `flag_transaction`.
-- [ ] `open_dispute` (quorum/escalation path).
-- [ ] `arbitrate_dispute`:
-  - [ ] privileged arbiter only;
-  - [ ] append a decision, never rewrite the original row;
-  - [ ] mark invalid or dismiss the dispute;
-  - [ ] optionally publish a certified keyframe.
-- [ ] `invalidate_transaction` (quorum or arbiter decision).
+- [ ] `open_dispute`.
+- [ ] `arbitrate_dispute` (final decision).
+- [ ] `invalidate_transaction` (quorum or arbiter final).
+- [ ] `grant_arbiter`, `revoke_arbiter`.
 - [ ] `submit_keyframe`.
-- [ ] Arbiter role management:
-  - [ ] grant/revoke by room host/admin;
-  - [ ] record in the ledger/audit trail.
-- [ ] `submit_tick_check` (optional).
-- [ ] Reject/strip:
-  - [ ] unauthenticated/non-seat identities;
-  - [ ] malformed schema;
-  - [ ] duplicate client sequences;
-  - [ ] rate-limited submissions;
-  - [ ] transactions for non-running/ended rooms;
-  - [ ] flags from stale/disconnected clients.
+- [ ] Reject unauthenticated/non-seat/malformed/duplicate/rate-limited requests.
 
 ### Transport
 
 - [ ] Replace custom HTTP/SSE with Spacetime subscriptions/generated bindings.
-- [ ] Subscribe clients to transactions, tick seals, flags, invalidations.
-- [ ] Use event tables for immediate transaction/tick notifications.
-- [ ] Define catch-up queries for missed rows/ticks.
-- [ ] Measure subscription payload size and egress.
+- [ ] Subscribe to transactions, flags, invalidations, arbitrations.
+- [ ] Use event tables for immediate transaction/invalidation notifications.
+- [ ] Define catch-up queries for rows after a keyframe.
+- [ ] Measure subscription payload/egress.
 
-## Phase 2 — Client simulation and optimistic execution
+## Phase 2 — Client simulation and timing
 
-- [ ] Create a Spacetime-backed online lockstep session distinct from the
-      current state-replication client.
-- [ ] Start a local `WorkerLocalSimulation`/`TerritorySimulation` from:
-  - [ ] room seed/config; or
-  - [ ] a keyframe; then
-  - [ ] ordered transaction rows.
-- [ ] Buffer rows by tick; apply only after the tick seal.
-- [ ] Sort rows by `rowIndex` before applying.
-- [ ] Apply accepted rows optimistically at their assigned tick.
-- [ ] Never use client wall-clock for authoritative tick assignment.
-- [ ] Render entirely from local simulation state; do not stream owner/pixel
-      deltas.
-- [ ] Detect gaps:
-  - [ ] missing rows/tick seals;
-  - [ ] out-of-order delivery;
-  - [ ] reconnect catch-up.
+- [ ] Create a Spacetime-backed online session distinct from state replication.
+- [ ] Start local simulation from seed/config or keyframe.
+- [ ] Estimate server clock and maintain offset.
+- [ ] Compute `targetTick = serverHeadTick - safeDeltaTicks`.
+- [ ] Apply whole ticks only.
+- [ ] Never use variable-dt simulation.
+- [ ] Demand-driven loop:
+  - [ ] while `confirmedTick < targetTick`, apply next tick;
+  - [ ] if no rows for that tick, simulate idle tick deterministically;
+  - [ ] if a row for that tick exists, apply rows by `rowIndex`;
+  - [ ] otherwise wait/interpolate if at frontier.
+- [ ] Never simulate beyond `targetTick`.
+- [ ] Late row:
+  - [ ] detect `tick <= confirmedTick`;
+  - [ ] pause/rollback/resync;
+  - [ ] never apply late rows silently.
+- [ ] Variable client rates:
+  - [ ] 8–12 Hz consumption only as whole-tick scheduling;
+  - [ ] average must keep up or lag grows;
+  - [ ] catch up after stalls/background tabs in whole ticks.
+- [ ] Render from local simulation; no owner/pixel delta stream.
+- [ ] Maintain recent keyframe for rollback.
 - [ ] Input scheduling:
   - [ ] submit transaction;
-  - [ ] receive row/order;
-  - [ ] input-delay buffer;
-  - [ ] optional pending intent visualization.
-- [ ] Background tab catch-up:
-  - [ ] cap fast-forward per frame;
-  - [ ] coalesce visuals;
-  - [ ] avoid blocking the render loop.
-- [ ] Keep a recent local keyframe for rollback.
+  - [ ] track pending row/ack;
+  - [ ] optional pending-intent UI;
+  - [ ] no prediction for MVP unless proven necessary.
 
-### Client timing and frontier rules
+## Phase 3 — Flags, quorum, arbiter, rollback
 
-- [ ] Separate the two clocks:
-  - [ ] authoritative simulation tick index is fixed at 10 Hz;
-  - [ ] client rendering/consumption rate is independent and may vary;
-  - [ ] the client never simulates a partial/variable-dt tick.
-- [ ] Maintain `safeHead`:
-  - [ ] latest tick whose seal has been received;
-  - [ ] all `ledger_transactions` rows for that tick have been received;
-  - [ ] rows apply in `rowIndex` order.
-- [ ] Demand-driven simulation loop:
-  - [ ] while `confirmedTick < safeHead`, apply the next complete tick;
-  - [ ] otherwise wait and keep rendering/interpolating;
-  - [ ] catch up in whole ticks after a stall/background tab.
-- [ ] Target lag:
-  - [ ] measure lag in ticks, not wall-clock milliseconds;
-  - [ ] keep a small safety buffer such as `safeHead - 1` or `safeHead - 2`;
-  - [ ] do not treat `RTT/2` as sufficient without jitter, seal delivery,
-        server batching, and CPU safety;
-  - [ ] lag does not make the server assign a command earlier.
-- [ ] Running ahead:
-  - [ ] never simulate unsealed ticks in the no-prediction mode;
-  - [ ] if prediction is added later, track a speculative tick and roll back to
-        `confirmedTick` on seal/row mismatch;
-  - [ ] rollback/replay is a separate opt-in and not required for the MVP.
-- [ ] Variable client rates:
-  - [ ] 8–12 Hz local consumption is acceptable only as whole-tick scheduling;
-  - [ ] average consumption must keep up with the server or lag grows;
-  - [ ] 12 Hz clients should wait at the frontier rather than simulate ahead.
-- [ ] Error handling:
-  - [ ] missing seal/rows: wait, do not advance;
-  - [ ] late row for an already-applied tick: halt and resync/rollback;
-  - [ ] local state-root mismatch at a sealed tick: halt/resync.
-
-## Phase 3 — Flags, quorum, invalidation, rollback
-
-- [ ] Define flag payload:
-  - [ ] invalid transaction row;
-  - [ ] tick;
+- [ ] Flag payload:
+  - [ ] rowIndex/tick;
   - [ ] expected pre-tick state root;
   - [ ] observed post-tick state root;
   - [ ] reason;
-  - [ ] flagging seat.
+  - [ ] seat.
 - [ ] Client validation:
-  - [ ] if local pre-state root differs, request resync instead of flagging;
-  - [ ] if local state matches and the transaction is illegal, flag it;
-  - [ ] do not crash on illegal rows.
+  - [ ] local pre-root mismatch → resync, do not flag;
+  - [ ] matching pre-root + illegal row → flag;
+  - [ ] never crash on bad rows.
 - [ ] Server flag handling:
   - [ ] dedupe by seat/row;
   - [ ] ignore stale-state flags;
-  - [ ] count only active in-sync humans;
-  - [ ] append invalidation on quorum;
-  - [ ] broadcast immediately.
+  - [ ] count active/in-sync humans;
+  - [ ] append invalidation on quorum.
+- [ ] Dispute/escalation:
+  - [ ] repeated/conflicting flags → open dispute;
+  - [ ] no quorum/single human → arbiter;
+  - [ ] admin can open dispute.
+- [ ] Arbiter path:
+  - [ ] fetch keyframe before disputed tick;
+  - [ ] replay canonical rows;
+  - [ ] append final arbitration decision;
+  - [ ] optional certified keyframe;
+  - [ ] clients apply decision.
 - [ ] Canonical replay:
-  - [ ] invalidated rows remain in history;
-  - [ ] canonical sequence skips invalidated rows;
-  - [ ] all later rows revalidate;
-  - [ ] invalidation can cascade through dependent rows.
-- [ ] Client rollback:
-  - [ ] find nearest keyframe before the invalidated tick;
-  - [ ] restore;
-  - [ ] replay canonical rows by tick/rowIndex;
-  - [ ] verify state roots;
-  - [ ] continue from corrected head.
-- [ ] UI:
-  - [ ] provisional vs final state if challenge window exists;
-  - [ ] resolving/reorg notice;
-  - [ ] explain rollback territory changes.
-- [ ] Add a challenge window only if optimistic reorgs are too visible.
+  - [ ] skip invalidated rows;
+  - [ ] revalidate dependent rows;
+  - [ ] recompute roots.
+- [ ] Client rollback to nearest keyframe; verify root; continue.
+- [ ] UX: pause on late row, dispute status, reorg notice.
 
-### Arbiter arbitration path
+## Phase 4 — Keyframes and versioning
 
-- [ ] Trigger conditions:
-  - [ ] repeated flags for the same row;
-  - [ ] conflicting flag state roots;
-  - [ ] quorum cannot be reached because clients disagree;
-  - [ ] single-human lobby or no valid quorum;
-  - [ ] explicit admin “review this match” action.
-- [ ] Arbiter replay:
-  - [ ] fetch nearest keyframe before the disputed tick;
-  - [ ] replay canonical rows through the disputed transaction;
-  - [ ] compare expected/observed state roots;
-  - [ ] decide valid/invalid with a recorded reason.
-- [ ] Authority rules:
-  - [ ] arbiter decision is final for the dispute;
-  - [ ] or arbiter only breaks ties/overrides quorum — decide explicitly;
-  - [ ] regular players cannot impersonate an arbiter;
-  - [ ] decisions are append-only and auditable.
-- [ ] Liveness:
-  - [ ] arbiter offline policy;
-  - [ ] timeout/fallback to quorum;
-  - [ ] rate-limit disputes;
-  - [ ] avoid freezing the whole match indefinitely.
-- [ ] Certified keyframes:
-  - [ ] arbiter may publish a trusted keyframe at the disputed tick;
-  - [ ] clients verify version/checksum;
-  - [ ] keyframe is a recovery convenience, not a replacement for ledger history.
-- [ ] UX:
-  - [ ] “dispute under review” state;
-  - [ ] no silent rollback;
-  - [ ] display whether a decision came from quorum or arbiter.
+- [ ] Wire keyframe format/version/checksum.
+- [ ] Store keyframes in Spacetime.
+- [ ] Keyframe source: host/arbiter/trusted client (define).
+- [ ] Late join keyframe + rows + checksum.
+- [ ] Reconnect/resync.
+- [ ] Version compatibility checks.
+- [ ] Keyframe budget/retention and tests.
 
-## Phase 4 — Snapshots and versioning
+## Phase 5 — UI, spectator, replay
 
-- [ ] Define wire keyframe format:
-  - [ ] header/version;
-  - [ ] room/tick/checksum;
-  - [ ] RLE owner/claim state;
-  - [ ] entity/command/bot/RNG state;
-  - [ ] derived arrays rebuilt on restore.
-- [ ] Store keyframes in Spacetime:
-  - [ ] row/blob or documented object-store reference;
-  - [ ] submitter identity;
-  - [ ] checksum/version;
-  - [ ] bounded retention.
-- [ ] Late join:
-  - [ ] latest finalized keyframe;
-  - [ ] transaction rows after keyframe;
-  - [ ] tick seals;
-  - [ ] checksum verification.
-- [ ] Reconnect:
-  - [ ] reattach identity/seat;
-  - [ ] fetch keyframe + rows;
-  - [ ] dedupe transactions/flags;
-  - [ ] revalidate canonical head.
-- [ ] Version rules:
-  - [ ] reject incompatible keyframes/rows;
-  - [ ] archive old engine/module versions if required;
-  - [ ] include bot/map/simulation fingerprints.
-- [ ] Snapshot tests:
-  - [ ] restore + replay checksum;
-  - [ ] corruption rejected;
-  - [ ] budget behavior.
+- [ ] Replace online transport with Spacetime subscriptions.
+- [ ] Reuse `ReplayViewer` for live/replay/spectator.
+- [ ] Room UX: code/seat/ready/start/connection/reorg.
+- [ ] Ledger viewer: rows/flags/invalidations/arbitrations.
+- [ ] Spectator from transaction rows; no seat permissions.
+- [ ] Explanation of optimistic correction.
 
-## Phase 5 — UI, spectator, and replay
+## Phase 6 — Public-room trust and safety
 
-- [ ] Replace online transport/page state with Spacetime subscriptions.
-- [ ] Reuse `ReplayViewer` for:
-  - [ ] live match rendering;
-  - [ ] reconnect/resync;
-  - [ ] spectator from transaction rows;
-  - [ ] completed-match replay.
-- [ ] Room UX:
-  - [ ] create/join by room code;
-  - [ ] seat/identity display;
-  - [ ] ready/start;
-  - [ ] connection quality;
-  - [ ] invalid/reorg notice.
-- [ ] Compact ledger viewer:
-  - [ ] row index/tick/player/type;
-  - [ ] flags;
-  - [ ] invalidations;
-  - [ ] canonical head.
-- [ ] Spectator policy:
-  - [ ] receive rows and simulate locally;
-  - [ ] no seat/transaction permissions;
-  - [ ] optional delay.
-- [ ] Add help/manual explanation of optimistic validation and rollback.
-
-## Phase 6 — Trust, malformed input, fairness (deferred)
-
-- [ ] Server structural checks only:
-  - [ ] auth/seat;
-  - [ ] schema;
-  - [ ] sequence/rate limits;
-  - [ ] room state.
-- [ ] Do not claim anti-cheat.
-- [ ] Collusion/majority abuse remains possible; document it.
-- [ ] Prevent direct client mutation of ledger tables; reducers only.
-- [ ] Rate-limit/spam-protect flags and invalidations.
-- [ ] Decide public/ranked policy separately:
-  - [ ] authoritative validator; or
-  - [ ] no public lockstep mode.
-- [ ] Arbiter trust:
-  - [ ] privileged identity/key protection;
-  - [ ] audit log of all decisions;
-  - [ ] revocation policy;
-  - [ ] decide whether an arbiter is trusted absolutely or only advisory;
-  - [ ] prevent normal clients from claiming arbiter privileges.
+- [ ] Server structural checks only: auth, schema, sequence, rate, room state.
+- [ ] Seat ownership and arbiter privileges.
+- [ ] Flag/invalidation/arbitration spam limits.
+- [ ] Audit log for arbiter decisions.
+- [ ] Document collusion/cheat surface.
+- [ ] Keep anti-cheat as a future authoritative-validator option.
 
 ## Phase 7 — Testing and benchmarks
 
-- [ ] Spacetime module tests:
-  - [ ] room/seat lifecycle;
-  - [ ] tick assignment;
-  - [ ] transaction ordering;
-  - [ ] tick sealing;
-  - [ ] flag threshold/invalidation;
-  - [ ] keyframe storage/lookup.
-- [ ] Multi-client tests:
-  - [ ] same seed + rows → same tick checksums;
-  - [ ] same-tick rows applied by rowIndex;
-  - [ ] stale-state flags ignored;
-  - [ ] quorum invalidation rolls back all clients identically;
-  - [ ] dependent rows revalidated;
-  - [ ] reconnect from keyframe reaches canonical head;
-  - [ ] missing row/tick recovery.
-- [ ] Network tests:
-  - [ ] latency;
-  - [ ] jitter;
-  - [ ] lost/reordered notifications;
-  - [ ] late flags;
-  - [ ] background/throttled tab.
-- [ ] Spacetime capacity:
-  - [ ] 10 Hz tick-seal reducer;
-  - [ ] transaction/flag reducer cost;
-  - [ ] egress per client;
-  - [ ] storage growth;
-  - [ ] one DB per room vs shared DB.
-- [ ] Browser matrix/determinism:
-  - [ ] checksum parity;
-  - [ ] version handshake rejection.
-- [ ] Soak:
-  - [ ] long match;
-  - [ ] reorgs/invalidations;
-  - [ ] keyframe budget;
-  - [ ] reconnect storms.
+- [x] Static schema syntax/type validation without installing Spacetime.
+- [ ] Schema validation against real Spacetime module once tooling approved.
+- [ ] Module tests: seats, transactions, ordering, flags, arbiter, keyframes.
+- [ ] Client tests:
+  - [ ] server clock estimation/safe delta;
+  - [ ] whole-tick application;
+  - [ ] same-tick row order;
+  - [ ] late-row pause/rollback;
+  - [ ] variable rate/catch-up;
+  - [ ] quorum and arbiter decisions;
+  - [ ] dependent-row revalidation;
+  - [ ] reconnect/keyframe.
+- [ ] Network tests: latency, jitter, lost/reordered notifications, background tab.
+- [ ] Spacetime capacity: transaction reducer, egress, storage, per-room DB lifecycle.
+- [ ] Browser checksum parity.
+- [ ] Soak/reconnect storms.
+- [ ] Measure cost at public-room targets.
+
+## Phase 7.5 — Local prototype before Spacetime
+
+Build the client/coordinator protocol against an in-process fake before
+installing or publishing Spacetime.
+
+- [ ] Fake coordinator:
+  - [ ] room start timestamp;
+  - [ ] row append with server tick and sequence;
+  - [ ] same-tick row ordering;
+  - [ ] no periodic seals/heartbeats;
+  - [ ] optional artificial latency/jitter.
+- [ ] Fake client frontier:
+  - [ ] server-clock offset estimation;
+  - [ ] `headTick` and safe delta;
+  - [ ] whole-tick application;
+  - [ ] idle ticks without rows;
+  - [ ] late-row detection and pause/rollback.
+- [ ] Fake flag/quorum:
+  - [ ] invalid row;
+  - [ ] quorum invalidation;
+  - [ ] keyframe restore/replay;
+  - [ ] arbiter final decision.
+- [ ] Determinism tests:
+  - [ ] same rows → same checksums;
+  - [ ] variable client consumption rates → same state at tick N;
+  - [ ] delayed/late rows → identical corrected state.
+- [ ] Only after these pass, replace the fake coordinator with Spacetime.
 
 ## Phase 8 — Rollout
 
-- [ ] Prototype one room with Spacetime coordinator + two clients + local simulation.
-- [ ] Measure RTT/one-way latency and tick-seal delay.
-- [ ] Ship private co-op behind a flag.
+- [ ] Local prototype first: fake coordinator + client frontier/rollback tests.
+- [ ] Then Spacetime module + two clients.
+- [ ] Ship public rooms behind a flag.
 - [ ] Keep existing authoritative state replication as fallback.
-- [ ] Add telemetry:
-  - [ ] transaction/tick latency;
-  - [ ] checksum mismatches;
-  - [ ] flags;
-  - [ ] invalidations/reorgs;
-  - [ ] catch-up time.
-- [ ] Reassess Spacetime cost/limits after the spike.
-- [ ] Decide online/evolution spectator migration.
-- [ ] Update `docs/NETWORKING.md`, `docs/ARCHITECTURE.md`, and ADRs once implemented.
+- [ ] Add telemetry: row latency, late rows, flags, invalidations, arbitrations,
+      catch-up.
+- [ ] Reassess cost before scaling.
+- [ ] Update architecture/network docs after implementation.
 
 ## Acceptance criteria
 
-- [ ] Room lifecycle and transactions work entirely through Spacetime.
-- [ ] No server-side simulation is required for happy-path play.
-- [ ] Clients apply same-tick rows in canonical `rowIndex` order.
-- [ ] Clients apply a tick only after its seal.
-- [ ] No client uses wall-clock-derived ticks.
-- [ ] Clients never simulate beyond the complete sealed frontier (`safeHead`).
-- [ ] Variable client rates consume whole ticks and catch up without variable-dt
-      simulation.
-- [ ] Transactions can never append to an already sealed tick.
-- [ ] All clients reach identical tick checksums.
-- [ ] A deliberate illegal transaction can be flagged by an in-sync quorum.
-- [ ] Quorum invalidation triggers identical rollback/replay on all clients.
-- [ ] A disputed row can be escalated to a trusted arbiter.
-- [ ] The arbiter can replay from a keyframe and publish a final decision.
-- [ ] All clients apply the arbitration identically.
-- [ ] Dependent rows are revalidated during rollback.
-- [ ] Late join/reconnect uses keyframe + rows + tick seals.
-- [ ] No per-tick owner/pixel snapshot stream is required.
+- [ ] One Spacetime database per room.
+- [ ] No periodic tick seal/heartbeat rows; transactions are the only ledger rows.
+- [ ] Same-tick rows apply in `rowIndex` order.
+- [ ] Clients maintain a safe server-clock delta and never simulate beyond
+      `targetTick`.
+- [ ] Clients apply whole ticks; no variable-dt simulation.
+- [ ] Late rows cause pause/rollback, never silent divergence.
+- [ ] Public-room room lifecycle works through Spacetime.
+- [ ] Deliberate invalid rows can be flagged; quorum invalidates.
+- [ ] Arbiter decisions are final and applied identically by clients.
+- [ ] Rollback from keyframe produces the same canonical state/checksum.
+- [ ] Late join/reconnect uses keyframe + rows.
 - [ ] Version-mismatched clients are rejected.
-- [ ] Common-path RTT is transaction delivery + tick seal, with no validation
-      round trip.
-- [ ] Spacetime tick/egress/storage/pricing measured.
-- [ ] Trust limitations documented.
+- [ ] Cost/latency/egress measured for public-room scale.
+- [ ] Cheat/collusion surface documented.
 
 ## Open questions
 
-- [ ] One Spacetime database per room or one shared database?
-- [ ] Does every tick need a row, or only ticks with transactions plus periodic
-      heartbeats?
-- [ ] How do clients handle transactions assigned to a tick whose seal already
-      passed?
-- [ ] How are state roots attested/stored without a server simulation?
-- [ ] How many ticks of input delay are needed for usable responsiveness?
-- [ ] What exact quorum and single-human fallback?
-- [ ] Should the arbiter continuously validate, or only replay disputes?
-- [ ] Does an arbiter decision override quorum, or only break ties?
-- [ ] Can the host/admin grant arbiter privileges during a live match?
-- [ ] Should the arbiter be a separate process, a Spacetime module, or a trusted client?
-- [ ] Should transient flags be event-table rows or persistent table rows?
-- [ ] How long are transaction rows, flags, invalidations, and keyframes kept?
-- [ ] Do spectators receive delayed rows or a summarized feed?
-- [ ] What Spacetime cost is acceptable at 25 rooms / 200 players?
+- [ ] How are one-DB-per-room databases provisioned/discovered/retired?
+- [ ] How is server clock estimated accurately on clients?
+- [ ] What is the initial safe delta in ticks, and how is it adapted?
+- [ ] What happens when a row is assigned to a tick older than a client’s
+      `confirmedTick` due to network/server delay?
+- [ ] Should clients ever submit state-root attestations without periodic seals?
+- [ ] Exact flag quorum and single-human fallback.
+- [ ] Should flags be event rows, persistent rows, or both?
+- [ ] Does an arbiter continuously validate or only replay disputes?
+- [ ] How long are rows/keyframes retained?
+- [ ] How does public-room anti-cheat evolve later?

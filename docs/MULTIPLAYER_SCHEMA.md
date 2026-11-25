@@ -2,11 +2,17 @@
 
 Target: SpacetimeDB/Spacetime 2.x TypeScript module.
 
+Deployment decision: **one Spacetime database per room**.
+
 This is the coordinator schema only. The server does not store the simulation
-grid. Clients run the simulation locally from transaction rows and tick seals.
+grid. Clients run the simulation locally from transaction rows.
+
+The server does **not** periodically seal ticks. Transactions are appended when
+they occur; each row carries the server-assigned tick. Clients simulate behind an
+estimated server clock by a safe time delta.
 
 ```ts
-import { ScheduleAt, schema, table, t } from 'spacetimedb/server';
+import { schema, table, t } from 'spacetimedb/server';
 
 // ---------------------------------------------------------------------------
 // Shared value types
@@ -24,15 +30,6 @@ const TransactionStatus = t.enum('TransactionStatus', {
 	Invalidated: t.unit()
 });
 
-const VersionFingerprint = t.object('VersionFingerprint', {
-	ledger: t.u32(),
-	simulation: t.u32(),
-	map: t.u32(),
-	bots: t.u32(),
-	app: t.string(),
-	protocol: t.u32()
-});
-
 const DisputeStatus = t.enum('DisputeStatus', {
 	Open: t.unit(),
 	Arbitrating: t.unit(),
@@ -46,8 +43,17 @@ const ArbitrationDecision = t.enum('ArbitrationDecision', {
 	Dismissed: t.unit()
 });
 
+const VersionFingerprint = t.object('VersionFingerprint', {
+	ledger: t.u32(),
+	simulation: t.u32(),
+	map: t.u32(),
+	bots: t.u32(),
+	app: t.string(),
+	protocol: t.u32()
+});
+
 // ---------------------------------------------------------------------------
-// Rooms and seats
+// Room and seats (one database per room)
 // ---------------------------------------------------------------------------
 
 export const rooms = table(
@@ -67,10 +73,10 @@ export const rooms = table(
 		version: VersionFingerprint,
 		startedAt: t.option(t.timestamp()),
 		endedAt: t.option(t.timestamp()),
-		// Tick closure watermark: transactions append only to openTick.
-		openTick: t.u64(),
-		sealedThrough: t.u64(),
-		// Optional trusted arbitration for disputes.
+		// Latest transaction tick observed. Updated only when a transaction is
+		// appended; there is no periodic heartbeat/seal.
+		headTick: t.u64(),
+		// Arbiter decisions are final for disputed rows.
 		arbiterRequired: t.bool()
 	}
 );
@@ -79,9 +85,8 @@ export const seats = table(
 	{ name: 'seats', public: true },
 	{
 		seatId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
-		identity: t.identity(),
-		playerId: t.u8(),
+		identity: t.identity().unique(),
+		playerId: t.u8().unique(),
 		name: t.string(),
 		isHost: t.bool(),
 		connected: t.bool(),
@@ -90,35 +95,7 @@ export const seats = table(
 	}
 );
 
-// The reducer must enforce one seat per (roomId, playerId) and one active seat
-// per identity per room.
-
-// ---------------------------------------------------------------------------
-// Timer / tick sealing
-// ---------------------------------------------------------------------------
-
-export const tickTimers = table(
-	{ name: 'tick_timers' },
-	{
-		scheduledId: t.u64().primaryKey().autoInc(),
-		scheduledAt: t.scheduleAt(),
-		roomId: t.string().index('btree')
-	}
-);
-
-export const roomTicks = table(
-	{ name: 'room_ticks', public: true },
-	{
-		tickId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
-		tick: t.u64().index('btree'),
-		sealedAt: t.timestamp(),
-		stateRoot: t.option(t.u32())
-	}
-);
-
-// One scheduled 10 Hz reducer per room reads its tick_timers row and inserts a
-// room_ticks seal. It does not advance or simulate the game.
+// The reducer must enforce unique playerId values.
 
 // ---------------------------------------------------------------------------
 // Ledger transactions
@@ -129,7 +106,6 @@ export const ledgerTransactions = table(
 	{
 		// Global monotonic insertion order. Clients sort same-tick rows by this.
 		rowIndex: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
 		tick: t.u64().index('btree'),
 		seatId: t.u64().index('btree'),
 		playerId: t.u8(),
@@ -154,7 +130,6 @@ export const transactionFlags = table(
 	{ name: 'transaction_flags', public: true },
 	{
 		flagId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
 		rowIndex: t.u64().index('btree'),
 		tick: t.u64(),
 		seatId: t.u64(),
@@ -169,7 +144,6 @@ export const invalidations = table(
 	{ name: 'invalidations', public: true },
 	{
 		invalidationId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
 		rowIndex: t.u64().index('btree'),
 		tick: t.u64(),
 		reason: t.string(),
@@ -183,15 +157,14 @@ export const invalidations = table(
 // invalidation. The original row is never deleted.
 
 // ---------------------------------------------------------------------------
-// Optional trusted arbiter / admin
+// Trusted arbiter / admin (decision is final)
 // ---------------------------------------------------------------------------
 
 export const arbiters = table(
 	{ name: 'arbiters', public: true },
 	{
 		arbiterId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
-		identity: t.identity(),
+		identity: t.identity().unique(),
 		label: t.string(),
 		active: t.bool(),
 		grantedBy: t.identity(),
@@ -203,7 +176,6 @@ export const disputes = table(
 	{ name: 'disputes', public: true },
 	{
 		disputeId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
 		rowIndex: t.u64().index('btree'),
 		tick: t.u64(),
 		status: DisputeStatus,
@@ -218,7 +190,6 @@ export const arbitrations = table(
 	{
 		arbitrationId: t.u64().primaryKey().autoInc(),
 		disputeId: t.u64().index('btree'),
-		roomId: t.string().index('btree'),
 		arbiterIdentity: t.identity(),
 		decision: ArbitrationDecision,
 		stateRoot: t.u32(),
@@ -228,27 +199,8 @@ export const arbitrations = table(
 );
 
 // An arbiter is a privileged identity, not a normal voter. Arbitration decisions
-// are append-only; the original transaction row remains in history.
-
-// ---------------------------------------------------------------------------
-// Optional per-tick state-root attestations
-// ---------------------------------------------------------------------------
-
-export const tickChecks = table(
-	{ name: 'tick_checks', public: true },
-	{
-		checkId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
-		tick: t.u64().index('btree'),
-		seatId: t.u64(),
-		playerId: t.u8(),
-		stateRoot: t.u32(),
-		createdAt: t.timestamp()
-	}
-);
-
-// Useful for early desync detection and diagnostics. Not required for the
-// optimistic happy path.
+// are append-only; the original transaction row remains in history. Arbiter
+// decisions are final for the disputed row.
 
 // ---------------------------------------------------------------------------
 // Keyframes
@@ -258,7 +210,6 @@ export const keyframes = table(
 	{ name: 'keyframes', public: true },
 	{
 		keyframeId: t.u64().primaryKey().autoInc(),
-		roomId: t.string().index('btree'),
 		tick: t.u64().index('btree'),
 		stateRoot: t.u32(),
 		version: VersionFingerprint,
@@ -279,27 +230,25 @@ export const keyframes = table(
 export const newTransactionEvent = table(
 	{ name: 'new_transaction_event', public: true, event: true },
 	{
-		roomId: t.string(),
 		rowIndex: t.u64(),
 		tick: t.u64()
-	}
-);
-
-export const tickSealedEvent = table(
-	{ name: 'tick_sealed_event', public: true, event: true },
-	{
-		roomId: t.string(),
-		tick: t.u64(),
-		stateRoot: t.option(t.u32())
 	}
 );
 
 export const invalidationEvent = table(
 	{ name: 'invalidation_event', public: true, event: true },
 	{
-		roomId: t.string(),
 		rowIndex: t.u64(),
 		tick: t.u64()
+	}
+);
+
+export const arbitrationEvent = table(
+	{ name: 'arbitration_event', public: true, event: true },
+	{
+		disputeId: t.u64(),
+		rowIndex: t.u64(),
+		decision: ArbitrationDecision
 	}
 );
 
@@ -313,19 +262,16 @@ export const invalidationEvent = table(
 export const spacetimedb = schema({
 	rooms,
 	seats,
-	tickTimers,
-	roomTicks,
 	ledgerTransactions,
 	transactionFlags,
 	invalidations,
 	arbiters,
 	disputes,
 	arbitrations,
-	tickChecks,
 	keyframes,
 	newTransactionEvent,
-	tickSealedEvent,
-	invalidationEvent
+	invalidationEvent,
+	arbitrationEvent
 });
 
 export default spacetimedb;
@@ -337,90 +283,72 @@ export default spacetimedb;
 - `submit_transaction`:
   - authenticate the caller against a seat;
   - validate schema and rate/sequence;
-  - compute the current server tick from `startedAt` and `ctx.timestamp`;
+  - compute `tick = floor((ctx.timestamp - startedAt) / 100ms)`;
   - insert a `ledger_transactions` row;
+  - update `rooms.headTick`;
   - emit `new_transaction_event`.
-- `seal_tick` scheduled reducer:
-  - insert a `room_ticks` seal;
-  - emit `tick_sealed_event`;
-  - no simulation.
 - `flag_transaction`:
   - authenticate seat;
   - reject stale-state flags;
   - insert a flag.
-- `open_dispute`, `arbitrate_dispute`:
+- `open_dispute`:
+  - escalate repeated/conflicting flags or no-quorum cases.
+- `arbitrate_dispute`:
   - privileged arbiter only;
   - replay/verify the disputed row;
-  - append an arbitration decision;
-  - optionally invalidate the row or publish a certified keyframe.
+  - append a final arbitration decision;
+  - optionally invalidate/finalize or publish a certified keyframe.
 - `invalidate_transaction`:
-  - verify quorum or arbiter decision;
+  - verify quorum or final arbiter decision;
   - append `invalidations`;
   - update transaction status;
   - emit `invalidation_event`.
 - `grant_arbiter`, `revoke_arbiter`:
   - host/admin only;
   - audit identity and timestamp.
-- `submit_keyframe`, optional `submit_tick_check`.
+- `submit_keyframe`.
+
+No periodic tick reducer and no `room_ticks` table: transactions are the only
+ledger entries.
 
 ## Client read/apply model
 
+The client does **not** wait for a per-tick seal. It maintains a safe time delta
+from the estimated server clock:
+
 ```text
-subscribe room_ticks, ledger_transactions, invalidations
+serverHeadTick = floor((estimatedServerNow - startedAt) / 100ms)
+targetTick     = serverHeadTick - safeDeltaTicks
 
 confirmedTick = last locally applied tick
 
-safeHead = latest tick where:
-  tick seal received
-  AND all transaction rows received
-
-while confirmedTick < safeHead:
-  sort next tick's rows by rowIndex
+while confirmedTick < targetTick:
+  collect rows for confirmedTick + 1
+  sort by rowIndex
   apply the whole tick
   skip invalidated rows
   verify resulting stateRoot
   confirmedTick++
 ```
 
+If a transaction row arrives for a tick at or before `confirmedTick`, the client
+has simulated past the ledger head and must pause/rollback/resync. The safe time
+delta is chosen to make this rare: it must exceed one-way transaction delivery,
+server processing, subscription batching, and clock-estimation error.
+
 Clients render at display rate but consume whole authoritative ticks. They never
-simulate beyond `safeHead`; if they fall behind they catch up in whole ticks. A
-late row for an already-applied tick is a resync/rollback condition.
-
-`rooms.openTick` is the only tick transactions may append to.
-`rooms.sealedThrough` is the client-visible seal watermark.
-
-## Optional arbiter authority
-
-An arbiter is a privileged fallback, not part of the normal transaction path.
-
-```text
-quorum flags
-  -> open dispute
-  -> arbiter fetches keyframe + rows
-  -> arbiter replays disputed tick
-  -> arbitrations row: valid | invalid | dismissed
-  -> optional invalidation / certified keyframe
-```
-
-Rules to define:
-
-- is the arbiter decision final or only a tie-breaker?
-- can the arbiter override a quorum?
-- does the arbiter continuously validate or only replay disputes?
-- what happens when the arbiter is offline?
-- can one player/admin be an arbiter in their own match?
-
-Clients must treat arbitration as an append-only ledger decision and apply the
-resulting canonical replay/reorg.
+use variable-dt simulation.
 
 ## Deliberate omissions
 
+- No periodic tick seal or heartbeat.
 - No block table.
 - No block hash or previous-block chain.
 - No server-side simulation state.
 - No server-side legality validation.
 - No cryptographic consensus.
 - No per-cell state stream.
+- No periodic tick checks.
 
 Those are intentionally deferred. The coordinator's job is ordering, timestamping,
-notifications, flags, invalidations, and keyframe storage.
+notifications, flags, invalidation, arbitration, and keyframe storage.
