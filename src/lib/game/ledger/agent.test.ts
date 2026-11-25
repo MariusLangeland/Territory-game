@@ -91,6 +91,8 @@ describe('LedgerAgent', () => {
 		expect(replay.snapshotTicks).toContain(0);
 		expect(replay.snapshotTicks).toContain(100);
 		expect(replay.snapshotTicks).toContain(130);
+		expect(replay.snapshotBytes).toBeGreaterThan(0);
+		expect(replay.snapshotBytes).toBeLessThanOrEqual(LedgerAgent.SNAPSHOT_BUDGET_BYTES);
 
 		const closest = replay.restoreSnapshot(120);
 		expect(closest?.tick).toBe(100);

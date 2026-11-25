@@ -55,11 +55,12 @@ export class LedgerAgent {
 	private replayIndex = 0;
 	private lastReplayTick = 0;
 	private snapshots: SimulationSnapshot[] = [];
+	private readonly snapshotBytesByTick = new Map<number, number>();
 
 	/** Replay keyframes are captured at this cadence while advancing. */
 	static readonly SNAPSHOT_INTERVAL = 100;
-	/** Keep memory bounded; keep the initial checkpoint plus recent keyframes. */
-	static readonly MAX_SNAPSHOTS = 8;
+	/** Total retained keyframe budget, in bytes. */
+	static readonly SNAPSHOT_BUDGET_BYTES = 100 * 1024 * 1024;
 
 	constructor(options: SimulationOptions, replay: MatchLedger | null = null) {
 		this.replay = replay;
@@ -78,7 +79,7 @@ export class LedgerAgent {
 			this.replayEntries = [];
 			this.replayTargetTick = 0;
 		}
-		if (replay) this.snapshots.push(this.simulation.captureSnapshot());
+		if (replay) this.captureSnapshot();
 	}
 
 	/**
@@ -91,12 +92,29 @@ export class LedgerAgent {
 		if (existing >= 0) this.snapshots[existing] = snapshot;
 		else this.snapshots.push(snapshot);
 		this.snapshots.sort((a, b) => a.tick - b.tick);
-		while (this.snapshots.length > LedgerAgent.MAX_SNAPSHOTS) {
+		this.snapshotBytesByTick.set(tick, estimateSnapshotBytes(snapshot.data));
+		this.trimSnapshotsToBudget();
+		return snapshot;
+	}
+
+	get snapshotBytes(): number {
+		let total = 0;
+		for (const snapshot of this.snapshots) {
+			total += this.snapshotBytesByTick.get(snapshot.tick) ?? 0;
+		}
+		return total;
+	}
+
+	private trimSnapshotsToBudget(): void {
+		let total = this.snapshotBytes;
+		while (total > LedgerAgent.SNAPSHOT_BUDGET_BYTES && this.snapshots.length > 1) {
 			// Preserve tick 0 for early seeks; evict the next-oldest checkpoint.
 			const removeAt = this.snapshots[0]?.tick === 0 ? 1 : 0;
-			this.snapshots.splice(removeAt, 1);
+			const removed = this.snapshots.splice(removeAt, 1)[0];
+			if (!removed) break;
+			total -= this.snapshotBytesByTick.get(removed.tick) ?? 0;
+			this.snapshotBytesByTick.delete(removed.tick);
 		}
-		return snapshot;
 	}
 
 	/** The closest stored keyframe at or before `tick`, without restoring it. */
@@ -284,6 +302,28 @@ export class LedgerAgent {
 		}
 		return this.simulation.checksum();
 	}
+}
+
+/** Approximate retained heap bytes for budget accounting. */
+function estimateSnapshotBytes(value: unknown, seen = new Set<object>()): number {
+	if (value === null || value === undefined) return 0;
+	if (ArrayBuffer.isView(value)) return value.byteLength;
+	if (typeof value === 'number') return 8;
+	if (typeof value === 'boolean') return 4;
+	if (typeof value === 'string') return value.length * 2;
+	if (typeof value !== 'object') return 0;
+	if (seen.has(value)) return 0;
+	seen.add(value);
+	if (Array.isArray(value)) {
+		let total = 16;
+		for (const entry of value) total += estimateSnapshotBytes(entry, seen);
+		return total;
+	}
+	let total = 16;
+	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+		total += key.length * 2 + estimateSnapshotBytes(entry, seen);
+	}
+	return total;
 }
 
 function cloneBlock(block: LedgerBlock): LedgerBlock {

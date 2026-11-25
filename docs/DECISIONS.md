@@ -3528,3 +3528,32 @@ Measured checkpoints were ~13 MiB at 1280x720 and ~113 MiB at 4096x2048, up to
   compression, but territory/claim maps are strongly run-coherent.
 - Restore cost now includes district/aura rebuilds; capture remains O(cells) for
   RLE scanning.
+
+---
+
+## ADR-110 — Byte-budgeted replay keyframes
+
+**Status:** accepted and implemented on the Ledger branch
+**Date:** 2026-11-25
+
+### Context
+
+RLE compaction made keyframes content-dependent: approximately 10-40 KiB in
+tested matches instead of fixed hundreds of MiB. An eight-checkpoint cap was
+therefore overly restrictive on typical maps and still too generous on
+pathological ones.
+
+### Decision
+
+- Retain replay keyframes under a **100 MiB estimated-memory budget**.
+- Estimate retained bytes from typed-array lengths and compact object metadata.
+- Preserve the tick-0 checkpoint and evict the next-oldest checkpoint when the
+  budget is exceeded.
+- Keep the 100-tick capture cadence.
+
+### Consequences
+
+- Memory is bounded by bytes rather than an arbitrary count.
+- Normal matches can retain far more useful checkpoints.
+- Extremely fragmented maps may retain fewer checkpoints; a single checkpoint
+  larger than the budget is kept rather than making seek impossible.

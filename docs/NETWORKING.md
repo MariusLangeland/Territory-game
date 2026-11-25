@@ -572,18 +572,18 @@ The agent can be moved to a server without changing the transaction contract.
 
 The replay worker accepts replay-control messages for play, pause, speed, seek,
 and single-tick stepping, and emits replay-status plus full-map resync visuals.
-Seeks currently rebuild from the ledger seed and replay forward; there are no
-snapshot keyframes yet, so seek cost is O(targetTick). The main page keeps live
-controls hidden behind replay mode and exposes the timeline plus ledger-block
-viewer only for uploaded ledgers.
+Seeks restore the closest keyframe and replay only the remainder; the main page
+keeps live controls hidden behind replay mode and exposes the timeline plus
+ledger-block viewer only for uploaded ledgers.
 
 ### Replay keyframes
 
 Replay seeks use a bounded keyframe store. `LedgerAgent` captures authoritative
 simulation snapshots at tick 0 and every 100 replay ticks; `restoreSnapshot(tick)`
 restores and returns the closest checkpoint at or before the target, then replays
-only the remainder. Checkpoints currently live in worker memory and retain the
-eight most useful ticks.
+only the remainder. Checkpoints currently live in worker memory and are retained
+within a 100 MiB estimated-memory budget, evicting the next-oldest checkpoint
+while preserving tick 0.
 
 RLE keyframes store owners/claim provenance as runs and rebuild districts/auras
 on restore; measured checkpoints are now tens of KiB instead of hundreds of MiB.

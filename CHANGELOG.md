@@ -271,3 +271,6 @@ transport is HTTP/SSE rather than WebSocket.
   derived district/aura arrays are rebuilt on restore instead of stored.
   Measured keyframes dropped from ~13 MiB (1280x720) / ~113 MiB (4096x2048) to
   roughly 10-40 KiB in the tested matches, with capture still O(cells).
+- Replay keyframe retention now uses a **100 MiB estimated-memory budget**
+  instead of a fixed eight-snapshot cap. Tick 0 is preserved and the next-oldest
+  checkpoint is evicted as needed; large-map captures remain in the tens of KiB.
