@@ -232,6 +232,7 @@ export const checkLiveness = spacetimedb.reducer(
 		}
 		const room = currentRoom(ctx);
 		if (!room || room.status !== 'running') return;
+		if (![...ctx.db.seats.iter()].some((seat) => seat.connected)) return;
 		const tick = tickFor(room, ctx);
 		if (tick - room.headTick < HEARTBEAT_INTERVAL_TICKS) return;
 		appendTransaction(ctx, 0n, 0, 0n, HEARTBEAT_TYPE, [], tick, 'final');

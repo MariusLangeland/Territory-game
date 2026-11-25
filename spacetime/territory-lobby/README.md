@@ -38,6 +38,7 @@ The Svelte landing page connects to `territory-lobby` and subscribes to
 | `territory-room-charlie` | IRON TIDE       |
 | `territory-room-delta`   | TOTAL FRONT     |
 
-Each room database currently starts empty. The next integration step is for a
-client selecting a room to create/join its room-database session before starting
-the local simulation.
+Each room database starts empty. Selecting a card connects to that database; the
+first client creates the room row, takes the host seat, starts the room, and then
+starts the local deterministic simulation. The local simulation still owns
+gameplay until transaction-row replay is wired into it.

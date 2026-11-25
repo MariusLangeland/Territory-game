@@ -498,7 +498,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.1 Screen flow
 
-1. **Room selection:** four local room cards preview rules, atlas dimensions, state/bot counts, difficulty, timer, starting Command Post surge, and seed. A simulated RTT control (off/60/120/220 ms) delays command uplink and visual downlink equally. Connecting starts that room immediately; there is no separate intro/deploy step.
+1. **Room selection:** live room cards from the Spacetime room directory preview rules, atlas dimensions, state/bot counts, difficulty, timer, starting Command Post surge, and seed. A simulated RTT control (off/60/120/220 ms) delays command uplink and visual downlink equally. Connecting joins the room database, creates/starts the room when empty, and then starts the local simulation; there is no separate intro/deploy step.
 2. **Boot/loading:** after connecting, map, starts, and WebGPU initialisation.
 3. **Live match:** room name in the HUD, state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.

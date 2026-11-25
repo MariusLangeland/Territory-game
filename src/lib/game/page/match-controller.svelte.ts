@@ -5,6 +5,7 @@ import { decodeLedgerDocument } from '#lib/game/ledger/document';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
+import { connectRoomSession, type RoomSession } from '#lib/spacetime/room-session';
 import { nextSimulatedLatency, normalizeSimulatedLatency } from '#lib/game/multiplayer/latency';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
@@ -110,6 +111,9 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	/** Show the room browser and tear down any active room session. */
 	function showRoomSelection(): void {
 		cancelReplaySeek();
+		roomConnectionGeneration++;
+		roomSession?.disconnect();
+		roomSession = null;
 		gameSession.dispose();
 		state.landing = true;
 		state.activeRoom = null;
@@ -134,13 +138,37 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		deps.interaction.clearDragState();
 	}
 
-	/** Connect to a room and start its local simulation once the renderer is ready. */
-	function connectRoom(room: LocalRoomDefinition): void {
+	/** Join the Spacetime room, then start its local simulation. */
+	async function connectRoom(room: LocalRoomDefinition): Promise<void> {
+		const generation = ++roomConnectionGeneration;
 		state.activeRoom = room;
 		state.autoStartRoom = true;
 		state.landing = false;
 		state.showIntro = false;
+		state.errorMessage = '';
 		state.matchSettings = { ...room.settings };
+
+		if (room.databaseName) {
+			state.phase = 'loading';
+			try {
+				const session = await connectRoomSession({ room });
+				if (generation !== roomConnectionGeneration) {
+					session.disconnect();
+					return;
+				}
+				roomSession?.disconnect();
+				roomSession = session;
+			} catch (error) {
+				if (generation !== roomConnectionGeneration) return;
+				state.phase = 'error';
+				state.errorMessage =
+					error instanceof Error ? error.message : 'Could not connect to the room.';
+				state.paused = true;
+				return;
+			}
+		}
+
+		if (generation !== roomConnectionGeneration) return;
 		createWorld(room.seed, room.settings);
 		state.showIntro = false;
 	}
@@ -510,6 +538,9 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	function handleRankScroll(event: Event): void {
 		state.rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
 	}
+
+	let roomSession: RoomSession | null = null;
+	let roomConnectionGeneration = 0;
 
 	const gameSession = new GameSession({
 		onReady: handleSessionReady,
