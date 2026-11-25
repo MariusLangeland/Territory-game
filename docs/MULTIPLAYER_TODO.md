@@ -2,6 +2,8 @@
 
 Branch: `Multiplayer`
 
+Schema: [MULTIPLAYER_SCHEMA.md](MULTIPLAYER_SCHEMA.md)
+
 ## Chosen architecture
 
 Use **Spacetime (SpacetimeDB)** as the room and ledger coordinator.
