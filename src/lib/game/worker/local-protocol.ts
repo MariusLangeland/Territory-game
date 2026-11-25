@@ -72,6 +72,7 @@ export interface LocalWorkerPause {
 
 export interface LocalWorkerApplyIntent {
 	type: 'apply-intent';
+	tick: number;
 	playerId: number;
 	intent: OnlineIntent;
 }

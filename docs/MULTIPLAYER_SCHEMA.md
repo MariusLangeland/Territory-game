@@ -112,7 +112,9 @@ export const ledgerTransactions = table(
 		seatId: t.u64().index('btree'),
 		playerId: t.u8(),
 		clientSequence: t.u64(),
+		// Intent kind (attack, build, upgrade, ...) or "heartbeat".
 		type: t.string(),
+		// Compact binary payload; the kind is carried by `type`.
 		data: t.array(t.u8()),
 		status: TransactionStatus,
 		createdAt: t.timestamp()
@@ -310,7 +312,8 @@ export default spacetimedb;
   - authenticate the caller against a seat;
   - validate schema and rate/sequence;
   - compute `tick = floor((ctx.timestamp - startedAt) / 100ms)`;
-  - insert a `ledger_transactions` row;
+  - clients never supply the tick;
+  - insert a `ledger_transactions` row with a compact binary intent payload;
   - update `rooms.headTick`;
   - emit `new_transaction_event`.
 - `check_liveness` scheduled reducer (about once per second):
@@ -365,8 +368,10 @@ Heartbeat rows update `lastServerActivityTick` but do not change simulation
 state. If no row arrives for 20 ticks, the client marks the link stale; it does
 not treat the room as ended or roll back state.
 
-If a transaction row arrives for a tick at or before `confirmedTick`, the client
-has simulated past the ledger head and must pause/rollback/resync. The safe time
+Accepted intent rows are queued for the server-assigned tick and applied before
+that local tick steps. If a transaction row arrives for a tick at or before
+`confirmedTick`, the client has simulated past the ledger head and must
+pause/rollback/resync. The safe time
 delta is chosen to make this rare: it must exceed one-way transaction delivery,
 server processing, subscription batching, and clock-estimation error.
 

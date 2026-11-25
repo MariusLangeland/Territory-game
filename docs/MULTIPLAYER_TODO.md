@@ -180,8 +180,8 @@ client submits transaction
 - [ ] `submit_transaction`:
   - [ ] authenticate seat;
   - [ ] validate schema/rate/sequence;
-  - [ ] compute server tick;
-  - [ ] insert ordered row;
+  - [ ] compute server tick (clients never supply it);
+  - [ ] insert ordered row with compact binary intent payload;
   - [ ] update `headTick`;
   - [ ] update `lastTransactionTick`;
   - [ ] emit transaction event.
@@ -211,8 +211,9 @@ client submits transaction
 - [x] Create a Spacetime-backed online session distinct from state replication.
 - [x] Submit player intents through `submit_transaction`.
 - [x] Reject local unsynchronized commands in the worker.
-- [x] Apply accepted intent rows to the local simulation.
+- [x] Apply accepted intent rows at their server-assigned tick.
 - [x] Do not write the local input ledger in an online room.
+- [x] Pause the local simulation while the room authority is unavailable.
 - [ ] Map accepted rows to exact server ticks and safe frontier.
 - [ ] Start local simulation from seed/config or keyframe.
 - [ ] Estimate server clock and maintain offset.

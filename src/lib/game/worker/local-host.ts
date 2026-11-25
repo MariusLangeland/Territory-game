@@ -24,6 +24,11 @@ export class LocalWorkerHost {
 	readonly authoritativeInput: boolean;
 	private paused = false;
 	private replaySpeed = 1;
+	private readonly pendingIntents: {
+		tick: number;
+		playerId: number;
+		intent: OnlineIntent;
+	}[] = [];
 
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
@@ -129,6 +134,7 @@ export class LocalWorkerHost {
 
 	step(): LocalWorkerVisual | null {
 		if (this.paused || this.simulation.ended) return null;
+		this.flushIntentsForNextTick();
 		const advance = this.agent.advance();
 		const result = advance.step;
 		return {
@@ -224,9 +230,21 @@ export class LocalWorkerHost {
 		};
 	}
 
-	/** Apply an intent accepted by Spacetime, without writing the local ledger. */
-	applyIntent(playerId: number, intent: OnlineIntent): ReturnType<typeof applyOnlineIntent> {
-		return applyOnlineIntent(this.simulation, playerId, intent);
+	/** Queue an intent accepted by Spacetime for its authoritative tick. */
+	applyIntent(tick: number, playerId: number, intent: OnlineIntent): void {
+		const target = Math.max(this.simulation.tick + 1, Math.floor(tick));
+		this.pendingIntents.push({ tick: target, playerId, intent });
+		this.pendingIntents.sort((left, right) => left.tick - right.tick);
+	}
+
+	private flushIntentsForNextTick(): void {
+		const nextTick = this.simulation.tick + 1;
+		const due = this.pendingIntents.filter((pending) => pending.tick <= nextTick);
+		if (due.length === 0) return;
+		this.pendingIntents.splice(0, due.length);
+		for (const pending of due) {
+			applyOnlineIntent(this.simulation, pending.playerId, pending.intent);
+		}
 	}
 
 	telemetry(): LocalWorkerTelemetry {

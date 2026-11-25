@@ -189,7 +189,7 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		return;
 	}
 	if (message.type === 'apply-intent') {
-		host.applyIntent(message.playerId, message.intent);
+		host.applyIntent(message.tick, message.playerId, message.intent);
 		return;
 	}
 	if (message.type === 'command') {

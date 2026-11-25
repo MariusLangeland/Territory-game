@@ -113,6 +113,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		roomConnectionGeneration++;
 		roomSession?.disconnect();
 		roomSession = null;
+		roomAuthorityPaused = false;
+		resumeAfterAuthority = false;
 		gameSession.setCommandHandler(null);
 		gameSession.setAuthoritativeInput(false);
 		gameSession.dispose();
@@ -142,6 +144,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	/** Join the Spacetime room, then start its local simulation. */
 	async function connectRoom(room: RoomDefinition): Promise<void> {
 		const generation = ++roomConnectionGeneration;
+		roomAuthorityPaused = false;
+		resumeAfterAuthority = false;
 		state.activeRoom = room;
 		state.autoStartRoom = true;
 		state.landing = false;
@@ -154,7 +158,31 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 			const session = await connectRoomSession({
 				room,
 				onTransaction: (transaction) => {
-					gameSession.applyRemoteIntent(transaction.playerId, transaction.intent);
+					gameSession.applyRemoteIntent(
+						Number(transaction.tick),
+						transaction.playerId,
+						transaction.intent
+					);
+				},
+				onAvailability: (available, message) => {
+					if (generation !== roomConnectionGeneration) return;
+					if (!available) {
+						if (roomAuthorityPaused) return;
+						roomAuthorityPaused = true;
+						resumeAfterAuthority = state.gameStarted && !state.paused;
+						if (state.gameStarted) {
+							state.paused = true;
+							gameSession.pause();
+						}
+						showToast(message ?? 'Room connection lost. Simulation paused.', 'warn');
+						return;
+					}
+					if (!roomAuthorityPaused) return;
+					roomAuthorityPaused = false;
+					if (resumeAfterAuthority && state.gameStarted) {
+						state.paused = false;
+						gameSession.resume();
+					}
 				}
 			});
 			if (generation !== roomConnectionGeneration) {
@@ -263,6 +291,10 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	function togglePause(): void {
 		if (!state.gameStarted || state.showResult || state.defeatOpen) return;
+		if (roomAuthorityPaused) {
+			showToast('Room connection is unavailable. Waiting to reconnect.', 'warn');
+			return;
+		}
 		if (state.replayMode) {
 			toggleReplayPlay();
 			return;
@@ -544,6 +576,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	let roomSession: RoomSession | null = null;
 	let roomConnectionGeneration = 0;
+	let roomAuthorityPaused = false;
+	let resumeAfterAuthority = false;
 
 	const gameSession = new GameSession({
 		onReady: handleSessionReady,

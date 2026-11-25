@@ -117,7 +117,7 @@ describe('local worker host', () => {
 
 	it('applies accepted intents without writing the local ledger', () => {
 		const host = new LocalWorkerHost({ ...CONFIG, authoritativeInput: true });
-		host.applyIntent(1, { type: 'alliance-request', targetPlayerId: 2 });
+		host.applyIntent(1, 1, { type: 'alliance-request', targetPlayerId: 2 });
 		host.step();
 		expect(host.agent.ledgerView.entries).toHaveLength(0);
 	});

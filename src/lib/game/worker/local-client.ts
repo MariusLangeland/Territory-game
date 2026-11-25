@@ -110,10 +110,11 @@ export class LocalWorkerClient {
 		});
 	}
 
-	applyIntent(playerId: number, intent: OnlineIntent): void {
+	applyIntent(tick: number, playerId: number, intent: OnlineIntent): void {
 		if (this.disposed) return;
 		this.worker.postMessage({
 			type: 'apply-intent',
+			tick,
 			playerId,
 			intent
 		} satisfies LocalWorkerInbound);

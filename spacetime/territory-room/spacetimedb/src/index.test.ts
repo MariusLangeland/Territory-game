@@ -77,6 +77,23 @@ describe('room coordinator', () => {
 		expect(rows[0].playerId).toBe(1);
 	});
 
+	it('assigns the transaction tick from the server clock', () => {
+		const test = createTest();
+		createRoom(test);
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.startMatch(ctx, {});
+		});
+		test.clock.set(new Timestamp(500_000n));
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.submitTransaction(ctx, {
+				clientSequence: 1n,
+				type: 'attack',
+				data: [1, 2, 3, 4]
+			});
+		});
+		expect([...test.db.ledgerTransactions.iter()][0].tick).toBe(5n);
+	});
+
 	it('rejects late-comers after the first-tick lock', () => {
 		const test = createTest();
 		createRoom(test);

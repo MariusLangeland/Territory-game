@@ -24,6 +24,7 @@ export interface RoomSessionOptions {
 	playerName?: string;
 	timeoutMs?: number;
 	onTransaction?: (transaction: AcceptedTransaction) => void;
+	onAvailability?: (available: boolean, message?: string) => void;
 }
 
 const HOST_NAME = 'SABLE';
@@ -62,7 +63,8 @@ export function connectRoomSession({
 	room,
 	playerName = HOST_NAME,
 	timeoutMs = 12_000,
-	onTransaction
+	onTransaction,
+	onAvailability
 }: RoomSessionOptions): Promise<RoomSession> {
 	const databaseName = room.databaseName;
 	return new Promise((resolve, reject) => {
@@ -72,6 +74,8 @@ export function connectRoomSession({
 		let playerId = 1;
 		let clientSequence = 0n;
 		let lastRowIndex = 0n;
+		let closed = false;
+		let availabilityTimer: ReturnType<typeof setInterval> | null = null;
 		let resolveFirstTick!: () => void;
 		const firstTick = new Promise<void>((resolve) => {
 			resolveFirstTick = resolve;
@@ -95,10 +99,18 @@ export function connectRoomSession({
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
+			availabilityTimer = setInterval(() => {
+				if (closed) return;
+				const available = connection?.isActive === true;
+				onAvailability?.(available, available ? undefined : 'Room connection lost.');
+			}, 1000);
 			resolve({
 				databaseName,
 				playerId,
 				disconnect: () => {
+					closed = true;
+					if (availabilityTimer) clearInterval(availabilityTimer);
+					availabilityTimer = null;
 					subscription?.unsubscribe();
 					connection?.disconnect();
 					connection = null;
@@ -109,15 +121,15 @@ export function connectRoomSession({
 					try {
 						await active.reducers.submitTransaction({
 							clientSequence: ++clientSequence,
-							type: 'intent',
+							type: intent.type,
 							data: encodeOnlineIntent(intent)
 						});
 						return { ok: true, message: 'Transaction submitted.' };
 					} catch (error) {
-						return {
-							ok: false,
-							message: error instanceof Error ? error.message : 'Transaction rejected.'
-						};
+						const message =
+							error instanceof Error ? error.message : 'Transaction submission failed.';
+						onAvailability?.(false, message);
+						return { ok: false, message };
 					}
 				}
 			});
@@ -138,12 +150,25 @@ export function connectRoomSession({
 			})
 			.onAutomaticReconnect((_ctx, _identity, newToken) => {
 				saveToken(databaseName, newToken);
+				if (!closed) onAvailability?.(true);
 			})
 			.onConnectError((_ctx, error, nextAttempt) => {
-				if (nextAttempt === undefined) fail(error);
+				if (nextAttempt === undefined) {
+					if (settled) {
+						if (!closed) onAvailability?.(false, error.message);
+					} else {
+						fail(error);
+					}
+				}
 			})
 			.onDisconnect((_ctx, error, nextAttempt) => {
-				if (nextAttempt === undefined && !settled) fail(error ?? new Error('Room disconnected.'));
+				if (!settled) {
+					if (nextAttempt === undefined) fail(error ?? new Error('Room disconnected.'));
+					return;
+				}
+				if (!closed) {
+					onAvailability?.(false, error?.message ?? 'Room connection lost.');
+				}
 			})
 			.build();
 		connection = next;
@@ -154,10 +179,10 @@ export function connectRoomSession({
 			if (event.tick === 0n) resolveFirstTick();
 		});
 		next.db.ledgerTransactions.onInsert((_ctx, row) => {
-			if (row.type !== 'intent' || row.rowIndex <= lastRowIndex) return;
-			lastRowIndex = row.rowIndex;
-			const intent = decodeOnlineIntent(row.data);
+			if (row.type === 'heartbeat' || row.rowIndex <= lastRowIndex) return;
+			const intent = decodeOnlineIntent(row.type, row.data);
 			if (!intent) return;
+			lastRowIndex = row.rowIndex;
 			onTransaction?.({
 				rowIndex: row.rowIndex,
 				tick: row.tick,

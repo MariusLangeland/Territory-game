@@ -37,7 +37,11 @@ export class GameSession {
 				args: Parameters<WorkerLocalSimulation['command']>[1]
 		  ) => Promise<{ ok: boolean; reason?: string; message: string; ledgerText?: string }>)
 		| null = null;
-	private readonly pendingRemoteIntents: { playerId: number; intent: OnlineIntent }[] = [];
+	private readonly pendingRemoteIntents: {
+		tick: number;
+		playerId: number;
+		intent: OnlineIntent;
+	}[] = [];
 
 	constructor(private readonly handlers: GameSessionHandlers) {}
 
@@ -163,7 +167,7 @@ export class GameSession {
 	private flushPendingIntents(): void {
 		if (!this.simulation) return;
 		for (const pending of this.pendingRemoteIntents.splice(0)) {
-			this.simulation.applyRemoteIntent(pending.playerId, pending.intent);
+			this.simulation.applyRemoteIntent(pending.tick, pending.playerId, pending.intent);
 		}
 	}
 
@@ -207,12 +211,12 @@ export class GameSession {
 		this.commandHandler = handler;
 	}
 
-	applyRemoteIntent(playerId: number, intent: OnlineIntent): void {
+	applyRemoteIntent(tick: number, playerId: number, intent: OnlineIntent): void {
 		if (!this.simulation) {
-			this.pendingRemoteIntents.push({ playerId, intent });
+			this.pendingRemoteIntents.push({ tick, playerId, intent });
 			return;
 		}
-		this.simulation.applyRemoteIntent(playerId, intent);
+		this.simulation.applyRemoteIntent(tick, playerId, intent);
 	}
 
 	command(
