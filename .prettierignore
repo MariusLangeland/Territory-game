@@ -9,6 +9,9 @@ bun.lockb
 .svelte-kit/
 build/
 .artifacts/
+spacetime/territory-room/spacetimedb/dist/
+spacetime/territory-room/spacetimedb/node_modules/
+spacetime/territory-room/spacetimedb/.spacetime/
 
 # Static assets
 /static/
