@@ -7,7 +7,8 @@ orders client transactions, tracks seats/presence, and emits liveness rows.
 
 - `rooms` — room config, lifecycle status, authoritative head tick.
 - `seats` — human seats, identity ownership, readiness/presence.
-- `ledger_transactions` — ordered transaction rows and heartbeat rows.
+- `ledger_transactions` — ordered gameplay transaction rows. Idle heartbeat
+  emission is currently disabled.
 - `new_transaction_event` — event-table notification for new rows.
 - `first_tick_event` — one-shot tick-0 match-start broadcast; participation is
   locked atomically before it commits, so late-comers are rejected.
@@ -19,7 +20,7 @@ Reducers:
 - `join_room` — reserves the lowest free player slot.
 - `set_ready`, `start_match`, `leave_room`.
 - `submit_transaction` — records a seat-authorized row at the server-assigned tick.
-- `check_liveness` — appends an empty `heartbeat` row after 10 idle ticks.
+- `check_liveness` — no-op while heartbeat emission is disabled.
 
 ## Commands
 

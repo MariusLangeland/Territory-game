@@ -13,9 +13,9 @@ Schema validation: [MULTIPLAYER_SCHEMA_VALIDATION.md](MULTIPLAYER_SCHEMA_VALIDAT
   emits an empty liveness row only after 10 ticks without activity.
 - Server assigns a tick from server time:
   `tick = floor((ctx.timestamp - startedAt) / 100ms)`.
-- If the server sees no transaction for **10 ticks**, it appends an empty
-  `heartbeat` transaction so connected clients can distinguish an idle room from
-  a stale/disconnected link.
+- Idle heartbeat transactions are **disabled for now**. The liveness reducer and
+  client heartbeat helpers remain in place, but the coordinator does not emit
+  heartbeat rows.
 - Clients maintain a **safe time delta behind the estimated server clock**.
 - Transaction order is canonical: `tick ASC, rowIndex ASC`.
 - Same-tick conflicts are resolved by Spacetime transaction serialization and
@@ -69,7 +69,8 @@ client submits transaction
   - [ ] estimate server time from room start and Spacetime timestamps;
   - [ ] maintain a server-clock offset;
   - [ ] define behavior when the estimate is unavailable or jumps.
-- [ ] Define idle heartbeats:
+- [x] Disable idle heartbeat emission for now.
+- [ ] Revisit idle heartbeats:
   - [ ] server tracks the last transaction tick;
   - [ ] after 10 ticks without a transaction, append an empty `heartbeat` row;
   - [ ] heartbeat rows are liveness only: no gameplay effect, no state-root
@@ -185,10 +186,10 @@ client submits transaction
   - [ ] update `lastTransactionTick`;
   - [ ] emit transaction event.
 - [ ] `check_liveness` scheduled reducer (about once per second):
-  - [ ] if `currentTick - lastTransactionTick >= 10`, insert an empty
-        `heartbeat` row at `currentTick`;
-  - [ ] update `lastTransactionTick`;
-  - [ ] emit a transaction event.
+  - [x] no-op while heartbeats are disabled;
+  - [x] remove interval rows left by an earlier deployment;
+  - [ ] when re-enabled: if `currentTick - lastTransactionTick >= 10`, insert an
+        empty `heartbeat` row at `currentTick` and update `lastTransactionTick`.
 - [ ] `flag_transaction`.
 - [ ] `open_dispute`.
 - [ ] `arbitrate_dispute` (final decision).
@@ -342,10 +343,8 @@ client submits transaction
 
 - [ ] One Spacetime database per room.
 - [ ] No periodic tick-seal rows; transactions are the only ledger rows.
-- [ ] An idle room emits an empty heartbeat transaction after 10 ticks without
-      activity.
+- [x] Heartbeat emission is disabled; no idle heartbeat rows are written.
 - [ ] Heartbeats are skipped by simulation/replay and never affect state roots.
-- [ ] Clients distinguish idle-and-connected from stale/disconnected.
 - [ ] Same-tick rows apply in `rowIndex` order.
 - [ ] Clients maintain a safe server-clock delta and never simulate beyond
       `targetTick`.

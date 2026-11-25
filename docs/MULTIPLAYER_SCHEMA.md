@@ -73,8 +73,8 @@ export const rooms = table(
 		version: VersionFingerprint,
 		startedAt: t.option(t.timestamp()),
 		endedAt: t.option(t.timestamp()),
-		// Latest transaction tick observed, including idle heartbeat rows.
-		// Updated only when a row is appended; there is no tick seal.
+		// Latest transaction tick observed. Heartbeat emission is disabled for now;
+		// updated only when a gameplay row is appended.
 		headTick: t.u64(),
 		// Set atomically before first_tick_event; no seat may join after it.
 		participationLocked: t.bool().default(false),
@@ -124,13 +124,12 @@ export const ledgerTransactions = table(
 //
 // Canonical replay excludes rows whose status is Invalidated.
 //
-// Liveness rows:
+// Liveness rows (disabled for now):
 //   type = "heartbeat"
 //   playerId/seatId = 0
 //   data = empty
-// These are emitted when the coordinator has seen no transaction for 10 ticks.
-// Clients use them only to reset their staleness timer; they are skipped by
-// simulation, replay, checksums, flags, and quorum counting.
+// The schema and client skip path remain, but the current coordinator does not
+// emit heartbeat rows.
 
 // ---------------------------------------------------------------------------
 // Flags and invalidation
@@ -315,10 +314,9 @@ export default spacetimedb;
   - update `rooms.headTick`;
   - emit `new_transaction_event`.
 - `check_liveness` scheduled reducer (about once per second):
-  - if `currentTick - lastTransactionTick >= 10`, insert an empty `heartbeat`
-    row at `currentTick`;
-  - update `rooms.headTick`;
-  - emit `new_transaction_event`.
+  - no-op while heartbeats are disabled;
+  - removes interval rows left by an earlier deployment;
+  - when re-enabled: emit an empty `heartbeat` row after 10 idle ticks.
 - `flag_transaction`:
   - authenticate seat;
   - reject stale-state flags;
@@ -340,9 +338,8 @@ export default spacetimedb;
   - audit identity and timestamp.
 - `submit_keyframe`.
 
-No periodic tick-seal reducer and no `room_ticks` table: transactions are the
-only ledger entries. A roughly once-per-second liveness reducer may append an
-empty heartbeat transaction after 10 idle ticks.
+No periodic tick-seal reducer and no `room_ticks` table: gameplay transactions
+are the only ledger entries. Heartbeat emission is currently disabled.
 
 ## Client read/apply model
 
@@ -378,7 +375,8 @@ use variable-dt simulation.
 
 ## Deliberate omissions
 
-- No periodic tick seal. Idle heartbeats are liveness-only transaction rows.
+- No periodic tick seal.
+- No idle heartbeat rows while heartbeats are disabled.
 - No block table.
 - No block hash or previous-block chain.
 - No server-side simulation state.

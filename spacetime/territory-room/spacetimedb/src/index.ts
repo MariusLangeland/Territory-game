@@ -7,6 +7,9 @@ export { default } from './schema';
 const TICK_MICROS = 100_000n;
 const HEARTBEAT_INTERVAL_TICKS = 10n;
 const HEARTBEAT_TYPE = 'heartbeat';
+// Idle heartbeat rows are disabled for now. The liveness helper and reconcile
+// path remain so this can be re-enabled without a schema change.
+const HEARTBEATS_ENABLED = false;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
@@ -183,13 +186,15 @@ export const startMatch = spacetimedb.reducer((ctx) => {
 		startedAt: ctx.timestamp,
 		headTick: 0n
 	});
-	for (const timer of [...ctx.db.heartbeatTimers.iter()]) {
-		ctx.db.heartbeatTimers.scheduledId.delete(timer.scheduledId);
+	if (HEARTBEATS_ENABLED) {
+		for (const timer of [...ctx.db.heartbeatTimers.iter()]) {
+			ctx.db.heartbeatTimers.scheduledId.delete(timer.scheduledId);
+		}
+		ctx.db.heartbeatTimers.insert({
+			scheduledId: 0n,
+			scheduledAt: ScheduleAt.interval(1_000_000n)
+		});
 	}
-	ctx.db.heartbeatTimers.insert({
-		scheduledId: 0n,
-		scheduledAt: ScheduleAt.interval(1_000_000n)
-	});
 	// The lock and the tick-0 event commit together. Subscribers receive the
 	// event only after the locked room state is durable.
 	ctx.db.firstTickEvent.insert({
@@ -239,6 +244,13 @@ export const checkLiveness = spacetimedb.reducer(
 	(ctx, _args) => {
 		if (!ctx.sender.isEqual(ctx.databaseIdentity)) {
 			throw new SenderError('heartbeat may only run from the scheduler');
+		}
+		if (!HEARTBEATS_ENABLED) {
+			// Remove interval rows left by an earlier deployment.
+			for (const timer of [...ctx.db.heartbeatTimers.iter()]) {
+				ctx.db.heartbeatTimers.scheduledId.delete(timer.scheduledId);
+			}
+			return;
 		}
 		const room = currentRoom(ctx);
 		if (!room || room.status !== 'running') return;

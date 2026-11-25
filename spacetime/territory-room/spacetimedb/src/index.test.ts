@@ -91,7 +91,7 @@ describe('room coordinator', () => {
 		expect(test.db.seats.count()).toBe(1n);
 	});
 
-	it('emits an empty heartbeat after ten idle ticks', () => {
+	it('does not emit heartbeat rows while heartbeats are disabled', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
@@ -106,11 +106,8 @@ describe('room coordinator', () => {
 				}
 			});
 		});
-		const rows = [...test.db.ledgerTransactions.iter()];
-		expect(rows).toHaveLength(1);
-		expect(rows[0].type).toBe('heartbeat');
-		expect(rows[0].playerId).toBe(0);
-		expect(rows[0].tick).toBe(10n);
-		expect([...test.db.rooms.iter()][0]?.headTick).toBe(10n);
+		expect([...test.db.ledgerTransactions.iter()]).toHaveLength(0);
+		expect(test.db.heartbeatTimers.count()).toBe(0n);
+		expect([...test.db.rooms.iter()][0]?.headTick).toBe(0n);
 	});
 });
