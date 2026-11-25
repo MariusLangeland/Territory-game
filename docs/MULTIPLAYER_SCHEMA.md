@@ -73,8 +73,8 @@ export const rooms = table(
 		version: VersionFingerprint,
 		startedAt: t.option(t.timestamp()),
 		endedAt: t.option(t.timestamp()),
-		// Latest transaction tick observed. Updated only when a transaction is
-		// appended; there is no periodic heartbeat/seal.
+		// Latest transaction tick observed, including idle heartbeat rows.
+		// Updated only when a row is appended; there is no tick seal.
 		headTick: t.u64(),
 		// Arbiter decisions are final for disputed rows.
 		arbiterRequired: t.bool()
@@ -121,6 +121,14 @@ export const ledgerTransactions = table(
 //   ORDER BY tick ASC, rowIndex ASC
 //
 // Canonical replay excludes rows whose status is Invalidated.
+//
+// Liveness rows:
+//   type = "heartbeat"
+//   playerId/seatId = 0
+//   data = empty
+// These are emitted when the coordinator has seen no transaction for 10 ticks.
+// Clients use them only to reset their staleness timer; they are skipped by
+// simulation, replay, checksums, flags, and quorum counting.
 
 // ---------------------------------------------------------------------------
 // Flags and invalidation
@@ -287,6 +295,11 @@ export default spacetimedb;
   - insert a `ledger_transactions` row;
   - update `rooms.headTick`;
   - emit `new_transaction_event`.
+- `check_liveness` scheduled reducer (about once per second):
+  - if `currentTick - lastTransactionTick >= 10`, insert an empty `heartbeat`
+    row at `currentTick`;
+  - update `rooms.headTick`;
+  - emit `new_transaction_event`.
 - `flag_transaction`:
   - authenticate seat;
   - reject stale-state flags;
@@ -308,8 +321,9 @@ export default spacetimedb;
   - audit identity and timestamp.
 - `submit_keyframe`.
 
-No periodic tick reducer and no `room_ticks` table: transactions are the only
-ledger entries.
+No periodic tick-seal reducer and no `room_ticks` table: transactions are the
+only ledger entries. A roughly once-per-second liveness reducer may append an
+empty heartbeat transaction after 10 idle ticks.
 
 ## Client read/apply model
 
@@ -325,11 +339,15 @@ confirmedTick = last locally applied tick
 while confirmedTick < targetTick:
   collect rows for confirmedTick + 1
   sort by rowIndex
-  apply the whole tick
-  skip invalidated rows
+  apply gameplay rows for the whole tick
+  skip invalidated and heartbeat rows
   verify resulting stateRoot
   confirmedTick++
 ```
+
+Heartbeat rows update `lastServerActivityTick` but do not change simulation
+state. If no row arrives for 20 ticks, the client marks the link stale; it does
+not treat the room as ended or roll back state.
 
 If a transaction row arrives for a tick at or before `confirmedTick`, the client
 has simulated past the ledger head and must pause/rollback/resync. The safe time
@@ -341,7 +359,7 @@ use variable-dt simulation.
 
 ## Deliberate omissions
 
-- No periodic tick seal or heartbeat.
+- No periodic tick seal. Idle heartbeats are liveness-only transaction rows.
 - No block table.
 - No block hash or previous-block chain.
 - No server-side simulation state.

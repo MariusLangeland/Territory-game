@@ -8,10 +8,14 @@ Schema validation: [MULTIPLAYER_SCHEMA_VALIDATION.md](MULTIPLAYER_SCHEMA_VALIDAT
 ## Decisions already locked
 
 - **One Spacetime database per room.**
-- **No periodic tick sealing.** The server appends transaction rows only when
-  transactions exist. It does not write a heartbeat/row every 100 ms.
+- **No periodic tick sealing.** The server appends gameplay transaction rows only
+  when transactions exist. It does not write a row every 100 ms; an idle room
+  emits an empty liveness row only after 10 ticks without activity.
 - Server assigns a tick from server time:
   `tick = floor((ctx.timestamp - startedAt) / 100ms)`.
+- If the server sees no transaction for **10 ticks**, it appends an empty
+  `heartbeat` transaction so connected clients can distinguish an idle room from
+  a stale/disconnected link.
 - Clients maintain a **safe time delta behind the estimated server clock**.
 - Transaction order is canonical: `tick ASC, rowIndex ASC`.
 - Same-tick conflicts are resolved by Spacetime transaction serialization and
@@ -65,6 +69,15 @@ client submits transaction
   - [ ] estimate server time from room start and Spacetime timestamps;
   - [ ] maintain a server-clock offset;
   - [ ] define behavior when the estimate is unavailable or jumps.
+- [ ] Define idle heartbeats:
+  - [ ] server tracks the last transaction tick;
+  - [ ] after 10 ticks without a transaction, append an empty `heartbeat` row;
+  - [ ] heartbeat rows are liveness only: no gameplay effect, no state-root
+        change, no flag/quorum eligibility;
+  - [ ] clients reset their staleness timer on any transaction, including a
+        heartbeat;
+  - [ ] client marks the link stale after two missed heartbeat windows (20 ticks);
+  - [ ] heartbeat cadence is one second at 10 Hz, not a tick seal.
 - [ ] Define the client frontier:
   - [ ] `serverHeadTick = floor((estimatedServerNow - startedAt) / 100ms)`;
   - [ ] `targetTick = serverHeadTick - safeDeltaTicks`;
@@ -149,8 +162,8 @@ client submits transaction
 - [ ] Event tables: new transaction, invalidation, arbitration.
 - [ ] Public views for room/seat/ledger/invalidation/arbitration state.
 - [ ] Access rules: only seats submit; only arbiters arbitrate; only host grants.
-- [ ] Do **not** add `room_ticks`, tick timers, periodic heartbeat, or block
-      tables.
+- [ ] Do **not** add `room_ticks`, tick-seal tables, or a 10 Hz heartbeat. A
+      roughly once-per-second liveness reducer may emit an idle heartbeat row.
 
 ### Reducers
 
@@ -162,7 +175,13 @@ client submits transaction
   - [ ] compute server tick;
   - [ ] insert ordered row;
   - [ ] update `headTick`;
+  - [ ] update `lastTransactionTick`;
   - [ ] emit transaction event.
+- [ ] `check_liveness` scheduled reducer (about once per second):
+  - [ ] if `currentTick - lastTransactionTick >= 10`, insert an empty
+        `heartbeat` row at `currentTick`;
+  - [ ] update `lastTransactionTick`;
+  - [ ] emit a transaction event.
 - [ ] `flag_transaction`.
 - [ ] `open_dispute`.
 - [ ] `arbitrate_dispute` (final decision).
@@ -191,7 +210,13 @@ client submits transaction
   - [ ] while `confirmedTick < targetTick`, apply next tick;
   - [ ] if no rows for that tick, simulate idle tick deterministically;
   - [ ] if a row for that tick exists, apply rows by `rowIndex`;
+  - [ ] skip `heartbeat` rows in simulation/replay/checksums;
   - [ ] otherwise wait/interpolate if at frontier.
+- [ ] Link liveness:
+  - [ ] record `lastServerActivityTick` on every row, including heartbeats;
+  - [ ] show an “idle but connected” state while heartbeats arrive;
+  - [ ] mark the link stale after 20 ticks with no row;
+  - [ ] do not treat stale as a transaction rejection or rollback trigger.
 - [ ] Never simulate beyond `targetTick`.
 - [ ] Late row:
   - [ ] detect `tick <= confirmedTick`;
@@ -333,7 +358,11 @@ installing or publishing Spacetime.
 ## Acceptance criteria
 
 - [ ] One Spacetime database per room.
-- [ ] No periodic tick seal/heartbeat rows; transactions are the only ledger rows.
+- [ ] No periodic tick-seal rows; transactions are the only ledger rows.
+- [ ] An idle room emits an empty heartbeat transaction after 10 ticks without
+      activity.
+- [ ] Heartbeats are skipped by simulation/replay and never affect state roots.
+- [ ] Clients distinguish idle-and-connected from stale/disconnected.
 - [ ] Same-tick rows apply in `rowIndex` order.
 - [ ] Clients maintain a safe server-clock delta and never simulate beyond
       `targetTick`.
@@ -360,4 +389,7 @@ installing or publishing Spacetime.
 - [ ] Should flags be event rows, persistent rows, or both?
 - [ ] Does an arbiter continuously validate or only replay disputes?
 - [ ] How long are rows/keyframes retained?
+- [ ] Should stale clients pause simulation or keep simulating locally?
+- [ ] Should heartbeat rows count toward `headTick`, or carry only a liveness tick?
+- [ ] What is the client-visible timeout: 20 ticks, or adaptive by RTT/jitter?
 - [ ] How does public-room anti-cheat evolve later?
