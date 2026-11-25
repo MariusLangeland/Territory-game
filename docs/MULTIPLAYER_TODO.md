@@ -2,264 +2,405 @@
 
 Branch: `Multiplayer`
 
-Goal: make online play a ledger-only, deterministic lockstep mode while keeping
-the server authoritative for ordering/validation. The server should not need to
-stream per-tick owner snapshots/deltas in the steady state.
+## Chosen architecture
 
-## Phase 0 — Decisions and contracts
+Use **Spacetime (SpacetimeDB)** as the room and ledger coordinator.
 
-- [ ] Define the multiplayer authority model:
-  - [ ] Server validates every transaction (`authoritative validator`), or
-  - [ ] Server is a relay only (`private co-op`), with a separate policy for
-        public/ranked play.
-- [ ] Decide whether bots are implicit (seed/config) or explicit ledger
-      transactions. Current ledger assumes implicit deterministic bots.
-- [ ] Define public vs private multiplayer scope:
-  - [ ] Private / friends: acceptable cheat surface?
-  - [ ] Public / ranked: server validation and anti-cheat requirements.
-- [ ] Define the version contract:
+The server does not run the simulation. Clients run their own deterministic
+simulation and exchange transactions/ledger blocks. Connected clients optimistically
+apply the ledger, and serious foul play or simulation errors are corrected through
+client flags, a quorum, and a deterministic rollback.
+
+```text
+Spacetime module:
+  identity/auth, rooms, seats, ordering, ledger, flags, keyframes
+
+clients:
+  local TerritorySimulation, transaction submission, optimistic apply,
+  validation, flags, rollback/replay, rendering
+
+correction path:
+  bad transaction applied optimistically
+    -> clients flag illegality/state mismatch
+    -> server records a quorum invalidation
+    -> clients restore the previous keyframe and replay the canonical ledger
+```
+
+This is intentionally **not** full BFT consensus. It prioritizes functionality
+and low RTT for private/co-op play. Put bluntly: the server is a sequencer and
+ledger, not a rules authority, and the lobby is trusted to police obvious errors.
+
+## Phase 0 — Contracts and decisions
+
+- [ ] Lock the trust model:
+  - [ ] private/co-op is the primary target;
+  - [ ] cheating is an accepted risk for now;
+  - [ ] public/ranked anti-cheat is explicitly out of scope for this phase.
+- [ ] Define the Spacetime module boundary:
+  - [ ] room lifecycle;
+  - [ ] seat/auth handling;
+  - [ ] transaction ordering;
+  - [ ] ledger block sealing;
+  - [ ] flags/invalidations;
+  - [ ] keyframe storage;
+  - [ ] block/keyframe subscriptions.
+- [ ] Decide whether each match is:
+  - [ ] its own Spacetime database; or
+  - [ ] one database with room-keyed tables.
+  - Measure transaction/scheduling contention before choosing.
+- [ ] Define the version handshake:
+  - [ ] Spacetime module version;
+  - [ ] client SDK/generated binding version;
   - [ ] ledger schema version;
   - [ ] simulation rules version;
   - [ ] map generation version;
   - [ ] bot policy/genome version;
-  - [ ] app/build fingerprint;
-  - [ ] network protocol version.
-- [ ] Define a version-handshake rejection policy. Never silently run mismatched
-      engines.
-- [ ] Decide baseline strategy for joining:
-  - [ ] replay from tick 0;
-  - [ ] server keyframe/snapshot + blocks;
-  - [ ] both, with keyframe preferred.
-- [ ] Decide input-delay and prediction policy:
-  - [ ] fixed input delay only;
-  - [ ] client prediction + reconciliation;
-  - [ ] no prediction (acceptable only if latency target allows).
-- [ ] Define tick scheduling: who closes a tick, how late intents are treated,
-      and how a slow client catches up without stalling the room.
+  - [ ] app/build fingerprint.
+  - [ ] Reject mismatched clients before they can submit transactions.
+- [ ] Decide whether bots are:
+  - [ ] implicit deterministic participants from seed/config (current model); or
+  - [ ] explicit ledger transactions.
+- [ ] Define flag threshold:
+  - [ ] majority of active, connected, in-sync human seats;
+  - [ ] exclude bots, spectators, disconnected clients, and stale-state voters.
+- [ ] Decide the finality model:
+  - [ ] optimistic finality with asynchronous invalidation/rollback;
+  - [ ] short provisional/challenge window before finalization;
+  - [ ] hybrid.
+  - Optimistic finality is preferred for responsiveness.
+- [ ] Define the single-human fallback. A one-player lobby has no majority;
+      choose trust-the-player, disable invalidation, or retain a minimal server
+      checker.
+- [ ] Define baseline/keyframe strategy for join/reconnect:
+  - [ ] latest stored keyframe + blocks;
+  - [ ] replay from genesis as fallback.
+- [ ] Define the client clock/input flow:
+  - [ ] no per-transaction validation RTT;
+  - [ ] optimistic local application;
+  - [ ] optional input buffer/challenge window;
+  - [ ] block ordering by server tick.
 
-## Phase 1 — Ledger transport
+## Phase 1 — Spacetime coordinator
 
-- [ ] Add a wire `LedgerBlockEnvelope`:
+### Module setup
+
+- [ ] Add Spacetime project/module scaffolding.
+- [ ] Pin CLI/module/client SDK versions.
+- [ ] Add `spacetime` config and local `spacetime start` development flow.
+- [ ] Document publish/migrate workflow for Maincloud and self-host.
+- [ ] Add CI checks for module build, publish dry run, and binding generation.
+
+### Schema
+
+- [ ] `rooms`:
+  - [ ] room id/code;
+  - [ ] state (`waiting`, `running`, `completed`);
+  - [ ] config/seed/map/bot identity;
+  - [ ] start/end tick;
+  - [ ] version fingerprint.
+- [ ] `seats`:
+  - [ ] room;
+  - [ ] Spacetime `Identity`;
+  - [ ] player id;
+  - [ ] ready/connected status;
+  - [ ] host flag.
+- [ ] `ledger_headers` / `matches`:
+  - [ ] ledger version;
+  - [ ] simulation/map/bot versions;
+  - [ ] initial checksum;
+  - [ ] current tick/head.
+- [ ] `ledger_blocks`:
   - [ ] block index;
   - [ ] tick;
   - [ ] previous checksum;
-  - [ ] accepted transactions (player id + intent + order);
-  - [ ] block checksum;
-  - [ ] optional bot/config fingerprint.
-- [ ] Add a baseline wire payload:
-  - [ ] ledger header/config;
-  - [ ] seed/map/config identity;
-  - [ ] optional keyframe snapshot;
-  - [ ] starting tick/checksum;
-  - [ ] player/seat mapping.
-- [ ] Add server → client block stream:
-  - [ ] ordered delivery;
-  - [ ] missing-block detection/retransmission;
-  - [ ] backpressure;
-  - [ ] reconnect catch-up;
-  - [ ] snapshot/keyframe delivery.
-- [ ] Add client → server transaction envelopes:
-  - [ ] player/seat identity;
-  - [ ] intent;
-  - [ ] client sequence/ack;
-  - [ ] idempotency/replay protection.
-- [ ] Choose transport for the lockstep path:
-  - [ ] SSE + HTTP (current MVP);
-  - [ ] WebSocket;
-  - [ ] binary encoding;
-  - [ ] optional compression.
-- [ ] Add protocol metrics: block latency, missing blocks, resync count.
+  - [ ] ordered transaction rows;
+  - [ ] block checksum/state root;
+  - [ ] validity status (`provisional`, `final`, `invalidated`).
+- [ ] `ledger_transactions`:
+  - [ ] player/seat;
+  - [ ] intent payload;
+  - [ ] order/sequence;
+  - [ ] accepted tick;
+  - [ ] hash/id.
+- [ ] `transaction_flags`:
+  - [ ] transaction/block id;
+  - [ ] flagging identity/seat;
+  - [ ] tick/state-root evidence;
+  - [ ] reason;
+  - [ ] timestamp/block reference.
+- [ ] `invalidations`:
+  - [ ] invalidated transaction/block;
+  - [ ] canonical replacement head;
+  - [ ] flag count/threshold;
+  - [ ] reason/evidence;
+  - [ ] tick.
+- [ ] `keyframes`:
+  - [ ] tick;
+  - [ ] checksum;
+  - [ ] RLE owner/claim and entity state;
+  - [ ] submitter identity;
+  - [ ] version fingerprint.
+- [ ] `tick_state`:
+  - [ ] last seq/tick;
+  - [ ] block cadence;
+  - [ ] finality watermark.
+- [ ] Public views:
+  - [ ] room list;
+  - [ ] seat list;
+  - [ ] ledger blocks;
+  - [ ] invalidations;
+  - [ ] current head/checksum.
+- [ ] Event table:
+  - [ ] `new_ledger_block`;
+  - [ ] `new_flag`;
+  - [ ] `new_invalidation`.
+- [ ] Access rules:
+  - [ ] only seated identities submit transactions/flags;
+  - [ ] only host starts;
+  - [ ] private tables for internal ledger state;
+  - [ ] public views limited to safe room/ledger data.
 
-## Phase 2 — Server ledger agent
+### Reducers
 
-- [ ] Extract a server-side ledger authority interface shared with the local
-      `LedgerAgent` where practical.
-- [ ] Server tick loop:
-  - [ ] accept intents for the next tick;
-  - [ ] validate against the authoritative simulation;
-  - [ ] append accepted transactions;
-  - [ ] seal and broadcast blocks;
-  - [ ] advance the simulation;
-  - [ ] publish checksums/keyframes at cadence.
-- [ ] Reject/strip:
-  - [ ] unauthenticated seats;
-  - [ ] invalid sequence;
-  - [ ] rate-limited intents;
-  - [ ] intents for non-running/ended rooms;
-  - [ ] intents that fail rules validation.
-- [ ] Make bot behavior deterministic and identical across clients:
-  - [ ] same roster;
-  - [ ] same genomes/config;
-  - [ ] same bot RNG/decision cadence;
-  - [ ] no wall-clock inputs.
-- [ ] Add keyframe capture:
-  - [ ] server-side `captureSnapshot` at configured tick cadence;
-  - [ ] bounded snapshot budget;
-  - [ ] block/snapshot indexing;
-  - [ ] drop/restore policy.
-- [ ] Add late-join support:
-  - [ ] join window policy;
-  - [ ] baseline at current head;
-  - [ ] prior ledger blocks retained long enough for resync.
-- [ ] Add reconnect support:
-  - [ ] token/seat reattachment;
-  - [ ] latest keyframe + block replay;
-  - [ ] duplicate transaction protection.
+- [ ] `create_room`, `join_room`, `leave_room`, `ready`, `start_match`.
+- [ ] `submit_transaction`.
+- [ ] `flag_transaction`.
+- [ ] `invalidate_transaction` (quorum path).
+- [ ] `submit_keyframe`.
+- [ ] Tick/block sealing reducer driven by a schedule table.
+- [ ] Reject:
+  - [ ] unauthenticated/non-seat identities;
+  - [ ] malformed transactions;
+  - [ ] duplicate sequences;
+  - [ ] rate-limited submissions;
+  - [ ] transactions for non-running rooms;
+  - [ ] flags from disconnected/stale clients.
+- [ ] Keep the tick reducer cheap: it should sequence/seal ledger data, not
+      simulate the game.
+- [ ] Benchmark scheduled tick jitter and whether 10 Hz blocks fit the interval.
 
-## Phase 3 — Client lockstep engine
+### Transport
 
-- [ ] Create a client online lockstep session distinct from the current
-      state-replication session.
-- [ ] Start a local `TerritorySimulation` from:
-  - [ ] seed/config; or
-  - [ ] server keyframe; then
-  - [ ] apply blocks in exact tick order.
-- [ ] Apply transactions at their target ticks, not on arrival.
-- [ ] Do not apply state deltas in lockstep mode; the local simulation is the
-      source of rendered state.
-- [ ] Implement block buffering:
-  - [ ] contiguous block requirement;
-  - [ ] wait/catch-up when missing;
-  - [ ] never apply a future block out of order.
-- [ ] Implement input scheduling:
-  - [ ] input delay window;
-  - [ ] transaction send/ack;
-  - [ ] local pending intent visualization;
-  - [ ] if prediction is enabled, rollback/replay to reconciliation tick.
-- [ ] Implement desync detection:
-  - [ ] compare block checksums;
-  - [ ] stop on mismatch;
-  - [ ] request latest keyframe/blocks;
-  - [ ] surface a resync/error state.
-- [ ] Implement background-tab catch-up:
-  - [ ] cap fast-forward per frame;
-  - [ ] coalesce visuals;
-  - [ ] avoid blocking the render loop.
+- [ ] Replace custom HTTP/SSE with Spacetime subscriptions and generated bindings.
+- [ ] Subscribe clients to room state, blocks, flags, and invalidations.
+- [ ] Use event tables for immediate block/flag notifications.
+- [ ] Define missing-block/reconnect catch-up from tables.
+- [ ] Measure subscription payload size and egress.
 
-## Phase 4 — State, snapshots, and checksums
+## Phase 2 — Client simulation and optimistic execution
 
-- [ ] Define snapshot wire format:
+- [ ] Create a Spacetime-backed online lockstep session distinct from the
+      existing state-replication client.
+- [ ] Start a local `WorkerLocalSimulation`/`TerritorySimulation` from:
+  - [ ] room seed/config; or
+  - [ ] a certified keyframe; then
+  - [ ] apply ledger blocks in order.
+- [ ] Submit transactions through a Spacetime reducer; no separate API server.
+- [ ] Apply accepted transactions optimistically at their target tick.
+- [ ] Keep local rendering entirely from local simulation state; do not stream
+      owner/pixel deltas.
+- [ ] Buffer out-of-order/missing blocks and catch up without applying future
+      blocks early.
+- [ ] Implement local pending state for transactions not yet sealed in a block.
+- [ ] Keep input delay minimal; no per-request validation round trip.
+- [ ] Coalesce fast-forward/catch-up visuals rather than rendering every tick.
+
+## Phase 3 — Flags, quorum, invalidation, rollback
+
+- [ ] Define the exact flag payload:
+  - [ ] transaction/block id;
+  - [ ] claimed tick;
+  - [ ] pre-state checksum;
+  - [ ] post-state checksum;
+  - [ ] reason/evidence;
+  - [ ] flagging seat.
+- [ ] On local validation failure:
+  - [ ] do not crash;
+  - [ ] verify the local state root matches the block’s pre-state root;
+  - [ ] if mismatched, request resync instead of flagging;
+  - [ ] if state matches and the move is illegal, emit a flag.
+- [ ] Server-side flag handling:
+  - [ ] dedupe by seat/transaction;
+  - [ ] ignore flags from stale state roots;
+  - [ ] count only active human seats;
+  - [ ] append a quorum invalidation when threshold is crossed;
+  - [ ] broadcast invalidation immediately.
+- [ ] Threshold behavior:
+  - [ ] majority of active in-sync humans;
+  - [ ] single-human fallback;
+  - [ ] disconnected/backgrounded clients excluded;
+  - [ ] late flags after the block is final trigger a reorg path.
+- [ ] Canonical replay semantics:
+  - [ ] invalidated transaction remains in the historical ledger;
+  - [ ] canonical replay skips it;
+  - [ ] all dependent later transactions are revalidated;
+  - [ ] invalidations can cascade only through explicit canonical replay.
+- [ ] Client rollback:
+  - [ ] find nearest keyframe before the invalidated tick;
+  - [ ] restore;
+  - [ ] replay canonical ledger skipping invalidated transactions;
+  - [ ] verify resulting checksum;
+  - [ ] continue from the corrected head.
+- [ ] UI behavior:
+  - [ ] show provisional vs final blocks if a challenge window exists;
+  - [ ] show “resolving dispute” during reorg;
+  - [ ] avoid hiding rollback state changes without explanation.
+- [ ] Add a short optional challenge window if optimistic reorgs are too visible.
+
+## Phase 4 — Snapshots and versioning
+
+- [ ] Define a wire keyframe format:
   - [ ] header/version;
   - [ ] tick/checksum;
   - [ ] RLE owner/claim state;
   - [ ] entity/command/bot/RNG state;
-  - [ ] derived arrays omitted and rebuilt.
-- [ ] Add snapshot encode/decode tests:
-  - [ ] round-trip at multiple ticks;
-  - [ ] restore then step matches uninterrupted checksum;
-  - [ ] corruption/incompatibility rejected.
-- [ ] Add deterministic checksum verification:
-  - [ ] client vs server;
-  - [ ] client vs client (debug/spectator);
-  - [ ] mismatch diagnostics.
-- [ ] Add versioned compatibility rules:
-  - [ ] reject old/new incompatible snapshots;
-  - [ ] archive engine version for old replays/ranked matches.
-- [ ] Add keyframe budget/retention tests across map sizes.
+  - [ ] derived state rebuilt on restore.
+- [ ] Store keyframes in Spacetime:
+  - [ ] row/blob or documented file/object-store reference;
+  - [ ] submitter identity;
+  - [ ] checksum/version;
+  - [ ] bounded retention.
+- [ ] Late join:
+  - [ ] select latest finalized keyframe;
+  - [ ] stream subsequent canonical blocks;
+  - [ ] verify checksum.
+- [ ] Reconnect:
+  - [ ] reattach seat identity;
+  - [ ] fetch latest keyframe + blocks;
+  - [ ] dedupe transactions/flags;
+  - [ ] revalidate current canonical head.
+- [ ] Version rules:
+  - [ ] reject incompatible keyframes/blocks;
+  - [ ] preserve archived engine/module versions for old replays;
+  - [ ] include bot/map/simulation fingerprints.
+- [ ] Snapshot tests:
+  - [ ] restore + replay checksum;
+  - [ ] corruption rejected;
+  - [ ] budget behavior.
 
-## Phase 5 — Online UI and UX
+## Phase 5 — UI, spectator, and replay
 
-- [ ] Add a multiplayer mode selector/feature flag:
-  - [ ] existing authoritative state replication;
-  - [ ] ledger lockstep.
+- [ ] Replace the online transport/page state with Spacetime subscriptions.
+- [ ] Reuse `ReplayViewer` for:
+  - [ ] live match rendering;
+  - [ ] reconnecting/resyncing;
+  - [ ] spectator mode from ledger blocks;
+  - [ ] completed-match replay.
 - [ ] Room UX:
-  - [ ] ready/start flow;
-  - [ ] seat identities;
-  - [ ] ping/input-delay display;
-  - [ ] connection quality/desync status;
-  - [ ] reconnect notice.
-- [ ] Replay integration:
-  - [ ] reuse `ReplayViewer` for spectating;
-  - [ ] load server ledger blocks;
-  - [ ] optional live spectator via blocks;
-  - [ ] timeline/ledger viewer for completed matches.
-- [ ] Player feedback:
-  - [ ] transaction pending/ack/rejected states;
-  - [ ] delayed-input explanation;
-  - [ ] desync/resync banner;
-  - [ ] cannot start on version mismatch.
-- [ ] Mobile/battery:
-  - [ ] measure full simulation load;
-  - [ ] choose default map/state counts;
-  - [ ] degrade gracefully under throttling.
+  - [ ] create/join with room code;
+  - [ ] seat/identity display;
+  - [ ] ready/start;
+  - [ ] connection quality;
+  - [ ] invalid-block/reorg notice.
+- [ ] Add a compact ledger viewer for online rooms:
+  - [ ] blocks;
+  - [ ] flags;
+  - [ ] invalidations;
+  - [ ] current canonical head.
+- [ ] Spectator policy:
+  - [ ] receive blocks and simulate locally;
+  - [ ] no seat/transaction permissions;
+  - [ ] optional delay to reduce cheating surface.
+- [ ] Add a help/manual explanation of optimistic validation and rollback.
 
-## Phase 6 — Security and fairness
+## Phase 6 — Trust, malformed input, and fairness (deferred)
 
-- [ ] Server-side rule validation for public play.
-- [ ] Seat/token ownership for every transaction.
-- [ ] Sequence and rate-limit enforcement.
-- [ ] Transaction idempotency.
-- [ ] No client-controlled player ids/checksums/tick numbers.
-- [ ] Cheat surface review for lockstep:
-  - [ ] modified client simulation;
-  - [ ] fabricated checksums;
-  - [ ] state knowledge.
-- [ ] Spectator authorization/privacy (if hidden state is ever added).
-- [ ] Validate that client-supplied ledgers/replays cannot mutate live state.
+- [ ] Structural validation only on the server:
+  - [ ] seat/auth;
+  - [ ] sequence/rate limits;
+  - [ ] transaction schema;
+  - [ ] flag schema.
+- [ ] Do not pretend this is anti-cheat.
+- [ ] Collusion/majority abuse remains possible; document it.
+- [ ] Prevent clients from mutating ledger tables directly; reducers only.
+- [ ] Protect against flag spam and invalidation spam.
+- [ ] Decide public/ranked policy separately:
+  - [ ] authoritative validator service; or
+  - [ ] no public lockstep mode.
 
-## Phase 7 — Testing and hardening
+## Phase 7 — Testing and benchmarks
 
-- [ ] Multi-client integration tests:
-  - [ ] two clients, same seed, same blocks → same checksum;
-  - [ ] commands from both seats ordered identically;
-  - [ ] rejoin at keyframe then catch up;
-  - [ ] missing block recovery;
-  - [ ] desync detection/resync.
-- [ ] Simulated network tests:
+- [ ] Spacetime module tests:
+  - [ ] room/seat lifecycle;
+  - [ ] transaction submission;
+  - [ ] block sealing at tick cadence;
+  - [ ] flag threshold/invalidation;
+  - [ ] keyframe storage/lookup.
+- [ ] Multi-client tests:
+  - [ ] two clients apply identical blocks to identical simulation checksums;
+  - [ ] a flag from a stale client is ignored;
+  - [ ] quorum invalidation rolls back all clients identically;
+  - [ ] dependent transactions replay correctly;
+  - [ ] reconnect from keyframe reaches canonical head;
+  - [ ] missing block recovery.
+- [ ] Network tests:
   - [ ] latency;
   - [ ] jitter;
-  - [ ] packet/block loss;
-  - [ ] duplicate/reordered transaction envelopes;
-  - [ ] slow client/background tab.
+  - [ ] lost/reordered block notifications;
+  - [ ] late flags;
+  - [ ] background/throttled tab.
+- [ ] Spacetime capacity tests:
+  - [ ] 10 Hz scheduled block reducer;
+  - [ ] transaction/flag reducer cost;
+  - [ ] egress per client;
+  - [ ] storage growth per match;
+  - [ ] one-database-per-room vs shared-room database.
+- [ ] Browser matrix and determinism:
+  - [ ] checksum parity across supported browsers;
+  - [ ] version handshake rejection.
 - [ ] Soak:
-  - [ ] long match with bots + humans;
+  - [ ] long match with bots/humans;
+  - [ ] reorgs/invalidations;
   - [ ] keyframe budget;
-  - [ ] memory stability;
   - [ ] reconnect storms.
-- [ ] Capacity:
-  - [ ] measure client CPU per room/match;
-  - [ ] measure server relay/validation cost;
-  - [ ] compare with current `bench:online` targets.
-- [ ] Browser matrix:
-  - [ ] Chrome/Edge/Firefox/Safari where supported;
-  - [ ] WebGPU support gates;
-  - [ ] checksum parity.
-- [ ] Determinism tests:
-  - [ ] same seed and blocks across runs;
-  - [ ] snapshot restore + remaining blocks;
-  - [ ] bot version pinning.
 
 ## Phase 8 — Rollout
 
-- [ ] Ship private co-op first behind a flag.
-- [ ] Keep state replication as fallback for public rooms.
-- [ ] Add telemetry for desyncs, resyncs, block latency, client tick rate.
-- [ ] Add an explicit “how multiplayer works” help/manual note.
-- [ ] Decide whether ranked/public play uses lockstep at all.
-- [ ] Update `docs/NETWORKING.md` once the transport/authority model is final.
-- [ ] Version bump and release checklist.
+- [ ] Prototype one room with Spacetime coordinator + two clients + local
+      simulation.
+- [ ] Measure RTT and block cadence; verify no validation round trip on the
+      common path.
+- [ ] Ship private co-op behind a flag.
+- [ ] Keep the existing authoritative state-replication mode as fallback.
+- [ ] Add telemetry:
+  - [ ] block latency;
+  - [ ] checksum mismatches;
+  - [ ] flags;
+  - [ ] invalidations/reorgs;
+  - [ ] client catch-up time.
+- [ ] Reassess Spacetime cost/limits before scaling beyond the private-co-op
+      spike.
+- [ ] Decide whether online/evolution spectating moves fully to the ledger.
+- [ ] Update `docs/NETWORKING.md`, `docs/ARCHITECTURE.md`, and ADRs once the
+      Spacetime contract is implemented.
 
 ## Acceptance criteria
 
-- [ ] Two clients with the same version/seed produce identical checksums after
-      a command-heavy match with bots.
-- [ ] A client joining from a keyframe reaches the server’s head checksum.
-- [ ] A missing block is detected and recovered without silent divergence.
-- [ ] A desync stops the match/surfaces an error and resyncs from a keyframe.
-- [ ] A backgrounded/throttled tab catches up without stalling other clients.
-- [ ] Incompatible app/sim/map/bot versions are rejected at handshake.
-- [ ] No steady-state owner/delta snapshot stream is required for lockstep
-      play.
-- [ ] Memory and CPU stay within agreed client/server budgets.
-- [ ] Public-play authority/cheat policy is explicitly chosen and tested.
+- [ ] A room is created, joined, and started entirely through Spacetime.
+- [ ] No server-side authoritative simulation is required for happy-path play.
+- [ ] All clients apply the same blocks and reach identical checksums.
+- [ ] A deliberately illegal transaction can be flagged by an in-sync quorum.
+- [ ] The invalidation triggers an identical rollback/replay on every client.
+- [ ] Dependent transactions are revalidated during rollback.
+- [ ] Late join and reconnect use a stored keyframe plus canonical blocks.
+- [ ] No per-tick owner/pixel snapshot stream is needed.
+- [ ] Version-mismatched clients are rejected before play.
+- [ ] Common-path RTT is one-way transaction + one-way block delivery, with no
+      validation round trip.
+- [ ] Spacetime tick cost, egress, storage, and pricing are measured for the
+      target room/player counts.
+- [ ] The trust limitations are documented: majority collusion and cheating are
+      possible.
 
 ## Open questions
 
-- [ ] Is lockstep for private co-op only, or should public rooms use it?
-- [ ] Can clients be trusted to render from local simulation in competitive
-      play?
-- [ ] How long must blocks/keyframes be retained for reconnect?
-- [ ] Do spectators receive blocks and simulate locally, or a reduced stream?
-- [ ] Is prediction worth the reconciliation complexity at the target ping?
-- [ ] How are bots represented in the ledger long-term: implicit or explicit?
-- [ ] Do we need cross-browser determinism waivers or a checksum-based fallback?
+- [ ] One Spacetime database per room or one database for all rooms?
+- [ ] What exact block cadence? Every tick, or batched blocks?
+- [ ] Is a challenge window required, or is optimistic rollback acceptable?
+- [ ] What does “active/in-sync” mean for flag quorum during lag/reconnect?
+- [ ] How are keyframes produced and trusted when the server does not simulate?
+- [ ] How long should blocks/flags/keyframes be retained?
+- [ ] Do spectators vote? (Recommended: no.)
+- [ ] Do spectating clients receive keyframes/blocks with a delay?
+- [ ] Can the host override a blocked lobby or single-human fallback?
+- [ ] How much Spacetime cost is acceptable at 25 rooms / 200 players?
