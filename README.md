@@ -44,7 +44,7 @@
 | AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                                |
 | AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                        |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                            |
-| Match setup     | State count, three map presets or custom width/height, bot difficulty, optional timer, 500-stack bot Command Post surge, saved defaults                                                          |
+| Local rooms     | Four room cards preview rules, atlas size, state/bot counts, difficulty, timer and bot Command Post surge; connecting starts the room immediately                                                |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                              |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                         |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                      |
@@ -395,7 +395,7 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
-- Match setup chooses states/map size/difficulty/timer and an optional 500-stack bot Command Post surge. Online rooms are in-memory only; there is no persistent lobby yet.
+- The landing page is a local room browser with four fixed rooms; connecting starts a room immediately. Online rooms are in-memory only; there is no persistent lobby yet.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
 - Online rooms are an in-memory MVP: up to eight humans, bots fill empty seats, HTTP commands, and SSE snapshots. The single-process support target is 200 concurrent players at 10 Hz (25 rooms × 8 humans), enforced by `pnpm bench:online`. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
 - Online rooms exist as an in-memory MVP; accounts, matchmaking, chat, and server persistence are not implemented.

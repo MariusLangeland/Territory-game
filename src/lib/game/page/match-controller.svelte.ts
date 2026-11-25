@@ -4,6 +4,7 @@ import { GameSession } from '#lib/game/session/game-session';
 import { decodeLedgerDocument } from '#lib/game/ledger/document';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
+import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import {
@@ -86,7 +87,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.workerVisualRevision = 0;
 		state.lastWorkerUiTick = -100;
 		state.gameStarted = false;
-		state.showIntro = true;
+		state.showIntro = false;
+		state.landing = false;
 		state.showHelp = false;
 		state.defeatOpen = false;
 		state.defeatHandled = false;
@@ -101,6 +103,60 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.currentSeed = seed >>> 0;
 		state.seedInput = seedHexFor(seed);
 		gameSession.start(seed, normalized);
+	}
+
+	/** Show the room browser and tear down any active room session. */
+	function showRoomSelection(): void {
+		cancelReplaySeek();
+		gameSession.dispose();
+		state.landing = true;
+		state.activeRoom = null;
+		state.autoStartRoom = false;
+		state.phase = 'ready';
+		state.errorMessage = '';
+		state.rendererReady = false;
+		state.artilleryTargeting = false;
+		state.sim = null;
+		state.snapshot = null;
+		state.workerVisuals = [];
+		state.workerVisualRevision = 0;
+		state.lastWorkerUiTick = -100;
+		state.gameStarted = false;
+		state.showIntro = false;
+		state.paused = true;
+		state.hover = null;
+		state.eventFeed = [];
+		state.cameraView = null;
+		state.rankScrollTop = 0;
+		deps.interaction.closeStructureMenu();
+		deps.interaction.clearDragState();
+	}
+
+	/** Connect to a room and start its local simulation once the renderer is ready. */
+	function connectRoom(room: LocalRoomDefinition): void {
+		state.activeRoom = room;
+		state.autoStartRoom = true;
+		state.landing = false;
+		state.showIntro = false;
+		state.matchSettings = { ...room.settings };
+		createWorld(room.seed, room.settings);
+		state.showIntro = false;
+	}
+
+	function startRoomMatch(): void {
+		if (state.gameStarted || !state.autoStartRoom) return;
+		if (state.phase !== 'ready' || !state.sim || !state.rendererReady) return;
+		state.autoStartRoom = false;
+		state.landing = false;
+		state.showIntro = false;
+		state.gameStarted = true;
+		state.artilleryTargeting = false;
+		state.paused = false;
+		gameSession.resume();
+	}
+
+	function leaveRoom(): void {
+		showRoomSelection();
 	}
 
 	async function startReplayFile(file: File): Promise<void> {
@@ -243,10 +299,22 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	}
 
 	function newWorld(): void {
+		if (state.activeRoom) {
+			state.autoStartRoom = true;
+			createWorld(randomSeed(), state.activeRoom.settings);
+			state.showIntro = false;
+			return;
+		}
 		createWorld(randomSeed());
 	}
 
 	function rematch(): void {
+		if (state.activeRoom) {
+			state.autoStartRoom = true;
+			createWorld(state.currentSeed, state.activeRoom.settings);
+			state.showIntro = false;
+			return;
+		}
 		createWorld(state.currentSeed);
 	}
 
@@ -410,6 +478,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	function handleReady(): void {
 		state.rendererReady = true;
+		startRoomMatch();
 	}
 
 	function handleError(error: Error): void {
@@ -447,6 +516,10 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		applyMatchSettings,
 		applySeedPreset,
 		createWorld,
+		showRoomSelection,
+		connectRoom,
+		startRoomMatch,
+		leaveRoom,
 		deploy,
 		togglePause,
 		toggleReplayPlay,

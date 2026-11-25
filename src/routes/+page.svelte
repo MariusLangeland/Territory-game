@@ -11,7 +11,7 @@
 	import NavalTargetPreview from '#lib/components/NavalTargetPreview.svelte';
 	import MapTools from '#lib/components/MapTools.svelte';
 	import DragOverlay from '#lib/components/DragOverlay.svelte';
-	import IntroOverlay from '#lib/components/IntroOverlay.svelte';
+	import RoomSelectScreen from '#lib/components/RoomSelectScreen.svelte';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ErrorModal from '#lib/components/ErrorModal.svelte';
 	import ResultModal from '#lib/components/ResultModal.svelte';
@@ -36,6 +36,10 @@
 	ondrop={game.handleCardDrop}
 	oncontextmenu={game.handleContextMenu}
 >
+	{#if game.landing}
+		<RoomSelectScreen onConnect={game.connectRoom} />
+	{/if}
+
 	{#if game.diplomacyToast}
 		<DiplomacyToast message={game.diplomacyToast.message} tone={game.diplomacyToast.tone} />
 	{/if}
@@ -116,6 +120,8 @@
 			matchTimeRemaining={game.matchTimeRemaining}
 			paused={game.paused}
 			showResult={game.showResult}
+			roomName={game.activeRoom?.name ?? null}
+			onLeaveRoom={game.leaveRoom}
 			onTogglePause={game.togglePause}
 			onOpenHelp={() => (game.showHelp = true)}
 			onOnline={() => game.goto('/online')}
@@ -227,27 +233,6 @@
 		/>
 	{/if}
 
-	{#if game.showIntro && game.phase === 'ready' && game.snapshot}
-		<IntroOverlay
-			phase={game.phase}
-			stateCount={game.stateCount}
-			mapWidth={game.mapWidth}
-			mapHeight={game.mapHeight}
-			seedHex={game.seedHex}
-			rendererReady={game.rendererReady}
-			canDeploy={game.canDeploy}
-			deployLabel={game.deployLabel}
-			bind:seedInput={game.seedInput}
-			bind:matchSettings={game.matchSettings}
-			settingsDirty={game.settingsDirty}
-			onDeploy={game.deploy}
-			onApplySeed={game.applySeed}
-			onPersistSettings={game.persistMatchSettings}
-			onApplyMapPreset={game.applyMapPreset}
-			onApplySeedPreset={game.applySeedPreset}
-			onApplyMatchSettings={game.applyMatchSettings}
-		/>
-	{/if}
 	{#if game.phase === 'error'}
 		<ErrorModal message={game.errorMessage} onReload={game.reload} />
 	{/if}

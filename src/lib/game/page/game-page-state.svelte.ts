@@ -6,6 +6,7 @@ import type { StructureContextMenu } from '#lib/game/ui/structure-menu';
 import type { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
+import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
 import { createHudSelectors } from './selectors/hud.svelte';
 import { createInteractionSelectors } from './selectors/interaction.svelte';
 import { createMatchSelectors } from './selectors/match.svelte';
@@ -32,12 +33,15 @@ function createStateAccessors() {
 	let workerVisualRevision = 0;
 	let lastWorkerUiTick = -100;
 	let workerTelemetryVersion = $state(0);
-	let phase = $state<'loading' | 'ready' | 'error'>('loading');
+	let phase = $state<'loading' | 'ready' | 'error'>('ready');
 	let errorMessage = $state('');
 	let rendererReady = $state(false);
 	let gameStarted = $state(false);
 	let paused = $state(true);
 	let showIntro = $state(true);
+	let landing = $state(true);
+	let activeRoom = $state<LocalRoomDefinition | null>(null);
+	let autoStartRoom = $state(false);
 	let showHelp = $state(false);
 	let replayMode = $state(false);
 	let replayName = $state('');
@@ -169,6 +173,24 @@ function createStateAccessors() {
 		},
 		set showIntro(value) {
 			showIntro = value;
+		},
+		get landing() {
+			return landing;
+		},
+		set landing(value) {
+			landing = value;
+		},
+		get activeRoom() {
+			return activeRoom;
+		},
+		set activeRoom(value) {
+			activeRoom = value;
+		},
+		get autoStartRoom() {
+			return autoStartRoom;
+		},
+		set autoStartRoom(value) {
+			autoStartRoom = value;
 		},
 		get replayMode() {
 			return replayMode;

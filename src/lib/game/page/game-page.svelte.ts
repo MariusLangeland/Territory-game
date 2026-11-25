@@ -2,7 +2,6 @@ import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
 import { loadMatchSettings } from '#lib/game/match-config';
 import { loadOnboardingDone } from '#lib/game/session/onboarding';
-import { readSeedFromLocation } from '#lib/game/session/seed';
 import { createActions } from '#lib/game/ui/actions';
 import { createKeyboardInput } from '#lib/game/ui/keyboard';
 import { createGamePageState, type GamePageState } from '#lib/game/page/game-page-state.svelte';
@@ -243,7 +242,7 @@ export function createGamePage(): GamePageApi {
 		window.addEventListener('pointerdown', interaction.handleWindowPointerDown);
 		state.onboardingDone = loadOnboardingDone();
 		state.matchSettings = loadMatchSettings();
-		match.createWorld(readSeedFromLocation(), state.matchSettings);
+		match.showRoomSelection();
 
 		return () => {
 			window.removeEventListener('keydown', keyboard.handleKeydown);

@@ -15,6 +15,8 @@
 		matchTimeRemaining: string | null;
 		paused: boolean;
 		showResult: boolean;
+		roomName?: string | null;
+		onLeaveRoom?: () => void;
 		onTogglePause: () => void;
 		onOpenHelp: () => void;
 		onOnline: () => void;
@@ -33,6 +35,8 @@
 		matchTimeRemaining,
 		paused,
 		showResult,
+		roomName = null,
+		onLeaveRoom,
 		onTogglePause,
 		onOpenHelp,
 		onOnline,
@@ -45,7 +49,7 @@
 	<div class="brand-lockup">
 		<div class="brand-mark" aria-hidden="true"><span></span></div>
 		<div class="brand-type">
-			<p class="eyebrow">FRONTAGE V1 / {stateCount} STATES</p>
+			<p class="eyebrow">{roomName ?? 'FRONTAGE V1'} / {stateCount} STATES</p>
 			<h1>TERRITORY<span>.</span></h1>
 		</div>
 	</div>
@@ -109,6 +113,9 @@
 		</button>
 		<button class="action-button" type="button" onclick={onOnline}>ONLINE</button>
 		<button class="action-button" type="button" onclick={onEvolution}>AI LAB</button>
+		{#if onLeaveRoom}
+			<button class="action-button" type="button" onclick={onLeaveRoom}>LEAVE ROOM</button>
+		{/if}
 		<button class="action-button new-world-button" type="button" onclick={onNewWorld}>
 			NEW WORLD
 		</button>
