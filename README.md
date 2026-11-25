@@ -25,31 +25,31 @@
 
 ## What this build demonstrates
 
-| Area            | Implementation                                                                                                                                                                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                                                             |
-| Large pixel map | 8,388,608 ownership cells by default; arbitrary atlas dimensions up to 8192 px per side and 67M total cells, rendered from one GPU control texture                                                           |
-| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically                                               |
-| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                                           |
-| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                                             |
-| Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions               |
-| Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                                           |
-| Online rooms    | `/online`: up to eight human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline, 200-player/25-room caps                                                 |
-| Worker local    | Local sim stepping, bot decisions, and integrity scans run in a Web Worker; main thread renders mirror deltas and sends async commands. `pnpm build && pnpm test:worker` smokes the built worker             |
-| Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                              |
-| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                                      |
-| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                                           |
-| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                                                                     |
-| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                                                             |
-| AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                                            |
-| AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                                    |
-| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                                        |
-| Local rooms     | Live Spacetime room-directory cards preview rules, atlas size, state/bot counts, difficulty, timer and bot Command Post surge; connecting joins the room database and starts with a selectable simulated RTT |
-| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                                          |
-| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                                     |
-| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                                  |
-| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                                                                      |
-| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest fast/stress suites, benchmark/telemetry/soak scripts, release checklist, CI workflow                                                                             |
+| Area            | Implementation                                                                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontage v1     | 8–51 states, durable supply-bought fronts, mutual strength attrition, cancellation/refunds, 70% or timer victory                                                                                  |
+| Large pixel map | 8,388,608 ownership cells by default; arbitrary atlas dimensions up to 8192 px per side and 67M total cells, rendered from one GPU control texture                                                |
+| Terrain defense | Six elevation tiers color the map; defense is `1 + elevation + occupied + aura`; Barracks levels scale cost/strength linearly and speed/pierce logarithmically                                    |
+| State auras     | Live capitals project a 16 px field of +20 defense                                                                                                                                                |
+| Supply economy  | 90 starting supply, uncapped maximum, seven cards always available, compact HUD amounts, repeatable level-scaled builds/upgrades                                                                  |
+| Bot commanders  | Gauntlet-survivor genome roster, deterministic trait/module affinities, semi-Markov strategic options, threat response, expansion pressure, retaliation, opportunism, tick-staggered decisions    |
+| Diplomacy       | Player-only alliances: one active request, bot acceptance, non-aggression, coordination, expiry, betrayal cooldown                                                                                |
+| Online rooms    | `/online`: up to eight human seats, bots fill the rest, authoritative 10 Hz server, HTTP intents, SSE snapshots, reconnect baseline, 200-player/25-room caps                                      |
+| Worker local    | Local sim stepping, bot decisions, and integrity scans run in a Web Worker; main thread renders mirror deltas and sends async commands. `pnpm build && pnpm test:worker` smokes the built worker  |
+| Rival banners   | Name/supply/affordable-front text on a dark translucent plate at rival capitals, sized by territory and capped to the state's on-screen footprint; hidden when too small to fit                   |
+| Districts       | Bounded owner-local Voronoi districts with noisy extents/borders, type tint/boundaries, district-wide defense auras, same-type stacking                                                           |
+| Determinism     | Fixed 10 Hz tick, seeded integer PRNG, stable command order, FNV-1a checksums, deterministic tests                                                                                                |
+| Rendering speed | Full-screen WebGPU pass; changed 32 × 32 tiles are merged into strips, with heavy-load full resyncs split across frames to protect input                                                          |
+| Naval           | Shore Ports, deterministic sea routing, sailing boats, beachhead landing, auto-Port, sea-linked annex protection                                                                                  |
+| AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                                 |
+| AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                         |
+| Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                             |
+| Rooms           | Live Spacetime room-directory cards preview rules, atlas size, state/bot counts, difficulty, timer and bot Command Post surge; connecting joins the room database and starts the local simulation |
+| UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                               |
+| Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                          |
+| Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                       |
+| Keyboard        | Arrow-key map cursor, Enter attacks/upgrades, Shift moves faster, Esc clears, live screen-reader status                                                                                           |
+| Tooling         | SvelteKit 3 + Svelte 5 + TypeScript, Vitest fast/stress suites, benchmark/telemetry/soak scripts, release checklist, CI workflow                                                                  |
 
 ## Quick start
 
@@ -395,7 +395,7 @@ AGENTS.md                        orientation for future coding agents
 ## Current limitations
 
 - Balance is tuned through headless telemetry/evolution runs, not a final competitive ruleset.
-- The landing page is a local room browser with four fixed rooms; connecting starts a room immediately. Online rooms are in-memory only; there is no persistent lobby yet.
+- The landing page reads the live Spacetime room directory. Selecting a room joins its Maincloud room database, creates/starts the room when empty, and then starts the local simulation. Gameplay transactions and replay are not yet synchronized through Spacetime. Online rooms remain a separate in-memory MVP.
 - Alliances are player-only local-match diplomacy: one active pair, bot acceptance, expiry, non-aggression, coordination, and betrayal cooldown. Bots never propose alliances to each other.
 - Online rooms are an in-memory MVP: up to eight humans, bots fill empty seats, HTTP commands, and SSE snapshots. The single-process support target is 200 concurrent players at 10 Hz (25 rooms × 8 humans), enforced by `pnpm bench:online`. Rooms are lost on server restart; there are no accounts, matchmaking, chat, persistence, or WebSocket transport yet.
 - Online rooms exist as an in-memory MVP; accounts, matchmaking, chat, and server persistence are not implemented.

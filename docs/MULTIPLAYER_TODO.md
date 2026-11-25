@@ -316,38 +316,9 @@ client submits transaction
 - [ ] Soak/reconnect storms.
 - [ ] Measure cost at public-room targets.
 
-## Phase 7.5 — Local prototype before Spacetime
-
-Build the client/coordinator protocol against an in-process fake before
-installing or publishing Spacetime.
-
-- [ ] Fake coordinator:
-  - [ ] room start timestamp;
-  - [ ] row append with server tick and sequence;
-  - [ ] same-tick row ordering;
-  - [ ] no periodic seals/heartbeats;
-  - [ ] optional artificial latency/jitter.
-- [ ] Fake client frontier:
-  - [ ] server-clock offset estimation;
-  - [ ] `headTick` and safe delta;
-  - [ ] whole-tick application;
-  - [ ] idle ticks without rows;
-  - [ ] late-row detection and pause/rollback.
-- [ ] Fake flag/quorum:
-  - [ ] invalid row;
-  - [ ] quorum invalidation;
-  - [ ] keyframe restore/replay;
-  - [ ] arbiter final decision.
-- [ ] Determinism tests:
-  - [ ] same rows → same checksums;
-  - [ ] variable client consumption rates → same state at tick N;
-  - [ ] delayed/late rows → identical corrected state.
-- [ ] Only after these pass, replace the fake coordinator with Spacetime.
-
 ## Phase 8 — Rollout
 
-- [ ] Local prototype first: fake coordinator + client frontier/rollback tests.
-- [ ] Then Spacetime module + two clients.
+- [ ] Spacetime module + two clients.
 - [ ] Ship public rooms behind a flag.
 - [ ] Keep existing authoritative state replication as fallback.
 - [ ] Add telemetry: row latency, late rows, flags, invalidations, arbitrations,

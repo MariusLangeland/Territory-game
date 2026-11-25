@@ -29,7 +29,6 @@ export class GameSession {
 	private simulation: WorkerLocalSimulation | null = null;
 	private generation = 0;
 	private timer: ReturnType<typeof setTimeout> | null = null;
-	private simulatedLatencyMs = 0;
 
 	constructor(private readonly handlers: GameSessionHandlers) {}
 
@@ -97,7 +96,6 @@ export class GameSession {
 				return;
 			}
 			this.simulation = next;
-			next.setSimulatedLatency(this.simulatedLatencyMs);
 			next.pause();
 			const seed = ledger.options.seed >>> 0;
 			this.handlers.onReady(next, seed);
@@ -143,7 +141,6 @@ export class GameSession {
 				return;
 			}
 			this.simulation = next;
-			next.setSimulatedLatency(this.simulatedLatencyMs);
 			next.pause();
 			this.handlers.onReady(next, seed);
 		} catch (error) {
@@ -163,11 +160,6 @@ export class GameSession {
 		return Array.from({ length: settings.states }, (_, index) =>
 			index === 0 ? null : botPool[(seed + index) % botPool.length]
 		);
-	}
-
-	setSimulatedLatency(roundTripMs: number): void {
-		this.simulatedLatencyMs = Math.max(0, Math.round(roundTripMs));
-		this.simulation?.setSimulatedLatency(this.simulatedLatencyMs);
 	}
 
 	replayControl(control: Omit<LocalWorkerReplayControl, 'type'>): void {

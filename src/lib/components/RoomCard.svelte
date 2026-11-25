@@ -1,14 +1,10 @@
 <script lang="ts">
 	import { BOT_DIFFICULTY_OPTIONS } from '#lib/game/match-config';
-	import {
-		roomBotCount,
-		roomSeedLabel,
-		type LocalRoomDefinition
-	} from '#lib/game/multiplayer/rooms';
+	import { roomBotCount, roomSeedLabel, type RoomDefinition } from '#lib/spacetime/room-definition';
 
 	interface Props {
-		room: LocalRoomDefinition;
-		onConnect: (room: LocalRoomDefinition) => void;
+		room: RoomDefinition;
+		onConnect: (room: RoomDefinition) => void;
 	}
 	let { room, onConnect }: Props = $props();
 
@@ -73,7 +69,7 @@
 
 	<footer class="room-foot">
 		<span class="room-seed">SEED {roomSeedLabel(room)}</span>
-		<span class="room-humans">{room.humans} CLIENT</span>
+		<span class="room-humans">1 CLIENT</span>
 		<button type="button" class="connect-button" onclick={() => onConnect(room)}>
 			CONNECT
 			<svg viewBox="0 0 16 16" aria-hidden="true">

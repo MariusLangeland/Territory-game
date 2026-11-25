@@ -1,6 +1,6 @@
 import { DbConnection, tables, type SubscriptionHandle } from './module_bindings';
 import type { Identity } from 'spacetimedb';
-import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
+import type { RoomDefinition } from './room-definition';
 import { SPACETIMEDB_URI } from './config';
 
 export interface RoomSession {
@@ -9,7 +9,7 @@ export interface RoomSession {
 }
 
 export interface RoomSessionOptions {
-	room: LocalRoomDefinition;
+	room: RoomDefinition;
 	playerName?: string;
 	timeoutMs?: number;
 }
@@ -37,8 +37,8 @@ function saveToken(databaseName: string, token: string): void {
 	}
 }
 
-function roomCodeFor(room: LocalRoomDefinition): string {
-	return room.databaseName ?? room.id;
+function roomCodeFor(room: RoomDefinition): string {
+	return room.databaseName;
 }
 
 /**
@@ -51,10 +51,6 @@ export function connectRoomSession({
 	playerName = HOST_NAME,
 	timeoutMs = 12_000
 }: RoomSessionOptions): Promise<RoomSession> {
-	if (!room.databaseName) {
-		return Promise.reject(new Error('Selected room has no Spacetime database.'));
-	}
-
 	const databaseName = room.databaseName;
 	return new Promise((resolve, reject) => {
 		let settled = false;

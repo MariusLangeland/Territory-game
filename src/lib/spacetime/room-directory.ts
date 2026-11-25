@@ -1,7 +1,7 @@
 import { DbConnection, tables, type SubscriptionHandle } from './lobby_bindings';
 import type { RoomDirectory } from './lobby_bindings/types';
 import { LOBBY_DATABASE, SPACETIMEDB_URI } from './config';
-import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
+import type { RoomDefinition } from './room-definition';
 
 export type DirectoryConnectionState = 'connecting' | 'ready' | 'error';
 
@@ -32,7 +32,7 @@ function saveToken(token: string): void {
 	}
 }
 
-export function roomDefinitionFromDirectory(row: RoomDirectory): LocalRoomDefinition {
+export function roomDefinitionFromDirectory(row: RoomDirectory): RoomDefinition {
 	const status = row.status === 'running' || row.status === 'closed' ? row.status : 'open';
 	return {
 		id: row.databaseName,
@@ -42,7 +42,6 @@ export function roomDefinitionFromDirectory(row: RoomDirectory): LocalRoomDefini
 		description: row.description,
 		rules: [...row.rules],
 		seed: row.seed,
-		humans: 1,
 		accent: row.accent,
 		status,
 		settings: {
@@ -50,7 +49,7 @@ export function roomDefinitionFromDirectory(row: RoomDirectory): LocalRoomDefini
 			mapPreset: 'standard',
 			mapWidth: row.width,
 			mapHeight: row.height,
-			difficulty: row.botDifficulty as LocalRoomDefinition['settings']['difficulty'],
+			difficulty: row.botDifficulty as RoomDefinition['settings']['difficulty'],
 			timerMinutes: row.timerMinutes,
 			botCommandPostStacks: row.botCommandPostStacks
 		}

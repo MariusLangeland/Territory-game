@@ -6,8 +6,7 @@ import type { StructureContextMenu } from '#lib/game/ui/structure-menu';
 import type { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
-import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
-import { DEFAULT_SIMULATED_LATENCY } from '#lib/game/multiplayer/latency';
+import type { RoomDefinition } from '#lib/spacetime/room-definition';
 import { createHudSelectors } from './selectors/hud.svelte';
 import { createInteractionSelectors } from './selectors/interaction.svelte';
 import { createMatchSelectors } from './selectors/match.svelte';
@@ -41,9 +40,8 @@ function createStateAccessors() {
 	let paused = $state(true);
 	let showIntro = $state(true);
 	let landing = $state(true);
-	let activeRoom = $state<LocalRoomDefinition | null>(null);
+	let activeRoom = $state<RoomDefinition | null>(null);
 	let autoStartRoom = $state(false);
-	let simulatedLatencyMs = $state<number>(DEFAULT_SIMULATED_LATENCY);
 	let showHelp = $state(false);
 	let replayMode = $state(false);
 	let replayName = $state('');
@@ -193,12 +191,6 @@ function createStateAccessors() {
 		},
 		set autoStartRoom(value) {
 			autoStartRoom = value;
-		},
-		get simulatedLatencyMs() {
-			return simulatedLatencyMs;
-		},
-		set simulatedLatencyMs(value) {
-			simulatedLatencyMs = value;
 		},
 		get replayMode() {
 			return replayMode;

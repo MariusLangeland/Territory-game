@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import RoomCard from './RoomCard.svelte';
-	import LatencyControl from './LatencyControl.svelte';
 	import {
 		connectRoomDirectory,
 		roomDefinitionFromDirectory,
@@ -10,14 +9,12 @@
 	} from '#lib/spacetime/room-directory';
 	import { LOBBY_DATABASE } from '#lib/spacetime/config';
 	import type { RoomDirectory } from '#lib/spacetime/lobby_bindings/types';
-	import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
+	import type { RoomDefinition } from '#lib/spacetime/room-definition';
 
 	interface Props {
-		onConnect: (room: LocalRoomDefinition) => void;
-		latencyMs: number;
-		onLatencyChange: (value: number) => void;
+		onConnect: (room: RoomDefinition) => void;
 	}
-	let { onConnect, latencyMs, onLatencyChange }: Props = $props();
+	let { onConnect }: Props = $props();
 
 	let directory = $state<RoomDirectory[]>([]);
 	let connectionState = $state<DirectoryConnectionState>('connecting');
@@ -73,7 +70,6 @@
 			<span class="network-state" class:offline={connectionState === 'error'}>
 				<i></i>{networkLabel}
 			</span>
-			<LatencyControl value={latencyMs} onChange={onLatencyChange} />
 		</nav>
 	</header>
 
