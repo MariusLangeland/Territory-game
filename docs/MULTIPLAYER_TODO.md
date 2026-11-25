@@ -51,10 +51,20 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] clients never derive ticks from their own wall clock;
   - [ ] ticks are authoritative server-assigned buckets.
 - [ ] Define tick sealing:
-  - [ ] a scheduled 10 Hz reducer inserts a `room_ticks` row/heartbeat;
-  - [ ] clients apply a tick only after its seal;
+  - [ ] a scheduled 10 Hz reducer closes the open tick and inserts a
+        `room_ticks` row/heartbeat;
+  - [ ] room tracks an explicit `openTick` and `sealedThrough` watermark;
+  - [ ] transactions append only to `openTick`, never to an already sealed tick;
   - [ ] define behavior when the scheduler skips/delays ticks;
-  - [ ] define how transactions assigned to a future/unsealed tick are handled.
+  - [ ] clients apply a tick only after its seal.
+- [ ] Define the client timing frontier:
+  - [ ] `confirmedTick` = last locally applied tick;
+  - [ ] `safeHead` = latest tick with a seal and all transaction rows;
+  - [ ] render at display rate; consume whole simulation ticks at whatever rate
+        data allows;
+  - [ ] never use variable-dt simulation;
+  - [ ] never simulate beyond `safeHead`;
+  - [ ] pause at the frontier unless optional prediction/rollback is enabled.
 - [ ] Define transaction identity:
   - [ ] explicit `row_index`/sequence;
   - [ ] room;
@@ -243,6 +253,40 @@ This prioritizes functionality and RTT over anti-cheat.
   - [ ] avoid blocking the render loop.
 - [ ] Keep a recent local keyframe for rollback.
 
+### Client timing and frontier rules
+
+- [ ] Separate the two clocks:
+  - [ ] authoritative simulation tick index is fixed at 10 Hz;
+  - [ ] client rendering/consumption rate is independent and may vary;
+  - [ ] the client never simulates a partial/variable-dt tick.
+- [ ] Maintain `safeHead`:
+  - [ ] latest tick whose seal has been received;
+  - [ ] all `ledger_transactions` rows for that tick have been received;
+  - [ ] rows apply in `rowIndex` order.
+- [ ] Demand-driven simulation loop:
+  - [ ] while `confirmedTick < safeHead`, apply the next complete tick;
+  - [ ] otherwise wait and keep rendering/interpolating;
+  - [ ] catch up in whole ticks after a stall/background tab.
+- [ ] Target lag:
+  - [ ] measure lag in ticks, not wall-clock milliseconds;
+  - [ ] keep a small safety buffer such as `safeHead - 1` or `safeHead - 2`;
+  - [ ] do not treat `RTT/2` as sufficient without jitter, seal delivery,
+        server batching, and CPU safety;
+  - [ ] lag does not make the server assign a command earlier.
+- [ ] Running ahead:
+  - [ ] never simulate unsealed ticks in the no-prediction mode;
+  - [ ] if prediction is added later, track a speculative tick and roll back to
+        `confirmedTick` on seal/row mismatch;
+  - [ ] rollback/replay is a separate opt-in and not required for the MVP.
+- [ ] Variable client rates:
+  - [ ] 8–12 Hz local consumption is acceptable only as whole-tick scheduling;
+  - [ ] average consumption must keep up with the server or lag grows;
+  - [ ] 12 Hz clients should wait at the frontier rather than simulate ahead.
+- [ ] Error handling:
+  - [ ] missing seal/rows: wait, do not advance;
+  - [ ] late row for an already-applied tick: halt and resync/rollback;
+  - [ ] local state-root mismatch at a sealed tick: halt/resync.
+
 ## Phase 3 — Flags, quorum, invalidation, rollback
 
 - [ ] Define flag payload:
@@ -412,6 +456,10 @@ This prioritizes functionality and RTT over anti-cheat.
 - [ ] Clients apply same-tick rows in canonical `rowIndex` order.
 - [ ] Clients apply a tick only after its seal.
 - [ ] No client uses wall-clock-derived ticks.
+- [ ] Clients never simulate beyond the complete sealed frontier (`safeHead`).
+- [ ] Variable client rates consume whole ticks and catch up without variable-dt
+      simulation.
+- [ ] Transactions can never append to an already sealed tick.
 - [ ] All clients reach identical tick checksums.
 - [ ] A deliberate illegal transaction can be flagged by an in-sync quorum.
 - [ ] Quorum invalidation triggers identical rollback/replay on all clients.

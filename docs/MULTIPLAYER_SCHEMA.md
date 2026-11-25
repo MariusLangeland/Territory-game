@@ -53,7 +53,10 @@ export const rooms = table(
 		botCommandPostStacks: t.u32(),
 		version: VersionFingerprint,
 		startedAt: t.option(t.timestamp()),
-		endedAt: t.option(t.timestamp())
+		endedAt: t.option(t.timestamp()),
+		// Tick closure watermark: transactions append only to openTick.
+		openTick: t.u64(),
+		sealedThrough: t.u64()
 	}
 );
 
@@ -291,13 +294,26 @@ export default spacetimedb;
 ```text
 subscribe room_ticks, ledger_transactions, invalidations
 
-buffer ledger_transactions by tick
-on tick_sealed:
-  sort rows by rowIndex
-  apply rows for that tick
+confirmedTick = last locally applied tick
+
+safeHead = latest tick where:
+  tick seal received
+  AND all transaction rows received
+
+while confirmedTick < safeHead:
+  sort next tick's rows by rowIndex
+  apply the whole tick
   skip invalidated rows
   verify resulting stateRoot
+  confirmedTick++
 ```
+
+Clients render at display rate but consume whole authoritative ticks. They never
+simulate beyond `safeHead`; if they fall behind they catch up in whole ticks. A
+late row for an already-applied tick is a resync/rollback condition.
+
+`rooms.openTick` is the only tick transactions may append to.
+`rooms.sealedThrough` is the client-visible seal watermark.
 
 ## Deliberate omissions
 
