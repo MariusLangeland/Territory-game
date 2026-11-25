@@ -2,6 +2,7 @@
 	import { colorForPlayer } from '#lib/game/constants';
 	import type { PublicPlayer } from '#lib/game/simulation';
 	import { formatShare } from '#lib/format';
+	import LatencyControl from './LatencyControl.svelte';
 
 	interface Props {
 		human: PublicPlayer;
@@ -16,6 +17,8 @@
 		paused: boolean;
 		showResult: boolean;
 		roomName?: string | null;
+		latencyMs?: number;
+		onCycleLatency?: () => void;
 		onLeaveRoom?: () => void;
 		onTogglePause: () => void;
 		onOpenHelp: () => void;
@@ -36,6 +39,8 @@
 		paused,
 		showResult,
 		roomName = null,
+		latencyMs = 0,
+		onCycleLatency,
 		onLeaveRoom,
 		onTogglePause,
 		onOpenHelp,
@@ -111,6 +116,9 @@
 		<button class="square-button" type="button" onclick={onOpenHelp} aria-label="Open field manual">
 			<span>?</span>
 		</button>
+		{#if onCycleLatency}
+			<LatencyControl compact value={latencyMs} onChange={() => onCycleLatency()} />
+		{/if}
 		<button class="action-button" type="button" onclick={onOnline}>ONLINE</button>
 		<button class="action-button" type="button" onclick={onEvolution}>AI LAB</button>
 		{#if onLeaveRoom}

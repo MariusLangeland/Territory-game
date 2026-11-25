@@ -181,6 +181,11 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		return this.client.command(type, args);
 	}
 
+	/** Simulate a network round trip without changing the worker simulation. */
+	setSimulatedLatency(roundTripMs: number): void {
+		this.client.setSimulatedLatency(roundTripMs);
+	}
+
 	replayControl(control: Omit<import('./local-protocol').LocalWorkerReplayControl, 'type'>): void {
 		this.client.replayControl(control);
 	}

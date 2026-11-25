@@ -5,6 +5,7 @@ import { decodeLedgerDocument } from '#lib/game/ledger/document';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
+import { nextSimulatedLatency, normalizeSimulatedLatency } from '#lib/game/multiplayer/latency';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
 import {
@@ -102,6 +103,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.eventFeed = [];
 		state.currentSeed = seed >>> 0;
 		state.seedInput = seedHexFor(seed);
+		gameSession.setSimulatedLatency(state.simulatedLatencyMs);
 		gameSession.start(seed, normalized);
 	}
 
@@ -157,6 +159,16 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 
 	function leaveRoom(): void {
 		showRoomSelection();
+	}
+
+	function setSimulatedLatency(value: number): void {
+		const latency = normalizeSimulatedLatency(value);
+		state.simulatedLatencyMs = latency;
+		gameSession.setSimulatedLatency(latency);
+	}
+
+	function cycleSimulatedLatency(): void {
+		setSimulatedLatency(nextSimulatedLatency(state.simulatedLatencyMs));
 	}
 
 	async function startReplayFile(file: File): Promise<void> {
@@ -520,6 +532,8 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		connectRoom,
 		startRoomMatch,
 		leaveRoom,
+		setSimulatedLatency,
+		cycleSimulatedLatency,
 		deploy,
 		togglePause,
 		toggleReplayPlay,

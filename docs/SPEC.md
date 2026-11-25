@@ -498,7 +498,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 
 ### 5.1 Screen flow
 
-1. **Room selection:** four local room cards preview rules, atlas dimensions, state/bot counts, difficulty, timer, starting Command Post surge, and seed. Connecting starts that room immediately; there is no separate intro/deploy step.
+1. **Room selection:** four local room cards preview rules, atlas dimensions, state/bot counts, difficulty, timer, starting Command Post surge, and seed. A simulated RTT control (off/60/120/220 ms) delays command uplink and visual downlink equally. Connecting starts that room immediately; there is no separate intro/deploy step.
 2. **Boot/loading:** after connecting, map, starts, and WebGPU initialisation.
 3. **Live match:** room name in the HUD, state-count-aware HUD, optional countdown, virtualized scrollable leaderboard, map, minimap, compact economy/orders/defense readout, perf readout.
 4. **Paused:** fixed ticks stop; camera still works.
@@ -513,7 +513,7 @@ Circular and smooth are both radial layers and can look similar. Circular uses e
 - Brand with the active room name and current state count.
 - Human name/color, land share, rank, living-state count.
 - War clock.
-- Pause/resume, field manual, online/AI lab links, leave room, new world.
+- Pause/resume, field manual, online/AI lab links, leave room, new world, and a simulated RTT badge that cycles latency presets live.
 - Rival supply banners: map-anchored name/supply text on a dark semi-transparent rounded plate at each living rival's capital plus its currently affordable front count (`N ATK`, supply divided by its current launch cost against the human; neutral cost in all-bot matches), updated from 5 Hz snapshots. Text scale is a deterministic function of the rival's territory relative to the largest living rival, so larger states have larger text. The banner must fit inside the state's on-screen footprint: it shrinks to fit, then hides if the footprint is too small to hold legible text. A dark, semi-transparent rounded plate sits behind the text so it stays legible over bright terrain; there is no opaque plaque or colored border. Offscreen rivals and the human are excluded; visible banners are clamped inside the viewport.
 - World-control leaderboard: one logical row per state in a virtualized scroll container; only the visible window is mounted, sorted by alive, then territory, then id.
 - Active fronts and alive state count.

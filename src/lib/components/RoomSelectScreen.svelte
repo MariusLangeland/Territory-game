@@ -1,11 +1,14 @@
 <script lang="ts">
 	import RoomCard from './RoomCard.svelte';
+	import LatencyControl from './LatencyControl.svelte';
 	import { LOCAL_ROOMS, type LocalRoomDefinition } from '#lib/game/multiplayer/rooms';
 
 	interface Props {
 		onConnect: (room: LocalRoomDefinition) => void;
+		latencyMs: number;
+		onLatencyChange: (value: number) => void;
 	}
-	let { onConnect }: Props = $props();
+	let { onConnect, latencyMs, onLatencyChange }: Props = $props();
 </script>
 
 <div class="room-select">
@@ -23,6 +26,7 @@
 			<a href="/online">ONLINE</a>
 			<a href="/evolution">AI LAB</a>
 			<span class="network-state"><i></i>COORDINATOR READY</span>
+			<LatencyControl value={latencyMs} onChange={onLatencyChange} />
 		</nav>
 	</header>
 

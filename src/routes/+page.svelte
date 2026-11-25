@@ -37,7 +37,11 @@
 	oncontextmenu={game.handleContextMenu}
 >
 	{#if game.landing}
-		<RoomSelectScreen onConnect={game.connectRoom} />
+		<RoomSelectScreen
+			onConnect={game.connectRoom}
+			latencyMs={game.simulatedLatencyMs}
+			onLatencyChange={game.setSimulatedLatency}
+		/>
 	{/if}
 
 	{#if game.diplomacyToast}
@@ -121,6 +125,8 @@
 			paused={game.paused}
 			showResult={game.showResult}
 			roomName={game.activeRoom?.name ?? null}
+			latencyMs={game.simulatedLatencyMs}
+			onCycleLatency={game.cycleSimulatedLatency}
 			onLeaveRoom={game.leaveRoom}
 			onTogglePause={game.togglePause}
 			onOpenHelp={() => (game.showHelp = true)}

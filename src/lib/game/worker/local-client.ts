@@ -40,6 +40,8 @@ export class LocalWorkerClient {
 		number,
 		{ resolve: (result: LocalWorkerCommandPromiseResult) => void }
 	>();
+	private readonly latencyTimers = new Set<ReturnType<typeof setTimeout>>();
+	private simulatedLatencyMs = 0;
 	private disposed = false;
 
 	constructor(init: LocalWorkerInitConfig, handlers: LocalWorkerHandlers) {
@@ -57,6 +59,23 @@ export class LocalWorkerClient {
 		this.worker.postMessage(message);
 	}
 
+	/** Simulated one-way latency is half the configured round trip. */
+	setSimulatedLatency(roundTripMs: number): void {
+		this.simulatedLatencyMs = Math.max(0, Math.round(roundTripMs));
+	}
+
+	private later(action: () => void, delayMs: number): void {
+		if (delayMs <= 0) {
+			if (!this.disposed) action();
+			return;
+		}
+		const timer = setTimeout(() => {
+			this.latencyTimers.delete(timer);
+			if (!this.disposed) action();
+		}, delayMs);
+		this.latencyTimers.add(timer);
+	}
+
 	private handleMessage(message: LocalWorkerOutbound): void {
 		if (this.disposed) return;
 		if (message.type === 'init') {
@@ -64,7 +83,7 @@ export class LocalWorkerClient {
 			return;
 		}
 		if (message.type === 'visual') {
-			this.handlers.onVisual(message);
+			this.later(() => this.handlers.onVisual(message), this.simulatedLatencyMs / 2);
 			return;
 		}
 		if (message.type === 'replay-status') {
@@ -79,14 +98,16 @@ export class LocalWorkerClient {
 		if (message.type === 'command-result') {
 			const pending = this.pending.get(message.id);
 			if (!pending) return;
-			this.pending.delete(message.id);
-			pending.resolve({
-				ok: message.ok,
-				reason: message.reason,
-				message: message.message,
-				ledgerBlock: message.ledgerBlock,
-				ledgerText: message.ledgerText
-			});
+			this.later(() => {
+				this.pending.delete(message.id);
+				pending.resolve({
+					ok: message.ok,
+					reason: message.reason,
+					message: message.message,
+					ledgerBlock: message.ledgerBlock,
+					ledgerText: message.ledgerText
+				});
+			}, this.simulatedLatencyMs / 2);
 		}
 	}
 
@@ -105,7 +126,7 @@ export class LocalWorkerClient {
 				id,
 				command: { type, ...args }
 			};
-			this.worker.postMessage(message);
+			this.later(() => this.worker.postMessage(message), this.simulatedLatencyMs / 2);
 		});
 	}
 
@@ -124,6 +145,8 @@ export class LocalWorkerClient {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
+		for (const timer of this.latencyTimers) clearTimeout(timer);
+		this.latencyTimers.clear();
 		for (const pending of this.pending.values()) {
 			pending.resolve({ ok: false, message: 'Match worker stopped.' });
 		}

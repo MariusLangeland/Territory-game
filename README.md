@@ -44,7 +44,7 @@
 | AI Evolution    | Worker-driven population evolution, 64-bot gauntlet with lives/top-16 recovery, semi-Markov genomes, fitness history, CSV, IndexedDB restore, JSON state transfer                                |
 | AI strategy     | Main-game roster seeded by 21 gauntlet survivors then saved buckets; committed options/blackboard, deterrence, naval campaigns, teams, behavior telemetry                                        |
 | Post-match      | Result summary with AI behavior counters, standings, seed copy/replay                                                                                                                            |
-| Local rooms     | Four room cards preview rules, atlas size, state/bot counts, difficulty, timer and bot Command Post surge; connecting starts the room immediately                                                |
+| Local rooms     | Four room cards preview rules, atlas size, state/bot counts, difficulty, timer and bot Command Post surge; connecting starts immediately with a selectable simulated RTT                         |
 | UI scale        | Virtualized state-count-aware leaderboard (only visible rows in DOM), 5 Hz HUD snapshots, generated palette, minimap, attack counters, perf readout                                              |
 | Onboarding      | Three dismissible first-match hints: launch a front, build a card, upgrade a district; persisted locally                                                                                         |
 | Touch           | One-finger pan/tap, two-finger pinch zoom, compact hand/minimap/tool layout                                                                                                                      |
