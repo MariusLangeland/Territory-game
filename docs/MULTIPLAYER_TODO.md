@@ -172,7 +172,9 @@ client submits transaction
 - [ ] `start_match`:
   - [ ] host-only;
   - [ ] mark the room running and store `startedAt`;
-  - [ ] broadcast `first_tick_event` at tick `0`;
+  - [ ] set `participationLocked` before broadcasting `first_tick_event`;
+  - [ ] atomically broadcast `first_tick_event` at tick `0`;
+  - [ ] reject all later joins, including reconnects without an existing seat;
   - [ ] clients wait for the first-tick broadcast before starting simulation.
 - [ ] `submit_transaction`:
   - [ ] authenticate seat;
@@ -345,7 +347,8 @@ client submits transaction
 - [ ] Clients apply whole ticks; no variable-dt simulation.
 - [ ] Late rows cause pause/rollback, never silent divergence.
 - [ ] Public-room room lifecycle works through Spacetime.
-- [ ] Starting a room broadcasts a first-tick event and all clients anchor at tick 0.
+- [ ] Starting a room locks participation before broadcasting a first-tick event.
+- [ ] All clients anchor at tick 0 and late-comers cannot join.
 - [ ] Deliberate invalid rows can be flagged; quorum invalidates.
 - [ ] Arbiter decisions are final and applied identically by clients.
 - [ ] Rollback from keyframe produces the same canonical state/checksum.

@@ -11,6 +11,10 @@ const GUEST_AUTH = TestAuth.fromJwtPayload(
 	JSON.stringify({ iss: 'test', sub: 'bob' }),
 	new ConnectionId(2n)
 );
+const LATE_AUTH = TestAuth.fromJwtPayload(
+	JSON.stringify({ iss: 'test', sub: 'late' }),
+	new ConnectionId(3n)
+);
 
 function createTest() {
 	return createModuleTestHarness(spacetimedb, moduleExports);
@@ -56,6 +60,7 @@ describe('room coordinator', () => {
 		});
 		const startedRoom = [...test.db.rooms.iter()][0];
 		expect(startedRoom.status).toBe('running');
+		expect(startedRoom.participationLocked).toBe(true);
 		expect(startedRoom.startedAt).toBeDefined();
 		expect(startedRoom.headTick).toBe(0n);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
@@ -70,6 +75,20 @@ describe('room coordinator', () => {
 		expect(rows[0].type).toBe('build');
 		expect(rows[0].tick).toBe(0n);
 		expect(rows[0].playerId).toBe(1);
+	});
+
+	it('rejects late-comers after the first-tick lock', () => {
+		const test = createTest();
+		createRoom(test);
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.startMatch(ctx, {});
+		});
+		expect(() =>
+			test.withReducerTx(LATE_AUTH, (ctx) => {
+				moduleExports.joinRoom(ctx, { name: 'Late' });
+			})
+		).toThrow(/locked/);
+		expect(test.db.seats.count()).toBe(1n);
 	});
 
 	it('emits an empty heartbeat after ten idle ticks', () => {

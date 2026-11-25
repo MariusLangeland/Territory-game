@@ -55,7 +55,8 @@ export const Rooms = __t.object('Rooms', {
 	version: __t.string(),
 	startedAt: __t.option(__t.timestamp()),
 	endedAt: __t.option(__t.timestamp()),
-	headTick: __t.u64()
+	headTick: __t.u64(),
+	participationLocked: __t.bool()
 });
 export type Rooms = __Infer<typeof Rooms>;
 

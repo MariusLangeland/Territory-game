@@ -106,6 +106,7 @@ export const createRoom = spacetimedb.reducer(
 			roomCode: args.roomCode,
 			host: ctx.sender,
 			status: 'waiting',
+			participationLocked: false,
 			seed: args.seed,
 			width: args.width,
 			height: args.height,
@@ -133,7 +134,9 @@ export const createRoom = spacetimedb.reducer(
 
 export const joinRoom = spacetimedb.reducer({ name: t.string() }, (ctx, { name }) => {
 	const room = requireRoom(ctx);
-	if (room.status !== 'waiting') throw new SenderError('room is no longer accepting players');
+	if (room.participationLocked || room.status !== 'waiting') {
+		throw new SenderError('room participation is locked');
+	}
 	const existing = currentSeat(ctx);
 	if (existing) {
 		ctx.db.seats.seatId.update({ ...existing, name, connected: true });
@@ -176,6 +179,7 @@ export const startMatch = spacetimedb.reducer((ctx) => {
 	ctx.db.rooms.roomCode.update({
 		...room,
 		status: 'running',
+		participationLocked: true,
 		startedAt: ctx.timestamp,
 		headTick: 0n
 	});
@@ -186,6 +190,8 @@ export const startMatch = spacetimedb.reducer((ctx) => {
 		scheduledId: 0n,
 		scheduledAt: ScheduleAt.interval(1_000_000n)
 	});
+	// The lock and the tick-0 event commit together. Subscribers receive the
+	// event only after the locked room state is durable.
 	ctx.db.firstTickEvent.insert({
 		tick: 0n,
 		startedAt: ctx.timestamp

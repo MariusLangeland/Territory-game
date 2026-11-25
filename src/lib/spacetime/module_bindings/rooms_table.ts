@@ -24,5 +24,6 @@ export default __t.row({
 	version: __t.string(),
 	startedAt: __t.option(__t.timestamp()).name('started_at'),
 	endedAt: __t.option(__t.timestamp()).name('ended_at'),
-	headTick: __t.u64().name('head_tick')
+	headTick: __t.u64().name('head_tick'),
+	participationLocked: __t.bool().name('participation_locked')
 });

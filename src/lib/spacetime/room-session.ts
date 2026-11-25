@@ -151,6 +151,10 @@ export function connectRoomSession({
 					return;
 				}
 
+				if (existing.participationLocked || existing.status !== 'waiting') {
+					throw new Error('Room participation is locked; late joining is disabled.');
+				}
+
 				if (existing.status === 'waiting') {
 					const seated = [...next.db.seats.iter()].find(
 						(seat) => identity !== null && seat.identity.isEqual(identity)
@@ -164,9 +168,6 @@ export function connectRoomSession({
 					succeed();
 					return;
 				}
-
-				// A running room is still a valid live connection for this prototype.
-				succeed();
 			} catch (error) {
 				fail(error);
 			}

@@ -19,6 +19,7 @@
 	const statusLabel = $derived(
 		status === 'running' ? 'LIVE' : status === 'closed' ? 'CLOSED' : 'OPEN'
 	);
+	const connectable = $derived(status === 'open');
 </script>
 
 <article class="room-card" style={`--room-accent:${room.accent}`}>
@@ -70,8 +71,13 @@
 	<footer class="room-foot">
 		<span class="room-seed">SEED {roomSeedLabel(room)}</span>
 		<span class="room-humans">1 CLIENT</span>
-		<button type="button" class="connect-button" onclick={() => onConnect(room)}>
-			CONNECT
+		<button
+			type="button"
+			class="connect-button"
+			disabled={!connectable}
+			onclick={() => onConnect(room)}
+		>
+			{connectable ? 'CONNECT' : 'LOCKED'}
 			<svg viewBox="0 0 16 16" aria-hidden="true">
 				<path d="M2 8h11M9 3.5 13.5 8 9 12.5" />
 			</svg>
@@ -250,9 +256,14 @@
 		stroke-width: 1.4;
 	}
 
-	.connect-button:hover {
+	.connect-button:hover:not(:disabled) {
 		border-color: var(--room-accent);
 		background: color-mix(in srgb, var(--room-accent) 20%, var(--bg-raised));
+	}
+
+	.connect-button:disabled {
+		cursor: not-allowed;
+		opacity: 0.45;
 	}
 
 	.connect-button:focus-visible {

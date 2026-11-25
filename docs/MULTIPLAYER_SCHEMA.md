@@ -76,6 +76,8 @@ export const rooms = table(
 		// Latest transaction tick observed, including idle heartbeat rows.
 		// Updated only when a row is appended; there is no tick seal.
 		headTick: t.u64(),
+		// Set atomically before first_tick_event; no seat may join after it.
+		participationLocked: t.bool().default(false),
 		// Arbiter decisions are final for disputed rows.
 		arbiterRequired: t.bool()
 	}
@@ -300,9 +302,10 @@ export default spacetimedb;
 - `create_room`, `join_room`, `leave_room`, `ready`.
 - `start_match`:
   - host-only;
-  - set `status = running` and `startedAt`;
+  - set `status = running`, `startedAt`, and `participationLocked = true`;
   - schedule liveness;
   - broadcast `first_tick_event` with `tick = 0` and the same `startedAt`;
+  - lock and event commit atomically, so no late join can interleave;
   - clients treat the broadcast as the simulation start anchor.
 - `submit_transaction`:
   - authenticate the caller against a seat;

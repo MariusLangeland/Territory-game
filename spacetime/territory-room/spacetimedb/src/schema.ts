@@ -22,7 +22,10 @@ export const rooms = table(
 		startedAt: t.option(t.timestamp()),
 		endedAt: t.option(t.timestamp()),
 		// Latest row tick, including idle heartbeat rows.
-		headTick: t.u64()
+		headTick: t.u64(),
+		// Appended column: set atomically before the tick-0 broadcast; no seat can
+		// join after it.
+		participationLocked: t.bool().default(false)
 	}
 );
 

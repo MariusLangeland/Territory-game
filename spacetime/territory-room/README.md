@@ -9,7 +9,8 @@ orders client transactions, tracks seats/presence, and emits liveness rows.
 - `seats` — human seats, identity ownership, readiness/presence.
 - `ledger_transactions` — ordered transaction rows and heartbeat rows.
 - `new_transaction_event` — event-table notification for new rows.
-- `first_tick_event` — one-shot tick-0 match-start broadcast.
+- `first_tick_event` — one-shot tick-0 match-start broadcast; participation is
+  locked atomically before it commits, so late-comers are rejected.
 - `heartbeat_timers` — private once-per-second liveness schedule.
 
 Reducers:
