@@ -163,6 +163,8 @@ import {
 	mixStructureChecksum
 } from './simulation/checksum';
 import {
+	decodeRle,
+	encodeRle,
 	toPublicAttack,
 	toPublicNavalLanding,
 	toPublicShell,
@@ -2042,12 +2044,8 @@ export class TerritorySimulation {
 			throw new Error(`Cannot capture tick ${tick}; simulation is at tick ${this.tick}.`);
 		}
 		const data: Record<string, unknown> = {
-			owners: this.owners.slice(),
-			claimedBy: this.claimedBy.slice(),
-			auraDefense: this.auraDefense.slice(),
-			districtTypes: this.districtTypes.slice(),
-			districtStructureIds: this.districtStructureIds.slice(),
-			districtColorCodes: this.districtColorCodes.slice(),
+			ownersRle: encodeRle(this.owners),
+			claimedByRle: encodeRle(this.claimedBy),
 			humanGold: this.humanGold.slice(),
 			humanGoldAccrual: this.humanGoldAccrual.slice(),
 			humanHands: [...this.humanHands.entries()].map(([id, cards]) => [
@@ -2120,7 +2118,7 @@ export class TerritorySimulation {
 			ownershipChangedSinceAnnex: this.ownershipChangedSinceAnnex,
 			ownershipChangedSinceCleanup: this.ownershipChangedSinceCleanup,
 			ownershipVersion: this.ownershipVersion,
-			cleanupDirtyIndices: this.cleanupDirtyIndices.slice(),
+			cleanupDirtyIndices: this.cleanupDirtyIndices.slice(0, this.cleanupDirtyCount),
 			cleanupDirtyCount: this.cleanupDirtyCount,
 			cleanupDirtyOverflow: this.cleanupDirtyOverflow,
 			cleanupNeedsFullScan: this.cleanupNeedsFullScan,
@@ -2143,12 +2141,8 @@ export class TerritorySimulation {
 	/** Restore a checkpoint captured by captureSnapshot. */
 	restoreSnapshot(snapshot: SimulationSnapshot): void {
 		const data = snapshot.data as Record<string, unknown>;
-		this.owners.set(data.owners as Uint16Array);
-		this.claimedBy.set(data.claimedBy as Uint32Array);
-		this.auraDefense.set(data.auraDefense as Uint16Array);
-		this.districtTypes.set(data.districtTypes as Uint8Array);
-		this.districtStructureIds.set(data.districtStructureIds as Uint32Array);
-		this.districtColorCodes.set(data.districtColorCodes as Uint8Array);
+		decodeRle(data.ownersRle as Uint32Array, this.owners);
+		decodeRle(data.claimedByRle as Uint32Array, this.claimedBy);
 		this.humanGold.set(data.humanGold as Uint32Array);
 		this.humanGoldAccrual.set(data.humanGoldAccrual as Uint16Array);
 		this.humanHands.clear();
@@ -2276,6 +2270,13 @@ export class TerritorySimulation {
 		this.mergedGroupsComputedTick = -1000;
 		this.districtsChanged = false;
 		this.districtDirtyTiles.clear();
+		// Districts and auras are derived from owners + structures and are not
+		// stored in the checkpoint; rebuild them after authoritative restoration.
+		this.rebuildDistricts();
+		this.rebuildAuraDefense();
+		this.auraDirtyRegions.length = 0;
+		this.districtDirtyTiles.clear();
+		this.districtsChanged = false;
 		this.portComponentOf = null;
 		this.portComponentQueue = null;
 		this.portComponentMeta.clear();

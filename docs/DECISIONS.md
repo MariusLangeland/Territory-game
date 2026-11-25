@@ -3498,3 +3498,33 @@ the end of a match therefore replayed the entire prefix each time.
 - Keyframes currently serialize authoritative pixel/entity arrays in worker
   memory; this is correct but memory-heavy on the largest maps. Compression,
   derived-array omission, and persistence remain follow-ups.
+
+---
+
+## ADR-109 — RLE-compacted replay keyframes
+
+**Status:** accepted and implemented on the Ledger branch
+**Date:** 2026-11-25
+
+### Context
+
+Raw replay keyframes stored six cell-sized arrays per checkpoint: owners,
+claimedBy, auraDefense, district types, district ids, and district colors.
+Measured checkpoints were ~13 MiB at 1280x720 and ~113 MiB at 4096x2048, up to
+~904 MiB for eight keyframes before accounting for capture-time duplication.
+
+### Decision
+
+- Store owners and claim provenance as RLE [value, count] runs.
+- Do not store derived district/color/aura arrays; rebuild them from owners and
+  structures after restore.
+- Store only the populated prefix of the cleanup-dirty buffer.
+- Keep the keyframe cadence and eight-checkpoint cap.
+
+### Consequences
+
+- Tested keyframes measured ~10-40 KiB at tick 0 and tick 600, instead of MB-GB.
+- Snapshot size becomes content-dependent; pathological fragmentation can reduce
+  compression, but territory/claim maps are strongly run-coherent.
+- Restore cost now includes district/aura rebuilds; capture remains O(cells) for
+  RLE scanning.

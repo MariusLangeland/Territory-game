@@ -16,6 +16,39 @@ import type {
 	PublicNavalLanding
 } from './types';
 
+/** Encode an integer pixel array as interleaved [value, count] runs. */
+export function encodeRle(values: Uint16Array | Uint32Array): Uint32Array {
+	if (values.length === 0) return new Uint32Array(0);
+	const runs: number[] = [];
+	let value = values[0] ?? 0;
+	let count = 0;
+	for (let index = 0; index < values.length; index++) {
+		const next = values[index] ?? 0;
+		if (next !== value) {
+			runs.push(value, count);
+			value = next;
+			count = 0;
+		}
+		count++;
+	}
+	runs.push(value, count);
+	return Uint32Array.from(runs);
+}
+
+/** Decode [value, count] runs into a preallocated pixel array. */
+export function decodeRle(encoded: Uint32Array, target: Uint16Array | Uint32Array): void {
+	let offset = 0;
+	for (let index = 0; index + 1 < encoded.length; index += 2) {
+		const value = encoded[index] ?? 0;
+		const count = encoded[index + 1] ?? 0;
+		const end = Math.min(target.length, offset + count);
+		target.fill(value, offset, end);
+		offset = end;
+		if (offset >= target.length) break;
+	}
+	if (offset < target.length) target.fill(0, offset);
+}
+
 export function toPublicAttack(attack: AttackState): PublicAttack {
 	return {
 		id: attack.id,

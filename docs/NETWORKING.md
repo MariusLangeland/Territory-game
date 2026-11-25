@@ -584,3 +584,6 @@ simulation snapshots at tick 0 and every 100 replay ticks; `restoreSnapshot(tick
 restores and returns the closest checkpoint at or before the target, then replays
 only the remainder. Checkpoints currently live in worker memory and retain the
 eight most useful ticks.
+
+RLE keyframes store owners/claim provenance as runs and rebuild districts/auras
+on restore; measured checkpoints are now tens of KiB instead of hundreds of MiB.

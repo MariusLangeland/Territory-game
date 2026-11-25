@@ -267,3 +267,7 @@ transport is HTTP/SSE rather than WebSocket.
   now serialize authoritative state; `LedgerAgent` keeps bounded keyframes,
   captures every 100 replay ticks, and seeks by restoring the closest prior
   snapshot before replaying the remainder instead of always starting at tick 0.
+- Replay snapshot compaction: owners and claim provenance are RLE-encoded and
+  derived district/aura arrays are rebuilt on restore instead of stored.
+  Measured keyframes dropped from ~13 MiB (1280x720) / ~113 MiB (4096x2048) to
+  roughly 10-40 KiB in the tested matches, with capture still O(cells).
