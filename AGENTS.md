@@ -26,6 +26,7 @@ Orientation for coding agents working on Territory.
 - Player input is validated against the local simulation before submission. Invalid commands are discarded and never become ledger rows.
 - Valid input is submitted as a compact Spacetime ledger row. The server assigns the tick; clients apply accepted intents to their local simulation.
 - Losing the room authority pauses the local simulation.
+- A room resets when its match ends or its last connected player leaves.
 
 ## Commands
 

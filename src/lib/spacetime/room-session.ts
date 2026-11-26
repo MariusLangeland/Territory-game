@@ -30,6 +30,8 @@ export interface RoomLobbySession {
 	disconnect: () => void;
 	setReady: (ready: boolean) => Promise<void>;
 	startMatch: () => Promise<void>;
+	finishMatch: () => Promise<void>;
+	leaveRoom: () => Promise<void>;
 	submitIntent: (intent: OnlineIntent) => Promise<LedgerSubmitResult>;
 }
 
@@ -160,6 +162,16 @@ export function connectRoomLobby({
 				const active = connection;
 				if (!active) throw new Error('Room connection is not ready.');
 				await active.reducers.startMatch({});
+			},
+			finishMatch: async () => {
+				const active = connection;
+				if (!active) throw new Error('Room connection is not ready.');
+				await active.reducers.finishMatch({});
+			},
+			leaveRoom: async () => {
+				const active = connection;
+				if (!active) throw new Error('Room connection is not ready.');
+				await active.reducers.leaveRoom({});
 			},
 			submitIntent: async (intent) => {
 				if (!ledger) return { ok: false, message: 'Room ledger is not ready.' };

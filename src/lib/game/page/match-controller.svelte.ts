@@ -99,6 +99,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		roomConnectionGeneration++;
 		roomSession?.disconnect();
 		roomSession = null;
+		roomMatchFinished = false;
 		state.lobbyRoom = null;
 		roomAuthorityPaused = false;
 		resumeAfterAuthority = false;
@@ -192,6 +193,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		);
 		roomSession?.disconnect();
 		roomSession = session;
+		roomMatchFinished = false;
 		state.lobbyRoom = null;
 		state.activeRoom = room;
 		state.autoStartRoom = true;
@@ -249,7 +251,19 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		else gameSession.resume();
 	}
 
+	/**
+	 * A finished room database is reset and no longer accepts this client.
+	 * Send the player back to the room browser instead of starting a local
+	 * world that cannot submit commands.
+	 */
+	function returnToRoomsAfterFinishedMatch(): boolean {
+		if (!state.activeRoom || !roomMatchFinished) return false;
+		showRoomSelection();
+		return true;
+	}
+
 	function newWorld(): void {
+		if (returnToRoomsAfterFinishedMatch()) return;
 		if (state.activeRoom) {
 			state.autoStartRoom = true;
 			createWorld(randomSeed(), state.activeRoom.settings);
@@ -260,6 +274,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	}
 
 	function rematch(): void {
+		if (returnToRoomsAfterFinishedMatch()) return;
 		if (state.activeRoom) {
 			state.autoStartRoom = true;
 			createWorld(state.currentSeed, state.activeRoom.settings);
@@ -396,6 +411,12 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		if (next.ended) {
 			state.paused = true;
 			state.defeatOpen = false;
+			if (roomSession && !roomMatchFinished) {
+				roomMatchFinished = true;
+				void roomSession.finishMatch().catch(() => {
+					// The room also resets when its last connected seat leaves.
+				});
+			}
 		}
 	}
 
@@ -426,6 +447,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	let roomConnectionGeneration = 0;
 	let roomAuthorityPaused = false;
 	let resumeAfterAuthority = false;
+	let roomMatchFinished = false;
 
 	const gameSession = new MatchView({
 		onReady: handleSessionReady,

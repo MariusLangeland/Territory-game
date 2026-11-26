@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import type { RoomDefinition } from '#lib/spacetime/room-definition';
 	import {
 		connectRoomLobby,
@@ -45,7 +45,10 @@
 		})
 			.then((connected) => {
 				if (disposed) {
-					connected.disconnect();
+					void connected
+						.leaveRoom()
+						.catch(() => {})
+						.finally(() => connected.disconnect());
 					return;
 				}
 				session = connected;
@@ -58,12 +61,8 @@
 			});
 		return () => {
 			disposed = true;
-			if (!handedOff) session?.disconnect();
+			leave();
 		};
-	});
-
-	onDestroy(() => {
-		if (!handedOff) session?.disconnect();
 	});
 
 	const seats = $derived(lobby?.seats ?? []);
@@ -94,9 +93,18 @@
 		}
 	}
 
-	function cancel(): void {
-		session?.disconnect();
+	function leave(): void {
+		const current = session;
 		session = null;
+		if (!current || handedOff) return;
+		void current
+			.leaveRoom()
+			.catch(() => {})
+			.finally(() => current.disconnect());
+	}
+
+	function cancel(): void {
+		leave();
 		onCancel();
 	}
 </script>

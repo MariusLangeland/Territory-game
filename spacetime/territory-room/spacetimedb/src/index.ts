@@ -65,6 +65,45 @@ function tickFor(
 	return elapsed <= 0n ? 0n : elapsed / TICK_MICROS;
 }
 
+/**
+ * Delete every row owned by the current room so the database can host a new
+ * room without being republished. Event-table rows are not persisted and need
+ * no cleanup.
+ */
+function resetRoom(ctx: Ctx): void {
+	for (const seat of [...ctx.db.seats.iter()]) {
+		ctx.db.seats.seatId.delete(seat.seatId);
+	}
+	for (const row of [...ctx.db.ledgerTransactions.iter()]) {
+		ctx.db.ledgerTransactions.rowIndex.delete(row.rowIndex);
+	}
+	for (const timer of [...ctx.db.heartbeatTimers.iter()]) {
+		ctx.db.heartbeatTimers.scheduledId.delete(timer.scheduledId);
+	}
+	for (const room of [...ctx.db.rooms.iter()]) {
+		ctx.db.rooms.roomCode.delete(room.roomCode);
+	}
+}
+
+/** Reset after the last connected seat leaves, before or after a match. */
+function resetIfEmpty(ctx: Ctx): void {
+	if ([...ctx.db.seats.iter()].some((seat) => seat.connected)) return;
+	resetRoom(ctx);
+}
+
+/** Promote the lowest connected seat when the host leaves or disconnects. */
+function ensureHost(ctx: Ctx): void {
+	const room = currentRoom(ctx);
+	if (!room) return;
+	if ([...ctx.db.seats.iter()].some((seat) => seat.isHost && seat.connected)) return;
+	const next = [...ctx.db.seats.iter()]
+		.filter((seat) => seat.connected)
+		.sort((left, right) => left.playerId - right.playerId)[0];
+	if (!next) return;
+	ctx.db.rooms.roomCode.update({ ...room, host: next.identity });
+	if (!next.isHost) ctx.db.seats.seatId.update({ ...next, isHost: true });
+}
+
 function appendTransaction(
 	ctx: Ctx,
 	seatId: bigint,
@@ -106,6 +145,8 @@ export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
 	const seat = currentSeat(ctx);
 	if (!seat) return;
 	ctx.db.seats.seatId.update({ ...seat, connected: false });
+	ensureHost(ctx);
+	resetIfEmpty(ctx);
 });
 
 export const createRoom = spacetimedb.reducer(
@@ -262,7 +303,21 @@ export const submitTransaction = spacetimedb.reducer(
 export const leaveRoom = spacetimedb.reducer((ctx) => {
 	const seat = currentSeat(ctx);
 	if (!seat) return;
-	ctx.db.seats.seatId.update({ ...seat, connected: false, ready: false });
+	ctx.db.seats.seatId.delete(seat.seatId);
+	ensureHost(ctx);
+	resetIfEmpty(ctx);
+});
+
+/**
+ * Called by a seated client when its local simulation reaches the match end.
+ * The first caller resets the database; later callers are idempotent no-ops.
+ */
+export const finishMatch = spacetimedb.reducer((ctx) => {
+	const room = currentRoom(ctx);
+	if (!room || room.status !== 'running') return;
+	const seat = currentSeat(ctx);
+	if (!seat) return;
+	resetRoom(ctx);
 });
 
 export const checkLiveness = spacetimedb.reducer(

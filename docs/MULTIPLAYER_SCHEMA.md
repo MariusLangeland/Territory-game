@@ -82,14 +82,22 @@ Private schedule table. Heartbeat emission is currently disabled.
   participation, sets `startedAt`, emits `first_tick_event`.
 - `submit_transaction` — validates seat, intent type, exact payload size, and
   monotonic client sequence; computes the server tick; appends the row.
-- `leave_room` — marks the seat disconnected.
-- `check_liveness` — no-op while heartbeat emission is disabled.
+- `leave_room` - removes the caller's seat, promotes a connected guest to host
+  if needed, and resets the database when no connected seats remain.
+- `finish_match` - called by a seated client when the local simulation ends;
+  resets the database. Later calls are idempotent no-ops.
+- `check_liveness` - no-op while heartbeat emission is disabled.
 
 ## Room lifecycle
 
 ```text
-waiting -> running (lock + first tick) -> completed
+waiting -> running (lock + first tick) -> reset (empty)
+waiting -> reset (empty) when every player leaves
 ```
+
+Resetting deletes the room row, seats, ledger rows, and timers. The database
+can then create a fresh room on the next lobby connection. Event-table rows are
+not persisted and require no cleanup.
 
 Late joins are rejected once `participationLocked` is true.
 

@@ -78,6 +78,7 @@ Spacetime-backed multiplayer room.
   `T - 1`, then applies the intent on the next tick.
 - Late join is rejected after start.
 - Losing room authority pauses the local simulation.
+- A room database resets when a match ends or when its last connected player leaves, ready for a fresh room.
 
 ## Rendering
 

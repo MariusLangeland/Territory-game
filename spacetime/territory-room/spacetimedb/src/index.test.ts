@@ -148,6 +148,47 @@ describe('room coordinator', () => {
 		expect(test.db.seats.count()).toBe(1n);
 	});
 
+	it('resets the room when the match finishes', () => {
+		const test = createTest();
+		createRoom(test);
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.setReady(ctx, { ready: true });
+			moduleExports.startMatch(ctx, {});
+			moduleExports.submitTransaction(ctx, {
+				clientSequence: 1n,
+				type: 'attack',
+				data: [1, 2, 3, 4]
+			});
+			moduleExports.finishMatch(ctx, {});
+			moduleExports.finishMatch(ctx, {});
+		});
+		expect(test.db.rooms.count()).toBe(0n);
+		expect(test.db.seats.count()).toBe(0n);
+		expect(test.db.ledgerTransactions.count()).toBe(0n);
+		expect(test.db.heartbeatTimers.count()).toBe(0n);
+		createRoom(test);
+		expect(test.db.rooms.count()).toBe(1n);
+	});
+
+	it('resets the room after every player leaves', () => {
+		const test = createTest();
+		createRoom(test);
+		test.withReducerTx(GUEST_AUTH, (ctx) => {
+			moduleExports.joinRoom(ctx, { name: 'Bob' });
+		});
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.leaveRoom(ctx, {});
+		});
+		expect(test.db.rooms.count()).toBe(1n);
+		expect(test.db.seats.count()).toBe(1n);
+		expect([...test.db.seats.iter()][0].isHost).toBe(true);
+		test.withReducerTx(GUEST_AUTH, (ctx) => {
+			moduleExports.leaveRoom(ctx, {});
+		});
+		expect(test.db.rooms.count()).toBe(0n);
+		expect(test.db.seats.count()).toBe(0n);
+	});
+
 	it('does not emit heartbeat rows while heartbeats are disabled', () => {
 		const test = createTest();
 		createRoom(test);
