@@ -55,7 +55,6 @@ export const ledgerTransactions = table(
 		clientSequence: t.u64(),
 		type: t.string(),
 		data: t.array(t.u8()),
-		status: t.string(),
 		createdAt: t.timestamp()
 	}
 );

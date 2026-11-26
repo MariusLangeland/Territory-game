@@ -30,7 +30,6 @@ export const LedgerTransactions = __t.object('LedgerTransactions', {
 	clientSequence: __t.u64(),
 	type: __t.string(),
 	data: __t.byteArray(),
-	status: __t.string(),
 	createdAt: __t.timestamp()
 });
 export type LedgerTransactions = __Infer<typeof LedgerTransactions>;

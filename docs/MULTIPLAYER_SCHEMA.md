@@ -57,7 +57,6 @@ The canonical ledger record. Clients apply accepted rows in `rowIndex` order.
   clientSequence: u64,
   type: string,          // attack, build, upgrade, ...
   data: array<u8>,       // compact intent payload
-  status: string,        // provisional / final / invalidated
   createdAt: Timestamp
 }
 ```

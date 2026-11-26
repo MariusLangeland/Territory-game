@@ -13,7 +13,6 @@ export interface LedgerRecord {
 	clientSequence: bigint;
 	type: string;
 	data: Uint8Array;
-	status: string;
 	createdAt: unknown;
 }
 

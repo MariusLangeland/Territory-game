@@ -18,6 +18,5 @@ export default __t.row({
 	clientSequence: __t.u64().name('client_sequence'),
 	type: __t.string(),
 	data: __t.byteArray(),
-	status: __t.string(),
 	createdAt: __t.timestamp().name('created_at')
 });

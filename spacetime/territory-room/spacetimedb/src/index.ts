@@ -72,8 +72,7 @@ function appendTransaction(
 	clientSequence: bigint,
 	type: string,
 	data: number[],
-	tick: bigint,
-	status: string
+	tick: bigint
 ) {
 	const row = ctx.db.ledgerTransactions.insert({
 		rowIndex: 0n,
@@ -83,7 +82,6 @@ function appendTransaction(
 		clientSequence,
 		type,
 		data,
-		status,
 		createdAt: ctx.timestamp
 	});
 	const room = requireRoom(ctx);
@@ -256,8 +254,7 @@ export const submitTransaction = spacetimedb.reducer(
 			args.clientSequence,
 			args.type,
 			args.data,
-			tick,
-			'provisional'
+			tick
 		);
 	}
 );
@@ -287,6 +284,6 @@ export const checkLiveness = spacetimedb.reducer(
 		if (![...ctx.db.seats.iter()].some((seat) => seat.connected)) return;
 		const tick = tickFor(room, ctx);
 		if (tick - room.headTick < HEARTBEAT_INTERVAL_TICKS) return;
-		appendTransaction(ctx, 0n, 0, 0n, HEARTBEAT_TYPE, [], tick, 'final');
+		appendTransaction(ctx, 0n, 0, 0n, HEARTBEAT_TYPE, [], tick);
 	}
 );
