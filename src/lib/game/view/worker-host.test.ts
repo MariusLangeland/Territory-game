@@ -131,6 +131,18 @@ describe('local worker host', () => {
 		expect(host.step()?.tick).toBe(15);
 	});
 
+	it('validates commands against the worker simulation without mutating it', () => {
+		const host = new MatchViewHost(CONFIG);
+		const before = host.tick;
+		expect(host.validateCommand({ type: 'attack', x: -1, y: -1 })).toMatchObject({
+			ok: false
+		});
+		expect(host.tick).toBe(before);
+		expect(host.validateCommand({ type: 'alliance-request', targetPlayerId: 2 })).toMatchObject({
+			ok: true
+		});
+	});
+
 	it('does not fast-forward while paused', () => {
 		const host = new MatchViewHost({ ...CONFIG, authoritativeInput: true });
 		host.setPaused(true);

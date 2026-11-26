@@ -94,6 +94,11 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		schedule();
 		return;
 	}
+	if (message.type === 'validate') {
+		const result = host.validateCommand(message.command);
+		scope.postMessage({ type: 'validate-result', id: message.id, ...result });
+		return;
+	}
 	if (message.type === 'apply-intent') {
 		for (const visual of host.applyIntent(message.tick, message.playerId, message.intent)) {
 			postVisualMessage(visual);

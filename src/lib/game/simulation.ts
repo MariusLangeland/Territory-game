@@ -940,8 +940,8 @@ export class TerritorySimulation {
 		return { ok: true, message: `Front cancelled. ${refund} supply refunded.` };
 	}
 
-	/** Queue demolition of one owned, non-State structure. */
-	demolishStructure(playerId: number, structureId: number): BuildOrderResult {
+	/** Validate demolition without queueing it. */
+	validateDemolish(playerId: number, structureId: number): BuildOrderResult {
 		const fail = (reason: BuildFailure, message: string): BuildOrderResult => ({
 			ok: false,
 			reason,
@@ -960,6 +960,13 @@ export class TerritorySimulation {
 		if (structure.type === 'state') {
 			return fail('invalid', 'The State structure cannot be demolished.');
 		}
+		return { ok: true, message: 'Demolition ordered.' };
+	}
+
+	/** Queue demolition of one owned, non-State structure. */
+	demolishStructure(playerId: number, structureId: number): BuildOrderResult {
+		const validation = this.validateDemolish(playerId, structureId);
+		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'demolish',
 			playerId,
@@ -969,8 +976,8 @@ export class TerritorySimulation {
 		return { ok: true, message: 'Demolition ordered.' };
 	}
 
-	/** Queue an alliance request from the human to an AI state. */
-	requestAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+	/** Validate an alliance request without queueing it. */
+	validateAllianceRequest(playerId: number, targetPlayerId: number): AttackOrderResult {
 		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
 		const target = this.players[targetPlayerId - 1];
@@ -987,41 +994,68 @@ export class TerritorySimulation {
 		if (this.allianceCooldown(playerId, targetPlayerId) > this.tick) {
 			return fail('invalid', 'That pair is cooling down after a broken alliance.');
 		}
+		return { ok: true, message: `Alliance request sent to ${target.name}.` };
+	}
+
+	/** Queue an alliance request from the human to an AI state. */
+	requestAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+		const validation = this.validateAllianceRequest(playerId, targetPlayerId);
+		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'alliance-request',
 			playerId,
 			targetPlayerId,
 			sequence: this.nextCommandSequence++
 		});
-		return { ok: true, message: `Alliance request sent to ${target.name}.` };
+		return validation;
 	}
 
-	/** Queue breaking an active alliance from the human side. */
-	breakAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+	/** Validate breaking an alliance without queueing it. */
+	validateAllianceBreak(playerId: number, targetPlayerId: number): AttackOrderResult {
 		if (this.ended) return fail('ended', 'The conflict is over.');
 		const player = this.players[playerId - 1];
 		if (!player?.alive) return fail('eliminated', 'Your state has been eliminated.');
 		if (!this.areAllied(playerId, targetPlayerId)) {
 			return fail('invalid', 'You are not allied with that state.');
 		}
+		return { ok: true, message: 'Alliance broken.' };
+	}
+
+	/** Queue breaking an active alliance from the human side. */
+	breakAlliance(playerId: number, targetPlayerId: number): AttackOrderResult {
+		const validation = this.validateAllianceBreak(playerId, targetPlayerId);
+		if (!validation.ok) return validation;
 		this.pendingCommands.push({
 			type: 'alliance-break',
 			playerId,
 			targetPlayerId,
 			sequence: this.nextCommandSequence++
 		});
-		return { ok: true, message: 'Alliance broken.' };
+		return validation;
+	}
+
+	/** Validate cancelling the most recently launched active front. */
+	validateCancelLatestAttack(playerId: number): AttackOrderResult {
+		const latest = this.latestAttack(playerId);
+		return latest
+			? { ok: true, message: 'Front cancellation ordered.' }
+			: fail('invalid', 'No active fronts to cancel.');
 	}
 
 	/** Cancel the most recently launched active front for a player. */
 	cancelLatestAttack(playerId: number): AttackOrderResult {
+		const latest = this.latestAttack(playerId);
+		if (!latest) return fail('invalid', 'No active fronts to cancel.');
+		return this.cancelAttack(playerId, latest.id);
+	}
+
+	private latestAttack(playerId: number): AttackState | null {
 		let latest: AttackState | null = null;
 		for (const attack of this.attacks) {
 			if (attack.attackerId !== playerId || attack.done) continue;
 			if (!latest || attack.id > latest.id) latest = attack;
 		}
-		if (!latest) return fail('invalid', 'No active fronts to cancel.');
-		return this.cancelAttack(playerId, latest.id);
+		return latest;
 	}
 
 	private artilleryReadyAt(structure: Structure): number {

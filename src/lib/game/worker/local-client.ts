@@ -67,6 +67,17 @@ export class LocalWorkerClient {
 			return;
 		}
 		if (message.type === 'paused') return;
+		if (message.type === 'validate-result') {
+			const pending = this.pending.get(message.id);
+			if (!pending) return;
+			this.pending.delete(message.id);
+			pending.resolve({
+				ok: message.ok,
+				reason: message.reason,
+				message: message.message
+			});
+			return;
+		}
 		if (message.type === 'command-result') {
 			const pending = this.pending.get(message.id);
 			if (!pending) return;
@@ -95,6 +106,24 @@ export class LocalWorkerClient {
 				command: { type, ...args }
 			};
 			this.worker.postMessage(message);
+		});
+	}
+
+	validate(
+		type: LocalWorkerCommandType,
+		args: Omit<LocalWorkerCommand['command'], 'type'> = {}
+	): Promise<LocalWorkerCommandPromiseResult> {
+		if (this.disposed) {
+			return Promise.resolve({ ok: false, message: 'Match worker is disposed.' });
+		}
+		const id = this.nextCommandId++;
+		return new Promise((resolve) => {
+			this.pending.set(id, { resolve });
+			this.worker.postMessage({
+				type: 'validate',
+				id,
+				command: { type, ...args }
+			} satisfies LocalWorkerInbound);
 		});
 	}
 

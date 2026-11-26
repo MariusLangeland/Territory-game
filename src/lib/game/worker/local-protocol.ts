@@ -75,13 +75,31 @@ export interface LocalWorkerApplyIntent {
 	intent: OnlineIntent;
 }
 
+export interface LocalWorkerValidate {
+	type: 'validate';
+	id: number;
+	command: LocalWorkerCommand['command'];
+}
+
+export interface LocalWorkerValidateResult {
+	type: 'validate-result';
+	id: number;
+	ok: boolean;
+	reason?: string;
+	message: string;
+}
+
 export interface LocalWorkerInitMessage {
 	type: 'init';
 	config: LocalWorkerInitConfig;
 }
 
 export type LocalWorkerInbound =
-	LocalWorkerCommand | LocalWorkerPause | LocalWorkerApplyIntent | LocalWorkerInitMessage;
+	| LocalWorkerCommand
+	| LocalWorkerPause
+	| LocalWorkerApplyIntent
+	| LocalWorkerValidate
+	| LocalWorkerInitMessage;
 
 export interface LocalWorkerVisual {
 	type: 'visual';
@@ -120,5 +138,6 @@ export type LocalWorkerOutbound =
 	| LocalWorkerInit
 	| LocalWorkerVisual
 	| LocalWorkerCommandResult
+	| LocalWorkerValidateResult
 	| LocalWorkerTelemetry
 	| LocalWorkerPaused;

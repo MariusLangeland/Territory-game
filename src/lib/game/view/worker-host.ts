@@ -126,6 +126,50 @@ export class MatchViewHost {
 		};
 	}
 
+	/** Validate a player command against the authoritative worker simulation. */
+	validateCommand(command: LocalWorkerCommand['command']): {
+		ok: boolean;
+		reason?: string;
+		message: string;
+	} {
+		const playerId = this.config.viewerPlayerId ?? 1;
+		switch (command.type) {
+			case 'attack':
+				return this.simulation.validateAttack(playerId, command.x ?? 0, command.y ?? 0);
+			case 'artillery':
+				return this.simulation.validateArtillery(playerId, command.x ?? 0, command.y ?? 0);
+			case 'naval':
+				return this.simulation.validateNavalAttack(playerId, command.x ?? 0, command.y ?? 0);
+			case 'build':
+				return this.simulation.validateBuild(
+					playerId,
+					command.cardId ?? 0,
+					command.x ?? 0,
+					command.y ?? 0,
+					command.newStructureOnly === true,
+					command.allowTightSpacing === true
+				);
+			case 'upgrade': {
+				const quote = this.simulation.getUpgradeQuote(
+					playerId,
+					command.x ?? 0,
+					command.y ?? 0,
+					command.levels ?? 1,
+					command.merged ?? true
+				);
+				return { ok: quote.ok, reason: quote.reason, message: quote.message };
+			}
+			case 'demolish':
+				return this.simulation.validateDemolish(playerId, command.structureId ?? 0);
+			case 'cancel-attack':
+				return this.simulation.validateCancelLatestAttack(playerId);
+			case 'alliance-request':
+				return this.simulation.validateAllianceRequest(playerId, command.targetPlayerId ?? 0);
+			case 'alliance-break':
+				return this.simulation.validateAllianceBreak(playerId, command.targetPlayerId ?? 0);
+		}
+	}
+
 	/**
 	 * Queue an accepted ledger intent and catch up to the safe frontier.
 	 *
