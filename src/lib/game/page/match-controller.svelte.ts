@@ -1,6 +1,7 @@
 import { goto } from '$app/navigation';
 import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
 import { MatchView } from '#lib/game/view/match-view';
+import { validateLocalCommand } from '#lib/game/frontend/validate-command';
 import type { RoomDefinition } from '#lib/spacetime/room-definition';
 import type { AcceptedTransaction, RoomLobbySession } from '#lib/spacetime/room-session';
 import { workerCommandToIntent } from '#lib/game/worker/intent';
@@ -197,6 +198,10 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.autoStartRoom = true;
 		gameSession.setAuthoritativeInput(true);
 		gameSession.setCommandHandler(async (type, args) => {
+			const validation = state.sim
+				? validateLocalCommand(state.sim, type, args)
+				: { ok: false, reason: 'not-ready', message: 'Match is not ready.' };
+			if (!validation.ok) return validation;
 			const intent = workerCommandToIntent({ type, ...args });
 			const result = await session.submitIntent(intent);
 			return {
@@ -278,7 +283,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	function applySeed(): void {
 		const parsed = parseSeed(state.seedInput);
 		if (parsed === null) {
-			showToast('Seed must be 1â€“8 hexadecimal characters.', 'warn');
+			showToast('Seed must be 1Ã¢â‚¬â€œ8 hexadecimal characters.', 'warn');
 			return;
 		}
 		if (parsed === state.currentSeed && state.phase === 'ready') {

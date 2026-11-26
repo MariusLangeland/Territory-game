@@ -70,8 +70,8 @@ Spacetime-backed multiplayer room.
 - Landing page reads the `territory-lobby` directory.
 - Room lobby: join seats, ready up, host starts.
 - Tick-0 broadcast locks participation and starts local simulations.
-- Player input is submitted to the room ledger as a compact intent row.
-- Server assigns the tick.
+- Player input is validated against the local simulation before submission; invalid commands never reach the room ledger.
+- Valid input is submitted as a compact intent row; the server assigns the tick.
 - Clients apply accepted intents to their local simulation.
 - 10 Hz is the normal gameplay target, not a stepping constraint: when an
   accepted row arrives at server tick `T`, the client immediately catches up to

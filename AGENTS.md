@@ -52,9 +52,10 @@ pnpm format
 5. **Renderer never mutates simulation state.**
 6. **Version generation changes:** map generation → `MAP_VERSION`; wire format changes → protocol review; simulation changes → determinism tests.
 7. **The main thread never steps the simulation.** The worker view host owns stepping, snapshots, and accepted-intent application.
-8. **Do not add a second ledger implementation.** Remote submission uses `SpacetimeLedgerSource`; all accepted intents share the canonical ledger record shape.
-9. **No flag/quorum/arbiter layer.** Invalid intents are deterministic no-ops on every honest client; the server validates protocol shape, not gameplay.
-10. **Do not reintroduce the retired HTTP/SSE online MVP, Evolution Lab, replay viewer, or local ledger.** These were removed deliberately.
+8. **Validate before submitting.** The local simulation's deterministic rules reject illegal commands before they become ledger rows.
+9. **Do not add a second ledger implementation.** Remote submission uses `SpacetimeLedgerSource`; all accepted intents share the canonical ledger record shape.
+10. **No flag/quorum/arbiter layer.** Invalid intents are deterministic no-ops on every honest client; the server validates protocol shape, not gameplay.
+11. **Do not reintroduce the retired HTTP/SSE online MVP, Evolution Lab, replay viewer, or local ledger.** These were removed deliberately.
 
 ## Where things live
 

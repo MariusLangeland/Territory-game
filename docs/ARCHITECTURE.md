@@ -91,6 +91,7 @@ Room directory database used by the landing page.
 ```text
 input
   -> frontend command
+  -> local simulation validation (invalid commands discarded)
   -> Spacetime ledger row (server tick assigned)
   -> accepted row subscription
   -> MatchView.applyRemoteIntent
