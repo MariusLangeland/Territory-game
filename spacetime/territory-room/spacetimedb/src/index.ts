@@ -4,6 +4,9 @@ import spacetimedb, { firstTickEvent, heartbeatTimers } from './schema';
 
 export { default } from './schema';
 
+// Must match ROOM_VERSION in src/lib/spacetime/room-session.ts. Bump both
+// together whenever the room reducer or intent protocol changes incompatibly.
+const ROOM_PROTOCOL_VERSION = 'territory-room/2';
 const TICK_MICROS = 100_000n;
 const HEARTBEAT_INTERVAL_TICKS = 10n;
 const HEARTBEAT_TYPE = 'heartbeat';
@@ -164,6 +167,9 @@ export const createRoom = spacetimedb.reducer(
 	},
 	(ctx, args) => {
 		if (currentRoom(ctx)) throw new SenderError('this database already has a room');
+		if (args.version !== ROOM_PROTOCOL_VERSION) {
+			throw new SenderError(`unsupported room protocol version: ${args.version}`);
+		}
 		if (args.roomCode.trim().length === 0) throw new SenderError('room code is required');
 		if (args.playerCount < 2) throw new SenderError('player count must be at least 2');
 		ctx.db.rooms.insert({
@@ -197,39 +203,45 @@ export const createRoom = spacetimedb.reducer(
 	}
 );
 
-export const joinRoom = spacetimedb.reducer({ name: t.string() }, (ctx, { name }) => {
-	const room = requireRoom(ctx);
-	if (room.participationLocked || room.status !== 'waiting') {
-		throw new SenderError('room participation is locked');
-	}
-	const existing = currentSeat(ctx);
-	if (existing) {
-		ctx.db.seats.seatId.update({ ...existing, name, connected: true });
-		return;
-	}
-	const seats = [...ctx.db.seats.iter()];
-	if (seats.length >= room.playerCount) throw new SenderError('room is full');
-	const used = new Set(seats.map((seat) => seat.playerId));
-	let playerId = 0;
-	for (let candidate = 1; candidate <= room.playerCount; candidate++) {
-		if (!used.has(candidate)) {
-			playerId = candidate;
-			break;
+export const joinRoom = spacetimedb.reducer(
+	{ name: t.string(), version: t.string() },
+	(ctx, { name, version }) => {
+		const room = requireRoom(ctx);
+		if (version !== room.version) {
+			throw new SenderError(`unsupported room protocol version: ${version}`);
 		}
+		if (room.participationLocked || room.status !== 'waiting') {
+			throw new SenderError('room participation is locked');
+		}
+		const existing = currentSeat(ctx);
+		if (existing) {
+			ctx.db.seats.seatId.update({ ...existing, name, connected: true });
+			return;
+		}
+		const seats = [...ctx.db.seats.iter()];
+		if (seats.length >= room.playerCount) throw new SenderError('room is full');
+		const used = new Set(seats.map((seat) => seat.playerId));
+		let playerId = 0;
+		for (let candidate = 1; candidate <= room.playerCount; candidate++) {
+			if (!used.has(candidate)) {
+				playerId = candidate;
+				break;
+			}
+		}
+		if (playerId === 0) throw new SenderError('no player slot available');
+		ctx.db.seats.insert({
+			seatId: 0n,
+			identity: ctx.sender,
+			playerId,
+			name,
+			isHost: false,
+			connected: true,
+			ready: false,
+			joinedAt: ctx.timestamp,
+			lastClientSequence: 0n
+		});
 	}
-	if (playerId === 0) throw new SenderError('no player slot available');
-	ctx.db.seats.insert({
-		seatId: 0n,
-		identity: ctx.sender,
-		playerId,
-		name,
-		isHost: false,
-		connected: true,
-		ready: false,
-		joinedAt: ctx.timestamp,
-		lastClientSequence: 0n
-	});
-});
+);
 
 export const setReady = spacetimedb.reducer({ ready: t.bool() }, (ctx, { ready }) => {
 	const seat = requireSeat(ctx);

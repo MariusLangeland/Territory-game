@@ -75,8 +75,8 @@ Private schedule table. Heartbeat emission is currently disabled.
 
 ## Reducers
 
-- `create_room` — creates the room and host seat.
-- `join_room` — joins a waiting, unlocked room.
+- `create_room` - creates the room and host seat; rejects clients whose `version` does not match the module protocol.
+- `join_room` - joins a waiting, unlocked room; takes `{ name, version }` and rejects clients whose protocol version differs from the room.
 - `set_ready` — updates the caller's seat readiness.
 - `start_match` — host-only; requires every seat ready; sets running, locks
   participation, sets `startedAt`, emits `first_tick_event`.
@@ -101,9 +101,16 @@ not persisted and require no cleanup.
 
 Late joins are rejected once `participationLocked` is true.
 
+The current protocol version is `territory-room/2`. Bump the server constant and
+`ROOM_VERSION` in `room-session.ts` together whenever reducer arguments or the
+intent contract change incompatibly. The server rejects mismatched creates and
+joins; clients also check the stored room version before joining.
+
 ## Client model
 
 - Connect to the room database.
+- Check the room `version` against the client protocol before joining; reject
+  incompatible rooms with a refresh/update message.
 - Create the room if empty; otherwise join while waiting.
 - Ready up; host starts.
 - On `first_tick_event`, start the local simulation.

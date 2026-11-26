@@ -27,6 +27,7 @@ Orientation for coding agents working on Territory.
 - Valid input is submitted as a compact Spacetime ledger row. The server assigns the tick; clients apply accepted intents to their local simulation.
 - Losing the room authority pauses the local simulation.
 - A room resets when its match ends or its last connected player leaves.
+- Room protocol version changes require a matching client; mismatched clients are rejected.
 
 ## Commands
 

@@ -46,7 +46,7 @@ export interface RoomLobbyOptions {
 }
 
 const HOST_NAME = 'SABLE';
-const ROOM_VERSION = 'territory-room/1';
+const ROOM_VERSION = 'territory-room/2';
 
 function tokenKey(databaseName: string): string {
 	return `spacetime:${SPACETIMEDB_URI}/${databaseName}/auth_token`;
@@ -269,13 +269,20 @@ export function connectRoomLobby({
 						version: ROOM_VERSION
 					});
 				} else {
+					if (existing.version !== ROOM_VERSION) {
+						throw new Error(
+							`Room protocol ${existing.version} is incompatible with this client (${ROOM_VERSION}). Refresh the page.`
+						);
+					}
 					if (existing.participationLocked || existing.status !== 'waiting') {
 						throw new Error('Room participation is locked; late joining is disabled.');
 					}
 					const seated = [...next.db.seats.iter()].find(
 						(candidate) => identity !== null && candidate.identity.isEqual(identity)
 					);
-					if (!seated) await next.reducers.joinRoom({ name: playerName });
+					if (!seated) {
+						await next.reducers.joinRoom({ name: playerName, version: ROOM_VERSION });
+					}
 				}
 				refreshPlayerId();
 				joined = true;

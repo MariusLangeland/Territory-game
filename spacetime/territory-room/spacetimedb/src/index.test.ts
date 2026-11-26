@@ -11,6 +11,7 @@ const GUEST_AUTH = TestAuth.fromJwtPayload(
 	JSON.stringify({ iss: 'test', sub: 'bob' }),
 	new ConnectionId(2n)
 );
+const ROOM_VERSION = 'territory-room/2';
 const LATE_AUTH = TestAuth.fromJwtPayload(
 	JSON.stringify({ iss: 'test', sub: 'late' }),
 	new ConnectionId(3n)
@@ -32,7 +33,7 @@ function createRoom(test: ReturnType<typeof createTest>) {
 			botDifficulty: 'standard',
 			timerMinutes: 0,
 			botCommandPostStacks: 0,
-			version: 'test'
+			version: ROOM_VERSION
 		});
 	});
 }
@@ -52,7 +53,7 @@ describe('room coordinator', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(GUEST_AUTH, (ctx) => {
-			moduleExports.joinRoom(ctx, { name: 'Bob' });
+			moduleExports.joinRoom(ctx, { name: 'Bob', version: ROOM_VERSION });
 			moduleExports.setReady(ctx, { ready: true });
 		});
 		test.withReducerTx(HOST_AUTH, (ctx) => {
@@ -142,7 +143,7 @@ describe('room coordinator', () => {
 		});
 		expect(() =>
 			test.withReducerTx(LATE_AUTH, (ctx) => {
-				moduleExports.joinRoom(ctx, { name: 'Late' });
+				moduleExports.joinRoom(ctx, { name: 'Late', version: ROOM_VERSION });
 			})
 		).toThrow(/locked/);
 		expect(test.db.seats.count()).toBe(1n);
@@ -174,7 +175,7 @@ describe('room coordinator', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(GUEST_AUTH, (ctx) => {
-			moduleExports.joinRoom(ctx, { name: 'Bob' });
+			moduleExports.joinRoom(ctx, { name: 'Bob', version: ROOM_VERSION });
 		});
 		test.withReducerTx(HOST_AUTH, (ctx) => {
 			moduleExports.leaveRoom(ctx, {});
@@ -187,6 +188,32 @@ describe('room coordinator', () => {
 		});
 		expect(test.db.rooms.count()).toBe(0n);
 		expect(test.db.seats.count()).toBe(0n);
+	});
+
+	it('rejects incompatible room protocol versions', () => {
+		const test = createTest();
+		expect(() =>
+			test.withReducerTx(HOST_AUTH, (ctx) => {
+				moduleExports.createRoom(ctx, {
+					roomCode: 'TESTROOM',
+					hostName: 'Alice',
+					seed: 1234,
+					width: 1024,
+					height: 512,
+					playerCount: 8,
+					botDifficulty: 'standard',
+					timerMinutes: 0,
+					botCommandPostStacks: 0,
+					version: 'territory-room/1'
+				});
+			})
+		).toThrow(/protocol/);
+		createRoom(test);
+		expect(() =>
+			test.withReducerTx(GUEST_AUTH, (ctx) => {
+				moduleExports.joinRoom(ctx, { name: 'Bob', version: 'territory-room/1' });
+			})
+		).toThrow(/protocol/);
 	});
 
 	it('does not emit heartbeat rows while heartbeats are disabled', () => {
