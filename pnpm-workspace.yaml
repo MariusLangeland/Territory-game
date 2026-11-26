@@ -1,3 +1,2 @@
-dangerouslyAllowAllBuilds: true
-onlyBuiltDependencies:
-  - esbuild
+﻿allowBuilds:
+  esbuild: true
