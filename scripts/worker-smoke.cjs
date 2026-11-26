@@ -14,7 +14,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 
-const WORKER_DIR = path.resolve(__dirname, '../build/client/_app/immutable/workers');
+const WORKER_DIRS = [
+	path.resolve(__dirname, '../build/_app/immutable/workers'),
+	path.resolve(__dirname, '../build/client/_app/immutable/workers')
+];
 
 if (!isMainThread) {
 	globalThis.self = {
@@ -31,11 +34,16 @@ if (!isMainThread) {
 	return;
 }
 
-const workerFile = fs
-	.readdirSync(WORKER_DIR)
-	.find((entry) => entry.startsWith('local-simulation.worker-') && entry.endsWith('.js'));
-if (!workerFile) {
-	console.error(`No built local worker found in ${WORKER_DIR}; run pnpm build first.`);
+const WORKER_DIR = WORKER_DIRS.find((directory) => fs.existsSync(directory));
+const workerFile = WORKER_DIR
+	? fs
+			.readdirSync(WORKER_DIR)
+			.find((entry) => entry.startsWith('local-simulation.worker-') && entry.endsWith('.js'))
+	: undefined;
+if (!WORKER_DIR || !workerFile) {
+	console.error(
+		`No built local worker found in ${WORKER_DIRS.join(' or ')}; run pnpm build first.`
+	);
 	process.exit(1);
 }
 

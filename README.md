@@ -58,6 +58,15 @@ pnpm lint
 pnpm format
 ```
 
+## Deployment
+
+Pushing to `main` builds and deploys the static site to GitHub Pages through
+`.github/workflows/deploy.yml`.
+
+- Repository Pages source must be set to **GitHub Actions**.
+- Project sites use `/<repository>/` as the base path automatically.
+- Local builds default to an empty base path.
+
 ## Architecture
 
 ```text

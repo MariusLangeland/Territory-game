@@ -1,3 +1,4 @@
+import { asset } from '$app/paths';
 import type { BotGenome } from './genome';
 import { normalizeMarkov } from './markov';
 
@@ -33,7 +34,7 @@ export async function loadGauntletSurvivors(): Promise<BotGenome[]> {
 	if (pending) return pending;
 	pending = (async () => {
 		try {
-			const response = await fetch('/gauntlet-survivors.json', { cache: 'force-cache' });
+			const response = await fetch(asset('gauntlet-survivors.json'), { cache: 'force-cache' });
 			if (!response.ok) return [];
 			const file = (await response.json()) as Partial<GauntletSurvivorFile>;
 			if (file.version !== 1 || !Array.isArray(file.genomes)) return [];
