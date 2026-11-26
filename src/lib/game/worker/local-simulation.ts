@@ -10,7 +10,7 @@ import {
 	STRUCTURE_MIN_SPACING,
 	UPGRADE_LEVEL_COST_STEP
 } from '../constants';
-import { isShoreIndex } from '../naval';
+import { adjacentWater, computeSeaComponents, isShoreIndex, SeaRouter } from '../naval';
 import { RemoteSimulationView } from './view';
 import type { WorkerMatchInit } from './protocol';
 import type { MergedDistrictGroup } from '../simulation';
@@ -53,6 +53,8 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 	private client: LocalWorkerClient;
 	private telemetry: LocalWorkerTelemetry['behavior'] | null = null;
 	private mergedDistricts: MergedDistrictGroup[] = [];
+	private seaComponents: Uint32Array | null = null;
+	private seaRouter: SeaRouter | null = null;
 
 	static async create(
 		config: LocalWorkerInitConfig,
@@ -536,6 +538,71 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		if (best < 0) return null;
 		const targetX = best % this.width;
 		return { x: targetX, y: (best - targetX) / this.width };
+	}
+
+	validateNaval(playerId: number, x: number, y: number): CommandResult {
+		const target = this.resolveNavalTarget(playerId, x, y);
+		if (!target) {
+			return {
+				ok: false,
+				reason: 'not-shore',
+				message: 'Naval landings target a shore within 32 px.'
+			};
+		}
+		const index = target.y * this.width + target.x;
+		const targetOwner = this.getOwner(target.x, target.y);
+		if (targetOwner === playerId) {
+			return { ok: false, reason: 'friendly-shore', message: 'That shore is already friendly.' };
+		}
+		if (targetOwner > 0 && this.isAllied(playerId, targetOwner)) {
+			return { ok: false, reason: 'allied', message: 'That shore belongs to your ally.' };
+		}
+		const ports = this.snapshot.structures
+			.filter((structure) => structure.ownerId === playerId && structure.type === 'port')
+			.sort(
+				(left, right) =>
+					Math.abs(left.x - target.x) +
+						Math.abs(left.y - target.y) -
+						(Math.abs(right.x - target.x) + Math.abs(right.y - target.y)) || left.id - right.id
+			);
+		if (ports.length === 0) {
+			return { ok: false, reason: 'no-port', message: 'Build a Port before launching a landing.' };
+		}
+		const cost = this.getAttackStats(playerId, targetOwner).cost + STRUCTURE_DEFINITIONS.port.cost;
+		if ((this.snapshot?.supply ?? 0) < cost) {
+			return {
+				ok: false,
+				reason: 'no-supply',
+				message: `Need ${cost} supply for a naval landing.`
+			};
+		}
+		if (!this.hasSeaRoute(ports, index)) {
+			return { ok: false, reason: 'no-sea-path', message: 'No sea route reaches that shore.' };
+		}
+		return { ok: true, message: `Naval landing ordered for ${cost} supply.` };
+	}
+
+	private hasSeaRoute(ports: readonly { x: number; y: number }[], targetIndex: number): boolean {
+		if (!this.seaComponents)
+			this.seaComponents = computeSeaComponents(this.terrain, this.width, this.height);
+		if (!this.seaRouter) this.seaRouter = new SeaRouter(this.terrain, this.width, this.height);
+		const targetWater = adjacentWater(this.terrain, this.width, this.height, targetIndex);
+		if (targetWater.length === 0) return false;
+		for (const port of ports) {
+			const sourceWater = adjacentWater(
+				this.terrain,
+				this.width,
+				this.height,
+				port.y * this.width + port.x
+			);
+			for (const start of sourceWater) {
+				for (const end of targetWater) {
+					if (this.seaComponents[start] !== this.seaComponents[end]) continue;
+					if (this.seaRouter.findPath(start, end)) return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private isAllied(playerA: number, playerB: number): boolean {

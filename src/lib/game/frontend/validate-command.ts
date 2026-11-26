@@ -1,5 +1,4 @@
 import { ARTILLERY_SUPPLY_COST_PER_LEVEL } from '../constants';
-import { STRUCTURE_DEFINITIONS } from '../structures';
 import type { WorkerLocalSimulation } from '../worker/local-simulation';
 import type { LocalWorkerCommandType } from '../worker/local-protocol';
 
@@ -39,35 +38,8 @@ export function validateLocalCommand(
 						message: `Need ${cost} supply to fire this volley.`
 					};
 		}
-		case 'naval': {
-			const target = sim.resolveNavalTarget(playerId, args.x ?? 0, args.y ?? 0);
-			if (!target) {
-				return {
-					ok: false,
-					reason: 'invalid-target',
-					message: 'Naval landings target a shore within 32 px.'
-				};
-			}
-			if (
-				!snapshot.structures.some(
-					(structure) => structure.ownerId === playerId && structure.type === 'port'
-				)
-			) {
-				return { ok: false, reason: 'no-port', message: 'Build a Port first.' };
-			}
-			const owner = snapshot.players.find(
-				(player) => player.id === sim.getOwner(target.x, target.y)
-			);
-			const cost =
-				sim.getAttackStats(playerId, owner?.id ?? 0).cost + STRUCTURE_DEFINITIONS.port.cost;
-			return snapshot.supply >= cost
-				? { ok: true, message: 'Naval landing ordered.' }
-				: {
-						ok: false,
-						reason: 'no-gold',
-						message: `Need ${cost} supply for the landing and Port.`
-					};
-		}
+		case 'naval':
+			return sim.validateNaval(playerId, args.x ?? 0, args.y ?? 0);
 		case 'build':
 			return sim.validateBuild(
 				playerId,
