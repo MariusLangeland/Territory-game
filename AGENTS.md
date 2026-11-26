@@ -23,7 +23,8 @@ Orientation for coding agents working on Territory.
 - One Spacetime database per room plus a `territory-lobby` directory database.
 - A room has a waiting lobby: seats join and ready up; the host starts.
 - Tick-0 locks participation and starts local simulations.
-- Player input is submitted as a compact Spacetime ledger row. The server assigns the tick; clients apply accepted intents to their local simulation.
+- Player input is validated against the local simulation before submission. Invalid commands are discarded and never become ledger rows.
+- Valid input is submitted as a compact Spacetime ledger row. The server assigns the tick; clients apply accepted intents to their local simulation.
 - Losing the room authority pauses the local simulation.
 
 ## Commands
