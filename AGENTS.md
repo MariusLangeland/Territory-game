@@ -46,7 +46,7 @@ pnpm format
 ## Invariants
 
 1. **Simulation purity:** no DOM, `Date`, `performance`, `Math.random`, network, or UI access in `simulation.ts`, `map.ts`, or `rng.ts`.
-2. **Fixed tick:** gameplay changes happen inside `step()` at 10 Hz. Input callbacks only validate and queue.
+2. **Fixed step, variable rate:** gameplay changes happen inside `step()`. 10 Hz is the normal target, not a hard constraint; accepted ledger rows may fast-forward the simulation to `rowTick - 1`. Input callbacks only validate and queue.
 3. **Integer outcomes:** new gameplay quantities must be integer and deterministic.
 4. **Stable ordering:** commands, attacks, RNG draws, and outcome-affecting iteration need explicit order.
 5. **Renderer never mutates simulation state.**

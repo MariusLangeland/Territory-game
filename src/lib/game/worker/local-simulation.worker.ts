@@ -88,13 +88,16 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 	}
 	if (message.type === 'resume') {
 		host.setPaused(false);
+		for (const visual of host.resumeWithCatchUp()) postVisualMessage(visual);
 		lastTickAt = 0;
 		accumulator = 0;
 		schedule();
 		return;
 	}
 	if (message.type === 'apply-intent') {
-		host.applyIntent(message.tick, message.playerId, message.intent);
+		for (const visual of host.applyIntent(message.tick, message.playerId, message.intent)) {
+			postVisualMessage(visual);
+		}
 		return;
 	}
 	if (message.type === 'command') {

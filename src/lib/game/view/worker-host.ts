@@ -126,11 +126,37 @@ export class MatchViewHost {
 		};
 	}
 
-	/** Queue an intent accepted by the ledger for its authoritative tick. */
-	applyIntent(tick: number, playerId: number, intent: OnlineIntent): void {
+	/**
+	 * Queue an accepted ledger intent and catch up to the safe frontier.
+	 *
+	 * The row's tick is the latest server tick that is safe to simulate. We may
+	 * simulate any number of extra ticks immediately, so catch up to
+	 * `rowTick - 1` and let the next tick apply the intent itself.
+	 */
+	applyIntent(tick: number, playerId: number, intent: OnlineIntent): LocalWorkerVisual[] {
+		const safeFrontier = Math.max(0, Math.floor(tick) - 1);
+		const visuals = this.catchUpTo(safeFrontier);
 		const target = Math.max(this.simulation.tick + 1, Math.floor(tick));
 		this.pendingIntents.push({ tick: target, playerId, intent });
 		this.pendingIntents.sort((left, right) => left.tick - right.tick);
+		return visuals;
+	}
+
+	/** On resume, catch up through any intents that arrived while paused. */
+	resumeWithCatchUp(): LocalWorkerVisual[] {
+		const latest = this.pendingIntents.reduce((max, pending) => Math.max(max, pending.tick), 0);
+		return latest > 0 ? this.catchUpTo(latest - 1) : [];
+	}
+
+	private catchUpTo(targetTick: number): LocalWorkerVisual[] {
+		const visuals: LocalWorkerVisual[] = [];
+		if (this.paused) return visuals;
+		while (this.simulation.tick < targetTick && !this.simulation.ended) {
+			const visual = this.step();
+			if (!visual) break;
+			visuals.push(visual);
+		}
+		return visuals;
 	}
 
 	private flushIntentsForNextTick(): void {

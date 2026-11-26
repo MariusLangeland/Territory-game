@@ -73,6 +73,9 @@ Spacetime-backed multiplayer room.
 - Player input is submitted to the room ledger as a compact intent row.
 - Server assigns the tick.
 - Clients apply accepted intents to their local simulation.
+- 10 Hz is the normal gameplay target, not a stepping constraint: when an
+  accepted row arrives at server tick `T`, the client immediately catches up to
+  `T - 1`, then applies the intent on the next tick.
 - Late join is rejected after start.
 - Losing room authority pauses the local simulation.
 

@@ -94,7 +94,8 @@ input
   -> Spacetime ledger row (server tick assigned)
   -> accepted row subscription
   -> MatchView.applyRemoteIntent
-  -> MatchViewHost queue
+  -> MatchViewHost catch-up to rowTick - 1
+  -> queue intent for rowTick
   -> TerritorySimulation.step()
   -> visual deltas
   -> main-thread mirror

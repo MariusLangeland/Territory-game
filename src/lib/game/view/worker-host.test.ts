@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MatchViewHost } from '../view/worker-host';
 import type { LocalWorkerInitConfig } from '../worker/local-protocol';
 import { TerritorySimulation } from '../simulation';
@@ -118,5 +118,34 @@ describe('local worker host', () => {
 		const host = new MatchViewHost({ ...CONFIG, authoritativeInput: true });
 		host.applyIntent(1, 1, { type: 'alliance-request', targetPlayerId: 2 });
 		expect(host.step()).not.toBeNull();
+	});
+
+	it('fast-forwards to rowTick - 1 before applying an accepted intent', () => {
+		const host = new MatchViewHost({ ...CONFIG, authoritativeInput: true });
+		const visuals = host.applyIntent(15, 1, {
+			type: 'alliance-request',
+			targetPlayerId: 2
+		});
+		expect(visuals).toHaveLength(14);
+		expect(host.tick).toBe(14);
+		expect(host.step()?.tick).toBe(15);
+	});
+
+	it('does not fast-forward while paused', () => {
+		const host = new MatchViewHost({ ...CONFIG, authoritativeInput: true });
+		host.setPaused(true);
+		expect(host.applyIntent(15, 1, { type: 'alliance-request', targetPlayerId: 2 })).toHaveLength(
+			0
+		);
+		expect(host.tick).toBe(0);
+	});
+
+	it('catches up through queued intents when resumed', () => {
+		const host = new MatchViewHost({ ...CONFIG, authoritativeInput: true });
+		host.setPaused(true);
+		host.applyIntent(15, 1, { type: 'alliance-request', targetPlayerId: 2 });
+		host.setPaused(false);
+		expect(host.resumeWithCatchUp()).toHaveLength(14);
+		expect(host.tick).toBe(14);
 	});
 });
