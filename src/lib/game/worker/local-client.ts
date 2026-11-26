@@ -1,4 +1,3 @@
-import type { LedgerBlock } from '../ledger/agent';
 import type { OnlineIntent } from '../net/online-protocol';
 import type {
 	LocalWorkerCommand,
@@ -7,8 +6,6 @@ import type {
 	LocalWorkerInitConfig,
 	LocalWorkerInbound,
 	LocalWorkerOutbound,
-	LocalWorkerReplayControl,
-	LocalWorkerReplayStatus,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
 } from './local-protocol';
@@ -17,14 +14,11 @@ export interface LocalWorkerCommandPromiseResult {
 	ok: boolean;
 	reason?: string;
 	message: string;
-	ledgerBlock?: LedgerBlock | null;
-	ledgerText?: string;
 }
 
 interface LocalWorkerHandlers {
 	onInit: (init: LocalWorkerInit) => void;
 	onVisual: (visual: LocalWorkerVisual) => void;
-	onReplayStatus?: (status: LocalWorkerReplayStatus) => void;
 	onTelemetry?: (telemetry: LocalWorkerTelemetry) => void;
 	onError?: (error: Error) => void;
 }
@@ -68,10 +62,6 @@ export class LocalWorkerClient {
 			this.handlers.onVisual(message);
 			return;
 		}
-		if (message.type === 'replay-status') {
-			this.handlers.onReplayStatus?.(message);
-			return;
-		}
 		if (message.type === 'telemetry') {
 			this.handlers.onTelemetry?.(message);
 			return;
@@ -84,9 +74,7 @@ export class LocalWorkerClient {
 			pending.resolve({
 				ok: message.ok,
 				reason: message.reason,
-				message: message.message,
-				ledgerBlock: message.ledgerBlock,
-				ledgerText: message.ledgerText
+				message: message.message
 			});
 		}
 	}
@@ -118,10 +106,6 @@ export class LocalWorkerClient {
 			playerId,
 			intent
 		} satisfies LocalWorkerInbound);
-	}
-
-	replayControl(control: Omit<LocalWorkerReplayControl, 'type'>): void {
-		this.worker.postMessage({ type: 'replay-control', ...control } satisfies LocalWorkerInbound);
 	}
 
 	pause(): void {

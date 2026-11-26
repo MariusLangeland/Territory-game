@@ -1,5 +1,4 @@
 import { onMount } from 'svelte';
-import { goto } from '$app/navigation';
 import { loadMatchSettings } from '#lib/game/match-config';
 import { loadOnboardingDone } from '#lib/game/session/onboarding';
 import { createActions } from '#lib/game/ui/actions';
@@ -72,7 +71,6 @@ export type GamePageApi = GamePageState &
 	OverlayController &
 	InteractionController &
 	MatchController & {
-		goto: typeof goto;
 		actions: ReturnType<typeof createActions>;
 		keyboard: ReturnType<typeof createKeyboardInput>;
 	};
@@ -260,6 +258,6 @@ export function createGamePage(): GamePageApi {
 		overlay,
 		interaction,
 		match,
-		{ goto, actions, keyboard }
+		{ actions, keyboard }
 	]);
 }

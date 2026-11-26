@@ -1,397 +1,105 @@
-# Multiplayer Spacetime Schema
+# Spacetime Room Schema
 
-Target: SpacetimeDB/Spacetime 2.x TypeScript module.
+One Spacetime database per room. The room module is a coordinator only; it does
+not store or simulate the game grid.
 
-Deployment decision: **one Spacetime database per room**.
+## Tables
 
-This is the coordinator schema only. The server does not store the simulation
-grid. Clients run the simulation locally from transaction rows.
+### `rooms`
 
-The server does **not** periodically seal ticks. Transactions are appended when
-they occur; each row carries the server-assigned tick. Clients simulate behind an
-estimated server clock by a safe time delta.
+Single room row.
 
 ```ts
-import { schema, table, t } from 'spacetimedb/server';
-
-// ---------------------------------------------------------------------------
-// Shared value types
-// ---------------------------------------------------------------------------
-
-const RoomStatus = t.enum('RoomStatus', {
-	Waiting: t.unit(),
-	Running: t.unit(),
-	Completed: t.unit()
-});
-
-const TransactionStatus = t.enum('TransactionStatus', {
-	Provisional: t.unit(),
-	Final: t.unit(),
-	Invalidated: t.unit()
-});
-
-const DisputeStatus = t.enum('DisputeStatus', {
-	Open: t.unit(),
-	Arbitrating: t.unit(),
-	Resolved: t.unit(),
-	Dismissed: t.unit()
-});
-
-const ArbitrationDecision = t.enum('ArbitrationDecision', {
-	Invalid: t.unit(),
-	Valid: t.unit(),
-	Dismissed: t.unit()
-});
-
-const VersionFingerprint = t.object('VersionFingerprint', {
-	ledger: t.u32(),
-	simulation: t.u32(),
-	map: t.u32(),
-	bots: t.u32(),
-	app: t.string(),
-	protocol: t.u32()
-});
-
-// ---------------------------------------------------------------------------
-// Room and seats (one database per room)
-// ---------------------------------------------------------------------------
-
-export const rooms = table(
-	{ name: 'rooms', public: true },
-	{
-		roomId: t.string().primaryKey(),
-		roomCode: t.string().unique(),
-		host: t.identity(),
-		status: RoomStatus,
-		seed: t.u32(),
-		width: t.u32(),
-		height: t.u32(),
-		playerCount: t.u8(),
-		botDifficulty: t.string(),
-		timerMinutes: t.u8(),
-		botCommandPostStacks: t.u32(),
-		version: VersionFingerprint,
-		startedAt: t.option(t.timestamp()),
-		endedAt: t.option(t.timestamp()),
-		// Latest transaction tick observed. Heartbeat emission is disabled for now;
-		// updated only when a gameplay row is appended.
-		headTick: t.u64(),
-		// Set atomically before first_tick_event; no seat may join after it.
-		participationLocked: t.bool().default(false),
-		// Arbiter decisions are final for disputed rows.
-		arbiterRequired: t.bool()
-	}
-);
-
-export const seats = table(
-	{ name: 'seats', public: true },
-	{
-		seatId: t.u64().primaryKey().autoInc(),
-		identity: t.identity().unique(),
-		playerId: t.u8().unique(),
-		name: t.string(),
-		isHost: t.bool(),
-		connected: t.bool(),
-		ready: t.bool(),
-		joinedAt: t.timestamp(),
-		// Highest accepted client sequence; rejects duplicate/stale submissions.
-		lastClientSequence: t.u64().default(0n)
-	}
-);
-
-// The reducer must enforce unique playerId values.
-
-// ---------------------------------------------------------------------------
-// Ledger transactions
-// ---------------------------------------------------------------------------
-
-export const ledgerTransactions = table(
-	{ name: 'ledger_transactions', public: true },
-	{
-		// Global monotonic insertion order. Clients sort same-tick rows by this.
-		rowIndex: t.u64().primaryKey().autoInc(),
-		tick: t.u64().index('btree'),
-		seatId: t.u64().index('btree'),
-		playerId: t.u8(),
-		clientSequence: t.u64(),
-		// Intent kind (attack, build, upgrade, ...) or "heartbeat".
-		type: t.string(),
-		// Compact binary payload; the kind is carried by `type`.
-		data: t.array(t.u8()),
-		status: TransactionStatus,
-		createdAt: t.timestamp()
-	}
-);
-
-// Canonical order:
-//   ORDER BY tick ASC, rowIndex ASC
-//
-// Canonical replay excludes rows whose status is Invalidated.
-//
-// Liveness rows (disabled for now):
-//   type = "heartbeat"
-//   playerId/seatId = 0
-//   data = empty
-// The schema and client skip path remain, but the current coordinator does not
-// emit heartbeat rows.
-
-// ---------------------------------------------------------------------------
-// Flags and invalidation
-// ---------------------------------------------------------------------------
-
-export const transactionFlags = table(
-	{ name: 'transaction_flags', public: true },
-	{
-		flagId: t.u64().primaryKey().autoInc(),
-		rowIndex: t.u64().index('btree'),
-		tick: t.u64(),
-		seatId: t.u64(),
-		playerId: t.u8(),
-		stateRoot: t.u32(),
-		reason: t.string(),
-		createdAt: t.timestamp()
-	}
-);
-
-export const invalidations = table(
-	{ name: 'invalidations', public: true },
-	{
-		invalidationId: t.u64().primaryKey().autoInc(),
-		rowIndex: t.u64().index('btree'),
-		tick: t.u64(),
-		reason: t.string(),
-		flagCount: t.u16(),
-		replacementTick: t.u64(),
-		createdAt: t.timestamp()
-	}
-);
-
-// A quorum invalidation marks the transaction row invalid and broadcasts the
-// invalidation. The original row is never deleted.
-
-// ---------------------------------------------------------------------------
-// Trusted arbiter / admin (decision is final)
-// ---------------------------------------------------------------------------
-
-export const arbiters = table(
-	{ name: 'arbiters', public: true },
-	{
-		arbiterId: t.u64().primaryKey().autoInc(),
-		identity: t.identity().unique(),
-		label: t.string(),
-		active: t.bool(),
-		grantedBy: t.identity(),
-		grantedAt: t.timestamp()
-	}
-);
-
-export const disputes = table(
-	{ name: 'disputes', public: true },
-	{
-		disputeId: t.u64().primaryKey().autoInc(),
-		rowIndex: t.u64().index('btree'),
-		tick: t.u64(),
-		status: DisputeStatus,
-		reason: t.string(),
-		createdAt: t.timestamp(),
-		resolvedAt: t.option(t.timestamp())
-	}
-);
-
-export const arbitrations = table(
-	{ name: 'arbitrations', public: true },
-	{
-		arbitrationId: t.u64().primaryKey().autoInc(),
-		disputeId: t.u64().index('btree'),
-		arbiterIdentity: t.identity(),
-		decision: ArbitrationDecision,
-		stateRoot: t.u32(),
-		reason: t.string(),
-		createdAt: t.timestamp()
-	}
-);
-
-// An arbiter is a privileged identity, not a normal voter. Arbitration decisions
-// are append-only; the original transaction row remains in history. Arbiter
-// decisions are final for the disputed row.
-
-// ---------------------------------------------------------------------------
-// Keyframes
-// ---------------------------------------------------------------------------
-
-export const keyframes = table(
-	{ name: 'keyframes', public: true },
-	{
-		keyframeId: t.u64().primaryKey().autoInc(),
-		tick: t.u64().index('btree'),
-		stateRoot: t.u32(),
-		version: VersionFingerprint,
-		// Versioned RLE snapshot bytes; clients validate before restoring.
-		data: t.array(t.u8()),
-		submittedBy: t.identity(),
-		createdAt: t.timestamp()
-	}
-);
-
-// Keyframes are used for late join, reconnect, and rollback. The coordinator
-// stores them but does not validate their simulation contents.
-
-// ---------------------------------------------------------------------------
-// Event tables: immediate notifications
-// ---------------------------------------------------------------------------
-
-export const newTransactionEvent = table(
-	{ name: 'new_transaction_event', public: true, event: true },
-	{
-		rowIndex: t.u64(),
-		tick: t.u64()
-	}
-);
-
-/** One-shot match anchor broadcast when the room enters running state. */
-export const firstTickEvent = table(
-	{ name: 'first_tick_event', public: true, event: true },
-	{
-		tick: t.u64(),
-		startedAt: t.timestamp()
-	}
-);
-
-export const invalidationEvent = table(
-	{ name: 'invalidation_event', public: true, event: true },
-	{
-		rowIndex: t.u64(),
-		tick: t.u64()
-	}
-);
-
-export const arbitrationEvent = table(
-	{ name: 'arbitration_event', public: true, event: true },
-	{
-		disputeId: t.u64(),
-		rowIndex: t.u64(),
-		decision: ArbitrationDecision
-	}
-);
-
-// Event rows are broadcast and discarded after commit. Persistent tables above
-// remain the source for late join, reconnect, and replay.
-
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
-
-export const spacetimedb = schema({
-	rooms,
-	seats,
-	ledgerTransactions,
-	transactionFlags,
-	invalidations,
-	arbiters,
-	disputes,
-	arbitrations,
-	keyframes,
-	newTransactionEvent,
-	firstTickEvent,
-	invalidationEvent,
-	arbitrationEvent
-});
-
-export default spacetimedb;
+{
+  roomCode: string primaryKey,
+  host: Identity,
+  status: string,
+  seed: u32,
+  width: u32,
+  height: u32,
+  playerCount: u8,
+  botDifficulty: string,
+  timerMinutes: u8,
+  botCommandPostStacks: u32,
+  version: string,
+  startedAt?: Timestamp,
+  headTick: u64,
+  participationLocked: bool
+}
 ```
 
-## Reducer responsibilities
+### `seats`
 
-- `create_room`, `join_room`, `leave_room`, `ready`.
-- `start_match`:
-  - host-only;
-  - requires every seated player to be ready;
-  - set `status = running`, `startedAt`, and `participationLocked = true`;
-  - schedule liveness;
-  - broadcast `first_tick_event` with `tick = 0` and the same `startedAt`;
-  - lock and event commit atomically, so no late join can interleave;
-  - clients treat the broadcast as the simulation start anchor.
-- `submit_transaction`:
-  - authenticate the caller against a seat;
-  - validate schema and rate/sequence;
-  - compute `tick = floor((ctx.timestamp - startedAt) / 100ms)`;
-  - clients never supply the tick;
-  - insert a `ledger_transactions` row with a compact binary intent payload;
-  - update `rooms.headTick`;
-  - emit `new_transaction_event`.
-- `check_liveness` scheduled reducer (about once per second):
-  - no-op while heartbeats are disabled;
-  - removes interval rows left by an earlier deployment;
-  - when re-enabled: emit an empty `heartbeat` row after 10 idle ticks.
-- `flag_transaction`:
-  - authenticate seat;
-  - reject stale-state flags;
-  - insert a flag.
-- `open_dispute`:
-  - escalate repeated/conflicting flags or no-quorum cases.
-- `arbitrate_dispute`:
-  - privileged arbiter only;
-  - replay/verify the disputed row;
-  - append a final arbitration decision;
-  - optionally invalidate/finalize or publish a certified keyframe.
-- `invalidate_transaction`:
-  - verify quorum or final arbiter decision;
-  - append `invalidations`;
-  - update transaction status;
-  - emit `invalidation_event`.
-- `grant_arbiter`, `revoke_arbiter`:
-  - host/admin only;
-  - audit identity and timestamp.
-- `submit_keyframe`.
+```ts
+{
+  seatId: u64 primaryKey autoInc,
+  identity: Identity unique,
+  playerId: u8 unique,
+  name: string,
+  isHost: bool,
+  connected: bool,
+  ready: bool,
+  joinedAt: Timestamp,
+  lastClientSequence: u64
+}
+```
 
-No periodic tick-seal reducer and no `room_ticks` table: gameplay transactions
-are the only ledger entries. Heartbeat emission is currently disabled.
+### `ledger_transactions`
 
-## Client read/apply model
+The canonical ledger record. Clients apply accepted rows in `rowIndex` order.
 
-The client does **not** wait for a per-tick seal. It maintains a safe time delta
-from the estimated server clock:
+```ts
+{
+  rowIndex: u64 primaryKey autoInc,
+  tick: u64,
+  seatId: u64,
+  playerId: u8,
+  clientSequence: u64,
+  type: string,          // attack, build, upgrade, ...
+  data: array<u8>,       // compact intent payload
+  status: string,        // provisional / final / invalidated
+  createdAt: Timestamp
+}
+```
+
+### `first_tick_event`
+
+```ts
+{ tick: u64, startedAt: Timestamp }
+```
+
+Emitted once when a room starts. Participation is locked in the same commit.
+
+### `heartbeat_timers`
+
+Private schedule table. Heartbeat emission is currently disabled.
+
+## Reducers
+
+- `create_room` — creates the room and host seat.
+- `join_room` — joins a waiting, unlocked room.
+- `set_ready` — updates the caller's seat readiness.
+- `start_match` — host-only; requires every seat ready; sets running, locks
+  participation, sets `startedAt`, emits `first_tick_event`.
+- `submit_transaction` — validates seat, intent type, exact payload size, and
+  monotonic client sequence; computes the server tick; appends the row.
+- `leave_room` — marks the seat disconnected.
+- `check_liveness` — no-op while heartbeat emission is disabled.
+
+## Room lifecycle
 
 ```text
-serverHeadTick = floor((estimatedServerNow - startedAt) / 100ms)
-targetTick     = serverHeadTick - safeDeltaTicks
-
-confirmedTick = last locally applied tick
-
-while confirmedTick < targetTick:
-  collect rows for confirmedTick + 1
-  sort by rowIndex
-  apply gameplay rows for the whole tick
-  skip invalidated and heartbeat rows
-  verify resulting stateRoot
-  confirmedTick++
+waiting -> running (lock + first tick) -> completed
 ```
 
-Heartbeat rows update `lastServerActivityTick` but do not change simulation
-state. If no row arrives for 20 ticks, the client marks the link stale; it does
-not treat the room as ended or roll back state.
+Late joins are rejected once `participationLocked` is true.
 
-Accepted intent rows are queued for the server-assigned tick and applied before
-that local tick steps. If a transaction row arrives for a tick at or before
-`confirmedTick`, the client has simulated past the ledger head and must
-pause/rollback/resync. The safe time
-delta is chosen to make this rare: it must exceed one-way transaction delivery,
-server processing, subscription batching, and clock-estimation error.
+## Client model
 
-Clients render at display rate but consume whole authoritative ticks. They never
-use variable-dt simulation.
-
-## Deliberate omissions
-
-- No periodic tick seal.
-- No idle heartbeat rows while heartbeats are disabled.
-- No block table.
-- No block hash or previous-block chain.
-- No server-side simulation state.
-- No server-side legality validation.
-- No cryptographic consensus.
-- No per-cell state stream.
-- No periodic tick checks.
-
-Those are intentionally deferred. The coordinator's job is ordering, timestamping,
-notifications, flags, invalidation, arbitration, and keyframe storage.
+- Connect to the room database.
+- Create the room if empty; otherwise join while waiting.
+- Ready up; host starts.
+- On `first_tick_event`, start the local simulation.
+- Submit intents as compact rows.
+- Apply accepted rows at their server-assigned tick.
+- Pause the local simulation while the room authority is unavailable.

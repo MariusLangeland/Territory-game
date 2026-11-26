@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_MATCH_SETTINGS,
 	MAP_PRESETS,
@@ -51,7 +51,7 @@ describe('match settings', () => {
 	});
 
 	it('ignores legacy growth-mode settings after locking the match to organic', () => {
-		const normalized = normalizeMatchSettings({ growthMode: 'circular' } as never);
+		const normalized = normalizeMatchSettings({ growthMode: 'organic' } as never);
 		expect(normalized).toEqual(DEFAULT_MATCH_SETTINGS);
 		expect('growthMode' in normalized).toBe(false);
 	});

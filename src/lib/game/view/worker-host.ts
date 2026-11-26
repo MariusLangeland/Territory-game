@@ -1,6 +1,5 @@
 import { CHANGE_INDEX_MASK, RENDER_TILE_SIZE } from '../constants';
-import { LedgerAgent } from '../ledger/agent';
-import type { TerritorySimulation } from '../simulation';
+import { TerritorySimulation } from '../simulation';
 import { applyOnlineIntent } from '../net/online-intent';
 import type { OnlineIntent } from '../net/online-protocol';
 import { workerCommandToIntent } from '../worker/intent';
@@ -9,22 +8,20 @@ import type {
 	LocalWorkerCommandResult,
 	LocalWorkerInit,
 	LocalWorkerInitConfig,
-	LocalWorkerReplayStatus,
 	LocalWorkerTelemetry,
 	LocalWorkerVisual
 } from '../worker/local-protocol';
 
 /**
  * Worker-owned view host: applies accepted ledger intents, runs the fixed tick
- * loop, saves snapshots, and exposes only immutable snapshots/render deltas. The
- * main thread never steps the simulation or runs integrity scans.
+ * loop, and exposes only immutable snapshots/render deltas. The main thread never
+ * steps the simulation or runs integrity scans.
  */
 export class MatchViewHost {
-	readonly agent: LedgerAgent;
+	readonly simulation: TerritorySimulation;
 	readonly config: LocalWorkerInitConfig;
 	readonly authoritativeInput: boolean;
 	private paused = false;
-	private replaySpeed = 1;
 	private readonly pendingIntents: {
 		tick: number;
 		playerId: number;
@@ -34,68 +31,43 @@ export class MatchViewHost {
 	constructor(config: LocalWorkerInitConfig) {
 		this.config = config;
 		this.authoritativeInput = config.authoritativeInput === true;
-		this.agent = new LedgerAgent(
-			{
-				seed: config.seed,
-				width: config.width,
-				height: config.height,
-				playerCount: config.playerCount,
-				growthMode: config.growthMode,
-				botDifficulty: config.botDifficulty,
-				matchDurationTicks: config.matchDurationTicks,
-				botGenomes: config.botGenomes,
-				botCommandPostStacks: config.botCommandPostStacks,
-				humanPlayerIds: config.humanPlayerIds,
-				viewerPlayerId: config.viewerPlayerId,
-				playerNames: config.playerNames
-			},
-			config.replay ?? null
-		);
+		this.simulation = new TerritorySimulation({
+			seed: config.seed,
+			width: config.width,
+			height: config.height,
+			playerCount: config.playerCount,
+			growthMode: config.growthMode,
+			botDifficulty: config.botDifficulty,
+			matchDurationTicks: config.matchDurationTicks,
+			botGenomes: config.botGenomes,
+			botCommandPostStacks: config.botCommandPostStacks,
+			humanPlayerIds: config.humanPlayerIds,
+			viewerPlayerId: config.viewerPlayerId,
+			playerNames: config.playerNames
+		});
 	}
 
-	get simulation(): TerritorySimulation {
-		return this.agent.simulation;
+	get tick(): number {
+		return this.simulation.tick;
 	}
 
-	get speed(): number {
-		return this.replaySpeed;
+	get ended(): boolean {
+		return this.simulation.ended;
 	}
 
-	setReplaySpeed(speed: number): void {
-		this.replaySpeed = Math.max(0.25, Math.min(16, speed));
+	get isPaused(): boolean {
+		return this.paused;
 	}
 
-	/** Seek a replay and return a full-map visual for renderer resync. */
-	seekReplay(tick: number): LocalWorkerVisual {
-		this.agent.seek(tick);
-		return this.resyncVisual();
-	}
-
-	private resyncVisual(): LocalWorkerVisual {
-		const sim = this.simulation;
-		return {
-			type: 'visual',
-			tick: sim.tick,
-			snapshot: sim.getSnapshot(),
-			changes: new Uint32Array(),
-			changeDistrictColors: null,
-			changesOverflow: true,
-			owners: sim.owners.slice(),
-			districtTiles: [],
-			districtTileColors: null,
-			districtColorCodes: sim.districtColorCodes.slice(),
-			events: [],
-			mergedDistricts: [...sim.getMergedDistricts()],
-			ledgerBlock: null,
-			replayComplete: this.agent.replayComplete
-		};
+	setPaused(paused: boolean): void {
+		this.paused = paused;
 	}
 
 	initMessage(): LocalWorkerInit {
 		const sim = this.simulation;
 		return {
 			type: 'init',
-			config: { ...this.config, replay: undefined },
+			config: this.config,
 			width: sim.width,
 			height: sim.height,
 			starts: sim.map.starts,
@@ -109,38 +81,10 @@ export class MatchViewHost {
 		};
 	}
 
-	setPaused(paused: boolean): void {
-		this.paused = paused;
-	}
-
-	get isPaused(): boolean {
-		return this.paused;
-	}
-
-	get tick(): number {
-		return this.simulation.tick;
-	}
-
-	get ended(): boolean {
-		return this.simulation.ended || this.agent.replayComplete;
-	}
-
-	replayStatus(): LocalWorkerReplayStatus {
-		return {
-			type: 'replay-status',
-			tick: this.simulation.tick,
-			maxTick: this.config.replay?.finalTick ?? this.simulation.tick,
-			playing: !this.paused && !this.ended,
-			speed: this.replaySpeed,
-			complete: this.agent.replayComplete
-		};
-	}
-
 	step(): LocalWorkerVisual | null {
 		if (this.paused || this.simulation.ended) return null;
 		this.flushIntentsForNextTick();
-		const advance = this.agent.advance();
-		const result = advance.step;
+		const result = this.simulation.step();
 		return {
 			type: 'visual',
 			tick: result.tick,
@@ -155,10 +99,48 @@ export class MatchViewHost {
 				? this.simulation.districtColorCodes.slice()
 				: null,
 			events: result.events,
-			mergedDistricts: [...this.simulation.getMergedDistricts()],
-			ledgerBlock: advance.block,
-			replayComplete: this.agent.replayComplete
+			mergedDistricts: [...this.simulation.getMergedDistricts()]
 		};
+	}
+
+	command(message: LocalWorkerCommand): LocalWorkerCommandResult {
+		if (this.authoritativeInput) {
+			return {
+				type: 'command-result',
+				id: message.id,
+				ok: false,
+				reason: 'authoritative-input',
+				message: 'Input is submitted through Spacetime.',
+				tick: this.simulation.tick
+			};
+		}
+		const intent = workerCommandToIntent(message.command);
+		const result = applyOnlineIntent(this.simulation, this.config.viewerPlayerId ?? 1, intent);
+		return {
+			type: 'command-result',
+			id: message.id,
+			ok: result.ok,
+			reason: result.reason,
+			message: result.message,
+			tick: this.simulation.tick
+		};
+	}
+
+	/** Queue an intent accepted by the ledger for its authoritative tick. */
+	applyIntent(tick: number, playerId: number, intent: OnlineIntent): void {
+		const target = Math.max(this.simulation.tick + 1, Math.floor(tick));
+		this.pendingIntents.push({ tick: target, playerId, intent });
+		this.pendingIntents.sort((left, right) => left.tick - right.tick);
+	}
+
+	private flushIntentsForNextTick(): void {
+		const nextTick = this.simulation.tick + 1;
+		const due = this.pendingIntents.filter((pending) => pending.tick <= nextTick);
+		if (due.length === 0) return;
+		this.pendingIntents.splice(0, due.length);
+		for (const pending of due) {
+			applyOnlineIntent(this.simulation, pending.playerId, pending.intent);
+		}
 	}
 
 	private changeDistrictColors(result: {
@@ -195,60 +177,6 @@ export class MatchViewHost {
 			}
 		}
 		return colors;
-	}
-
-	command(message: LocalWorkerCommand): LocalWorkerCommandResult {
-		const command = message.command;
-		if (command.type === 'ledger') {
-			return {
-				type: 'command-result',
-				id: message.id,
-				ok: true,
-				message: 'Ledger exported.',
-				tick: this.simulation.tick,
-				ledgerBlock: this.agent.openBlockView,
-				ledgerText: this.agent.exportText()
-			};
-		}
-		if (this.authoritativeInput) {
-			return {
-				type: 'command-result',
-				id: message.id,
-				ok: false,
-				reason: 'authoritative-input',
-				message: 'Input is submitted through Spacetime.',
-				tick: this.simulation.tick,
-				ledgerBlock: null
-			};
-		}
-		const intent = workerCommandToIntent(command);
-		const result = this.agent.submit(1, intent);
-		return {
-			type: 'command-result',
-			id: message.id,
-			ok: result.ok,
-			reason: result.reason,
-			message: result.message,
-			tick: this.simulation.tick,
-			ledgerBlock: result.block ?? null
-		};
-	}
-
-	/** Queue an intent accepted by Spacetime for its authoritative tick. */
-	applyIntent(tick: number, playerId: number, intent: OnlineIntent): void {
-		const target = Math.max(this.simulation.tick + 1, Math.floor(tick));
-		this.pendingIntents.push({ tick: target, playerId, intent });
-		this.pendingIntents.sort((left, right) => left.tick - right.tick);
-	}
-
-	private flushIntentsForNextTick(): void {
-		const nextTick = this.simulation.tick + 1;
-		const due = this.pendingIntents.filter((pending) => pending.tick <= nextTick);
-		if (due.length === 0) return;
-		this.pendingIntents.splice(0, due.length);
-		for (const pending of due) {
-			applyOnlineIntent(this.simulation, pending.playerId, pending.intent);
-		}
 	}
 
 	telemetry(): LocalWorkerTelemetry {

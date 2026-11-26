@@ -19,8 +19,6 @@
 		onLeaveRoom?: () => void;
 		onTogglePause: () => void;
 		onOpenHelp: () => void;
-		onOnline: () => void;
-		onEvolution: () => void;
 		onNewWorld: () => void;
 	}
 	let {
@@ -39,8 +37,6 @@
 		onLeaveRoom,
 		onTogglePause,
 		onOpenHelp,
-		onOnline,
-		onEvolution,
 		onNewWorld
 	}: Props = $props();
 </script>
@@ -111,8 +107,6 @@
 		<button class="square-button" type="button" onclick={onOpenHelp} aria-label="Open field manual">
 			<span>?</span>
 		</button>
-		<button class="action-button" type="button" onclick={onOnline}>ONLINE</button>
-		<button class="action-button" type="button" onclick={onEvolution}>AI LAB</button>
 		{#if onLeaveRoom}
 			<button class="action-button" type="button" onclick={onLeaveRoom}>LEAVE ROOM</button>
 		{/if}

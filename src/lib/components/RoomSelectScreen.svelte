@@ -65,8 +65,6 @@
 			</div>
 		</div>
 		<nav class="room-nav" aria-label="Network">
-			<a href="/online">ONLINE</a>
-			<a href="/evolution">AI LAB</a>
 			<span class="network-state" class:offline={connectionState === 'error'}>
 				<i></i>{networkLabel}
 			</span>
@@ -218,15 +216,6 @@
 		font-family: var(--font-mono);
 		font-size: var(--text-8);
 		letter-spacing: 0.1em;
-	}
-
-	.room-nav a {
-		color: var(--ink-dim);
-		text-decoration: none;
-	}
-
-	.room-nav a:hover {
-		color: var(--signal);
 	}
 
 	.network-state {

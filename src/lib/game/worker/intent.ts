@@ -35,7 +35,5 @@ export function workerCommandToIntent(command: LocalWorkerCommand['command']): O
 			return { type: 'alliance-request', targetPlayerId: command.targetPlayerId ?? 0 };
 		case 'alliance-break':
 			return { type: 'alliance-break', targetPlayerId: command.targetPlayerId ?? 0 };
-		case 'ledger':
-			throw new Error('Ledger export is not a gameplay transaction.');
 	}
 }

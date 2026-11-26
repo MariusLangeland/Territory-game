@@ -31,50 +31,6 @@ function postVisual(): void {
 	postVisualMessage(host.step());
 }
 
-function postReplayStatus(): void {
-	if (host?.config.replay) scope.postMessage(host.replayStatus());
-}
-
-let pendingSeekTick: number | null = null;
-let seekTimer: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * Coalesce scrub messages so a burst only replays to the final requested tick.
- * The worker is single-threaded, so this also avoids queuing every intermediate
- * prefix seek behind a long replay.
- */
-function performPendingSeek(): void {
-	if (seekTimer) {
-		clearTimeout(seekTimer);
-		seekTimer = null;
-	}
-	const tick = pendingSeekTick;
-	pendingSeekTick = null;
-	if (!host || tick === null) return;
-	const visual = host.seekReplay(tick);
-	postVisualMessage(visual);
-	postReplayStatus();
-	if (!host.ended && !host.isPaused) {
-		lastTickAt = 0;
-		accumulator = 0;
-		schedule();
-	}
-}
-
-function scheduleSeek(tick: number): void {
-	pendingSeekTick = tick;
-	if (seekTimer) return;
-	seekTimer = setTimeout(() => {
-		seekTimer = null;
-		performPendingSeek();
-	}, 0);
-}
-
-function flushPendingSeek(): void {
-	if (pendingSeekTick === null) return;
-	performPendingSeek();
-}
-
 function schedule(): void {
 	if (timer) return;
 	const now = performance.now();
@@ -86,19 +42,16 @@ function schedule(): void {
 		timer = null;
 		if (!host) return;
 		const current = performance.now();
-		const stepMs = TICK_MS / host.speed;
 		accumulator += current - lastTickAt;
 		lastTickAt = current;
 		let steps = 0;
-		const maxSteps = host.config.replay ? 16 : 4;
-		while (accumulator >= stepMs && steps < maxSteps) {
+		while (accumulator >= TICK_MS && steps < 4) {
 			postVisual();
-			accumulator -= stepMs;
+			accumulator -= TICK_MS;
 			steps++;
 			if (host.ended) break;
 		}
-		if (accumulator > stepMs * maxSteps) accumulator = stepMs * maxSteps;
-		if (host.config.replay) postReplayStatus();
+		if (accumulator > TICK_MS * 4) accumulator = TICK_MS * 4;
 		if (host.ended && !finalTelemetrySent) {
 			finalTelemetrySent = true;
 			scope.postMessage(host.telemetry());
@@ -114,61 +67,15 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 	const message = event.data;
 	if (!message || typeof message !== 'object') return;
 	if (message.type === 'init') {
-		pendingSeekTick = null;
-		if (seekTimer) {
-			clearTimeout(seekTimer);
-			seekTimer = null;
-		}
 		host = new MatchViewHost(message.config);
 		const init = host.initMessage();
 		// Terrain arrays are still owned by the worker simulation; only the copied
 		// owners/district buffers are transferred.
 		scope.postMessage(init, [init.owners.buffer, init.districtColorCodes.buffer]);
-		if (host.config.replay) postReplayStatus();
 		schedule();
 		return;
 	}
 	if (!host) return;
-	if (message.type === 'replay-control') {
-		if (!host.config.replay) return;
-		switch (message.action) {
-			case 'play':
-				flushPendingSeek();
-				host.setPaused(false);
-				lastTickAt = 0;
-				accumulator = 0;
-				postReplayStatus();
-				schedule();
-				return;
-			case 'pause':
-				flushPendingSeek();
-				host.setPaused(true);
-				if (timer) {
-					clearTimeout(timer);
-					timer = null;
-				}
-				accumulator = 0;
-				postReplayStatus();
-				return;
-			case 'seek':
-				scheduleSeek(message.tick ?? 0);
-				return;
-			case 'step': {
-				flushPendingSeek();
-				const target = host.tick + (message.delta ?? 1);
-				const visual = host.seekReplay(target);
-				postVisualMessage(visual);
-				postReplayStatus();
-				return;
-			}
-			case 'speed':
-				host.setReplaySpeed(message.speed ?? 1);
-				lastTickAt = 0;
-				accumulator = 0;
-				postReplayStatus();
-				return;
-		}
-	}
 	if (message.type === 'pause') {
 		host.setPaused(true);
 		if (timer) {
@@ -177,14 +84,12 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		}
 		accumulator = 0;
 		scope.postMessage({ type: 'paused' });
-		if (host.config.replay) postReplayStatus();
 		return;
 	}
 	if (message.type === 'resume') {
 		host.setPaused(false);
 		lastTickAt = 0;
 		accumulator = 0;
-		if (host.config.replay) postReplayStatus();
 		schedule();
 		return;
 	}
@@ -193,7 +98,6 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 		return;
 	}
 	if (message.type === 'command') {
-		const result = host.command(message);
-		scope.postMessage(result);
+		scope.postMessage(host.command(message));
 	}
 };

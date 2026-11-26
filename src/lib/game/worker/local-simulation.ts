@@ -28,8 +28,6 @@ interface CommandResult {
 	ok: boolean;
 	reason?: string;
 	message: string;
-	ledgerBlock?: import('../ledger/agent').LedgerBlock | null;
-	ledgerText?: string;
 }
 
 interface UpgradeQuote {
@@ -60,7 +58,6 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		config: LocalWorkerInitConfig,
 		handlers: {
 			onVisual?: (visual: LocalWorkerVisual) => void;
-			onReplayStatus?: (status: import('./local-protocol').LocalWorkerReplayStatus) => void;
 			onTelemetry?: (telemetry: LocalWorkerTelemetry) => void;
 			onError?: (error: Error) => void;
 		} = {}
@@ -84,7 +81,6 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 				instance?.applyWorkerVisual(visual);
 				handlers.onVisual?.(visual);
 			},
-			onReplayStatus: (status) => handlers.onReplayStatus?.(status),
 			onTelemetry: (telemetry) => {
 				instance?.setTelemetry(telemetry.behavior);
 				handlers.onTelemetry?.(telemetry);
@@ -120,11 +116,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		this.mergedDistricts = init.mergedDistricts;
 	}
 
-	/** Latest sealed ledger block delivered by the authoritative worker. */
-	lastLedgerBlock: import('../ledger/agent').LedgerBlock | null = null;
-
 	applyWorkerVisual(visual: LocalWorkerVisual): void {
-		this.lastLedgerBlock = visual.ledgerBlock;
 		const districtTiles = visual.districtTiles;
 		this.applyVisual({
 			matchId: 1,
@@ -188,10 +180,6 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		intent: import('../net/online-protocol').OnlineIntent
 	): void {
 		this.client.applyIntent(tick, playerId, intent);
-	}
-
-	replayControl(control: Omit<import('./local-protocol').LocalWorkerReplayControl, 'type'>): void {
-		this.client.replayControl(control);
 	}
 
 	pause(): void {

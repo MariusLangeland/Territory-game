@@ -175,46 +175,6 @@
 	color: var(--ink-faint);
 }
 
-.game-shell .replay-banner {
-	top: 84px;
-	left: 50%;
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	max-width: min(680px, calc(100vw - 28px));
-	padding: 6px 10px;
-	transform: translateX(-50%);
-	border: 1px solid rgba(120, 224, 232, 0.45);
-	background: rgba(4, 12, 15, 0.82);
-	font-family: var(--font-mono);
-	font-size: var(--text-8);
-	letter-spacing: 0.12em;
-	color: var(--ink-faint);
-	backdrop-filter: blur(10px);
-}
-
-.game-shell .replay-banner strong {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--ink);
-	font-weight: 500;
-}
-
-.game-shell .replay-banner em {
-	color: var(--signal-strong);
-	font-style: normal;
-}
-
-.game-shell .replay-banner button {
-	padding: 2px 7px;
-	border: 1px solid var(--line-soft);
-	background: var(--bg-raised);
-	color: var(--ink-dim);
-	font: inherit;
-	cursor: pointer;
-}
-
 .game-shell .overlay {
 	position: fixed;
 	inset: 0;

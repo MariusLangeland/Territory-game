@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { GameSnapshot } from '../simulation';
 import { RemoteSimulationView } from './view';
 import type { WorkerMatchInit, WorkerVisual } from './protocol';
@@ -27,7 +27,7 @@ function snapshotWith(structures: GameSnapshot['structures'] = []): GameSnapshot
 		winnerId: null,
 		ended: false,
 		humanId: 0,
-		growthMode: 'circular'
+		growthMode: 'organic'
 	};
 }
 

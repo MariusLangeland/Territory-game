@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './game-page.css';
-	import ReplayViewer from '#lib/components/ReplayViewer.svelte';
+	import MatchViewer from '#lib/components/MatchViewer.svelte';
 	import CardTray from '#lib/components/CardTray.svelte';
 	import GameTopBar from '#lib/components/GameTopBar.svelte';
 	import WorldRail from '#lib/components/WorldRail.svelte';
@@ -71,7 +71,7 @@
 	{/if}
 	{#if game.sim}
 		{#key game.sim}
-			<ReplayViewer
+			<MatchViewer
 				simulation={game.sim}
 				humanPlayerId={game.sim.humanPlayerId}
 				paused={game.paused}
@@ -85,25 +85,10 @@
 				cameraBridge={game.cameraBridge}
 				onTick={game.handleTick}
 				onHover={game.handleHover}
-				onAttack={game.replayMode ? undefined : game.actions.handleAttack}
+				onAttack={game.actions.handleAttack}
 				onReady={game.handleReady}
 				onError={game.handleError}
 				onPerf={game.handlePerf}
-				replay={game.replayMode
-					? {
-							tick: game.replayTick,
-							maxTick: game.replayMaxTick,
-							playing: game.replayPlaying,
-							speed: game.replaySpeed,
-							complete: game.replayComplete,
-							blocks: game.replayBlocks,
-							currentTick: game.replayTick,
-							onSeek: game.seekReplay,
-							onToggle: game.toggleReplayPlay,
-							onStep: game.stepReplay,
-							onSpeed: game.setReplaySpeed
-						}
-					: null}
 			/>
 			{#if game.keyboardCursorScreen && game.keyboardCursor}
 				<KeyboardCursor
@@ -134,19 +119,8 @@
 			onLeaveRoom={game.leaveRoom}
 			onTogglePause={game.togglePause}
 			onOpenHelp={() => (game.showHelp = true)}
-			onOnline={() => game.goto('/online')}
-			onEvolution={() => game.goto('/evolution')}
 			onNewWorld={game.newWorld}
 		/>
-
-		{#if game.replayMode}
-			<div class="replay-banner hud">
-				<span>LEDGER REPLAY</span>
-				<strong>{game.replayName}</strong>
-				{#if game.replayComplete}<em>COMPLETE</em>{/if}
-				<button type="button" onclick={game.rematch}>EXIT REPLAY</button>
-			</div>
-		{/if}
 
 		{#if game.onboardingVisible && game.onboardingCopy}
 			<OnboardingHint copy={game.onboardingCopy} onSkip={game.finishOnboarding} />
@@ -188,47 +162,45 @@
 			onFocus={() => game.cameraBridge.focusHuman()}
 		/>
 
-		{#if !game.replayMode}
-			<SupplyPanel
-				snapshot={game.snapshot}
-				supplyBar={game.supplyBar}
-				supplyPreview={game.supplyPreview}
-				humanFronts={game.humanFronts}
-				humanArtillery={game.humanArtillery}
-				readyArtillery={game.readyArtillery}
-				readyArtilleryShells={game.readyArtilleryShells}
-				artilleryVolleyCost={game.artilleryVolleyCost}
-				artilleryTargeting={game.artilleryTargeting}
-				onCancelFront={game.actions.cancelLatestFront}
-				onToggleArtillery={game.actions.toggleArtilleryTargeting}
+		<SupplyPanel
+			snapshot={game.snapshot}
+			supplyBar={game.supplyBar}
+			supplyPreview={game.supplyPreview}
+			humanFronts={game.humanFronts}
+			humanArtillery={game.humanArtillery}
+			readyArtillery={game.readyArtillery}
+			readyArtilleryShells={game.readyArtilleryShells}
+			artilleryVolleyCost={game.artilleryVolleyCost}
+			artilleryTargeting={game.artilleryTargeting}
+			onCancelFront={game.actions.cancelLatestFront}
+			onToggleArtillery={game.actions.toggleArtilleryTargeting}
+		/>
+		{#if !game.showResult && !game.defeatOpen && !game.showHelp}
+			<UpgradeBatchStrip
+				upgradeBatch={game.upgradeBatch}
+				onSetUpgradeBatch={(batch) => (game.upgradeBatch = batch)}
 			/>
-			{#if !game.showResult && !game.defeatOpen && !game.showHelp}
-				<UpgradeBatchStrip
-					upgradeBatch={game.upgradeBatch}
-					onSetUpgradeBatch={(batch) => (game.upgradeBatch = batch)}
-				/>
-			{/if}
-			<CardTray
-				snapshot={game.snapshot}
-				handRaised={game.handRaised}
-				bind:handShellElement={game.handShellEl}
-				draggingCardId={game.draggingCardId}
-				onStartDrag={game.startCardDrag}
-				onDrag={game.updateDragHover}
-				onDragEnd={game.endCardDrag}
-				onRaise={() => (game.handRaised = true)}
+		{/if}
+		<CardTray
+			snapshot={game.snapshot}
+			handRaised={game.handRaised}
+			bind:handShellElement={game.handShellEl}
+			draggingCardId={game.draggingCardId}
+			onStartDrag={game.startCardDrag}
+			onDrag={game.updateDragHover}
+			onDragEnd={game.endCardDrag}
+			onRaise={() => (game.handRaised = true)}
+		/>
+		{#if game.draggingCardId !== null && game.dragOrigin && game.dragPointer && game.dragArrow}
+			<DragOverlay
+				origin={game.dragOrigin}
+				landing={game.dragLanding}
+				arrow={game.dragArrow}
+				accent={game.dragAccent}
 			/>
-			{#if game.draggingCardId !== null && game.dragOrigin && game.dragPointer && game.dragArrow}
-				<DragOverlay
-					origin={game.dragOrigin}
-					landing={game.dragLanding}
-					arrow={game.dragArrow}
-					accent={game.dragAccent}
-				/>
-			{/if}
-			{#if game.navalPreviewScreen}
-				<NavalTargetPreview x={game.navalPreviewScreen.x} y={game.navalPreviewScreen.y} />
-			{/if}
+		{/if}
+		{#if game.navalPreviewScreen}
+			<NavalTargetPreview x={game.navalPreviewScreen.x} y={game.navalPreviewScreen.y} />
 		{/if}
 		{#if game.paused && !game.showResult}
 			<div class="paused-flag hud">SIMULATION PAUSED <span>SPACE TO RESUME</span></div>
@@ -284,8 +256,6 @@
 			mapWidth={game.mapWidth}
 			mapHeight={game.mapHeight}
 			onClose={() => (game.showHelp = false)}
-			onExportLedger={() => void game.exportLedger()}
-			onUploadLedger={(file) => void game.startReplayFile(file)}
 		/>
 	{/if}
 </main>

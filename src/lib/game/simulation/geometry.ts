@@ -18,15 +18,8 @@ export function indexToY(index: number, width: number): number {
 	return (index - (index % width)) / width;
 }
 
-export function growthModeCode(mode: GrowthMode): number {
-	switch (mode) {
-		case 'circular':
-			return 1;
-		case 'smooth':
-			return 2;
-		case 'organic':
-			return 3;
-	}
+export function growthModeCode(_mode: GrowthMode): number {
+	return 3;
 }
 
 /** Bilinear coarse value noise plus a faint per-pixel jitter, both integer. */

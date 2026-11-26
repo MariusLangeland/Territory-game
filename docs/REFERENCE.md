@@ -28,10 +28,8 @@ To verify without writing, run `pnpm exec tsx scripts/docs-reference.ts --check`
 
 <!-- AUTOGEN:constants START -->
 
-Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.ts`.
+Values are read from `src/lib/game/constants.ts` and structure definitions.
 
-- `PROTOCOL_VERSION` — simulation protocol revision: `41`.
-- `NET_PROTOCOL_VERSION` — wire protocol revision: `41`.
 - `MAP_VERSION` — map generation revision: `5`.
 - `MAP_WIDTH` — map width in pixels: `4096`.
 - `MAP_HEIGHT` — map height in pixels: `2048`.
@@ -199,8 +197,6 @@ Default: `0` (no timer).
 
 Player matches are locked to `organic` growth (ORGANIC: Deterministic random frontier selection; irregular, organic lobes.).
 
-- `circular` — CIRCULAR: retained for internal tests and benchmarks only.
-- `smooth` — SMOOTH: retained for internal tests and benchmarks only.
 
 ### Atlas limits
 

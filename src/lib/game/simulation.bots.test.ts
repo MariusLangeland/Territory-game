@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import {
 	ATTACK_IDLE_TICKS,
 	BOT_BUILD_INTERVAL,
@@ -52,8 +52,8 @@ function injectThreatAttack(
 		targetY: start.y,
 		anchorX: start.x,
 		anchorY: start.y,
-		growthMode: 'circular',
-		frontier: createGrowthLayer('circular', {
+		growthMode: 'organic',
+		frontier: createGrowthLayer('organic', {
 			width: sim.width,
 			height: sim.height,
 			owners: sim.owners,

@@ -28,12 +28,6 @@
 		"test:stress": "vitest run --project stress",
 		"check:boundaries": "tsx scripts/check-import-boundaries.ts",
 		"bench": "tsx scripts/benchmark.ts",
-		"bench:online": "tsx scripts/online-load.ts",
-		"telemetry": "tsx scripts/telemetry.ts",
-		"balance": "tsx scripts/balance-sweep.ts",
-		"soak": "tsx scripts/soak.ts",
-		"evolution": "tsx scripts/evolution.ts",
-		"ai:balance": "tsx scripts/ai-balance.ts",
 		"docs:reference": "tsx scripts/docs-reference.ts --write",
 		"docs:check": "tsx scripts/docs-reference.ts --check",
 		"test:watch": "vitest --watch"

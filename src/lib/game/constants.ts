@@ -1,13 +1,8 @@
 /**
- * Rules that both the simulation and the presentation layer agree on.
+ * Rules shared by the simulation and presentation layers.
  *
- * EXPERIMENTAL ATTACK BUILD:
- * Troops and production caps are removed so the attack pipeline can be
- * exercised in isolation. This is NOT the intended final combat model.
- * Attack limits and the 50-bot field are temporary stress-test choices.
- *
- * Anything that changes simulation outcomes is a versioned protocol concern:
- * bump PROTOCOL_VERSION and the map version whenever a value here changes.
+ * Changing a value here can change match outcomes. Update tests and regenerate
+ * `docs/REFERENCE.md`; map generation changes also require a `MAP_VERSION` bump.
  */
 
 export const MAP_WIDTH = 4096;
@@ -250,8 +245,6 @@ export const BOT_OPTION_MIN_TICKS = 50;
 export const BOT_OPTION_MAX_TICKS = 90;
 export const BOT_OPTION_SWITCH_MARGIN = 18;
 export const BOT_THREAT_NEUTRAL_BIAS = 10;
-
-export const PROTOCOL_VERSION = 41;
 
 const CORE_PLAYER_NAMES = [
 	'SABLE',

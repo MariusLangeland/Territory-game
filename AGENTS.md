@@ -1,254 +1,82 @@
 # AGENTS.md
 
-Orientation for coding agents working on Territory. Read this before changing simulation, rendering, or protocol behavior.
+Orientation for coding agents working on Territory.
 
 ## Read order
 
-1. [docs/SPEC.md](docs/SPEC.md) — canonical current product and rules.
-2. [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) — temporary attack stress deviations and exit plan.
-3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current code boundaries.
-4. [docs/DETERMINISM.md](docs/DETERMINISM.md) if the change touches ticks, RNG, commands, attacks, map generation, checksums, or networking.
-5. [docs/RENDERING.md](docs/RENDERING.md) if the change touches WebGPU, shaders, texture uploads, or camera math.
-6. [docs/NETWORKING.md](docs/NETWORKING.md) before adding any server or multiplayer code.
-7. [docs/PERFORMANCE.md](docs/PERFORMANCE.md) before performance-sensitive work.
+1. [docs/SPEC.md](docs/SPEC.md) — canonical product and behavior.
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries and data flow.
+3. [docs/REFERENCE.md](docs/REFERENCE.md) — generated rules and costs.
+4. [docs/MULTIPLAYER_SCHEMA.md](docs/MULTIPLAYER_SCHEMA.md) — Spacetime schema and reducers.
 
-## Current status
+## Model
 
-- **Current model — Frontage v1:** configurable 8–51 states (default 51: 1 human + 50 AI), three map presets plus arbitrary supported atlas dimensions (default 4096×2048; max 8192 px/side and 2^26 cells), optional match timer, and relaxed/standard/ruthless bot difficulty. One **supply** resource pays for cards, upgrades, and durable fronts. Supply income/cap derive from territory, Command Posts, and War Academies; the cap has **no global maximum**. Artillery is an active siege structure: 1000 supply to build, 300 supply per level fired, 140 px range, 6 s cooldown, one 2 s shell per level with ±36 px spread, 12 px blast, 64 px district, 16 px build clearance, and immunity for State structures. Card costs live in generated [docs/REFERENCE.md](docs/REFERENCE.md); upgrades cost `base + 15 × current level`, and Fortifications add +1 defense. Effective attack levels are `max(0, attacker Barracks stacks − defender Jammer stacks)`. A launch costs `30 + 40 × effective levels` and grants `1000 + 200 × levels` strength; power/piercing use `logTier = floor(log2(levels + 1))`. Jammers suppress enemy attacks globally without adding pixel defense. Captures spend power and strength; mutual contact trades `100 + 50 × opponent logTier` once per pair per tick. No fixed lifetime; 20 idle ticks kill a front. Cancellation refunds `floor(cost × remaining/initial strength)`. Holding 70% of land wins instantly; an optional 10/20/30-minute timer awards the match to the largest alive state. State structures project +20 aura over 16px; districts are bounded noisy Voronoi regions; mutually hostile bots use personality profiles, threat reserves, and staggered build ticks.
-- Implemented: seeded configurable-size worlds with 8–51 states, match setup (state count, map preset, bot difficulty, optional timer, saved defaults), organic-locked growth, supply economy, durable fronts/attrition/cancellation/70% victory, State/buildable structures, shore Ports and naval landings, bot personalities/threat defense/naval strategy/coordinated teams, player-requested alliances, authoritative online rooms with up to eight human seats and a 200-player/25-room support target, worker-owned local simulation stepping, AI behavior telemetry and 8×6000 balance matrix, worker-driven evolutionary genome sandbox with buckets/CSV/spectator, 64-bot gauntlet with global lives and top-16 recovery, main-game bot roster seeded from 21 gauntlet survivors plus saved buckets, IndexedDB session restore, fitness history, post-match analysis, districts/auras/noise cleanup, growth layers, claim provenance, determinism/checksums, WebGPU dirty-tile rendering, state-count-aware HUD, rival supply banners, onboarding, keyboard cursor, pinch zoom, telemetry, balance sweep, soak test, tests, benchmark.
-- TODO (explicitly deferred): full command-timeline replay viewer (seed replay + post-match AI breakdown are implemented); fuller WCAG audit beyond the 320/430 mobile pass; multi-party alliances and bot-initiated diplomacy beyond the current one-pair player-request flow; online room persistence, matchmaking, accounts, chat, late join, worker-sharded capacity beyond 200 players, WebSocket/binary transport, fog, and audio.
-- WebGPU is required. There is no fallback map renderer.
+- **Frontage v1.** One supply resource; 8–51 states; deterministic organic growth.
+- Player matches use locked organic growth.
+- State structures anchor connected territory.
+- Holding 70% of land wins instantly; optional timer awards the largest living state.
+- Only code and tests are authoritative for values. [docs/REFERENCE.md](docs/REFERENCE.md) is generated.
+- WebGPU is required. There is no fallback renderer.
+
+## Multiplayer
+
+- One Spacetime database per room plus a `territory-lobby` directory database.
+- A room has a waiting lobby: seats join and ready up; the host starts.
+- Tick-0 locks participation and starts local simulations.
+- Player input is submitted as a compact Spacetime ledger row. The server assigns the tick; clients apply accepted intents to their local simulation.
+- Losing the room authority pauses the local simulation.
 
 ## Commands
 
 ```sh
-pnpm install
 pnpm dev
 pnpm check
 pnpm test
 pnpm test:fast
 pnpm test:worker
-pnpm test:stress
 pnpm check:boundaries
 pnpm bench
-pnpm bench:online
-pnpm telemetry
-pnpm balance
-pnpm soak
-pnpm evolution
-pnpm ai:balance
 pnpm docs:reference
 pnpm docs:check
 pnpm build
 pnpm lint
+pnpm format
 ```
 
-## Documentation source of truth
+## Invariants
 
-- **Code + tests are authoritative** for constants, costs, formulas, and behavior.
-- `docs/REFERENCE.md` is generated by `scripts/docs-reference.ts`; never hand-edit inside `AUTOGEN` blocks. Run `pnpm docs:reference` after changing rule values. `pnpm docs:check` runs in CI.
-- [docs/SPEC.md](docs/SPEC.md) owns product intent and player-facing behavior. Only update it when semantics change, not when a generated value is already covered by REFERENCE.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) owns code boundaries; avoid duplicating rule tables there.
-- `docs/DECISIONS.md` is append-only. Do not rewrite historical ADRs; add a new one.
-- README/AGENTS are process/public summaries and should link to REFERENCE instead of copying numeric tables.
-
-### Documentation change procedure (follow this every time)
-
-1. Change code and tests first.
-2. Run `pnpm docs:reference`; if `docs/REFERENCE.md` did not change, do not edit it.
-3. Update `docs/SPEC.md` only when player-facing behavior or intent changed.
-4. Update README, AGENTS, ARCHITECTURE, DETERMINISM, RENDERING, NETWORKING, or COMBAT_DESIGN only if that specific document now makes a false claim. Do not copy new numbers into them; link to REFERENCE.
-5. Append an ADR only for a real design/architecture decision, not a minor numeric tweak. Never rewrite an old ADR.
-6. Do not bump the app version for every balance prompt; batch version bumps for releases.
-7. Run `pnpm docs:check`, then the normal verification commands.
-
-**Reminder:** a one-line value change should normally touch code, tests, and at most REFERENCE + SPEC. If you are editing six documentation files for a small change, stop and reconsider.
-
-If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provided by the harness (`load_workspace_dependencies`) instead of modifying global PATH assumptions in the repo.
-
-## Non-negotiable invariants
-
-1. **Simulation purity:** no DOM, no `Date`, no `performance`, no `Math.random`, no network, no UI access in `src/lib/game/simulation.ts`, `map.ts`, or `rng.ts`.
-2. **Fixed tick:** gameplay changes happen inside `step()` at 10 Hz. Input callbacks only validate/queue.
-3. **Integer outcomes:** new gameplay quantities must be integer/deterministic. If float distance or trigonometry is unavoidable, justify it and version it.
-4. **Stable ordering:** commands, attacks, RNG draws, and collection iteration that affect outcomes must have explicitly defined order.
-5. **Protect input latency:** use the dirty-tile path for normal updates. District palette changes report `districtTiles` and rewrite only alpha bytes for those tiles; do not force a full control-texture rebuild for a structure build. Heavy/dispersed updates may switch to adaptive full-texture resync, but it must be chunked across frames; never block a single frame with a full-map upload. Keep HUD snapshots throttled and the leaderboard virtualized.
-6. **Renderer never mutates simulation state.**
-7. **Version intentional changes:** map generation → `MAP_VERSION`; wire changes → `NET_PROTOCOL_VERSION`; simulation changes → determinism review + tests.
-8. **Online support is an in-memory MVP, not a service.** `/online` and the HTTP/SSE room server are real, but there are no accounts, persistence, matchmaking, chat, or WebSocket transport. Do not describe it as production multiplayer.
-9. **Frontage v1 is the current combat model.** Supply, durable strength, attrition, refunds, and 70% victory are implemented; EXP-001 is retired. Read [docs/COMBAT_DESIGN.md](docs/COMBAT_DESIGN.md) before changing combat constants.
-10. **Organic growth is locked for player matches; growth layers only select frontier candidates.** Player matches always use organic frontier selection. Circular and smooth remain internal test/benchmark implementations. Ownership, edge connectivity, capture budget, order lifetime, and checksums stay in `simulation.ts`. Never let a layer bypass those checks.
-11. **Distance-based growth starts at the border.** The attack anchor is the rounded centroid of the initial seed contact; the clicked cell is only a target/search selector. Do not anchor growth on a deep click.
-12. **Growth selection must be deterministic.** Integer keys/tie-breaks; organic randomness comes only from its per-attack seeded PRNG. Include frontier state and growth mode in checksums.
-13. **Mutual fronts attrit at contact.** Claim provenance is authoritative. Both fronts lose `100 + 50 × opponent logTier` durable strength simultaneously, once per pair per tick. At 0 strength the front dies; the survivor pauses. Do not affect unrelated pairs.
-14. **Every owned component must reach protection.** A component is protected if it contains a live State structure of the same owner, or a Port that is sea-connected (transitively, same owner) to a State-anchored Port. Unprotected components reachable through any chain of adjacent owned components are annexed to the protected root owner (largest shared border, lower id on ties); components with no such path are abandoned to neutral land. The plan is applied atomically in one scan; do not reintroduce a cross-tick transfer queue. Every 100 ticks, separately fill neutral pockets ≤96 cells that border an owner into the largest-border owner (lower id on ties). Ocean contact is allowed for that cleanup; ownerless islands and larger neutral regions are skipped.
-15. **State structures are authoritative objects.** Place one at each start, destroy it when its cell changes owner, include it in snapshots/checksums, and render it from registry/snapshot state. Do not infer protection from component size.
-16. **Defense is derived and integer.** `1 + elevation + occupied + aura`; do not add a mutable defense array or float modifier. Fronts have per-tick power and a durable strength pool; both must pay `max(1, defense − logTier)`. Requeue an unaffordable candidate rather than losing it.
-17. **Elevation is versioned map data.** Changing tier thresholds, level count, or defense meaning requires `MAP_VERSION`/protocol review and updated tests.
-18. **Structure effects are defined by type and derived into overlays.** State auras stamp +20 with max-overlap semantics; Fortifications add +1 per stack. A buildable defense aura covers **every cell in its own district** and ignores effect radius. State has no district and keeps its 16 px radius. Barracks raises attack strength/cost linearly and speed/piercing by log2 tiers, uncapped. Jammer is a global suppression aura that subtracts effective enemy Barracks levels and never changes pixel defense. Defensive auras require owner match. Rebuild derived auras when structures or districts change; include effect descriptors in public structure payloads. Do not serialize a mutable per-cell aura array. High-frequency attack/income lookups use the structure stack cache; direct stack mutation outside the registry must invalidate it.
-19. **Card economy is command-driven.** Build and district-upgrade commands queue and apply inside `step()`. Builds validate supply/card/owned land/empty structure slot/**8 px structure spacing**; Shift-build may use a tight-spacing fallback for one-pixel gaps; a card landing in a matching district pays `base card cost + 15 × current level`, while a new structure pays base cost. Click upgrades resolve the district's structure and spend `base card cost + 15 × projected current level` without consuming a card. Merged same-owner/same-type districts select the lowest projected structure first; merged commands pin `structureId` so a noisy Voronoi centre assignment cannot redirect them. Holding Ctrl disables merging and targets the clicked structure. The permanent seven-card hand has no draw, deck, consumption, or reroll; repeat purchases are allowed. Captured structures are razed.
-20. **Supply is the only resource and neither rate nor cap is hard-limited.** Cards, upgrades, and fronts spend supply. Income is `3 + floor(territory/3000) + Command Post stacks + 10 × eliminations` per second with no income cap (+1/s per 3,000 owned pixels and a permanent +10/s per state erased by that player). Cap is `120 + territory/1000 + 80 × War Academy stacks` with no upper bound. A launch uses effective Barracks levels minus defender Jammers; cost/strength scale linearly and power/pierce logarithmically. Cancellation refunds `floor(launchCost × remainingStrength / initialStrength)`. Include supply/accrual, front strength/initial strength/power/pierce/idle ticks, and grievance/threat state in checksums. In all-bot matches player 1 must route through `botGold` like every other bot (`snapshot.humanId = 0`); never maintain a separate human supply pool or double-credit its income.
-21. **Districts are bounded, owner-local Voronoi regions.** They are derived from owners + buildable structure ranges, with deterministic integer noise on distance comparisons and a `DISTRICT_NOISE_MARGIN` scan margin; never serialize a mutable authoritative district map. Ties use type code then structure id. Auras must check `districtStructureIds[index] === structure.id` for buildables. New district recomputation happens on structure creation/destruction; ordinary captures update one cell. State capitals have no district.
-22. **Multiple structures/districts per owner/type are allowed.** Same-type drops inside a district increment that district's stacks; same-type drops outside all districts create another district. Different types inside a district are rejected, except Ports, which are point anchors and may overlap unrelated districts. Stacking must not change district geometry.
-23. **Do not reintroduce per-attack Sets without measurements.** Prefer flat structures; the current layers use a number-array heap, radial-band arrays, or an array + RNG.
-24. **Least resistance samples, it does not globally re-sort.** Each capture samples `LEAST_RESISTANCE_SAMPLE_SIZE` (10) candidates in growth order, picks the integer-cheapest effective defense, requeues the rest, and breaks ties by sample order. It must stay deterministic and must not bypass connectivity, ownership, mutual-contact, or budget checks.
-25. **Frontage v1 scales infinitely.** Effective levels = `max(0, attacker Barracks stacks − defender Jammer stacks)`. Strength = `1000 + 200 × levels`; launch cost = `30 + 40 × levels`; `logTier = 31 - clz32(levels + 1)`; power = `30 + 15 × logTier`; pierce = `logTier`; capture cost = `max(1, defense − logTier)`; contact damage = `100 + 50 × opponent logTier`. No caps. No fixed lifetime; idle 20 captureless ticks. Do not merge clicks or reinforce an existing front.
-26. **Artillery is expensive, inaccurate, and deterministic.** Build cost 1000; it requires `ARTILLERY_BUILD_CLEARANCE` (16 px) free of existing districts and has a 64 px district. A fire command queues/resolves next tick; every ready battery within `ARTILLERY_RANGE` fires `stacks` shells at `ARTILLERY_SUPPLY_COST_PER_LEVEL` (300) each. The full volley cost is validated and spent before cooldowns/shells. Shells land after `ARTILLERY_SHELL_TRAVEL_TICKS` with deterministic `ARTILLERY_SHELL_SPREAD` (±36), no target snapping, then remove one level from the nearest non-State hostile structure within `ARTILLERY_BLAST_RADIUS`. States are immune. Cooldown is per battery. Include shell ids/positions/ticks and cooldowns in checksums.
-
-27. **Merged districts are a throttled visual/upgrade convenience.** Touching same-owner districts of one type form groups via a union scan of `districtStructureIds`; membership recomputes at most every 5 ticks and stack totals refresh per read. The territory shader draws sharp high-contrast district outlines, removes internal seams by comparing the district type base when `mergeDistrictSeams` is on, and pulses the active owner's matching district type while a card is being placed (`highlightDistrict`/`highlightOwner` uniforms); the 2D overlay draws one combined icon per multi-structure group. Gameplay auras/districts remain per-structure. Ctrl turns the shader flag and icon merging off and directs upgrades to the clicked structure. Do not serialize groups into checksums.
-
-28. **Ports are shore-only naval anchors.** Ports cost 200, have no district, snap to the nearest valid owned shoreline within `PORT_BUILD_SNAP_RADIUS` (24 px), and may be placed inside unrelated districts. A naval landing requires an existing friendly Port, a non-friendly unoccupied shore, and a 4-neighbour sea path; its up-front launch cost is the normal front cost plus the Port cost (200), because the landing auto-builds that Port. The boat follows the deterministic A* route at `NAVAL_SPEED_PX_PER_SECOND`, then claims the beachhead, auto-builds the Port, and opens a normal front inward. Ports protect their friendly land component when it reaches the owner's State, or when they are sea-linked through any same-owner Port chain to such a Port. Include landing routes/timers and Port state in checksums; snapshot shape changed at protocol 38. Do not bypass land attack validation for the post-landing front.
-
-29. **Evolution is deterministic and does not mutate live match state.** Genomes are created/mutated/crossed only from `hash32`/seeded hashes in fixed order; all-bot matches use fixed seat schedules and seeds. Genome v2 includes an optional semi-Markov controller (2–6 states, option labels, per-state biases/dwell, observation-conditioned transitions); mutate/crossover may change topology, but `normalizeMarkov` must keep every state reachable and non-terminal. The controller state/entry/biases are checksummed and transitions use deterministic hash rolls, not the shared RNG. Fitness averages land share, final income, attack strength, win, survival, economy, defense, naval, aggression, cooperation, state eliminations, weak-state attacks, attacks repelled, and defense damage through explicit `FitnessWeights` (default land 60k); the Evolution Lab exposes the weights and headless runs accept `--weight-<name>`. Combat/defense credit is zeroed for eliminated states. Buckets are sorted deterministically (top/good/poor). Population matches use rotating seat windows so every genome appears at least once per generation and match counts differ by at most one; never replace that with independent random offsets that can leave genomes unplayed. In 1v1 lineage mode, each current genome plays one parent in same-seed, seat-swapped duels; the summed fitness margin decides the lineage win/loss, and direct losers are removed from the survivor pool and do not earn new QD slots. A MAP-Elites-style archive preserves one best genome per `E/D/N/A` strategy descriptor and seeds later generations. The CSV round-trip preserves traits/modules/affinities, descriptors, lineage record, and per-strategy metrics; it never uses wall-clock values except the local bucket `updatedAt` metadata. Evolution Lab difficulty mapping is relaxed→poor, standard→good, ruthless→top; imported spreadsheets must use at least one genome per seat. The Evolution Lab worker saves a generation/run-boundary checkpoint to IndexedDB and restores it paused; only completed-generation/run state is persisted, and new/imported populations clear the checkpoint. Gauntlet mode seats up to 64 genomes in one free-for-all, tracks three global lives per genome, removes a genome at zero lives from the population/lives/genome bank and filters it out of the live roster, and recovers one life for the top 16 surviving fitness genomes after each run; it never mutates or crosses genomes. While a simulation is active, NEW is hidden; STOP finishes the current run/generation, STOP IMMEDIATE aborts the active simulation, CONTINUE resumes a stopped gauntlet when at least two genomes remain and applies the current setup edits to the next match/generation, and only DISCARD deletes data. Gauntlet runs expose JSON EXPORT STATE/IMPORT STATE at run boundaries; the snapshot contains setup, population, lives, reports, archive, and run index. Do not export an active simulation. Gauntlet recovery/removal order is deterministic fitness order. Do not make the live match consume non-deterministic bucket data.
-
-30. **Local simulation steps in a Web Worker.** The main game keeps only a read-only mirror (`WorkerLocalSimulation`) and render deltas; commands are async worker messages, and the main thread must never step `TerritorySimulation` or run integrity scans. Keep HUD updates throttled and dispose the worker on world rebuild/unmount. Mirror hover/preview queries are approximations; worker results are authoritative.
-
-31. **Online rooms are authoritative and multi-human.** `humanPlayerIds` gives each human seat independent supply, income accrual, hand, and viewer-specific snapshots; local mode must remain seat 1. The server owns the room lifecycle, tick advancement, player identity, intent sequence/rate validation, baselines, and winner state. Clients submit `OnlineIntent` envelopes and may not supply player ids or mutate authoritative state. HTTP commands + SSE are the MVP transport; WebSocket/binary remains the scale path. Rooms are in-memory, late join after start is rejected, and same-token reconnect receives a baseline. Never let the online client or server diverge from `OnlineRoom`/`OnlineTick` semantics. The single-process support target is 200 concurrent humans at 10 Hz, packed as 25 rooms × 8 humans on 1280×720; admission caps are `MAX_ONLINE_ROOMS=25` and `MAX_ONLINE_PLAYERS=200`, and `pnpm bench:online` gates p95 ≤ 50 ms, p99 ≤ 300 ms, and RSS ≤ 1.5 GiB. Worker sharding is the scale step beyond this target.
-
-32. **Alliances are deterministic, one-pair diplomacy.** A player may request one alliance from a living AI target; a target may hold at most one active alliance or pending proposal. Proposals expire after 30 s and resolve on the target's staggered decision phase using integer utility from strength, posture, grievance, and last-attacker state. Active alliances last 3 min, block land/naval/artillery targeting between the pair, cancel existing mutual fronts with proportional refunds, skip allied structures in further targeting, and grant coordination credit against common enemies. Breaking sets a 60 s pair cooldown and a betrayal grievance. Expiry/elimination remove the state. Include alliances, proposals, next ids, and pair cooldowns in checksums and snapshots; protocol 39 adds the snapshot fields. Do not make acceptance depend on wall-clock time or shared RNG.
-
-33. **Bot strategy is deterministic utility-driven state.** `botProfiles` derive aggression/economy/fortification/command/vengeance/caution/conciliation/opportunism plus per-type `structureBias` and a display-oriented `buildPlan` from `hash32` of seed and player id, never the shared PRNG. All bots share an opening economy ramp: alternate Command Posts and War Academies until they have two of each, with a dominant economy utility and capped reserve; early attacks prefer neutral expansion and only fall back to hostile borders when neutral ground is blocked. After the opening, economy actions are scored, not taken from a fixed order: affinity + novelty/diminishing copies + threat response + income/cap pressure + efficiency, for both builds and upgrades. Each bot compares income and estimated strength with bordering neighbours: an income gap raises Command Post/War Academy priority and lowers attack appetite, while a stronger neighbour raises Fortification utility, desired copies/levels, and a capped deterrence threat contribution. Threat reserve rises to 60, the defensive build targets the border cell with most hostile contact, and threatened bots prioritize Fortification upgrades. Bots keep a strategic reserve for their highest-affinity missing type; if its cost exceeds the supply cap, the reserve shifts to War Academy cap growth. Attacks keep at most `max(60, floor(supply×0.5))` of that save for economy and cap the purchase buffer at 40, using the larger reserve rather than stacking both, so aspiration savings cannot freeze expansion. They take up to two non-defensive actions per build interval and one defensive action. When a missing type has no legal site, expansion becomes the priority and attacks may spend the economic reserve. Once a basic Command Post/War Academy economy exists, a bot reserves for and builds its first Barracks before further luxury economy; aggressive high-territory bots then cap-grow War Academies to reach a first Artillery. Cap-blocked aspiration spending is restricted to the War Academy cap-growth action. Attack chance is derived from target score, aggression, supply pressure, and reserves rather than a flat aggression roll; contact cells are selected with a defense penalty so bots attack the least-defended ground on their preferred target. A stronger neighbour below 25% supply (or below its counterattack cost) is a supply opportunity: reduced caution/conciliation, a large target-score bonus, and an attack-chance bonus. Coastal bots plan deterministic naval opportunities and launch only worthwhile, sea-connected, non-ally shores. When `teamIds` is supplied, teammates never target each other and gain a coordination bonus against a common defender. A committed strategic option layer (50–90 ticks, switch margin) sits above tactical utility and is checksummed with its target; a blackboard remembers the last attacker and ally target. Expose non-gameplay behavior counters and per-player evolution metrics through public getters; do not checksum them. Record per-defender grievances on capture, include them and bot gold/accrual in checksums. Refresh threat/posture/reserve once per decision tick (active fronts 25 cap 50, hostile contact 1 cap 8, recent grievances 2 cap 20; enter at 20, leave at 10). New/destroyed buildables refresh districts only within their own range (`refreshDistrictsAround`), never with a full-map rebuild, and report `districtTiles` for alpha-only dirty uploads. Stagger bot build ticks by player id across `BOT_BUILD_INTERVAL`; attack, naval, and artillery decisions are staggered by player id across `BOT_DECISION_INTERVAL` (~5 bots per tick), while threat/options refresh globally on the decision tick. Per-bot strength snapshots are reused between phases, and a checksummed per-bot decision epoch drives attack rolls. Batch the aura rebuild once per simulation tick.
-
-34. **Rendering depends on `SimulationView`, not on a concrete simulation class.** `GameCanvas` and `Minimap` accept `src/lib/game/simulation-view.ts`; both `TerritorySimulation` and `WorkerLocalSimulation` satisfy it. Do not reintroduce `as unknown as TerritorySimulation` casts at component boundaries.
+1. **Simulation purity:** no DOM, `Date`, `performance`, `Math.random`, network, or UI access in `simulation.ts`, `map.ts`, or `rng.ts`.
+2. **Fixed tick:** gameplay changes happen inside `step()` at 10 Hz. Input callbacks only validate and queue.
+3. **Integer outcomes:** new gameplay quantities must be integer and deterministic.
+4. **Stable ordering:** commands, attacks, RNG draws, and outcome-affecting iteration need explicit order.
+5. **Renderer never mutates simulation state.**
+6. **Version generation changes:** map generation → `MAP_VERSION`; wire format changes → protocol review; simulation changes → determinism tests.
+7. **The main thread never steps the simulation.** The worker view host owns stepping, snapshots, and accepted-intent application.
+8. **Do not add a second ledger implementation.** Remote submission uses `SpacetimeLedgerSource`; all accepted intents share the canonical ledger record shape.
+9. **Do not reintroduce the retired HTTP/SSE online MVP, Evolution Lab, replay viewer, or local ledger.** These were removed deliberately.
 
 ## Where things live
 
-- `src/routes/+page.svelte` — screen flow and HUD. Large file by design; keep gameplay rules out.
-- `src/lib/components/GameCanvas.svelte` — thin canvas host; frame loop, input, and overlay helpers live in `src/lib/game/canvas/`. Do not add simulation logic here.
-- `src/lib/components/GameTopBar.svelte` — commander readout, war clock, global actions.
-- `src/lib/components/WorldRail.svelte` — virtualized leaderboard and war feed.
-- `src/lib/components/SupplyPanel.svelte` — supply bar and cancel/fire actions.
-- `src/lib/components/CardTray.svelte` — permanent hand and drag-source cards.
-- `src/lib/components/MapTools.svelte` — camera controls and renderer stats.
-- `src/lib/components/DragOverlay.svelte` — card landing preview and drag arrow.
-- `src/lib/components/IntroOverlay.svelte` — intro and match-setup overlay.
-- `src/lib/components/LoadingOverlay.svelte`, `ErrorModal.svelte`, `ResultModal.svelte`, `DefeatModal.svelte`, `HelpOverlay.svelte` — screen states.
-- `src/lib/components/OnboardingHint.svelte`, `KeyboardCursor.svelte` — first-match and keyboard accessibility overlays.
-- `src/lib/components/StructureMenu.svelte` — structure/diplomacy context menu presentation.
-- `src/routes/game-page.css` — page shell/shared overlay primitives only; component-specific CSS belongs in each component's scoped `<style>` block.
-- `src/app.css` — canonical design tokens: semantic colors, alpha surfaces, display type, and HUD type scale. Extend tokens rather than adding repeated literals.
-- `src/lib/components/DiplomacyToast.svelte` and `UpgradeTooltip.svelte` — small HUD feedback components.
-- `src/lib/components/ReplayViewer.svelte` — shared simulation viewport, playback controls, and replay timeline/ledger panel.
-- `src/lib/components/ReplayTimeline.svelte` and `LedgerViewer.svelte` — replay playback controls and tick-seeking block list.
-- `src/lib/game/constants.ts` — rules and palette. Changing these can change match outcomes.
-- `src/lib/game/match-config.ts` — match presets, saved defaults, and settings normalization.
-- `src/lib/game/simulation.ts` — authoritative simulation facade. Extracted helpers live in `src/lib/game/simulation/`; prefer focused edits and the split `simulation.*.test.ts` suites.
-- `src/lib/game/ai/` — evolvable bot genomes, deterministic selection/fitness/buckets, CSV round-trip, and localStorage bucket persistence.
-- `src/routes/evolution/+page.svelte` — WebGPU evolution spectator with fast-forward, CSV import/export, and bucket loading.
-- `scripts/evolution.ts` — headless natural-selection CLI that writes `reports/evolution.csv`.
-- `scripts/ai-balance.ts` — 8×6000 AI behavior/balance matrix; writes `reports/ai-balance*.json/.csv`.
-- `src/lib/game/naval.ts` — static sea components and deterministic naval A* routing.
-- `src/lib/game/structures/port.ts` — shore Port definition.
-- `src/lib/game/growth/` — growth-layer interface, factory, and circular/radial-band smooth/organic implementations. Keep simulation invariants out of these modules.
-- `src/lib/game/growth/growth.test.ts` — layer selection invariants.
-- `src/lib/game/structures/` — one definition file per structure type (`state.ts`, `artillery.ts`, `barracks.ts`, `fortification.ts`, `jammer.ts`, `command-post.ts`, `war-academy.ts`, `port.ts`), plus shared `types.ts`, `definitions.ts`, `registry.ts`, and `index.ts`.
-- `src/lib/game/economy.test.ts` — permanent hand, income, repeat-build/stack, and effect invariants.
-- `src/lib/game/integrity.ts` — connected-component planning, detached-territory annexation, and neutral-pocket cleanup.
-- `src/lib/game/integrity.test.ts` — anchored-mainland, island, and tie-break invariants.
-- `src/lib/components/GameCanvas.svelte` — structure markers use the same camera on a transparent 2D overlay.
-- `src/lib/game/render/territory-renderer.ts` — GPU resource lifecycle and uploads.
-- `src/lib/game/render/territory.wgsl.ts` — shader source as a TypeScript string.
-- `src/lib/game/net/protocol.ts` — protocol draft/version; keep docs synchronized.
-- `src/lib/game/net/online-protocol.ts` — online room/intent/baseline/tick types and owner RLE.
-- `src/lib/game/net/online-intent.ts` — shared authoritative intent-to-simulation mapping.
-- `src/lib/game/net/match-ledger.ts` — accepted-move ledger encode/decode/replay for deterministic lockstep groundwork.
-- `src/lib/game/ledger/agent.ts` — local/offline ledger writer: validates/appends transactions, seals blocks, projects state.
-- `src/lib/game/ledger/types.ts` — canonical `LedgerRecord`/`LedgerSource` boundary mirroring the Spacetime table row.
-- `src/lib/game/ledger/remote.ts` — Spacetime ledger adapter; decodes accepted rows into intents.
-- `src/lib/game/ledger/local.ts` — local ledger adapter/compatibility export.
-- `src/lib/game/ledger/codec.ts` — compact intent payload codec.
-- `src/lib/game/ledger/document.ts` — downloaded ledger/block wrapper decoding for the replay viewer.
-- `src/lib/game/net/online-room.ts` — authoritative room core; multi-human seats, intents, snapshots.
-- `src/lib/game/worker/view.ts` — read-only main-thread worker visual/query mirror.
-- `src/lib/game/worker/protocol.ts` — shared worker init/visual payloads.
-- `src/lib/game/view/worker-host.ts` — worker-owned view host: applies accepted intents, steps simulation, snapshots, pause/resume.
-- `src/lib/game/view/match-view.ts` — main-thread match view: worker lifecycle, bot roster loading, commands, replay controls.
-- `src/lib/game/view/index.ts` — view-layer public exports.
-- `src/lib/game/worker/local-host.ts` — compatibility re-export for the view host.
-- `src/lib/game/worker/local-simulation.worker.ts` — local match worker entry and 10 Hz loop.
-- `src/lib/game/worker/local-simulation.ts` — main-thread local mirror + async command facade.
-- `src/lib/game/simulation-view.ts` — read-only contract shared by simulation and mirrors.
-- `src/lib/game/frontend/contracts.ts` — frontend command gateway contract.
-- `src/lib/game/session/game-session.ts` — compatibility re-export for `MatchView`.
-- `src/lib/game/session/seed.ts` — URL seed parsing, random seeds, hex formatting.
-- `src/lib/game/session/onboarding.ts` — onboarding completion persistence.
-- `src/lib/game/ui/actions.ts` — player command dispatch and action validation flow.
-- `src/lib/game/ui/keyboard.ts` — global shortcuts and keyboard cursor navigation.
-- `src/lib/game/ui/structure-menu.ts` — structure/diplomacy popup construction and focus handling.
-- `src/lib/game/page/game-page-state.svelte.ts` — reactive page state and derived selectors.
-- `src/lib/game/page/match-controller.svelte.ts` — settings, seeds, world lifecycle, worker session.
-- `src/lib/game/page/interaction-controller.svelte.ts` — hover, drag/drop, cards, context menu.
-- `src/lib/game/page/overlay-controller.svelte.ts` — onboarding, toasts, result/defeat transitions.
-- `src/lib/game/page/game-page.svelte.ts` — composition and `game.foo` proxy facade.
-- `src/lib/game/page/selectors/` — split HUD/match/ranking/interaction/overlay selectors.
-- `src/lib/game/evolution/page/` — AI Lab state, worker, actions, and facade.
-- `src/lib/game/online/page/` — online lobby/match state, transport, actions, and facade.
-- `src/lib/game/canvas/` — frame loop, input/camera, and structure overlay helpers.
-- `src/lib/server/online.ts` — in-memory room manager, 10 Hz ticker, SSE subscribers.
-- `src/routes/online/+page.svelte` — online lobby/live match client.
-- `src/routes/api/online/rooms/` — create/join/start/intent/events HTTP surface.
-- `scripts/benchmark.ts` — performance baseline, including all growth layers.
-- `scripts/online-load.ts` — 200-player/25-room capacity gate (`pnpm bench:online`).
-- `scripts/telemetry.ts` — deterministic headless multi-seed match metrics ([docs/TELEMETRY.md](docs/TELEMETRY.md)).
-- `scripts/balance-sweep.ts` — personality/ramp/structure balance sweep.
-- `scripts/soak.ts` — long-run invariant and memory soak test.
-- `scripts/docs-reference.ts` — generates/checks the canonical rules reference.
-- `docs/COMBAT_DESIGN.md` — implemented Frontage v1 design and rationale.
+- `src/routes/+page.svelte` — page shell and screen flow.
+- `src/lib/components/` — Svelte UI, canvas, HUD, overlays.
+- `src/lib/game/frontend/contracts.ts` — frontend command boundary.
+- `src/lib/game/ledger/` — `types.ts` (canonical record/source), `remote.ts` (Spacetime), `codec.ts` (compact intent payloads).
+- `src/lib/game/view/` — `match-view.ts` (main-thread lifecycle), `worker-host.ts` (fixed-tick view host).
+- `src/lib/game/worker/` — transport, protocol, mirror, worker entry.
+- `src/lib/game/simulation.ts` and `simulation/` — deterministic core.
+- `src/lib/game/structures/` — structure definitions and registry.
+- `src/lib/game/ai/` — genomes, Markov controllers, bot pool.
+- `src/lib/game/page/` — page state, controllers, selectors.
+- `src/lib/spacetime/` — generated bindings, room directory, room lobby, intent codec.
+- `spacetime/territory-room/` — one-room coordinator module.
+- `spacetime/territory-lobby/` — room directory module.
+- `docs/` — specification, architecture, generated reference, multiplayer schema.
 
 ## Definition of done
-
-For any meaningful change:
 
 - `pnpm check` passes.
 - `pnpm test` passes.
 - `pnpm build` passes for user-facing changes.
 - New gameplay behavior has a determinism or invariant test.
-- Renderer changes were checked in a WebGPU browser (no error overlay, no synchronous full-map upload regression).
-- `pnpm docs:check` passes; rule values live in generated [docs/REFERENCE.md](docs/REFERENCE.md), and only changed semantics need prose updates.
-- No generated output (`.svelte-kit/`, `build/`, `node_modules/`) edited directly.
-
-## Browser verification
-
-WebGPU is not available in jsdom. Verify visually and interactively:
-
-1. Start `pnpm dev`.
-2. Open a seeded URL such as `/?seed=1234` in current Chrome/Edge.
-3. Confirm the intro appears, WebGPU error modal is absent, and DEPLOY is enabled.
-4. Deploy, confirm the virtualized leaderboard and active-front count match the selected state count; scroll it to the last rank.
-5. Click a frontier and confirm territory growth with no floating last-action box.
-6. Pause with Space and confirm the tick freezes.
-7. Confirm there is no growth-layer switcher in the intro or HUD; all new fronts use organic growth.
-8. Confirm elevation colors and contours render, hovering shows the correct tier/base/total defense, and attacks divert into cheaper frontier cells instead of stalling on a high-defense strongpoint.
-9. Confirm State structure capital-star circles are drawn at capitals, aura circles are absent, minimap ringed dots track them, and the commander readout says ANCHORED.
-10. Hover an aura pixel and confirm the defense readout includes `AURA +20` and the total is raised accordingly over the 16 px radius.
-11. Deploy, confirm all seven CCG cards are free-floating at bottom center with no empty placeholders; move the pointer off the hand and confirm it sinks to a peeking strip, then re-enters to raise it. Press `1`–`7` and confirm that card enters placement mode; left-click builds it and right-click cancels with no browser context menu.
-12. Drag a card and confirm there is no ghost card at the cursor: a curved arrow runs from the raised card, and the landing exclusion circle is green for legal cells and red for blocked cells.
-13. Confirm buildable districts have subtly irregular extents and a sharp contrasting border, render with a type tint and per-district variation, and remain separable even when same-type. Begin card placement and confirm the player's existing districts of that type pulse with an amber highlight.
-14. Drop a new type inside a district and confirm rejection with no cost. Drop the same type inside its district and confirm it stacks (marker count and stronger effect); drop the same type outside all districts and confirm it creates another district.
-15. Drop into controlled territory; confirm supply is spent and the structure appears while the card stays in hand. Try a drop within 8 px of an existing structure and confirm it is rejected at no cost.
-16. Zoom in and out and confirm structure icons keep the same screen size (15/11 px State, 10 px buildable) rather than growing with zoom.
-17. Build a card, confirm it stays in the hand, and buy it again after supply recovers; confirm there is no Refresh control.
-18. Confirm the horizontal supply bar fills toward cap with current supply left and max right inline, sits just above the collapsed hand, is covered by raised cards, and overlays a red cost segment when hovering a valid frontier/upgrade/artillery click. Confirm the 1/5/10/25 upgrade-batch buttons appear above the bar, select atomically, and update the hover tooltip/cost preview. Confirm CANCEL FRONT refunds a proportional strength share.
-19. Build a Command Post and observe supply income rise by 1/s; build a War Academy and confirm supply cap rises by 80. Build Artillery only after creating 16 px of district clearance; confirm FIRE / `A` shows range rings, shells scatter widely, and a State structure is never destroyed by a hit.
-20. Right-click one of your structures and confirm the context menu opens with DEMOLISH STRUCTURE first; confirm it removes the structure on the next tick with no refund, is disabled for State/rival structures, and that right-clicking empty map closes the menu. Right-click rival territory and confirm REQUEST ALLIANCE appears; send it, confirm the pending state, wait for bot acceptance, verify allied attacks are blocked, then use BREAK ALLIANCE and confirm the 60-second cooldown. Click anywhere inside one of your buildable districts and confirm its structure gains the selected batch (1/5/10/25) without consuming a card. Hover it and confirm the cursor tooltip shows the total cost. Select a card, hold Shift, and click an invalid/blocked cell near valid ground: confirm the card searches up to 160 px for the closest new-structure cell outside every district (including tight one-pixel gaps), does not upgrade the district, and placement mode stays active for another click. Build two touching same-type districts and confirm their seams disappear and one combined-level icon shows their total; click one and confirm the lowest-level structure upgrades first. Hold Ctrl and confirm individual seams/icons return and the clicked structure is upgraded.
-21. Capture a structure (or fabricate a capture in a test) and confirm it disappears with its effects, the owner shows NO ANCHOR, districts recompute, and a war-feed event appears.
-22. Run ORGANIC for several seconds; confirm mutual fronts trade strength instead of interpenetrating, no isolated owner specks remain, and repeated clicks create separate attacks rather than upgrading one.
-23. Check the HUD perf readout: calls/s should be modest; heavy full-resync chunks are expected under saturation.
-24. Drag-pan for several seconds with ~100 fronts and confirm no periodic 10 Hz hitch. Pan an edge state to the center and confirm the camera no longer stops at the map edge.
-25. Test a narrow viewport and scroll the state-count-aware leaderboard to the bottom.
-26. Confirm rival supply text includes the affordable-front count, sits on a dark semi-transparent rounded plate, scales with state size but never exceeds the state's on-screen footprint, hides at far zoom, the human has no banner, and visible labels stay inside the viewport near edges.
-27. On the intro, change state count, map preset or custom width/height, bot difficulty, timer, and the 500-stack bot Command Post surge; click REBUILD MATCH and confirm the intro stats, HUD state count, atlas dimensions, leaderboard, countdown, and bot starting income reflect the new settings. Confirm oversized dimensions are rejected/normalized at the atlas limits. Reload and confirm the settings persisted. With the surge enabled confirm every AI capital has one 500-stack Command Post and the human starts without one.
-28. Build a Port by clicking near owned shoreline (including nearby water), confirm the preview snaps to the shore, and confirm it can be placed inside another district without upgrading that district. Click water or land near a distant non-friendly shore with a sea route, confirm the target snaps to the closest valid shore within 32 px, a boat sails along the sea, claims a beachhead, auto-builds a second Port, and starts an inland front. Confirm inland Port placement is rejected.
-29. Open `/evolution`: confirm the canvas fills the left area, `NEW EVOLUTION` and `CONTINUE EVOLUTION` are pinned at the top of the scrollable context menu, panels collapse, the spreadsheet is shown in the context menu, row and canvas selection stay linked, the selected genome's Markov graph renders, and the fitness-history chart plots best/average/selected fitness after each completed generation. Confirm the simulation runs in a worker: pan/zoom and toggle panels while a `1000×` match runs and the UI stays responsive. Confirm the HUD RATE reports measured ticks/s rather than the requested multiplier. Finish a short run, click CONTINUE EVOLUTION, confirm it extends from the final population, then verify CSV export/import and saved buckets appear in the main match difficulty path.
-30. Switch MODE to GAUNTLET, start a 64-bot run, and confirm the canvas seats 64 states. Finish a run and confirm the sheet shows LIFE, eliminated bots lose lives, zero-life genomes disappear, and the top surviving fitness bots recover one life up to the cap. Confirm runs continue indefinitely while the remaining target is above the survivor count, and that the run count/status advance. When seats are empty, use FILL EMPTY SEATS and confirm fresh random genomes enter with full lives. Confirm NEW is hidden during a run and STOP / STOP IMMEDIATE halt without deleting the survivor pool, and CONTINUE resumes a stopped run when at least two genomes remain; zero-life genomes disappear from the live roster. Reload between runs and confirm the restored gauntlet can continue.
-31. Reload `/evolution` after a completed generation and confirm the saved session is restored without auto-running and RESTORED is visible. Click CONTINUE EVOLUTION, confirm the next generation starts. Click DISCARD and confirm the checkpoint clears and the lab returns to idle. Verify starting a NEW EVOLUTION replaces the saved checkpoint.
-32. Open `/online` in two browser tabs. Create a room (8-seat cap), join it by code, start from the host, and confirm both clients see the same authoritative tick, different player ids/viewer HUDs, independent cards/supply, bots filling open seats, SSE ticks, district/owner changes, and reconnect after reload with the stored session. Confirm command rejection/synchronization does not desync the owner map, and check `/api/online/metrics` reports the crowd/capacity.
-
-## Style
-
-- TypeScript strict mode; explicit public types.
-- Svelte 5 runes, not legacy reactive syntax.
-- Prefer `#lib` subpath imports in app/components.
-- Use `pnpm format` before finishing (Prettier).
-- Comments explain invariants and why, not obvious code.
-- Avoid adding dependencies unless they remove meaningful complexity.
+- `pnpm docs:check` passes.
+- Generated output (`.svelte-kit/`, `build/`, `node_modules/`) is never edited directly.

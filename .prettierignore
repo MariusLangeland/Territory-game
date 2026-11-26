@@ -16,5 +16,5 @@ spacetime/*/spacetimedb/.spacetime/
 # Static assets
 /static/
 
-# Binary media
-docs/media/
+# Generated reference
+docs/REFERENCE.md

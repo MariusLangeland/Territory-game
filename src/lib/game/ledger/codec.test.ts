@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { decodeOnlineIntent, encodeOnlineIntent } from './intent-codec';
+﻿import { describe, expect, it } from 'vitest';
+import { decodeOnlineIntent, encodeOnlineIntent } from './codec';
 
 describe('Spacetime intent codec', () => {
 	it('round-trips accepted intent payloads', () => {

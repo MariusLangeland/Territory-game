@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { ATTACK_IDLE_TICKS, ELEVATION_LEVELS, PLAYER_COUNT } from './constants';
 import { createGrowthLayer } from './growth';
 import { TerritorySimulation, type AttackState } from './simulation';
@@ -70,7 +70,7 @@ function runDefenseCapture(elevationLevel: number): number {
 		seeds.push(target);
 	}
 
-	const frontier = createGrowthLayer('circular', {
+	const frontier = createGrowthLayer('organic', {
 		width,
 		height: sim.height,
 		owners: sim.owners,
@@ -88,7 +88,7 @@ function runDefenseCapture(elevationLevel: number): number {
 		targetY: rowY,
 		anchorX: startX + 10,
 		anchorY: rowY,
-		growthMode: 'circular',
+		growthMode: 'organic',
 		frontier,
 		createdAtTick: sim.tick,
 		lifetimeTicks: 0,
@@ -234,10 +234,10 @@ describe('fronts and combat', () => {
 		expect(initialAttacks.length).toBeGreaterThan(0);
 		expect(initialAttacks.every((attack) => attack.growthMode === 'organic')).toBe(true);
 
-		sim.setGrowthMode('smooth');
+		sim.setGrowthMode('organic');
 		expect(sim.getSnapshot().growthMode).toBe('organic');
 		sim.step();
-		expect(sim.getSnapshot().growthMode).toBe('smooth');
+		expect(sim.getSnapshot().growthMode).toBe('organic');
 
 		const retained = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
 		expect(retained.every((attack) => attack.growthMode === 'organic')).toBe(true);
@@ -248,7 +248,7 @@ describe('fronts and combat', () => {
 		expect(sim.enqueueAttack(1, nextTarget.x, nextTarget.y).ok).toBe(true);
 		sim.step();
 		const humanAttacks = sim.getSnapshot().attacks.filter((attack) => attack.attackerId === 1);
-		expect(humanAttacks.some((attack) => attack.growthMode === 'smooth')).toBe(true);
+		expect(humanAttacks.some((attack) => attack.growthMode === 'organic')).toBe(true);
 
 		sim.setGrowthMode('organic');
 		sim.step();
@@ -440,7 +440,7 @@ describe('fronts and combat', () => {
 		};
 		internals.auraDefense[index] = 100;
 
-		const frontier = createGrowthLayer('circular', {
+		const frontier = createGrowthLayer('organic', {
 			width: sim.width,
 			height: sim.height,
 			owners: sim.owners,
@@ -458,7 +458,7 @@ describe('fronts and combat', () => {
 			targetY: target.y,
 			anchorX: target.x,
 			anchorY: target.y,
-			growthMode: 'circular',
+			growthMode: 'organic',
 			frontier,
 			createdAtTick: sim.tick,
 			lifetimeTicks: 0,
@@ -516,8 +516,8 @@ describe('fronts and combat', () => {
 			targetY,
 			anchorX: targetX,
 			anchorY: targetY,
-			growthMode: 'circular' as const,
-			frontier: createGrowthLayer('circular', {
+			growthMode: 'organic' as const,
+			frontier: createGrowthLayer('organic', {
 				width: sim.width,
 				height: sim.height,
 				owners: sim.owners,
@@ -621,7 +621,7 @@ describe('fronts and combat', () => {
 
 		const targetX = isolatedIndex % sim.width;
 		const targetY = (isolatedIndex - targetX) / sim.width;
-		const frontier = createGrowthLayer('circular', {
+		const frontier = createGrowthLayer('organic', {
 			width: sim.width,
 			height: sim.height,
 			owners: sim.owners,
@@ -639,7 +639,7 @@ describe('fronts and combat', () => {
 			targetY,
 			anchorX: targetX,
 			anchorY: targetY,
-			growthMode: 'circular',
+			growthMode: 'organic',
 			frontier,
 			createdAtTick: sim.tick,
 			lifetimeTicks: 0,

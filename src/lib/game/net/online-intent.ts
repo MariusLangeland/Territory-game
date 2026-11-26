@@ -7,11 +7,7 @@ export interface OnlineIntentApplication {
 	message: string;
 }
 
-/**
- * Apply one accepted online intent to a simulation. Shared by the authoritative
- * room and the deterministic ledger replayer so both paths use exactly the same
- * command mapping.
- */
+/** Apply one accepted ledger intent to a simulation. */
 export function applyOnlineIntent(
 	sim: TerritorySimulation,
 	playerId: number,

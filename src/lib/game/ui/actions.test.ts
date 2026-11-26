@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import type { GameSession } from '../session/game-session';
+﻿import { describe, expect, it } from 'vitest';
+import type { MatchView } from '../view/match-view';
 import type { GameSnapshot } from '../simulation';
 import type { WorkerLocalSimulation } from '../worker/local-simulation';
 import { createActions, type ActionContext } from './actions';
@@ -76,7 +76,7 @@ function makeContext(overrides: Partial<ActionContext> = {}) {
 				if (type === 'naval') return { ok: true, message: 'Naval landing ordered.' };
 				return { ok: true, message: 'ok' };
 			}
-		} as unknown as GameSession,
+		} as unknown as MatchView,
 		...overrides
 	};
 	return { context, calls, toasts, built };

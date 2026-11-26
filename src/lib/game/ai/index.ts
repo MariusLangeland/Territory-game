@@ -16,36 +16,6 @@ export {
 	type BotModules
 } from './genome';
 export {
-	BOT_BUCKETS,
-	DEFAULT_EVOLUTION_CONFIG,
-	GAUNTLET_SEATS,
-	DEFAULT_FITNESS_WEIGHTS,
-	FITNESS_WEIGHT_KEYS,
-	FITNESS_WEIGHT_LABELS,
-	EvolutionSandbox,
-	bucketRows,
-	createInitialPopulation,
-	genomeFitness,
-	normalizeEvolutionConfig,
-	normalizeFitnessWeights,
-	runEvolution,
-	type BotBucket,
-	type EvolutionConfig,
-	type EvolutionMode,
-	type EvolutionReport,
-	type EvolutionSessionSnapshot,
-	type FitnessWeights,
-	type GenerationResult,
-	type GenomePerformance
-} from './evolution';
-export {
-	evolutionCsvHeader,
-	parseCsvRows,
-	parseEvolutionCsv,
-	serializeEvolutionCsv,
-	serializeGenomeRow
-} from './evolution-csv';
-export {
 	cloneMarkov,
 	createRandomMarkov,
 	crossoverMarkov,
@@ -69,13 +39,10 @@ export {
 	type BotOptionId
 } from './options';
 export {
-	bucketCounts,
 	bucketForDifficulty,
-	bucketsFromReport,
-	clearEvolutionBuckets,
 	difficultyGenomes,
 	emptyBuckets,
 	loadEvolutionBuckets,
-	saveEvolutionBuckets,
+	type BotBucket,
 	type EvolutionBuckets
 } from './buckets';

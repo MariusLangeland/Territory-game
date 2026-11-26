@@ -1,31 +1,27 @@
 /**
- * Pluggable attack-frontier selection.
+ * Attack-frontier selection. Player matches use locked organic growth.
  *
  * A growth layer only chooses which candidate pixel to process next. The
- * simulation remains responsible for ownership, border-connectivity, capture
+ * simulation remains responsible for ownership, border connectivity, capture
  * budget, attack lifetime, and all visible outcomes.
  */
 
-export const GROWTH_MODES = ['circular', 'smooth', 'organic'] as const;
+export const GROWTH_MODES = ['organic'] as const;
 
 export type GrowthMode = (typeof GROWTH_MODES)[number];
 
 export const DEFAULT_GROWTH_MODE: GrowthMode = 'organic';
 
 export const GROWTH_LABELS: Record<GrowthMode, string> = {
-	circular: 'CIRCULAR',
-	smooth: 'SMOOTH',
 	organic: 'ORGANIC'
 };
 
 export const GROWTH_DESCRIPTIONS: Record<GrowthMode, string> = {
-	circular: 'Euclidean-priority frontier; grows as a digital disc.',
-	smooth: 'Radial-band frontier that fills concavities and suppresses spikes.',
 	organic: 'Deterministic random frontier selection; irregular, organic lobes.'
 };
 
 export function isGrowthMode(value: unknown): value is GrowthMode {
-	return typeof value === 'string' && (GROWTH_MODES as readonly string[]).includes(value);
+	return value === 'organic';
 }
 
 export interface GrowthContext {
@@ -42,10 +38,7 @@ export interface GrowthContext {
 
 export type MixFn = (value: number) => void;
 
-export type GrowthLayerState =
-	| { mode: 'organic'; entries: number[]; rngState: number }
-	| { mode: 'circular'; heap: number[] }
-	| { mode: 'smooth'; bands: Array<[number, number[]]>; minBand: number; count: number };
+export type GrowthLayerState = { mode: 'organic'; entries: number[]; rngState: number };
 
 export interface GrowthLayer {
 	readonly mode: GrowthMode;
@@ -54,7 +47,7 @@ export interface GrowthLayer {
 	pop(): number | undefined;
 	/** Mix pending frontier state into an on-demand checksum. */
 	mixState(mix: MixFn): void;
-	/** Serializable pending frontier state for replay checkpoints. */
+	/** Serializable pending frontier state. */
 	snapshot(): GrowthLayerState;
 	restore(state: GrowthLayerState): void;
 }

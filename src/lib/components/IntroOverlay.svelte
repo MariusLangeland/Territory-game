@@ -101,7 +101,7 @@
 			<p class="intro-footnote">
 				Frontage prototype: {stateCount - 1} AI states fight for 70% of the land while you build with
 				a single supply economy. Fronts cost supply, trade strength on contact, and can be cancelled.
-				Share a seed to replay the same test.
+				Share a seed to play the same world.
 			</p>
 		</div>
 

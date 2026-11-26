@@ -23,18 +23,9 @@ const rules: BoundaryRule[] = [
 		name: 'ui-is-transport-agnostic',
 		roots: ['lib/components'],
 		allow: (specifier) =>
-			!/(worker\/(local-host|local-simulation|local-protocol)|local-simulation)/.test(specifier),
+			!/(worker\/(local-simulation|local-protocol)|local-simulation)/.test(specifier),
 		message:
 			'UI components must consume SimulationView/props, not worker transport or host internals.'
-	},
-	{
-		name: 'server-does-not-import-ui-routes',
-		roots: ['lib/server', 'routes/api'],
-		allow: (specifier) =>
-			!specifier.startsWith('$app/') &&
-			!specifier.includes('/routes/') &&
-			!specifier.startsWith('src/routes'),
-		message: 'Server modules must not import SvelteKit route or client-navigation modules.'
 	}
 ];
 

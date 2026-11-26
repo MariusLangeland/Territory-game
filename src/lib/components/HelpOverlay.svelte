@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { TICK_RATE } from '#lib/game/constants';
 
 	interface Props {
@@ -6,18 +6,8 @@
 		mapWidth: number;
 		mapHeight: number;
 		onClose: () => void;
-		onExportLedger: () => void;
-		onUploadLedger: (file: File) => void;
 	}
-	let { stateCount, mapWidth, mapHeight, onClose, onExportLedger, onUploadLedger }: Props =
-		$props();
-
-	function handleLedgerFile(event: Event): void {
-		const input = event.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) onUploadLedger(file);
-		input.value = '';
-	}
+	let { stateCount, mapWidth, mapHeight, onClose }: Props = $props();
 </script>
 
 <div class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
@@ -33,7 +23,7 @@
 				onclick={onClose}
 				aria-label="Close field manual"
 			>
-				×
+				Ã—
 			</button>
 		</header>
 
@@ -48,7 +38,7 @@
 					Fortifications add district defense. Jammers project a global aura that subtracts one
 					effective Barracks level from every enemy attacking you, without raising pixel defense.
 					Cards are permanent. Click a district, or drop its matching card inside it, to upgrade;
-					cost is the card price plus 15 × current level. The 1 / 5 / 10 / 25 buttons above the
+					cost is the card price plus 15 Ã— current level. The 1 / 5 / 10 / 25 buttons above the
 					supply bar choose an atomic upgrade batch, and the cursor tooltip shows the total cost.
 					While placing a card, hold Shift to build a new structure on the closest valid
 					outside-district cell within 160 px; placement stays armed for repeated builds. Naval
@@ -62,7 +52,7 @@
 				<p>
 					Click neutral ground or a rival's border near your territory to launch a front. A launch
 					costs 30 supply plus 15 per effective Barracks level. Barracks add attack strength
-					linearly, while speed and defense piercing grow by floor(log2(levels + 1)) — infinite
+					linearly, while speed and defense piercing grow by floor(log2(levels + 1)) â€” infinite
 					scaling with diminishing returns. Repeated clicks create separate fronts. When mutual
 					fronts touch, both sides lose strength simultaneously; a front at zero dies and the
 					survivor holds the contact line. Use CANCEL LAST or press X to refund the remaining
@@ -99,16 +89,9 @@
 
 		<div class="manual-footer">
 			<span><kbd>SPACE</kbd> PAUSE / RESUME</span>
-			<span><kbd>1</kbd>–<kbd>7</kbd> PLACE CARD · LMB BUILD · RMB CANCEL</span>
-			<span><kbd>+</kbd> <kbd>−</kbd> ZOOM</span>
+			<span><kbd>1</kbd>â€“<kbd>7</kbd> PLACE CARD Â· LMB BUILD Â· RMB CANCEL</span>
+			<span><kbd>+</kbd> <kbd>âˆ’</kbd> ZOOM</span>
 			<span><kbd>H</kbd> FIELD MANUAL</span>
-			<button class="ledger-download" type="button" onclick={onExportLedger}>
-				DOWNLOAD LEDGER
-			</button>
-			<label class="ledger-download">
-				REPLAY LEDGER
-				<input type="file" accept=".json,application/json" onchange={handleLedgerFile} />
-			</label>
 			<span>WEBGPU / DETERMINISTIC CORE</span>
 		</div>
 	</article>
@@ -215,25 +198,6 @@
 
 	.manual-footer span:last-child {
 		margin-left: auto;
-	}
-
-	.ledger-download {
-		padding: 2px 7px;
-		border: 1px solid var(--line-soft);
-		background: var(--bg-raised);
-		color: var(--ink-dim);
-		font: inherit;
-		letter-spacing: inherit;
-		cursor: pointer;
-	}
-
-	.ledger-download:hover {
-		border-color: var(--signal-55);
-		color: var(--signal-strong);
-	}
-
-	.ledger-download input {
-		display: none;
 	}
 
 	@media (max-width: 900px) {

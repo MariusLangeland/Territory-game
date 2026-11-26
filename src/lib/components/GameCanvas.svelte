@@ -27,7 +27,7 @@
 		/** Spectator fast-forward; normal gameplay keeps 1× and the 4-step clamp. */
 		speedMultiplier?: number;
 		maxStepsPerFrame?: number;
-		/** Evolution spectators start with the whole map visible. */
+		/** Start with the whole map visible. */
 		cameraFocus?: 'human' | 'map';
 		onTick?: (snapshot: GameSnapshot, events: SimEvent[]) => void;
 		onHover?: (hover: HoverInfo | null) => void;

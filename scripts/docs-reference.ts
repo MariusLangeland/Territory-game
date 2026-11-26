@@ -41,7 +41,6 @@ import {
 	NAVAL_SPEED_PX_PER_SECOND,
 	OCCUPIED_DEFENSE_BONUS,
 	PLAYER_COUNT,
-	PROTOCOL_VERSION,
 	STARTING_GOLD,
 	SUPPLY_CAP_BASE,
 	SUPPLY_CAP_TERRITORY_DIVISOR,
@@ -61,7 +60,6 @@ import {
 	STATE_COUNT_OPTIONS,
 	TIMER_OPTIONS
 } from '../src/lib/game/match-config';
-import { NET_PROTOCOL_VERSION } from '../src/lib/game/net/protocol';
 import {
 	STRUCTURE_DEFINITIONS,
 	STRUCTURE_TYPES,
@@ -179,10 +177,8 @@ function renderVersion(context: RenderContext): string {
 
 function renderConstants(): string {
 	const lines: string[] = [
-		'Values are read from `src/lib/game/constants.ts` and `src/lib/game/net/protocol.ts`.',
+		'Values are read from `src/lib/game/constants.ts` and structure definitions.',
 		'',
-		constantLine('PROTOCOL_VERSION', 'simulation protocol revision', PROTOCOL_VERSION),
-		constantLine('NET_PROTOCOL_VERSION', 'wire protocol revision', NET_PROTOCOL_VERSION),
 		constantLine('MAP_VERSION', 'map generation revision', MAP_VERSION),
 		constantLine('MAP_WIDTH', 'map width in pixels', MAP_WIDTH),
 		constantLine('MAP_HEIGHT', 'map height in pixels', MAP_HEIGHT),

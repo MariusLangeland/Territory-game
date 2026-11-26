@@ -2,8 +2,6 @@ import type { BotGenome } from '../ai/genome';
 import type { StartPoint } from '../map';
 import type { BotDifficulty, GameSnapshot, MergedDistrictGroup, StepResult } from '../simulation';
 import type { GrowthMode } from '../growth';
-import type { LedgerBlock } from '../ledger/agent';
-import type { MatchLedger } from '../net/match-ledger';
 import type { OnlineIntent } from '../net/online-protocol';
 
 export interface LocalWorkerInitConfig {
@@ -19,10 +17,8 @@ export interface LocalWorkerInitConfig {
 	humanPlayerIds?: readonly number[];
 	viewerPlayerId?: number;
 	playerNames?: readonly string[];
-	/** When true, local commands are rejected and only Spacetime rows apply. */
+	/** When true, local commands are rejected and only accepted intents apply. */
 	authoritativeInput?: boolean;
-	/** Present for a read-only ledger replay match. */
-	replay?: MatchLedger;
 }
 
 export interface LocalWorkerInit {
@@ -49,8 +45,7 @@ export type LocalWorkerCommandType =
 	| 'demolish'
 	| 'cancel-attack'
 	| 'alliance-request'
-	| 'alliance-break'
-	| 'ledger';
+	| 'alliance-break';
 
 export interface LocalWorkerCommand {
 	type: 'command';
@@ -80,34 +75,13 @@ export interface LocalWorkerApplyIntent {
 	intent: OnlineIntent;
 }
 
-export interface LocalWorkerReplayControl {
-	type: 'replay-control';
-	action: 'play' | 'pause' | 'seek' | 'step' | 'speed';
-	tick?: number;
-	delta?: number;
-	speed?: number;
-}
-
-export interface LocalWorkerReplayStatus {
-	type: 'replay-status';
-	tick: number;
-	maxTick: number;
-	playing: boolean;
-	speed: number;
-	complete: boolean;
-}
-
 export interface LocalWorkerInitMessage {
 	type: 'init';
 	config: LocalWorkerInitConfig;
 }
 
 export type LocalWorkerInbound =
-	| LocalWorkerCommand
-	| LocalWorkerPause
-	| LocalWorkerApplyIntent
-	| LocalWorkerReplayControl
-	| LocalWorkerInitMessage;
+	LocalWorkerCommand | LocalWorkerPause | LocalWorkerApplyIntent | LocalWorkerInitMessage;
 
 export interface LocalWorkerVisual {
 	type: 'visual';
@@ -122,10 +96,6 @@ export interface LocalWorkerVisual {
 	districtColorCodes: Uint8Array | null;
 	events: StepResult['events'];
 	mergedDistricts: MergedDistrictGroup[];
-	/** Sealed block for this tick when one or more transactions were accepted. */
-	ledgerBlock: LedgerBlock | null;
-	/** True on the final visual of a ledger replay. */
-	replayComplete?: boolean;
 }
 
 export interface LocalWorkerCommandResult {
@@ -135,10 +105,6 @@ export interface LocalWorkerCommandResult {
 	reason?: string;
 	message: string;
 	tick: number;
-	/** Open block containing the accepted transaction, if any. */
-	ledgerBlock: LedgerBlock | null;
-	/** Pretty plain-text ledger/block export for the debug download. */
-	ledgerText?: string;
 }
 
 export interface LocalWorkerTelemetry {
@@ -155,5 +121,4 @@ export type LocalWorkerOutbound =
 	| LocalWorkerVisual
 	| LocalWorkerCommandResult
 	| LocalWorkerTelemetry
-	| LocalWorkerPaused
-	| LocalWorkerReplayStatus;
+	| LocalWorkerPaused;
