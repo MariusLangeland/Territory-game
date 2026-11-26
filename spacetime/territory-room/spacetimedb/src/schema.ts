@@ -39,7 +39,9 @@ export const seats = table(
 		isHost: t.bool(),
 		connected: t.bool(),
 		ready: t.bool(),
-		joinedAt: t.timestamp()
+		joinedAt: t.timestamp(),
+		// Highest accepted client sequence for idempotency/duplicate rejection.
+		lastClientSequence: t.u64().default(0n)
 	}
 );
 

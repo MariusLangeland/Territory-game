@@ -1,4 +1,3 @@
-import { HUMAN_PLAYER_ID } from '../constants';
 import type { GameSession } from '../session/game-session';
 import type { PublicStructure } from '../structures';
 import type { GameSnapshot } from '../simulation';
@@ -55,7 +54,7 @@ export function createActions(context: ActionContext) {
 			if (barrage.ok) context.setArtilleryTargeting(false);
 			return;
 		}
-		if (sim.getOwner(Math.floor(x), Math.floor(y)) === HUMAN_PLAYER_ID) {
+		if (sim.getOwner(Math.floor(x), Math.floor(y)) === (snapshot.humanId || 1)) {
 			if (context.shiftHeld) {
 				context.showToast('Select a card to shift-build at the nearest valid site.', 'warn');
 				return;

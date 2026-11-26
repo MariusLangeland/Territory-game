@@ -385,6 +385,10 @@ export interface SimulationOptions {
 	allPlayersBots?: boolean;
 	/** Player ids controlled by humans. Defaults to [1] unless allPlayersBots is set. */
 	humanPlayerIds?: readonly number[];
+	/** Seat whose viewer-specific snapshot/economy is built. Defaults to the first human id. */
+	viewerPlayerId?: number;
+	/** Optional display names by player id-1; room lobby seat names override defaults. */
+	playerNames?: readonly string[];
 	/** Optional team id per player (1-indexed array); 0 means free-for-all. */
 	teamIds?: readonly number[];
 	/** Optional starting Command Post stacks granted to every AI seat. */

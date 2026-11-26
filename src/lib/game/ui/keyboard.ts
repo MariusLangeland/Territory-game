@@ -1,4 +1,3 @@
-import { HUMAN_PLAYER_ID } from '../constants';
 import type { CameraView } from '../render/camera-bridge';
 import type { WorkerLocalSimulation } from '../worker/local-simulation';
 import type { StructureContextMenu } from './structure-menu';
@@ -49,7 +48,7 @@ export function createKeyboardInput(context: KeyboardContext) {
 		const sim = context.sim;
 		if (!sim) return null;
 		if (context.keyboardCursor) return context.keyboardCursor;
-		const start = sim.map.starts[HUMAN_PLAYER_ID - 1];
+		const start = sim.map.starts[sim.humanPlayerId - 1];
 		const cursor = start ? { x: start.x, y: start.y } : null;
 		context.setKeyboardCursor(cursor);
 		return cursor;

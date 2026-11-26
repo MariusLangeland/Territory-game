@@ -78,4 +78,17 @@ describe('snapshots and seats', () => {
 		expect(sim.humanPlayerIds).toEqual([1]);
 		expect(sim.getSnapshot().humanId).toBe(1);
 	});
+
+	it('uses the configured viewer seat for default snapshots', () => {
+		const sim = new TerritorySimulation({
+			seed: 1234,
+			playerCount: 4,
+			humanPlayerIds: [1, 2],
+			viewerPlayerId: 2
+		});
+		const snapshot = sim.getSnapshot();
+		expect(snapshot.humanId).toBe(2);
+		expect(snapshot.players[1].isBot).toBe(false);
+		expect(snapshot.gold).toBe(snapshot.players[1].supply);
+	});
 });

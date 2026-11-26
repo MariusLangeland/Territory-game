@@ -5,6 +5,20 @@ import { decodeOnlineIntent, encodeOnlineIntent } from './intent-codec';
 import type { RoomDefinition } from './room-definition';
 import { SPACETIMEDB_URI } from './config';
 
+export interface LobbySeat {
+	playerId: number;
+	name: string;
+	isHost: boolean;
+	connected: boolean;
+	ready: boolean;
+}
+
+export interface LobbySnapshot {
+	status: string;
+	participationLocked: boolean;
+	seats: LobbySeat[];
+}
+
 export interface AcceptedTransaction {
 	rowIndex: bigint;
 	tick: bigint;
@@ -12,17 +26,22 @@ export interface AcceptedTransaction {
 	intent: OnlineIntent;
 }
 
-export interface RoomSession {
+export interface RoomLobbySession {
 	readonly databaseName: string;
 	readonly playerId: number;
+	readonly isHost: boolean;
 	disconnect: () => void;
+	setReady: (ready: boolean) => Promise<void>;
+	startMatch: () => Promise<void>;
 	submitIntent: (intent: OnlineIntent) => Promise<{ ok: boolean; message: string }>;
 }
 
-export interface RoomSessionOptions {
+export interface RoomLobbyOptions {
 	room: RoomDefinition;
 	playerName?: string;
 	timeoutMs?: number;
+	onLobby?: (snapshot: LobbySnapshot) => void;
+	onFirstTick?: () => void;
 	onTransaction?: (transaction: AcceptedTransaction) => void;
 	onAvailability?: (available: boolean, message?: string) => void;
 }
@@ -50,36 +69,34 @@ function saveToken(databaseName: string, token: string): void {
 	}
 }
 
-function roomCodeFor(room: RoomDefinition): string {
-	return room.databaseName;
-}
-
 /**
- * Joins the selected room database and makes this client the host when the
- * database has no room row yet. The deterministic match still runs locally;
- * this connection owns the room's seat/presence and match lifecycle.
+ * Connects to a room database, creates the room when empty, or joins it while it
+ * is still waiting. This does not start the match; the host starts it from the
+ * lobby after seats are ready.
  */
-export function connectRoomSession({
+export function connectRoomLobby({
 	room,
 	playerName = HOST_NAME,
 	timeoutMs = 12_000,
+	onLobby,
+	onFirstTick,
 	onTransaction,
 	onAvailability
-}: RoomSessionOptions): Promise<RoomSession> {
+}: RoomLobbyOptions): Promise<RoomLobbySession> {
 	const databaseName = room.databaseName;
 	return new Promise((resolve, reject) => {
 		let settled = false;
+		let joined = false;
+		let closed = false;
 		let identity: Identity | null = null;
 		let connection: DbConnection | null = null;
+		let subscription: SubscriptionHandle | null = null;
 		let playerId = 1;
+		let isHost = false;
 		let clientSequence = 0n;
 		let lastRowIndex = 0n;
-		let closed = false;
 		let availabilityTimer: ReturnType<typeof setInterval> | null = null;
-		let resolveFirstTick!: () => void;
-		const firstTick = new Promise<void>((resolve) => {
-			resolveFirstTick = resolve;
-		});
+
 		const timeout = setTimeout(() => {
 			if (settled) return;
 			settled = true;
@@ -95,44 +112,69 @@ export function connectRoomSession({
 			reject(error instanceof Error ? error : new Error(String(error)));
 		};
 
-		const succeed = (): void => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			availabilityTimer = setInterval(() => {
-				if (closed) return;
-				const available = connection?.isActive === true;
-				onAvailability?.(available, available ? undefined : 'Room connection lost.');
-			}, 1000);
-			resolve({
-				databaseName,
-				playerId,
-				disconnect: () => {
-					closed = true;
-					if (availabilityTimer) clearInterval(availabilityTimer);
-					availabilityTimer = null;
-					subscription?.unsubscribe();
-					connection?.disconnect();
-					connection = null;
-				},
-				submitIntent: async (intent) => {
-					const active = connection;
-					if (!active) return { ok: false, message: 'Room connection is not ready.' };
-					try {
-						await active.reducers.submitTransaction({
-							clientSequence: ++clientSequence,
-							type: intent.type,
-							data: encodeOnlineIntent(intent)
-						});
-						return { ok: true, message: 'Transaction submitted.' };
-					} catch (error) {
-						const message =
-							error instanceof Error ? error.message : 'Transaction submission failed.';
-						onAvailability?.(false, message);
-						return { ok: false, message };
-					}
-				}
+		function emitLobby(): void {
+			if (!connection || closed) return;
+			const roomRow = [...connection.db.rooms.iter()][0];
+			if (!roomRow) return;
+			isHost = identity !== null && roomRow.host.isEqual(identity);
+			onLobby?.({
+				status: roomRow.status,
+				participationLocked: roomRow.participationLocked,
+				seats: [...connection.db.seats.iter()]
+					.map((seat) => ({
+						playerId: seat.playerId,
+						name: seat.name,
+						isHost: seat.isHost,
+						connected: seat.connected,
+						ready: seat.ready
+					}))
+					.sort((left, right) => left.playerId - right.playerId)
 			});
+		}
+
+		const session: RoomLobbySession = {
+			databaseName,
+			get playerId() {
+				return playerId;
+			},
+			get isHost() {
+				return isHost;
+			},
+			disconnect: () => {
+				closed = true;
+				if (availabilityTimer) clearInterval(availabilityTimer);
+				availabilityTimer = null;
+				subscription?.unsubscribe();
+				connection?.disconnect();
+				connection = null;
+			},
+			setReady: async (ready) => {
+				const active = connection;
+				if (!active) throw new Error('Room connection is not ready.');
+				await active.reducers.setReady({ ready });
+				emitLobby();
+			},
+			startMatch: async () => {
+				const active = connection;
+				if (!active) throw new Error('Room connection is not ready.');
+				await active.reducers.startMatch({});
+			},
+			submitIntent: async (intent) => {
+				const active = connection;
+				if (!active) return { ok: false, message: 'Room connection is not ready.' };
+				try {
+					await active.reducers.submitTransaction({
+						clientSequence: ++clientSequence,
+						type: intent.type,
+						data: encodeOnlineIntent(intent)
+					});
+					return { ok: true, message: 'Transaction submitted.' };
+				} catch (error) {
+					const message = error instanceof Error ? error.message : 'Transaction submission failed.';
+					onAvailability?.(false, message);
+					return { ok: false, message };
+				}
+			}
 		};
 
 		const builder = DbConnection.builder()
@@ -173,10 +215,8 @@ export function connectRoomSession({
 			.build();
 		connection = next;
 
-		let subscription: SubscriptionHandle | null = null;
-
 		next.db.firstTickEvent.onInsert((_ctx, event) => {
-			if (event.tick === 0n) resolveFirstTick();
+			if (event.tick === 0n) onFirstTick?.();
 		});
 		next.db.ledgerTransactions.onInsert((_ctx, row) => {
 			if (row.type === 'heartbeat' || row.rowIndex <= lastRowIndex) return;
@@ -190,6 +230,10 @@ export function connectRoomSession({
 				intent
 			});
 		});
+		next.db.seats.onInsert(() => emitLobby());
+		next.db.seats.onUpdate(() => emitLobby());
+		next.db.seats.onDelete(() => emitLobby());
+		next.db.rooms.onUpdate(() => emitLobby());
 
 		subscription = next
 			.subscriptionBuilder()
@@ -206,12 +250,12 @@ export function connectRoomSession({
 		}
 
 		async function prepareRoom(): Promise<void> {
-			if (settled) return;
+			if (joined) return;
 			try {
 				const existing = [...next.db.rooms.iter()][0];
 				if (!existing) {
 					await next.reducers.createRoom({
-						roomCode: roomCodeFor(room),
+						roomCode: room.databaseName,
 						hostName: playerName,
 						seed: room.seed,
 						width: room.settings.mapWidth,
@@ -222,32 +266,26 @@ export function connectRoomSession({
 						botCommandPostStacks: room.settings.botCommandPostStacks,
 						version: ROOM_VERSION
 					});
-					await next.reducers.setReady({ ready: true });
-					refreshPlayerId();
-					await next.reducers.startMatch({});
-					await firstTick;
-					succeed();
-					return;
-				}
-
-				if (existing.participationLocked || existing.status !== 'waiting') {
-					throw new Error('Room participation is locked; late joining is disabled.');
-				}
-
-				if (existing.status === 'waiting') {
+				} else {
+					if (existing.participationLocked || existing.status !== 'waiting') {
+						throw new Error('Room participation is locked; late joining is disabled.');
+					}
 					const seated = [...next.db.seats.iter()].find(
-						(seat) => identity !== null && seat.identity.isEqual(identity)
+						(candidate) => identity !== null && candidate.identity.isEqual(identity)
 					);
 					if (!seated) await next.reducers.joinRoom({ name: playerName });
-					await next.reducers.setReady({ ready: true });
-					refreshPlayerId();
-					if (identity !== null && existing.host.isEqual(identity)) {
-						await next.reducers.startMatch({});
-						await firstTick;
-					}
-					succeed();
-					return;
 				}
+				refreshPlayerId();
+				joined = true;
+				settled = true;
+				clearTimeout(timeout);
+				availabilityTimer = setInterval(() => {
+					if (closed) return;
+					const available = connection?.isActive === true;
+					onAvailability?.(available, available ? undefined : 'Room connection lost.');
+				}, 1000);
+				emitLobby();
+				resolve(session);
 			} catch (error) {
 				fail(error);
 			}

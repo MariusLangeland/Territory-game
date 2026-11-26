@@ -53,6 +53,7 @@ describe('room coordinator', () => {
 		createRoom(test);
 		test.withReducerTx(GUEST_AUTH, (ctx) => {
 			moduleExports.joinRoom(ctx, { name: 'Bob' });
+			moduleExports.setReady(ctx, { ready: true });
 		});
 		test.withReducerTx(HOST_AUTH, (ctx) => {
 			moduleExports.setReady(ctx, { ready: true });
@@ -67,7 +68,7 @@ describe('room coordinator', () => {
 			moduleExports.submitTransaction(ctx, {
 				clientSequence: 1n,
 				type: 'build',
-				data: [1, 2, 3]
+				data: [1, 2, 3, 4, 5, 0]
 			});
 		});
 		const rows = [...test.db.ledgerTransactions.iter()];
@@ -81,6 +82,7 @@ describe('room coordinator', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.setReady(ctx, { ready: true });
 			moduleExports.startMatch(ctx, {});
 		});
 		test.clock.set(new Timestamp(500_000n));
@@ -94,10 +96,48 @@ describe('room coordinator', () => {
 		expect([...test.db.ledgerTransactions.iter()][0].tick).toBe(5n);
 	});
 
+	it('rejects unready starts and invalid or replayed transactions', () => {
+		const test = createTest();
+		createRoom(test);
+		expect(() =>
+			test.withReducerTx(HOST_AUTH, (ctx) => {
+				moduleExports.startMatch(ctx, {});
+			})
+		).toThrow(/ready/);
+		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.setReady(ctx, { ready: true });
+			moduleExports.startMatch(ctx, {});
+			moduleExports.submitTransaction(ctx, {
+				clientSequence: 1n,
+				type: 'attack',
+				data: [1, 2, 3, 4]
+			});
+		});
+		expect(() =>
+			test.withReducerTx(HOST_AUTH, (ctx) => {
+				moduleExports.submitTransaction(ctx, {
+					clientSequence: 1n,
+					type: 'attack',
+					data: [1, 2, 3, 4]
+				});
+			})
+		).toThrow(/sequence/);
+		expect(() =>
+			test.withReducerTx(HOST_AUTH, (ctx) => {
+				moduleExports.submitTransaction(ctx, {
+					clientSequence: 2n,
+					type: 'build',
+					data: [1, 2, 3, 4]
+				});
+			})
+		).toThrow(/payload/);
+	});
+
 	it('rejects late-comers after the first-tick lock', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.setReady(ctx, { ready: true });
 			moduleExports.startMatch(ctx, {});
 		});
 		expect(() =>
@@ -112,6 +152,7 @@ describe('room coordinator', () => {
 		const test = createTest();
 		createRoom(test);
 		test.withReducerTx(HOST_AUTH, (ctx) => {
+			moduleExports.setReady(ctx, { ready: true });
 			moduleExports.startMatch(ctx, {});
 		});
 		test.clock.set(new Timestamp(1_000_000n));

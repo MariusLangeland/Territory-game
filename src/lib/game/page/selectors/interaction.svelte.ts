@@ -1,4 +1,3 @@
-import { HUMAN_PLAYER_ID } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import { STRUCTURE_ACCENTS } from '#lib/game/structures';
@@ -75,7 +74,7 @@ export function createInteractionSelectors(deps: InteractionSelectorsDeps) {
 			? 'Allied territory; Enter is disabled'
 			: deps.artilleryTargeting
 				? 'Enter fires artillery'
-				: ownerId === HUMAN_PLAYER_ID && sim.getDistrictStructureId(x, y)
+				: ownerId === snapshot.humanId && sim.getDistrictStructureId(x, y)
 					? 'Enter upgrades'
 					: 'Enter attacks';
 		return `Cursor ${x}, ${y}. ${owner ? owner.name : 'Unclaimed land'}. Defense ${defense}. ${action}.`;

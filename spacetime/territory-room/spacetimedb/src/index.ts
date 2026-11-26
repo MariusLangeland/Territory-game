@@ -10,6 +10,28 @@ const HEARTBEAT_TYPE = 'heartbeat';
 // Idle heartbeat rows are disabled for now. The liveness helper and reconcile
 // path remain so this can be re-enabled without a schema change.
 const HEARTBEATS_ENABLED = false;
+const INTENT_BYTE_LENGTHS: Record<string, number> = {
+	attack: 4,
+	artillery: 4,
+	naval: 4,
+	build: 6,
+	upgrade: 6,
+	demolish: 4,
+	'cancel-attack': 0,
+	'alliance-request': 1,
+	'alliance-break': 1
+};
+
+function validateIntentPayload(type: string, data: readonly number[]): void {
+	const expected = INTENT_BYTE_LENGTHS[type];
+	if (expected === undefined) throw new SenderError('unknown transaction type');
+	if (data.length !== expected) throw new SenderError('invalid transaction payload size');
+	for (const byte of data) {
+		if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+			throw new SenderError('invalid transaction payload');
+		}
+	}
+}
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
@@ -130,7 +152,8 @@ export const createRoom = spacetimedb.reducer(
 			isHost: true,
 			connected: true,
 			ready: false,
-			joinedAt: ctx.timestamp
+			joinedAt: ctx.timestamp,
+			lastClientSequence: 0n
 		});
 	}
 );
@@ -164,7 +187,8 @@ export const joinRoom = spacetimedb.reducer({ name: t.string() }, (ctx, { name }
 		isHost: false,
 		connected: true,
 		ready: false,
-		joinedAt: ctx.timestamp
+		joinedAt: ctx.timestamp,
+		lastClientSequence: 0n
 	});
 });
 
@@ -179,6 +203,7 @@ export const startMatch = spacetimedb.reducer((ctx) => {
 	if (!room.host.isEqual(ctx.sender)) throw new SenderError('only the host can start');
 	const seats = [...ctx.db.seats.iter()];
 	if (seats.length === 0) throw new SenderError('a room needs at least one seated player');
+	if (!seats.every((seat) => seat.ready)) throw new SenderError('all seats must be ready');
 	ctx.db.rooms.roomCode.update({
 		...room,
 		status: 'running',
@@ -215,10 +240,15 @@ export const submitTransaction = spacetimedb.reducer(
 		const seat = requireSeat(ctx);
 		if (seat.playerId === 0) throw new SenderError('spectators cannot submit transactions');
 		if (!seat.connected) throw new SenderError('seat is disconnected');
-		if (args.type.length === 0 || args.type === HEARTBEAT_TYPE) {
+		if (args.type === HEARTBEAT_TYPE) {
 			throw new SenderError('invalid transaction type');
 		}
+		validateIntentPayload(args.type, args.data);
+		if (args.clientSequence <= seat.lastClientSequence) {
+			throw new SenderError('duplicate or stale client sequence');
+		}
 		const tick = tickFor(room, ctx);
+		ctx.db.seats.seatId.update({ ...seat, lastClientSequence: args.clientSequence });
 		appendTransaction(
 			ctx,
 			seat.seatId,

@@ -76,11 +76,11 @@
 	<section class="room-intro" aria-labelledby="room-select-title">
 		<div>
 			<p class="section-index">01 / ROOMS</p>
-			<h2 id="room-select-title">Connect to a room.<br /><em>Start the match.</em></h2>
+			<h2 id="room-select-title">Enter a room.<br /><em>Rally the frontier.</em></h2>
 		</div>
 		<p class="room-lede">
-			Live rooms from Spacetime. Each room is a self-contained deterministic frontier; connecting
-			starts the local simulation with that room's rules and generation parameters.
+			Live rooms from Spacetime. Each room is a self-contained deterministic frontier; enter the
+			lobby, ready up with the other commanders, and the host starts the match.
 		</p>
 	</section>
 

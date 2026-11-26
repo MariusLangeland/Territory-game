@@ -5,7 +5,6 @@ import {
 	ATTACK_STRENGTH_BONUS,
 	ATTACK_SUPPLY_COST_BASE,
 	ATTACK_SUPPLY_COST_BONUS,
-	HUMAN_PLAYER_ID,
 	MAX_UPGRADE_BATCH,
 	NAVAL_TARGET_SNAP_RADIUS,
 	STRUCTURE_MIN_SPACING,
@@ -52,6 +51,7 @@ interface UpgradeQuote {
 export class WorkerLocalSimulation extends RemoteSimulationView {
 	readonly playerCount: number;
 	readonly matchDurationTicks: number;
+	readonly humanPlayerId: number;
 	private client: LocalWorkerClient;
 	private telemetry: LocalWorkerTelemetry['behavior'] | null = null;
 	private mergedDistricts: MergedDistrictGroup[] = [];
@@ -115,6 +115,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		super(viewInit);
 		this.playerCount = init.config.playerCount;
 		this.matchDurationTicks = init.config.matchDurationTicks;
+		this.humanPlayerId = init.snapshot.humanId || 1;
 		this.client = client;
 		this.mergedDistricts = init.mergedDistricts;
 	}
@@ -241,7 +242,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		let best: PublicStructure | null = null;
 		let bestDistance = Number.POSITIVE_INFINITY;
 		for (const structure of this.snapshot.structures) {
-			if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type === 'state') continue;
+			if (structure.ownerId !== this.humanPlayerId || structure.type === 'state') continue;
 			const definition = STRUCTURE_DEFINITIONS[structure.type];
 			if (definition.districtRange <= 0) continue;
 			const dx = structure.x - cellX;
@@ -292,7 +293,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 			return { ok: false, reason: 'ocean', message: 'Cannot take ocean pixels.' };
 		}
 		const owner = this.getOwner(cellX, cellY);
-		if (owner === HUMAN_PLAYER_ID) {
+		if (owner === this.humanPlayerId) {
 			return { ok: false, reason: 'own-territory', message: 'That territory is already yours.' };
 		}
 		if (!this.hasAttackSeeds(cellX, cellY, owner)) {
@@ -302,7 +303,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 				message: 'No friendly border is close enough. Move your frontier.'
 			};
 		}
-		const stats = this.getAttackStats(HUMAN_PLAYER_ID, owner);
+		const stats = this.getAttackStats(this.humanPlayerId, owner);
 		if ((this.snapshot?.supply ?? 0) < stats.cost) {
 			return {
 				ok: false,
@@ -327,7 +328,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		}
 		const artillery = this.snapshot.structures.filter(
 			(structure) =>
-				structure.ownerId === HUMAN_PLAYER_ID &&
+				structure.ownerId === this.humanPlayerId &&
 				structure.type === 'artillery' &&
 				structure.readyAtTick <= this.snapshot.tick
 		);
@@ -395,20 +396,20 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		if (!this.isLand(cellX, cellY)) {
 			return { ok: false, reason: 'ocean', message: 'Structures need land.' };
 		}
-		if (this.getOwner(cellX, cellY) !== HUMAN_PLAYER_ID) {
+		if (this.getOwner(cellX, cellY) !== this.humanPlayerId) {
 			return { ok: false, reason: 'not-owned', message: 'Build inside your territory.' };
 		}
 		if (this.structureAtCell(cellX, cellY)) {
 			return { ok: false, reason: 'occupied', message: 'A structure already occupies that cell.' };
 		}
 		const stackingStructure = this.snapshot.structures.find((structure) => {
-			if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type !== card.type) return false;
+			if (structure.ownerId !== this.humanPlayerId || structure.type !== card.type) return false;
 			const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 			return Math.abs(structure.x - cellX) <= range && Math.abs(structure.y - cellY) <= range;
 		});
 		if (!stackingStructure) {
 			for (const structure of this.snapshot.structures) {
-				if (structure.ownerId !== HUMAN_PLAYER_ID) continue;
+				if (structure.ownerId !== this.humanPlayerId) continue;
 				if (structure.type !== 'state') {
 					const range = STRUCTURE_DEFINITIONS[structure.type].districtRange;
 					if (
@@ -570,7 +571,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 				scanX <= Math.min(this.width - 1, x + radius);
 				scanX++
 			) {
-				if (this.getOwner(scanX, scanY) !== HUMAN_PLAYER_ID) continue;
+				if (this.getOwner(scanX, scanY) !== this.humanPlayerId) continue;
 				const dx = scanX - x;
 				const dy = scanY - y;
 				const distance = dx * dx + dy * dy;
@@ -603,10 +604,10 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 				if (!this.isLand(scanX, scanY)) continue;
 				if (this.getOwner(scanX, scanY) !== targetOwner) continue;
 				if (
-					(scanX > 0 && this.getOwner(scanX - 1, scanY) === HUMAN_PLAYER_ID) ||
-					(scanX + 1 < this.width && this.getOwner(scanX + 1, scanY) === HUMAN_PLAYER_ID) ||
-					(scanY > 0 && this.getOwner(scanX, scanY - 1) === HUMAN_PLAYER_ID) ||
-					(scanY + 1 < this.height && this.getOwner(scanX, scanY + 1) === HUMAN_PLAYER_ID)
+					(scanX > 0 && this.getOwner(scanX - 1, scanY) === this.humanPlayerId) ||
+					(scanX + 1 < this.width && this.getOwner(scanX + 1, scanY) === this.humanPlayerId) ||
+					(scanY > 0 && this.getOwner(scanX, scanY - 1) === this.humanPlayerId) ||
+					(scanY + 1 < this.height && this.getOwner(scanX, scanY + 1) === this.humanPlayerId)
 				) {
 					return true;
 				}
@@ -625,7 +626,7 @@ export class WorkerLocalSimulation extends RemoteSimulationView {
 		let best: PublicStructure | null = null;
 		let bestDistance = Number.POSITIVE_INFINITY;
 		for (const structure of this.snapshot.structures) {
-			if (structure.ownerId !== HUMAN_PLAYER_ID || structure.type === 'state') continue;
+			if (structure.ownerId !== this.humanPlayerId || structure.type === 'state') continue;
 			const dx = structure.x - x;
 			const dy = structure.y - y;
 			const distance = dx * dx + dy * dy;

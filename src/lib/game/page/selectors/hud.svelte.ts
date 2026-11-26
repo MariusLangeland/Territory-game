@@ -1,4 +1,4 @@
-import { ARTILLERY_SUPPLY_COST_PER_LEVEL, HUMAN_PLAYER_ID } from '#lib/game/constants';
+import { ARTILLERY_SUPPLY_COST_PER_LEVEL } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import type { WorkerLocalSimulation } from '#lib/game/worker/local-simulation';
@@ -27,23 +27,23 @@ export interface HudSelectorsDeps {
  * derived: every branch is recomputed from the shared page state cells.
  */
 export function createHudSelectors(deps: HudSelectorsDeps) {
+	const humanId = $derived(deps.snapshot?.humanId ?? 1);
 	let humanFronts = $derived(
-		deps.snapshot?.attacks.filter((attack) => attack.attackerId === HUMAN_PLAYER_ID) ?? []
+		deps.snapshot?.attacks.filter((attack) => attack.attackerId === humanId) ?? []
 	);
 	let humanAllyName = $derived.by(() => {
 		const snapshot = deps.snapshot;
 		if (!snapshot) return null;
 		const alliance = snapshot.alliances.find(
-			(entry) => entry.playerA === HUMAN_PLAYER_ID || entry.playerB === HUMAN_PLAYER_ID
+			(entry) => entry.playerA === humanId || entry.playerB === humanId
 		);
 		if (!alliance) return null;
-		const allyId = alliance.playerA === HUMAN_PLAYER_ID ? alliance.playerB : alliance.playerA;
+		const allyId = alliance.playerA === humanId ? alliance.playerB : alliance.playerA;
 		return snapshot.players[allyId - 1]?.name ?? `STATE ${allyId}`;
 	});
 	let humanAlliancePending = $derived(
 		deps.snapshot?.allianceProposals.some(
-			(proposal) =>
-				proposal.fromPlayerId === HUMAN_PLAYER_ID || proposal.toPlayerId === HUMAN_PLAYER_ID
+			(proposal) => proposal.fromPlayerId === humanId || proposal.toPlayerId === humanId
 		) ?? false
 	);
 	let hoverIsAlly = $derived.by(() => {
@@ -60,7 +60,7 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 	});
 	let humanArtillery = $derived(
 		deps.snapshot?.structures.filter(
-			(structure) => structure.type === 'artillery' && structure.ownerId === HUMAN_PLAYER_ID
+			(structure) => structure.type === 'artillery' && structure.ownerId === humanId
 		) ?? []
 	);
 	let readyArtillery = $derived(
@@ -90,7 +90,7 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 			const x = Math.floor(hover.x);
 			const y = Math.floor(hover.y);
 			if (deps.artilleryTargeting) {
-				const barrage = sim.validateArtillery(HUMAN_PLAYER_ID, x, y);
+				const barrage = sim.validateArtillery(humanId, x, y);
 				if (!barrage.ok && barrage.reason !== 'no-supply') return null;
 				return {
 					label: 'ARTILLERY',
@@ -98,10 +98,10 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 					affordable: snapshot.supply >= artilleryVolleyCost
 				};
 			}
-			if (hover.owner === HUMAN_PLAYER_ID) {
+			if (hover.owner === humanId) {
 				if (sim.getDistrictStructureId(x, y) === 0) return null;
 				const levels = deps.upgradeBatch;
-				const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !deps.ctrlHeld);
+				const quote = sim.getUpgradeQuote(humanId, x, y, levels, !deps.ctrlHeld);
 				if (quote.currentLevel === 0) return null;
 				return {
 					label: quote.merged
@@ -115,9 +115,9 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 					affordable: quote.ok
 				};
 			}
-			const attack = sim.validateAttack(HUMAN_PLAYER_ID, x, y);
+			const attack = sim.validateAttack(humanId, x, y);
 			if (!attack.ok && attack.reason !== 'no-orders') return null;
-			const cost = sim.getAttackStats(HUMAN_PLAYER_ID, hover.owner).cost;
+			const cost = sim.getAttackStats(humanId, hover.owner).cost;
 			return {
 				label: 'FRONT',
 				cost,
@@ -155,10 +155,10 @@ export function createHudSelectors(deps: HudSelectorsDeps) {
 		}
 		const x = hover.x;
 		const y = hover.y;
-		if (sim.getOwner(x, y) !== HUMAN_PLAYER_ID) return null;
+		if (sim.getOwner(x, y) !== humanId) return null;
 		if (sim.getDistrictStructureId(x, y) === 0) return null;
 		const levels = deps.upgradeBatch;
-		const quote = sim.getUpgradeQuote(HUMAN_PLAYER_ID, x, y, levels, !deps.ctrlHeld);
+		const quote = sim.getUpgradeQuote(humanId, x, y, levels, !deps.ctrlHeld);
 		if (quote.currentLevel === 0) return null;
 		return {
 			x: pointerScreen.x,

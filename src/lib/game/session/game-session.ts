@@ -31,6 +31,9 @@ export class GameSession {
 	private generation = 0;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private authoritativeInput = false;
+	private humanPlayerIds: readonly number[] | undefined;
+	private viewerPlayerId: number | undefined;
+	private playerNames: readonly string[] | undefined;
 	private commandHandler:
 		| ((
 				type: LocalWorkerCommandType,
@@ -133,6 +136,9 @@ export class GameSession {
 					matchDurationTicks: settings.timerMinutes * 60 * TICK_RATE,
 					botGenomes,
 					botCommandPostStacks: settings.botCommandPostStacks,
+					humanPlayerIds: this.humanPlayerIds,
+					viewerPlayerId: this.viewerPlayerId,
+					playerNames: this.playerNames,
 					authoritativeInput: this.authoritativeInput
 				},
 				{
@@ -198,6 +204,16 @@ export class GameSession {
 
 	setAuthoritativeInput(value: boolean): void {
 		this.authoritativeInput = value;
+	}
+
+	setRoomPlayers(
+		humanPlayerIds: readonly number[],
+		viewerPlayerId: number,
+		playerNames: readonly string[]
+	): void {
+		this.humanPlayerIds = [...humanPlayerIds];
+		this.viewerPlayerId = viewerPlayerId;
+		this.playerNames = [...playerNames];
 	}
 
 	setCommandHandler(

@@ -18,5 +18,6 @@ export default __t.row({
 	isHost: __t.bool().name('is_host'),
 	connected: __t.bool(),
 	ready: __t.bool(),
-	joinedAt: __t.timestamp().name('joined_at')
+	joinedAt: __t.timestamp().name('joined_at'),
+	lastClientSequence: __t.u64().name('last_client_sequence')
 });

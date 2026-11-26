@@ -285,6 +285,7 @@ export class TerritorySimulation {
 	readonly map: GeneratedMap;
 	readonly botDifficulty: BotDifficulty;
 	readonly humanPlayerIds: readonly number[];
+	private readonly viewerPlayerId: number;
 	private readonly humanSeat: Uint8Array;
 	private readonly humanGold: Uint32Array;
 	private readonly humanGoldAccrual: Uint16Array;
@@ -510,6 +511,8 @@ export class TerritorySimulation {
 			throw new Error('At least one humanPlayerIds entry must be a valid seat.');
 		}
 		this.humanPlayerIds = humanIds;
+		const requestedViewer = Math.trunc(options.viewerPlayerId ?? 0);
+		this.viewerPlayerId = humanIds.includes(requestedViewer) ? requestedViewer : (humanIds[0] ?? 0);
 		this.humanSeat = new Uint8Array(this.playerCount + 1);
 		for (const id of this.humanPlayerIds) this.humanSeat[id] = 1;
 		this.humanGold = new Uint32Array(this.playerCount);
@@ -555,7 +558,7 @@ export class TerritorySimulation {
 
 		this.players = Array.from({ length: this.playerCount }, (_, i) => ({
 			id: i + 1,
-			name: PLAYER_NAMES[i] ?? `State ${i + 1}`,
+			name: options.playerNames?.[i] ?? PLAYER_NAMES[i] ?? `State ${i + 1}`,
 			isBot: this.humanSeat[i + 1] !== 1,
 			alive: true,
 			territory: 0,
@@ -805,7 +808,7 @@ export class TerritorySimulation {
 	}
 
 	private defaultViewerId(): number {
-		return this.humanPlayerIds[0] ?? 0;
+		return this.viewerPlayerId;
 	}
 
 	private supplyOf(playerId: number): number {

@@ -43,7 +43,10 @@ export class LocalWorkerHost {
 				botDifficulty: config.botDifficulty,
 				matchDurationTicks: config.matchDurationTicks,
 				botGenomes: config.botGenomes,
-				botCommandPostStacks: config.botCommandPostStacks
+				botCommandPostStacks: config.botCommandPostStacks,
+				humanPlayerIds: config.humanPlayerIds,
+				viewerPlayerId: config.viewerPlayerId,
+				playerNames: config.playerNames
 			},
 			config.replay ?? null
 		);

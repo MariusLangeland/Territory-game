@@ -170,19 +170,20 @@ client submits transaction
 
 - [ ] `create_room`/provision database.
 - [ ] `join_room`, `leave_room`, `ready`.
-- [ ] `start_match`:
-  - [ ] host-only;
-  - [ ] mark the room running and store `startedAt`;
-  - [ ] set `participationLocked` before broadcasting `first_tick_event`;
-  - [ ] atomically broadcast `first_tick_event` at tick `0`;
-  - [ ] reject all later joins, including reconnects without an existing seat;
-  - [ ] clients wait for the first-tick broadcast before starting simulation.
-- [ ] `submit_transaction`:
-  - [ ] authenticate seat;
-  - [ ] validate schema/rate/sequence;
-  - [ ] compute server tick (clients never supply it);
-  - [ ] insert ordered row with compact binary intent payload;
-  - [ ] update `headTick`;
+- [x] `start_match`:
+  - [x] host-only;
+  - [x] require every seat ready;
+  - [x] mark the room running and store `startedAt`;
+  - [x] set `participationLocked` before broadcasting `first_tick_event`;
+  - [x] atomically broadcast `first_tick_event` at tick `0`;
+  - [x] reject all later joins, including reconnects without an existing seat;
+  - [x] clients wait for the first-tick broadcast before starting simulation.
+- [x] `submit_transaction`:
+  - [x] authenticate seat;
+  - [x] validate allowed type, exact payload size, and monotonic client sequence;
+  - [x] compute server tick (clients never supply it);
+  - [x] insert ordered row with compact binary intent payload;
+  - [x] update `headTick` and the seat’s `lastClientSequence`;
   - [ ] update `lastTransactionTick`;
   - [ ] emit transaction event.
 - [ ] `check_liveness` scheduled reducer (about once per second):
@@ -209,13 +210,16 @@ client submits transaction
 ## Phase 2 — Client simulation and timing
 
 - [x] Create a Spacetime-backed online session distinct from state replication.
+- [x] Waiting room with seats, ready, host start, and tick-0 participation lock.
+- [x] Start local simulation from seed/config.
+- [x] Two-human browser test with per-seat viewer IDs and independent hands/supply.
 - [x] Submit player intents through `submit_transaction`.
 - [x] Reject local unsynchronized commands in the worker.
 - [x] Apply accepted intent rows at their server-assigned tick.
 - [x] Do not write the local input ledger in an online room.
 - [x] Pause the local simulation while the room authority is unavailable.
-- [ ] Map accepted rows to exact server ticks and safe frontier.
-- [ ] Start local simulation from seed/config or keyframe.
+- [x] Server validation: allowed intent type, exact payload size, duplicate/stale client sequence.
+- [ ] Map accepted rows to a safe frontier with rollback on late rows.
 - [ ] Estimate server clock and maintain offset.
 - [ ] Compute `targetTick = serverHeadTick - safeDeltaTicks`.
 - [ ] Apply whole ticks only.
@@ -342,8 +346,8 @@ client submits transaction
 
 ## Acceptance criteria
 
-- [ ] One Spacetime database per room.
-- [ ] No periodic tick-seal rows; transactions are the only ledger rows.
+- [x] One Spacetime database per room.
+- [x] No periodic tick-seal rows; transactions are the only ledger rows.
 - [x] Heartbeat emission is disabled; no idle heartbeat rows are written.
 - [ ] Heartbeats are skipped by simulation/replay and never affect state roots.
 - [ ] Same-tick rows apply in `rowIndex` order.
@@ -351,9 +355,9 @@ client submits transaction
       `targetTick`.
 - [ ] Clients apply whole ticks; no variable-dt simulation.
 - [ ] Late rows cause pause/rollback, never silent divergence.
-- [ ] Public-room room lifecycle works through Spacetime.
-- [ ] Starting a room locks participation before broadcasting a first-tick event.
-- [ ] All clients anchor at tick 0 and late-comers cannot join.
+- [x] Public-room room lifecycle works through Spacetime.
+- [x] Starting a room locks participation before broadcasting a first-tick event.
+- [x] All clients anchor at tick 0 and late-comers cannot join.
 - [ ] Deliberate invalid rows can be flagged; quorum invalidates.
 - [ ] Arbiter decisions are final and applied identically by clients.
 - [ ] Rollback from keyframe produces the same canonical state/checksum.

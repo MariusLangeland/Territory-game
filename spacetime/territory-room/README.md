@@ -5,8 +5,10 @@ orders client transactions, tracks seats/presence, and emits liveness rows.
 
 ## What exists
 
-- `rooms` — room config, lifecycle status, authoritative head tick.
-- `seats` — human seats, identity ownership, readiness/presence.
+- `rooms` — room config, lifecycle status, authoritative head tick. Seats join
+  while the room is waiting; the host starts after every seat is ready.
+- `seats` — human seats, identity ownership, readiness/presence, and the last
+  accepted client sequence.
 - `ledger_transactions` — ordered gameplay transaction rows. Idle heartbeat
   emission is currently disabled.
 - `new_transaction_event` — event-table notification for new rows.
@@ -19,7 +21,8 @@ Reducers:
 - `create_room` — creates the single room row and seeds the host seat.
 - `join_room` — reserves the lowest free player slot.
 - `set_ready`, `start_match`, `leave_room`.
-- `submit_transaction` — records a seat-authorized row at the server-assigned tick.
+- `submit_transaction` — validates intent kind/payload size/client sequence and
+  records a seat-authorized row at the server-assigned tick.
 - `check_liveness` — no-op while heartbeat emission is disabled.
 
 ## Commands

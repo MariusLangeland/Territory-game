@@ -1,5 +1,5 @@
 import { tick } from 'svelte';
-import { HUMAN_PLAYER_ID, STRUCTURE_MIN_SPACING } from '#lib/game/constants';
+import { STRUCTURE_MIN_SPACING } from '#lib/game/constants';
 import type { CameraView } from '#lib/game/render/camera-bridge';
 import type { GameSnapshot } from '#lib/game/simulation';
 import type { PublicCard } from '#lib/game/structures';
@@ -78,7 +78,7 @@ export function createInteractionController(state: GamePageState, deps: Interact
 		if (!sim || !cameraView) return null;
 		const cell = pointerCell(clientX, clientY);
 		if (!cell) return null;
-		const validation = sim.validateBuild(HUMAN_PLAYER_ID, card.id, cell.x, cell.y);
+		const validation = sim.validateBuild(sim.humanPlayerId, card.id, cell.x, cell.y);
 		const targetX = validation.targetX ?? cell.x;
 		const targetY = validation.targetY ?? cell.y;
 		return landingAtCell(cameraView, targetX, targetY, validation.ok);

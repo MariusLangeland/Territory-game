@@ -41,6 +41,7 @@ function createStateAccessors() {
 	let showIntro = $state(true);
 	let landing = $state(true);
 	let activeRoom = $state<RoomDefinition | null>(null);
+	let lobbyRoom = $state<RoomDefinition | null>(null);
 	let autoStartRoom = $state(false);
 	let showHelp = $state(false);
 	let replayMode = $state(false);
@@ -185,6 +186,12 @@ function createStateAccessors() {
 		},
 		set activeRoom(value) {
 			activeRoom = value;
+		},
+		get lobbyRoom() {
+			return lobbyRoom;
+		},
+		set lobbyRoom(value) {
+			lobbyRoom = value;
 		},
 		get autoStartRoom() {
 			return autoStartRoom;

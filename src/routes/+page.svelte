@@ -12,6 +12,7 @@
 	import MapTools from '#lib/components/MapTools.svelte';
 	import DragOverlay from '#lib/components/DragOverlay.svelte';
 	import RoomSelectScreen from '#lib/components/RoomSelectScreen.svelte';
+	import RoomLobbyScreen from '#lib/components/RoomLobbyScreen.svelte';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ErrorModal from '#lib/components/ErrorModal.svelte';
 	import ResultModal from '#lib/components/ResultModal.svelte';
@@ -36,8 +37,16 @@
 	ondrop={game.handleCardDrop}
 	oncontextmenu={game.handleContextMenu}
 >
-	{#if game.landing}
-		<RoomSelectScreen onConnect={game.connectRoom} />
+	{#if game.lobbyRoom}
+		<RoomLobbyScreen
+			room={game.lobbyRoom}
+			onCancel={game.cancelRoomLobby}
+			onStarted={game.startRoomSession}
+			onTransaction={game.applyRoomTransaction}
+			onAvailability={game.roomAuthorityChanged}
+		/>
+	{:else if game.landing}
+		<RoomSelectScreen onConnect={game.openRoomLobby} />
 	{/if}
 
 	{#if game.diplomacyToast}
@@ -64,6 +73,7 @@
 		{#key game.sim}
 			<ReplayViewer
 				simulation={game.sim}
+				humanPlayerId={game.sim.humanPlayerId}
 				paused={game.paused}
 				simulate={false}
 				remoteVisuals={game.workerVisuals}

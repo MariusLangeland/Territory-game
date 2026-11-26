@@ -16,6 +16,9 @@ export interface LocalWorkerInitConfig {
 	matchDurationTicks: number;
 	botGenomes?: readonly (BotGenome | null)[];
 	botCommandPostStacks: number;
+	humanPlayerIds?: readonly number[];
+	viewerPlayerId?: number;
+	playerNames?: readonly string[];
 	/** When true, local commands are rejected and only Spacetime rows apply. */
 	authoritativeInput?: boolean;
 	/** Present for a read-only ledger replay match. */

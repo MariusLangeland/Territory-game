@@ -93,7 +93,9 @@ export const seats = table(
 		isHost: t.bool(),
 		connected: t.bool(),
 		ready: t.bool(),
-		joinedAt: t.timestamp()
+		joinedAt: t.timestamp(),
+		// Highest accepted client sequence; rejects duplicate/stale submissions.
+		lastClientSequence: t.u64().default(0n)
 	}
 );
 
@@ -303,6 +305,7 @@ export default spacetimedb;
 - `create_room`, `join_room`, `leave_room`, `ready`.
 - `start_match`:
   - host-only;
+  - requires every seated player to be ready;
   - set `status = running`, `startedAt`, and `participationLocked = true`;
   - schedule liveness;
   - broadcast `first_tick_event` with `tick = 0` and the same `startedAt`;

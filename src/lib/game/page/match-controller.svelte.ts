@@ -5,7 +5,7 @@ import { decodeLedgerDocument } from '#lib/game/ledger/document';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
 import type { RoomDefinition } from '#lib/spacetime/room-definition';
-import { connectRoomSession, type RoomSession } from '#lib/spacetime/room-session';
+import type { AcceptedTransaction, RoomLobbySession } from '#lib/spacetime/room-session';
 import { workerCommandToIntent } from '#lib/game/worker/intent';
 import { parseSeed, randomSeed, readSeedFromLocation, seedHexFor } from '#lib/game/session/seed';
 import type { GameSnapshot, SimEvent } from '#lib/game/simulation';
@@ -113,6 +113,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		roomConnectionGeneration++;
 		roomSession?.disconnect();
 		roomSession = null;
+		state.lobbyRoom = null;
 		roomAuthorityPaused = false;
 		resumeAfterAuthority = false;
 		gameSession.setCommandHandler(null);
@@ -141,75 +142,83 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		deps.interaction.clearDragState();
 	}
 
-	/** Join the Spacetime room, then start its local simulation. */
-	async function connectRoom(room: RoomDefinition): Promise<void> {
-		const generation = ++roomConnectionGeneration;
-		roomAuthorityPaused = false;
-		resumeAfterAuthority = false;
-		state.activeRoom = room;
-		state.autoStartRoom = true;
+	/** Open the seat lobby; the lobby itself owns the room connection. */
+	function openRoomLobby(room: RoomDefinition): void {
+		roomConnectionGeneration++;
+		state.lobbyRoom = room;
+		state.activeRoom = null;
 		state.landing = false;
-		state.showIntro = false;
+		state.phase = 'ready';
 		state.errorMessage = '';
 		state.matchSettings = { ...room.settings };
-		state.phase = 'loading';
+	}
 
-		try {
-			const session = await connectRoomSession({
-				room,
-				onTransaction: (transaction) => {
-					gameSession.applyRemoteIntent(
-						Number(transaction.tick),
-						transaction.playerId,
-						transaction.intent
-					);
-				},
-				onAvailability: (available, message) => {
-					if (generation !== roomConnectionGeneration) return;
-					if (!available) {
-						if (roomAuthorityPaused) return;
-						roomAuthorityPaused = true;
-						resumeAfterAuthority = state.gameStarted && !state.paused;
-						if (state.gameStarted) {
-							state.paused = true;
-							gameSession.pause();
-						}
-						showToast(message ?? 'Room connection lost. Simulation paused.', 'warn');
-						return;
-					}
-					if (!roomAuthorityPaused) return;
-					roomAuthorityPaused = false;
-					if (resumeAfterAuthority && state.gameStarted) {
-						state.paused = false;
-						gameSession.resume();
-					}
-				}
-			});
-			if (generation !== roomConnectionGeneration) {
-				session.disconnect();
-				return;
+	function cancelRoomLobby(): void {
+		roomConnectionGeneration++;
+		state.lobbyRoom = null;
+		state.landing = true;
+		state.phase = 'ready';
+		state.errorMessage = '';
+	}
+
+	function applyRoomTransaction(transaction: AcceptedTransaction): void {
+		gameSession.applyRemoteIntent(
+			Number(transaction.tick),
+			transaction.playerId,
+			transaction.intent
+		);
+	}
+
+	function roomAuthorityChanged(available: boolean, message?: string): void {
+		if (!available) {
+			if (roomAuthorityPaused) return;
+			roomAuthorityPaused = true;
+			resumeAfterAuthority = state.gameStarted && !state.paused;
+			if (state.gameStarted) {
+				state.paused = true;
+				gameSession.pause();
 			}
-			roomSession?.disconnect();
-			roomSession = session;
-			gameSession.setAuthoritativeInput(true);
-			gameSession.setCommandHandler(async (type, args) => {
-				const intent = workerCommandToIntent({ type, ...args });
-				const result = await session.submitIntent(intent);
-				return {
-					ok: result.ok,
-					message: result.message,
-					reason: result.ok ? undefined : 'rejected'
-				};
-			});
-		} catch (error) {
-			if (generation !== roomConnectionGeneration) return;
-			state.phase = 'error';
-			state.errorMessage =
-				error instanceof Error ? error.message : 'Could not connect to the room.';
-			state.paused = true;
+			showToast(message ?? 'Room connection lost. Simulation paused.', 'warn');
 			return;
 		}
+		if (!roomAuthorityPaused) return;
+		roomAuthorityPaused = false;
+		if (resumeAfterAuthority && state.gameStarted) {
+			state.paused = false;
+			gameSession.resume();
+		}
+	}
 
+	/** Called by the lobby on the first tick; begins the local simulation. */
+	function startRoomSession(
+		session: RoomLobbySession,
+		seats: { playerId: number; name: string; ready: boolean }[]
+	): void {
+		const room = state.lobbyRoom;
+		if (!room) {
+			session.disconnect();
+			return;
+		}
+		gameSession.setRoomPlayers(
+			seats.map((seat) => seat.playerId),
+			session.playerId,
+			seats.map((seat) => seat.name)
+		);
+		roomSession?.disconnect();
+		roomSession = session;
+		state.lobbyRoom = null;
+		state.activeRoom = room;
+		state.autoStartRoom = true;
+		gameSession.setAuthoritativeInput(true);
+		gameSession.setCommandHandler(async (type, args) => {
+			const intent = workerCommandToIntent({ type, ...args });
+			const result = await session.submitIntent(intent);
+			return {
+				ok: result.ok,
+				message: result.message,
+				reason: result.ok ? undefined : 'rejected'
+			};
+		});
 		createWorld(room.seed, room.settings);
 		state.showIntro = false;
 	}
@@ -574,7 +583,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		state.rankScrollTop = (event.currentTarget as HTMLElement).scrollTop;
 	}
 
-	let roomSession: RoomSession | null = null;
+	let roomSession: RoomLobbySession | null = null;
 	let roomConnectionGeneration = 0;
 	let roomAuthorityPaused = false;
 	let resumeAfterAuthority = false;
@@ -597,7 +606,11 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 		applySeedPreset,
 		createWorld,
 		showRoomSelection,
-		connectRoom,
+		openRoomLobby,
+		cancelRoomLobby,
+		applyRoomTransaction,
+		roomAuthorityChanged,
+		startRoomSession,
 		startRoomMatch,
 		leaveRoom,
 		deploy,

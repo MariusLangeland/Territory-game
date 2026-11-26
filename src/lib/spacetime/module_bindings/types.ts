@@ -68,6 +68,7 @@ export const Seats = __t.object('Seats', {
 	isHost: __t.bool(),
 	connected: __t.bool(),
 	ready: __t.bool(),
-	joinedAt: __t.timestamp()
+	joinedAt: __t.timestamp(),
+	lastClientSequence: __t.u64()
 });
 export type Seats = __Infer<typeof Seats>;
