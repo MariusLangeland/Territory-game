@@ -1,4 +1,4 @@
-import type { GameSession } from '../session/game-session';
+import type { MatchCommandGateway } from '../frontend/contracts';
 import type { PublicStructure } from '../structures';
 import type { GameSnapshot } from '../simulation';
 import type { WorkerLocalSimulation } from '../worker/local-simulation';
@@ -27,7 +27,7 @@ export interface ActionContext {
 	advanceOnboarding(from: OnboardingStep, to: OnboardingStep): void;
 	finishOnboarding(): void;
 	buildKeyboardPlacement(x: number, y: number): Promise<void>;
-	session: GameSession;
+	session: MatchCommandGateway;
 }
 
 /** Player-initiated commands; validation stays in the worker. */

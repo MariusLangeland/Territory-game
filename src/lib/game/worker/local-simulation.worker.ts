@@ -1,4 +1,4 @@
-import { LocalWorkerHost } from './local-host';
+import { MatchViewHost } from '../view/worker-host';
 import type { LocalWorkerInbound, LocalWorkerOutbound } from './local-protocol';
 
 const TICK_MS = 100;
@@ -9,7 +9,7 @@ const scope = self as unknown as {
 	onmessage: ((event: MessageEvent<LocalWorkerInbound>) => void) | null;
 };
 
-let host: LocalWorkerHost | null = null;
+let host: MatchViewHost | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let accumulator = 0;
 let lastTickAt = 0;
@@ -119,7 +119,7 @@ scope.onmessage = (event: MessageEvent<LocalWorkerInbound>) => {
 			clearTimeout(seekTimer);
 			seekTimer = null;
 		}
-		host = new LocalWorkerHost(message.config);
+		host = new MatchViewHost(message.config);
 		const init = host.initMessage();
 		// Terrain arrays are still owned by the worker simulation; only the copied
 		// owners/district buffers are transferred.

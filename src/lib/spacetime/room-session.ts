@@ -1,7 +1,8 @@
 import { DbConnection, tables, type SubscriptionHandle } from './module_bindings';
 import type { Identity } from 'spacetimedb';
 import type { OnlineIntent } from '#lib/game/net/online-protocol';
-import { decodeOnlineIntent, encodeOnlineIntent } from './intent-codec';
+import { SpacetimeLedgerSource } from '#lib/game/ledger/remote';
+import type { AcceptedTransaction, LedgerSource, LedgerSubmitResult } from '#lib/game/ledger/types';
 import type { RoomDefinition } from './room-definition';
 import { SPACETIMEDB_URI } from './config';
 
@@ -19,21 +20,17 @@ export interface LobbySnapshot {
 	seats: LobbySeat[];
 }
 
-export interface AcceptedTransaction {
-	rowIndex: bigint;
-	tick: bigint;
-	playerId: number;
-	intent: OnlineIntent;
-}
+export type { AcceptedTransaction } from '#lib/game/ledger/types';
 
 export interface RoomLobbySession {
 	readonly databaseName: string;
 	readonly playerId: number;
 	readonly isHost: boolean;
+	readonly ledger: LedgerSource;
 	disconnect: () => void;
 	setReady: (ready: boolean) => Promise<void>;
 	startMatch: () => Promise<void>;
-	submitIntent: (intent: OnlineIntent) => Promise<{ ok: boolean; message: string }>;
+	submitIntent: (intent: OnlineIntent) => Promise<LedgerSubmitResult>;
 }
 
 export interface RoomLobbyOptions {
@@ -93,8 +90,7 @@ export function connectRoomLobby({
 		let subscription: SubscriptionHandle | null = null;
 		let playerId = 1;
 		let isHost = false;
-		let clientSequence = 0n;
-		let lastRowIndex = 0n;
+		let ledger: SpacetimeLedgerSource | null = null;
 		let availabilityTimer: ReturnType<typeof setInterval> | null = null;
 
 		const timeout = setTimeout(() => {
@@ -140,10 +136,16 @@ export function connectRoomLobby({
 			get isHost() {
 				return isHost;
 			},
+			get ledger(): LedgerSource {
+				if (!ledger) throw new Error('Room ledger is not ready.');
+				return ledger;
+			},
 			disconnect: () => {
 				closed = true;
 				if (availabilityTimer) clearInterval(availabilityTimer);
 				availabilityTimer = null;
+				ledger?.dispose();
+				ledger = null;
 				subscription?.unsubscribe();
 				connection?.disconnect();
 				connection = null;
@@ -160,20 +162,10 @@ export function connectRoomLobby({
 				await active.reducers.startMatch({});
 			},
 			submitIntent: async (intent) => {
-				const active = connection;
-				if (!active) return { ok: false, message: 'Room connection is not ready.' };
-				try {
-					await active.reducers.submitTransaction({
-						clientSequence: ++clientSequence,
-						type: intent.type,
-						data: encodeOnlineIntent(intent)
-					});
-					return { ok: true, message: 'Transaction submitted.' };
-				} catch (error) {
-					const message = error instanceof Error ? error.message : 'Transaction submission failed.';
-					onAvailability?.(false, message);
-					return { ok: false, message };
-				}
+				if (!ledger) return { ok: false, message: 'Room ledger is not ready.' };
+				const result = await ledger.submitIntent(intent);
+				if (!result.ok) onAvailability?.(false, result.message);
+				return result;
 			}
 		};
 
@@ -192,7 +184,10 @@ export function connectRoomLobby({
 			})
 			.onAutomaticReconnect((_ctx, _identity, newToken) => {
 				saveToken(databaseName, newToken);
-				if (!closed) onAvailability?.(true);
+				if (!closed) {
+					ledger?.setAvailable(true);
+					onAvailability?.(true);
+				}
 			})
 			.onConnectError((_ctx, error, nextAttempt) => {
 				if (nextAttempt === undefined) {
@@ -209,26 +204,18 @@ export function connectRoomLobby({
 					return;
 				}
 				if (!closed) {
-					onAvailability?.(false, error?.message ?? 'Room connection lost.');
+					const message = error?.message ?? 'Room connection lost.';
+					ledger?.setAvailable(false, message);
+					onAvailability?.(false, message);
 				}
 			})
 			.build();
 		connection = next;
 
+		ledger = new SpacetimeLedgerSource(next, playerId);
+		if (onTransaction) ledger.subscribe(onTransaction);
 		next.db.firstTickEvent.onInsert((_ctx, event) => {
 			if (event.tick === 0n) onFirstTick?.();
-		});
-		next.db.ledgerTransactions.onInsert((_ctx, row) => {
-			if (row.type === 'heartbeat' || row.rowIndex <= lastRowIndex) return;
-			const intent = decodeOnlineIntent(row.type, row.data);
-			if (!intent) return;
-			lastRowIndex = row.rowIndex;
-			onTransaction?.({
-				rowIndex: row.rowIndex,
-				tick: row.tick,
-				playerId: row.playerId,
-				intent
-			});
 		});
 		next.db.seats.onInsert(() => emitLobby());
 		next.db.seats.onUpdate(() => emitLobby());
@@ -246,7 +233,10 @@ export function connectRoomLobby({
 			const seat = [...next.db.seats.iter()].find(
 				(candidate) => identity !== null && candidate.identity.isEqual(identity)
 			);
-			if (seat) playerId = seat.playerId;
+			if (seat) {
+				playerId = seat.playerId;
+				if (ledger) ledger.playerId = playerId;
+			}
 		}
 
 		async function prepareRoom(): Promise<void> {

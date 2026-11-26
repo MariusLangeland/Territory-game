@@ -1,6 +1,6 @@
 import { goto } from '$app/navigation';
 import type { RendererFrameStats } from '#lib/game/render/territory-renderer';
-import { GameSession } from '#lib/game/session/game-session';
+import { MatchView } from '#lib/game/view/match-view';
 import { decodeLedgerDocument } from '#lib/game/ledger/document';
 import type { MatchLedger } from '#lib/game/net/match-ledger';
 import type { LedgerBlock } from '#lib/game/ledger/agent';
@@ -28,7 +28,7 @@ export interface MatchDeps {
 
 /**
  * Match lifecycle: settings persistence, world/seed creation, the worker
- * session, tick dispatch, and renderer callbacks. Owns the `GameSession`
+ * session, tick dispatch, and renderer callbacks. Owns the `MatchView`
  * because it is the only controller that starts/stops the match worker.
  */
 export function createMatchController(state: GamePageState, deps: MatchDeps) {
@@ -588,7 +588,7 @@ export function createMatchController(state: GamePageState, deps: MatchDeps) {
 	let roomAuthorityPaused = false;
 	let resumeAfterAuthority = false;
 
-	const gameSession = new GameSession({
+	const gameSession = new MatchView({
 		onReady: handleSessionReady,
 		onVisual: handleWorkerVisual,
 		onReplayStatus: handleReplayStatus,

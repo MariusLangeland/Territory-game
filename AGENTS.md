@@ -152,16 +152,24 @@ If `pnpm`/`node` is not on PATH in this environment, use the runtime paths provi
 - `src/lib/game/net/online-protocol.ts` — online room/intent/baseline/tick types and owner RLE.
 - `src/lib/game/net/online-intent.ts` — shared authoritative intent-to-simulation mapping.
 - `src/lib/game/net/match-ledger.ts` — accepted-move ledger encode/decode/replay for deterministic lockstep groundwork.
-- `src/lib/game/ledger/agent.ts` — sole authoritative offline ledger writer: validates/appends transactions, seals blocks, projects state.
+- `src/lib/game/ledger/agent.ts` — local/offline ledger writer: validates/appends transactions, seals blocks, projects state.
+- `src/lib/game/ledger/types.ts` — canonical `LedgerRecord`/`LedgerSource` boundary mirroring the Spacetime table row.
+- `src/lib/game/ledger/remote.ts` — Spacetime ledger adapter; decodes accepted rows into intents.
+- `src/lib/game/ledger/local.ts` — local ledger adapter/compatibility export.
+- `src/lib/game/ledger/codec.ts` — compact intent payload codec.
 - `src/lib/game/ledger/document.ts` — downloaded ledger/block wrapper decoding for the replay viewer.
 - `src/lib/game/net/online-room.ts` — authoritative room core; multi-human seats, intents, snapshots.
 - `src/lib/game/worker/view.ts` — read-only main-thread worker visual/query mirror.
 - `src/lib/game/worker/protocol.ts` — shared worker init/visual payloads.
-- `src/lib/game/worker/local-host.ts` — worker-owned local simulation, commands, pause/resume.
+- `src/lib/game/view/worker-host.ts` — worker-owned view host: applies accepted intents, steps simulation, snapshots, pause/resume.
+- `src/lib/game/view/match-view.ts` — main-thread match view: worker lifecycle, bot roster loading, commands, replay controls.
+- `src/lib/game/view/index.ts` — view-layer public exports.
+- `src/lib/game/worker/local-host.ts` — compatibility re-export for the view host.
 - `src/lib/game/worker/local-simulation.worker.ts` — local match worker entry and 10 Hz loop.
 - `src/lib/game/worker/local-simulation.ts` — main-thread local mirror + async command facade.
 - `src/lib/game/simulation-view.ts` — read-only contract shared by simulation and mirrors.
-- `src/lib/game/session/game-session.ts` — worker match lifecycle, bot roster loading, commands.
+- `src/lib/game/frontend/contracts.ts` — frontend command gateway contract.
+- `src/lib/game/session/game-session.ts` — compatibility re-export for `MatchView`.
 - `src/lib/game/session/seed.ts` — URL seed parsing, random seeds, hex formatting.
 - `src/lib/game/session/onboarding.ts` — onboarding completion persistence.
 - `src/lib/game/ui/actions.ts` — player command dispatch and action validation flow.
